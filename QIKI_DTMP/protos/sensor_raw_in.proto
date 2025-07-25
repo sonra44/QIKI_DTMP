@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package qiki.sensors;
+
+import "common_types.proto";
+import "google/protobuf/timestamp.proto";
+
+message SensorReading {
+  // Уникальный ID сенсора, который отправил данные
+  qiki.common.UUID sensor_id = 1;
+  
+  // Тип сенсора из общего перечисления
+  qiki.common.SensorType sensor_type = 2;
+  
+  // Временная метка, когда были сняты показания
+  google.protobuf.Timestamp timestamp = 3;
+  
+  // Основные данные сенсора, только одно поле может быть установлено
+  oneof sensor_data {
+    qiki.common.Vector3 vector_data = 4; // Например, для IMU или GPS
+    float scalar_data = 5;             // Например, температура или дистанция
+    bytes binary_data = 7;             // Например, для изображения с камеры
+  }
+
+  // Единица измерения для скалярных данных (если применимо)
+  qiki.common.Unit unit = 6;
+
+  // Индикатор валидности данных
+  bool is_valid = 8;
+
+  // Кодировка бинарных данных (например, "jpeg", "png")
+  string encoding = 9;
+
+  // Сила сигнала или качество показаний (0.0 - 1.0)
+  float signal_strength = 10;
+
+  // ID модуля-источника, который сгенерировал эти данные
+  string source_module = 11;
+}

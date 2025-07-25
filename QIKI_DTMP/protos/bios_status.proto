@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package qiki.bios;
+
+import "common_types.proto";
+import "google/protobuf/timestamp.proto";
+
+message DeviceStatus {
+  qiki.common.UUID device_id = 1;
+  string device_name = 2;
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    OK = 1;
+    WARNING = 2;
+    ERROR = 3;
+    NOT_FOUND = 4;
+  }
+  Status status = 3;
+
+  string error_message = 4;
+
+  enum DeviceType {
+    DEVICE_TYPE_UNSPECIFIED = 0;
+    SENSOR = 1;
+    ACTUATOR = 2;
+    POWER_UNIT = 3;
+    COMMUNICATION = 4;
+    CONTROLLER = 5;
+  }
+  DeviceType device_type = 5;
+
+  enum StatusCode {
+    STATUS_CODE_UNSPECIFIED = 0;
+    COMPONENT_NOT_FOUND = 1; // 0x01
+    UNSTABLE_READINGS = 2;   // 0x02
+    TIMEOUT_RESPONSE = 3;    // 0x03
+    CRITICAL_BOOT_FAILURE = 4; // 0xF0
+  }
+  StatusCode status_code = 6; // Сопоставляется с beep-кодами или логами
+}
+
+message BiosStatusReport {
+  google.protobuf.Timestamp timestamp = 1;
+  string firmware_version = 2;
+  repeated DeviceStatus post_results = 3;
+  bool all_systems_go = 4;
+  qiki.common.UUID bios_uuid = 5;
+
+  // Общий показатель здоровья системы (0.0 - 1.0)
+  float health_score = 6;
+
+  // Время последнего успешного чека
+  google.protobuf.Timestamp last_checked = 7;
+
+  // Время работы системы в секундах
+  int64 uptime_sec = 8;
+}

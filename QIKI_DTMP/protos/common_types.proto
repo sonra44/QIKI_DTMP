@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package qiki.common;
+
+import "google/protobuf/timestamp.proto";
+
+message UUID {
+  string value = 1;
+}
+
+// Represents a 3D vector.
+// Coordinate system: [Specify your coordinate system here, e.g., ROS REP 103, right-handed, Z-up]
+message Vector3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+enum SensorType {
+  SENSOR_TYPE_UNSPECIFIED = 0;
+  LIDAR = 1;
+  IMU = 2;
+  CAMERA = 3;
+  GPS = 4;
+  THERMAL = 5;
+}
+
+enum ActuatorType {
+  ACTUATOR_TYPE_UNSPECIFIED = 0;
+  WHEEL_MOTOR = 1;
+  SERVO = 2;
+  GRIPPER = 3;
+  ARM = 4;
+}
+
+enum Unit {
+  UNIT_UNSPECIFIED = 0;
+  METERS = 1;
+  DEGREES = 2;
+  PERCENT = 3;
+  VOLTS = 4;
+  AMPS = 5;
+  WATTS = 6;
+  MILLISECONDS = 7;
+  KELVIN = 8;
+  BAR = 9;
+}

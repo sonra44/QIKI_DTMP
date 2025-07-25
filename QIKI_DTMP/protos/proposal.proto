@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package qiki.mind;
+
+import "common_types.proto";
+import "actuator_raw_out.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+message Proposal {
+  // Уникальный ID предложения
+  qiki.common.UUID proposal_id = 1;
+
+  // ID модуля-источника (например, "neural_engine_v1", "reflex_system")
+  string source_module_id = 2;
+
+  // Временная метка создания предложения
+  google.protobuf.Timestamp timestamp = 3;
+
+  // Предлагаемые действия (одна или несколько команд)
+  repeated qiki.actuators.ActuatorCommand proposed_actions = 4;
+
+  // Человеко-читаемое обоснование
+  string justification = 5;
+
+  // Приоритет от 0.0 до 1.0
+  float priority = 6;
+
+  // Сколько времени потребуется на выполнение
+  google.protobuf.Duration expected_duration = 7;
+
+  // Тип предложения: безопасность, планирование, диагностика...
+  enum ProposalType {
+    PROPOSAL_TYPE_UNSPECIFIED = 0;
+    SAFETY = 1;
+    PLANNING = 2;
+    DIAGNOSTICS = 3;
+    EXPLORATION = 4;
+  }
+  ProposalType type = 8;
+
+  // Необязательные доп. поля
+  map<string, string> metadata = 9;
+
+  // Степень уверенности в предложении (0.0 - 1.0)
+  float confidence = 10;
+
+  enum ProposalStatus {
+    PROPOSAL_STATUS_UNSPECIFIED = 0;
+    PENDING = 1;
+    ACCEPTED = 2;
+    REJECTED = 3;
+    EXECUTED = 4;
+    EXPIRED = 5;
+  }
+  ProposalStatus status = 11;
+
+  // Список ID предложений, от которых зависит это предложение
+  repeated qiki.common.UUID depends_on = 12;
+
+  // Список ID предложений, с которыми это предложение конфликтует
+  repeated qiki.common.UUID conflicts_with = 13;
+
+  // Цифровая подпись предложения для верификации и предотвращения подделок
+  string proposal_signature = 14;
+}
