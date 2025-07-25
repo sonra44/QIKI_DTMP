@@ -2,12 +2,11 @@
 
 # Получаем абсолютный путь к директории, где лежит скрипт
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-# PROJECT_ROOT - это директория, содержащая 'scripts' и 'tools'
+# PROJECT_ROOT - корень репозитория
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 
-# Устанавливаем PYTHONPATH, чтобы Python мог найти модуль 'tools'
-export PYTHONPATH="$PROJECT_ROOT"
+# Добавляем каталог src в PYTHONPATH для доступа к пакетам
+export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
 # Запускаем Python-модуль, передавая ему все аргументы
-# Python сам найдет tools/qiki_docgen внутри $PROJECT_ROOT
-python -m tools.qiki_docgen "$@"
+python -m qiki_dtmp.tools.qiki_docgen "$@"
