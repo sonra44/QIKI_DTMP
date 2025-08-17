@@ -1,32 +1,59 @@
-# services/q_core_agent/state/tests/test_stress.py — анализ по методу «Задачи»
+# TEST_STRESS.PY — аналитический отчёт
 
-## Назначение файла
-Набор расширенных stress‑ и concurrency‑тестов для проверки StateStore под высокой нагрузкой и длительной работой.
+## Вход и цель
+- [Факт] Анализ модуля `test_stress.py`.
+- [Факт] Итог — обзор стресс-тестов StateStore.
 
-## Основные блоки задач
-### 1. `TestHighVolumeOperations`
-- [ ] `test_high_volume_sets_and_gets` — множество операций `set/get` с мониторингом производительности.
-- [ ] `test_rapid_state_transitions` — быстрые смены состояний и проверка метрик.
-- [ ] `test_massive_subscriber_load` — сотни подписчиков и проверка доставки обновлений.
+## Сбор контекста
+- [Факт] Прочитан исходник `test_stress.py` и связанные `store.py`, `types.py`.
+- [Гипотеза] Тесты запускаются из CI для оценки устойчивости.
 
-### 2. `TestConcurrencyStress`
-- [ ] `test_concurrent_writers_stress` — десятки конкурентных писателей.
-- [ ] `test_mixed_operations_chaos` — смесь чтений, записей и подписок.
-- [ ] `test_subscriber_stress_with_backpressure` — сравнение быстрых и медленных потребителей.
+## Локализация артефакта
+- [Факт] Путь: `services/q_core_agent/state/tests/test_stress.py`.
+- [Факт] Требуются `pytest`, `psutil`, `asyncio`.
 
-### 3. `TestMemoryStress`
-- [ ] `test_memory_pressure_large_snapshots` — большие объекты и контроль памяти.
-- [ ] `test_subscriber_memory_cleanup` — массовое создание/удаление подписчиков.
+## Фактический разбор
+- [Факт] Фикстура `stress_store` создаёт инициализированный `AsyncStateStore`.
+- [Факт] Класс `PerformanceMonitor` измеряет время операций.
+- [Факт] Группы тестов: `TestHighVolumeOperations`, `TestConcurrencyStress`, `TestMemoryStress`, `TestLongRunningStability`, `TestPerformanceBenchmarks`.
+- [Факт] Проверяются массовые `set/get`, конкурентные писатели и подписчики, утечки памяти.
 
-### 4. `TestLongRunningStability`
-- [ ] `test_long_running_operations` — непрерывные случайные операции на протяжении `STRESS_TEST_DURATION`.
-- [ ] `test_resource_exhaustion_recovery` — восстановление после исчерпания ресурсов.
+## Роль в системе и связи
+- [Факт] Тесты валидируют StateStore под экстремальными нагрузками.
+- [Гипотеза] Результаты используются для настройки порогов производительности.
 
-### 5. `TestPerformanceBenchmarks`
-- [ ] `test_throughput_benchmark` — измерение пропускной способности `set/get`.
-- [ ] `test_latency_benchmark` — измерение задержек с вычислением P95.
+## Несоответствия и риски
+- [Факт] Значения `HIGH_LOAD_OPERATIONS=1000`, `CONCURRENCY_WORKERS=50` могут быть малы для реального продакшена.
+- [Гипотеза] Отсутствует контроль за временем GC, что может повлиять на измерения.
 
-## Наблюдения и рекомендации
-- Тесты используют `PerformanceMonitor` для единообразной статистики.
-- Значения нагрузок и таймаутов уменьшены для CI, но могут масштабироваться.
-- Для успешного запуска требуется плагин `pytest-asyncio` и библиотека `psutil`.
+## Мини-патчи (safe-fix)
+- [Патч] Параметризовать пороговые значения через переменные окружения.
+- [Патч] Добавить явный вызов `gc.collect()` перед измерениями.
+
+## Рефактор-скетч
+```python
+def run_with_monitor(name, coro):
+    mon = PerformanceMonitor(name)
+    mon.start()
+    asyncio.run(coro())
+    mon.stop()
+    assert mon.elapsed < 1.0
+```
+
+## Примеры использования
+- [Факт]
+```bash
+pytest services/q_core_agent/state/tests/test_stress.py::TestHighVolumeOperations::test_high_volume_sets_and_gets -q
+```
+- [Факт]
+```bash
+pytest services/q_core_agent/state/tests/test_stress.py::TestConcurrencyStress::test_concurrent_writers_stress -q
+```
+
+## Тест-хуки/чек-лист
+- [Факт] Проверить лимиты CPU/RAM перед запуском.
+- [Факт] Анализировать отчёт `PerformanceMonitor` на наличие пиков.
+
+## Вывод
+- [Факт] Модуль покрывает критичные сценарии нагрузки.
+- [Гипотеза] Для длительных тестов стоит вынести их в отдельный профилирующий пакет.

@@ -1,28 +1,56 @@
-# services/q_core_agent/state/tests/test_integration.py — анализ по методу «Задачи»
+# TEST_INTEGRATION.PY — аналитический отчёт
 
-## Назначение файла
-Интеграционные тесты взаимодействия FSMHandler и StateStore, включая проверку подписчиков и конвертации данных.
+## Вход и цель
+- [Факт] Анализ модуля `test_integration.py`.
+- [Факт] Итог — обзор интеграционных сценариев FSMHandler + StateStore.
 
-## Основные блоки задач
-### 1. `TestFSMHandlerStateStoreIntegration`
-- [ ] `test_basic_fsm_processing_with_store` — переход BOOTING → IDLE с записью в стора.
-- [ ] `test_fsm_state_sequence` — последовательность переходов и проверка финального состояния.
-- [ ] `test_version_monotonicity` — версии должны возрастать монотонно.
-- [ ] `test_no_state_change_keeps_version` — отсутствие изменений не увеличивает версию.
-- [ ] `test_fsm_handler_without_state_store` — работа FSMHandler без стора.
+## Сбор контекста
+- [Факт] Изучен исходник теста и модули `store.py`, `types.py`, `conv.py`.
+- [Гипотеза] Тесты служат для проверки цепочки DTO → FSM → Store.
 
-### 2. `TestStateStoreSubscriberIntegration`
-- [ ] `test_subscriber_receives_fsm_updates` — подписчик получает переходы FSM.
-- [ ] `test_multiple_subscribers_fsm_updates` — синхронные обновления для нескольких подписчиков.
-- [ ] `test_subscriber_stream_consistency` — порядок версий в потоке обновлений.
+## Локализация артефакта
+- [Факт] Путь: `services/q_core_agent/state/tests/test_integration.py`.
+- [Факт] Зависят от `pytest`, `asyncio`.
 
-### 3. `TestConversionIntegration`
-- [ ] `test_dto_protobuf_roundtrip_with_real_fsm_data` — проверка roundtrip конвертации DTO ↔ protobuf.
-- [ ] `test_json_conversion_with_fsm_history` — преобразование состояния с историей в JSON.
+## Фактический разбор
+- [Факт] Используются фикстуры `mock_context`, `state_store`, `fsm_handler`.
+- [Факт] Тесты проверяют переходы `BOOTING→IDLE→ACTIVE→IDLE→ERROR_STATE`.
+- [Факт] Убедятся в монотонности версий и отсутствии изменений без условий.
 
-### 4. `TestConcurrentIntegration`
-- [ ] `test_concurrent_fsm_processing` — параллельные обработчики FSM обновляют общий StateStore.
+## Роль в системе и связи
+- [Факт] Проверяет взаимодействие FSMHandler и StateStore на реальных сценариях.
+- [Гипотеза] Используется при разработке логики управления состоянием агента.
 
-## Наблюдения и рекомендации
-- Моки контекста и FSMHandler позволяют изолировать тесты от остального ядра.
-- При расширении логики переходов важно обновлять сценарии последовательностей и подписчиков.
+## Несоответствия и риски
+- [Факт] В тестах отсутствует проверка логирования ошибок FSMHandler.
+- [Гипотеза] Возможен дрейф поведения при расширении контекста агента.
+
+## Мини-патчи (safe-fix)
+- [Патч] Добавить проверки на корректное логирование при ошибочных переходах.
+- [Патч] Параметризовать последовательности переходов для новых сценариев.
+
+## Рефактор-скетч
+```python
+async def process_and_assert(handler, dto, expected_state):
+    res = await handler.process_fsm_dto(dto)
+    assert res.state == expected_state
+    return res
+```
+
+## Примеры использования
+- [Факт]
+```bash
+pytest services/q_core_agent/state/tests/test_integration.py::TestFSMHandlerStateStoreIntegration::test_basic_fsm_processing_with_store -q
+```
+- [Факт]
+```bash
+pytest services/q_core_agent/state/tests/test_integration.py::TestFSMHandlerStateStoreIntegration::test_version_monotonicity -q
+```
+
+## Тест-хуки/чек-лист
+- [Факт] Симулировать отказ BIOS и проверять состояние `ERROR_STATE`.
+- [Факт] Проверять сохранение DTO в Store после каждого перехода.
+
+## Вывод
+- [Факт] Модуль покрывает базовые цепочки взаимодействия FSMHandler и StateStore.
+- [Гипотеза] Для полноты стоит добавить тесты с конкурирующими событиями.
