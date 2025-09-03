@@ -28,54 +28,66 @@
 
 ---
 
-## 2. Архитектура и Ключевые Компоненты
+## 2. Детальный Анализ Компонентов
 
-### 2.1. Ядро Управления Состоянием (`services/q_core_agent/state/`)
+Для глубокого понимания каждого компонента, его роли, принципов работы и взаимодействия с другими модулями, пожалуйста, ознакомьтесь с детальными аналитическими файлами:
 
-Это сердце всей системы, спроектированное для предотвращения гонок данных и обеспечения консистентности.
+### 2.1. Компоненты Q-Core Agent
 
--   **`AsyncStateStore` (`store.py`):** Потокобезопасное in-memory хранилище, являющееся **Единственным Источником Правды (Single Source of Truth)** для состояния агента.
-    -   **Зачем:** Решает классические проблемы многопоточных систем.
-    -   **Как:** Использует `asyncio.Lock` для защиты операций, версионирование для предотвращения записи устаревших данных и Pub/Sub механизм (`asyncio.Queue`) для уведомления подписчиков об изменениях.
+-   **Основная логика агента:**
+    -   [`agent.py`](docs/analysis/agent.py.md) - Главный оркестратор агента.
+    -   [`main.py`](docs/analysis/main.py.md) - Точка входа и сборщик зависимостей агента.
+    -   [`tick_orchestrator.py`](docs/analysis/tick_orchestrator.py.md) - Дирижер цикла работы агента.
+    -   [`bot_core.py`](docs/analysis/bot_core.py.md) - Низкоуровневое ядро и идентификация бота.
+    -   [`interfaces.py`](docs/analysis/interfaces.py.md) - Абстрактные интерфейсы для модульности.
+    -   [`agent_logger.py`](docs/analysis/agent_logger.py.md) - Независимая система логирования агента.
 
--   **Неизменяемые DTO (`types.py`):** Объекты для передачи данных (`FsmSnapshotDTO`, `TransitionDTO`) спроектированы как **неизменяемые (`frozen=True`)**.
-    -   **Зачем:** Гарантирует, что состояние не может быть случайно изменено в разных частях программы. Для обновления создается новый объект.
-    -   **Как:** Используется стандартный декоратор `@dataclass(frozen=True)`.
+-   **Управление состоянием FSM:**
+    -   [`store.py`](docs/analysis/store.py.md) - Единственный источник правды для состояния FSM (AsyncStateStore).
+    -   [`types.py`](docs/analysis/types.py.md) - Неизменяемые DTO для состояний FSM.
+    -   [`conv.py`](docs/analysis/conv.py.md) - Конвертер между DTO и Protobuf.
+    -   [`fsm_handler.py`](docs/analysis/fsm_handler.py.md) - Хранитель логики переходов FSM.
 
--   **Конвертеры (`conv.py`):** Модуль-«переводчик» между внутренними DTO и внешним Protobuf-форматом.
-    -   **Зачем:** Реализует паттерн **Anti-Corruption Layer**, защищая ядро системы от деталей формата передачи данных.
-    -   **Как:** Содержит функции `dto_to_proto` и `proto_to_dto`, а также маппинги для `enum`-типов.
+-   **Движки Принятия Решений:**
+    -   [`rule_engine.py`](docs/analysis/rule_engine.py.md) - Генерация предложений на основе правил.
+    -   [`neural_engine.py`](docs/analysis/neural_engine.py.md) - Генерация предложений на основе ML-моделей (заглушка).
+    -   [`proposal_evaluator.py`](docs/analysis/proposal_evaluator.py.md) - Оценка и выбор предложений.
 
-### 2.2. Логика Агента (`services/q_core_agent/core/`)
+### 2.2. Компоненты Q-Sim Service
 
--   **`QCoreAgent` (`agent.py`):** Главный класс-оркестратор. Не содержит сложной логики, а лишь координирует работу других компонентов.
--   **`TickOrchestrator` (`tick_orchestrator.py`):** "Дирижер", управляющий жизненным циклом агента. Разделяет логику (ЧТО делать) от процесса (КОГДА и в КАКОМ ПОРЯДКЕ).
--   **`FSMHandler` (`fsm_handler.py`):** Хранитель логики конечного автомата. Единственное место, где определены правила переходов между состояниями (`BOOTING` -> `IDLE` -> `ACTIVE`). Является единственным **"писателем"** в `AsyncStateStore`.
--   **Движки Принятия Решений (`rule_engine.py`, `neural_engine.py`):**
-    -   **`RuleEngine`:** Генерирует "предложения" (Proposals) на основе жестко заданных правил. **Текущая реализация:** Генерирует предложение только при ошибке BIOS.
-    -   **`NeuralEngine`:** **Является заглушкой (placeholder).** Не содержит реальной ML-логики.
--   **`ProposalEvaluator` (`proposal_evaluator.py`):** Оценивает предложения от движков и выбирает лучшее на основе приоритета и уверенности.
+-   [`main.py`](docs/analysis/q_sim_service_main.py.md) - Основной сервис симулятора.
+-   [`core/world_model.py`](docs/analysis/world_model.py.md) - Модель симулируемого мира.
+-   [`grpc_server.py`](docs/analysis/q_sim_service_grpc_server.py.md) - gRPC-сервер для симулятора.
+-   [`logger.py`](docs/analysis/q_sim_service_logger.py.md) - Независимая система логирования симулятора.
 
-### 2.3. Симулятор (`services/q_sim_service/`)
+### 2.3. Общие Модели Данных
 
--   **`QSimService` (`main.py`):** Основной сервис симуляции.
--   **`WorldModel` (`core/world_model.py`):** Хранит состояние симулируемого объекта (позиция, скорость, заряд батареи).
--   **`grpc_server.py`:** Реализация gRPC сервера для взаимодействия с агентом.
+-   [`shared/models/core.py`](docs/analysis/shared_models_core.py.md) - Pydantic-модели для FastStream-коммуникации.
+-   [`shared/models/validators.py`](docs/analysis/shared_models_validators.py.md) - Пользовательские валидаторы Pydantic.
 
-### 2.4. Контракты Данных (`protos/`)
+### 2.4. FastStream Bridge
 
-Это самая сильная и зрелая часть проекта. Контракты спроектированы с учетом будущих потребностей (космические операции, сложные миссии).
--   **`common_types.proto`:** Базовые типы (`UUID`, `Vector3`, `Unit`).
--   **`sensor_raw_in.proto`:** Универсальный формат для любых сенсорных данных.
--   **`actuator_raw_out.proto`:** Надежные команды с `retry_count`, `timeout_ms`.
--   **`proposal.proto`:** Сложная система предложений с графом зависимостей (`depends_on`, `conflicts_with`).
+-   [`services/faststream_bridge/app.py`](docs/analysis/faststream_bridge_app.py.md) - Мост для FastStream-коммуникации через NATS.
 
-### 2.5. Альтернативная Реализация (`UP/`)
+### 2.5. Определения Protobuf (.proto)
 
-Директория `UP/` содержит альтернативную, более новую ветку разработки ядра системы.
--   **Основное отличие:** Использует **Pydantic** модели вместо Protobuf DTO.
--   **Содержит:** Собственные реализации `fsm_engine.py`, `dto_handler.py`, `store.py`.
--   **Статус:** Представляет собой перспективное направление для будущего рефакторинга, но на данный момент основной рабочей версией является та, что находится в `services/`.
+-   [`common_types.proto`](docs/analysis/protos_common_types.proto.md) - Фундаментальные типы данных.
+-   [`sensor_raw_in.proto`](docs/analysis/protos_sensor_raw_in.proto.md) - Формат сообщений для сенсорных данных.
+-   [`actuator_raw_out.proto`](docs/analysis/protos_actuator_raw_out.proto.md) - Формат сообщений для команд актуаторам.
+-   [`bios_status.proto`](docs/analysis/protos_bios_status.proto.md) - Формат сообщений для отчетов BIOS.
+-   [`fsm_state.proto`](docs/analysis/protos_fsm_state.proto.md) - Формат сообщений для снимков состояния FSM.
+-   [`proposal.proto`](docs/analysis/protos_proposal.proto.md) - Формат сообщений для предложений.
+-   [`q_sim_api.proto`](docs/analysis/protos_q_sim_api.proto.md) - gRPC-сервисный интерфейс для Q-Sim Service.
+
+### 2.6. Тестовые Файлы
+
+-   [`tests/models/test_pydantic_compatibility.py`](docs/analysis/tests_models_test_pydantic_compatibility.py.md) - Тесты совместимости Pydantic-моделей.
+-   [`shared/models/tests/test_pydantic_models.py`](docs/analysis/shared_models_tests_pydantic_models.py.md) - Юнит-тесты для Pydantic-моделей.
+-   [`tests/integration/test_faststream_bridge.py`](docs/analysis/tests_integration_test_faststream_bridge.py.md) - Интеграционные тесты FastStream-моста.
+
+### 2.7. Скрипты Автоматизации
+
+-   [`scripts/run_qiki_demo.sh`](docs/analysis/scripts_run_qiki_demo.sh.md) - Скрипт для запуска демо-системы.
 
 ---
 
