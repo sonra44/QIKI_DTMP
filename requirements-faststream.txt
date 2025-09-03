@@ -13,6 +13,7 @@ nats-py>=2.6.0
 
 # Тестирование
 pytest>=7.4.0
+pytest-asyncio
 
 # Другие утилиты
 uvicorn>=0.23.0
