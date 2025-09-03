@@ -46,6 +46,7 @@ services:
         condition: service_healthy
     tty: true
     stdin_open: true
+    command: python services/q_core_agent/main.py --mock
 
   faststream-bridge:
     build:
