@@ -1,0 +1,44 @@
+INFO:q_core_agent:Loaded config: {'tick_interval': 5, 'log_level': 'INFO', 'recovery_delay': 2, 'proposal_confidence_threshold': 0.6, 'mock_neural_proposals_enabled': False}
+INFO:q_core_agent:BiosHandler initialized.
+INFO:q_core_agent:FSMHandler initialized.
+INFO:q_core_agent:ProposalEvaluator initialized with confidence_threshold: 0.6
+INFO:q_core_agent:RuleEngine initialized.
+INFO:q_core_agent:NeuralEngine initialized. Mock proposals enabled: False
+INFO:q_core_agent:TickOrchestrator initialized.
+INFO:q_core_agent:QCoreAgent initialized.
+INFO:q_core_agent:TickOrchestrator initialized.
+INFO:q_core_agent:Running in REAL mode (interacting with Q-Sim Service).
+INFO:q_core_agent:WorldModel initialized.
+INFO:q_core_agent:QSimService initialized.
+INFO:q_core_agent:--- Tick Start ---
+WARNING:q_core_agent:Device motor_left from hardware profile not found in BIOS report.
+ERROR:q_core_agent:BIOS handler failed: Message field DeviceStatus.device_id must be initialized with a dict or instance of same class, got str.
+WARNING:q_core_agent:Switched to SAFE MODE due to an error.
+INFO:q_core_agent:Tick complete
+INFO:q_core_agent:--- Input Messages (Q-Sim) ---
+INFO:q_core_agent:BIOS: {'firmwareVersion': 'sim_v1.0', 'allSystemsGo': True}
+INFO:q_core_agent:FSM: {}
+INFO:q_core_agent:Proposals: []
+INFO:q_core_agent:Sensor: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-07-31T10:23:55.866448Z', 'scalarData': 0.0}
+INFO:q_core_agent:--- Tick Start ---
+WARNING:q_core_agent:Device motor_left from hardware profile not found in BIOS report.
+ERROR:q_core_agent:BIOS handler failed: Message field DeviceStatus.device_id must be initialized with a dict or instance of same class, got str.
+WARNING:q_core_agent:Switched to SAFE MODE due to an error.
+INFO:q_core_agent:Tick complete
+INFO:q_core_agent:--- Input Messages (Q-Sim) ---
+INFO:q_core_agent:BIOS: {'firmwareVersion': 'sim_v1.0', 'allSystemsGo': True}
+INFO:q_core_agent:FSM: {}
+INFO:q_core_agent:Proposals: []
+INFO:q_core_agent:Sensor: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-07-31T10:24:00.870360Z', 'scalarData': 0.0}
+INFO:q_core_agent:--- Tick Start ---
+WARNING:q_core_agent:Device motor_left from hardware profile not found in BIOS report.
+ERROR:q_core_agent:BIOS handler failed: Message field DeviceStatus.device_id must be initialized with a dict or instance of same class, got str.
+WARNING:q_core_agent:Switched to SAFE MODE due to an error.
+INFO:q_core_agent:Tick complete
+INFO:q_core_agent:--- Input Messages (Q-Sim) ---
+INFO:q_core_agent:BIOS: {'firmwareVersion': 'sim_v1.0', 'allSystemsGo': True}
+INFO:q_core_agent:FSM: {}
+INFO:q_core_agent:Proposals: []
+INFO:q_core_agent:Sensor: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-07-31T10:24:05.872802Z', 'scalarData': 0.0}
+INFO:q_core_agent:Shutdown signal received. Cleaning up...
+Failed to load configuration file. Using default configs

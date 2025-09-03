@@ -1,0 +1,23 @@
+---
+component_name: {{ component_name }}
+version: 0.1.0
+template: minimal
+---
+
+# {{ component_name }}
+
+## Обзор
+
+*Краткое описание назначения компонента {{ component_name }}.*
+
+## Архитектура
+
+*Основные компоненты и их взаимодействие.*
+
+## API
+
+**Protobuf:** `protos/{{ component_name | lower }}.proto`
+
+## Заметки
+
+*Важные детали реализации или ограничения.*

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package qiki.actuators;
+
+import "common_types.proto";
+import "google/protobuf/timestamp.proto";
+
+message ActuatorCommand {
+  // Уникальный ID команды для трассировки
+  qiki.common.UUID command_id = 10;
+
+  // Уникальный ID исполнительного механизма
+  qiki.common.UUID actuator_id = 1;
+
+  // Временная метка создания команды
+  google.protobuf.Timestamp timestamp = 2;
+
+  // Целевое значение команды
+  oneof command_value {
+    float float_value = 3;
+    int32 int_value = 4;
+    bool bool_value = 5;
+    qiki.common.Vector3 vector_value = 8;
+  }
+
+  // Единица измерения
+  qiki.common.Unit unit = 6;
+
+  enum CommandType {
+    COMMAND_TYPE_UNSPECIFIED = 0;
+    SET_VELOCITY = 1;
+    ROTATE = 2;
+    ENABLE = 3;
+    DISABLE = 4;
+    SET_MODE = 5;
+  }
+  // Тип команды
+  CommandType command_type = 7;
+
+  // Уверенность (например, от нейросети)
+  float confidence = 9;
+
+  // Таймаут выполнения команды в миллисекундах
+  int32 timeout_ms = 11;
+
+  // Требуется ли подтверждение выполнения команды
+  bool ack_required = 12;
+
+  // Количество попыток выполнения команды при неудаче
+  int32 retry_count = 13;
+}

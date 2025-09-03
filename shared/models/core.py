@@ -1,0 +1,140 @@
+"""
+Pydantic модели для QIKI DTMP FastStream миграции.
+Определяют основную структуру данных, заменяя Proto+DTO связку.
+Версия: 1.0
+Дата: 2025-08-19
+"""
+import time
+from datetime import datetime, UTC
+from enum import IntEnum
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, computed_field, model_validator, ConfigDict
+from pydantic.alias_generators import to_camel
+
+# =============================================================================
+#  Базовая конфигурация моделей
+# =============================================================================
+class ConfigModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        validate_assignment=True,
+    )
+
+# =============================================================================
+#  Перечисления (Enums)
+# =============================================================================
+class FsmStateEnum(IntEnum):
+    OFFLINE = 0
+    BOOTING = 1
+    IDLE = 2
+    RUNNING = 3
+    PAUSED = 4
+    ERROR = 5
+    TERMINATING = 6
+
+class DeviceStatusEnum(IntEnum):
+    UNKNOWN = 0
+    OK = 1
+    DEGRADED = 2
+    ERROR = 3
+
+class SensorTypeEnum(IntEnum):
+    OTHER = 0
+    LIDAR = 1
+    CAMERA = 2
+    IMU = 3
+    GPS = 4
+
+# =============================================================================
+#  Вспомогательные и вложенные модели
+# =============================================================================
+class MessageMetadata(ConfigModel):
+    message_id: UUID = Field(default_factory=uuid4)
+    correlation_id: Optional[UUID] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    message_type: str = ""
+    source: str = "unknown"
+    destination: str = "unknown"
+
+class FsmTransition(ConfigModel):
+    event_name: str
+    from_state: FsmStateEnum
+    to_state: FsmStateEnum
+    ts_mono: float = Field(default_factory=time.monotonic)
+    ts_wall: float = Field(default_factory=time.time)
+
+class DeviceStatus(ConfigModel):
+    device_id: str
+    device_name: str
+    status: DeviceStatusEnum = DeviceStatusEnum.UNKNOWN
+    status_message: Optional[str] = None
+
+# =============================================================================
+#  Основные модели данных (Snapshots)
+# =============================================================================
+class FsmStateSnapshot(ConfigModel):
+    current_state: FsmStateEnum
+    previous_state: FsmStateEnum
+    last_transition: Optional[FsmTransition] = None
+    history: List[FsmTransition] = Field(default_factory=list)
+    context_data: Dict[str, str] = Field(default_factory=dict)
+    state_metadata: Dict[str, str] = Field(default_factory=dict)
+    ts_mono: float = Field(default_factory=time.monotonic)
+    ts_wall: float = Field(default_factory=time.time)
+
+class BiosStatus(ConfigModel):
+    bios_version: str
+    firmware_version: str
+    post_results: List[DeviceStatus]
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @computed_field
+    @property
+    def all_systems_go(self) -> bool:
+        """Вычисляет общее состояние системы на основе статусов устройств."""
+        if not self.post_results:
+            return False
+        return all(device.status == DeviceStatusEnum.OK for device in self.post_results)
+
+class SensorData(ConfigModel):
+    sensor_id: str
+    sensor_type: SensorTypeEnum
+    scalar_data: Optional[float] = None
+    vector_data: Optional[List[float]] = None
+    matrix_data: Optional[List[List[float]]] = None
+    string_data: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    quality_score: float = Field(ge=0.0, le=1.0, default=1.0)
+
+    @model_validator(mode='after')
+    def validate_data_presence(self):
+        data_fields = [self.scalar_data, self.vector_data, self.matrix_data, self.string_data]
+        if not any(field is not None for field in data_fields):
+            raise ValueError("Sensor data must have at least one data field")
+        return self
+
+# =============================================================================
+#  Модели для сообщений (запросы и ответы)
+# =============================================================================
+class CommandMessage(ConfigModel):
+    command_name: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    metadata: MessageMetadata
+
+class ResponseMessage(ConfigModel):
+    request_id: UUID
+    metadata: MessageMetadata
+    payload: Dict[str, Any]
+    error: Optional[str] = None
+    success: bool = True
+
+    @model_validator(mode='after')
+    def validate_response_consistency(self):
+        if not self.success and not self.error:
+            raise ValueError("Error message is required when success=False")
+        if self.success and self.error:
+            raise ValueError("Success response should not have error message")
+        return self

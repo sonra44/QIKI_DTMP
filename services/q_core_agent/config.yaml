@@ -1,0 +1,6 @@
+
+tick_interval: 5
+log_level: INFO
+recovery_delay: 2
+proposal_confidence_threshold: 0.6
+mock_neural_proposals_enabled: False

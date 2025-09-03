@@ -1,0 +1,11 @@
+yes
+y
+да
+1
+continue
+proceed
+run
+execute
+confirm
+accept
+ok

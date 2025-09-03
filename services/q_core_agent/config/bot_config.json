@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "bot_id": "QIKI-DEFAULT-001",
+  "bot_type": "default_bot",
+  "mode": "full",
+  "hardware_profile": {
+    "max_speed_mps": 1.0,
+    "power_capacity_wh": 500,
+    "actuators": [
+      {"id": "motor_left", "type": "wheel_motor"},
+      {"id": "motor_right", "type": "wheel_motor"},
+      {"id": "system_controller", "type": "main_controller"}
+    ],
+    "sensors": [
+      {"id": "lidar_front", "type": "lidar"},
+      {"id": "imu_main", "type": "imu"}
+    ]
+  }
+}

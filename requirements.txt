@@ -1,0 +1,13 @@
+# QIKI_DTMP Project Dependencies
+
+# Core dependencies
+PyYAML>=6.0
+protobuf>=4.21.0
+
+# gRPC dependencies for IPC between services
+grpcio>=1.62.0
+grpcio-tools>=1.62.0
+
+# Logging and utilities
+colorlog
+setuptools

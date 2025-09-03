@@ -1,0 +1,68 @@
+# Docker Compose Phase 1: Базовая среда для разработки
+# Устанавливает NATS и окружение для разработки/тестирования
+# Версия: 1.0, Дата: 2025-09-02 (воссоздание)
+
+version: '3.8'
+
+services:
+  # NATS Message Broker - ядро для FastStream
+  nats:
+    build:
+      context: .
+      dockerfile: Dockerfile.nats
+    container_name: qiki-nats-phase1
+    ports:
+      - "4222:4222"    # Клиентский порт NATS
+      - "8222:8222"    # Порт для HTTP мониторинга
+    command:
+      - "--jetstream"
+      - "--http_port"
+      - "8222"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - nats-data-phase1:/data
+    networks:
+      - qiki-network-phase1
+    tty: true
+
+  # Окружение для разработки
+  qiki-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-dev-phase1
+    volumes:
+      - .:/workspace
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+
+  faststream-bridge:
+    build:
+      context: .
+      dockerfile: services/faststream_bridge/Dockerfile
+    container_name: qiki-faststream-bridge-phase1
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  qiki-network-phase1:
+    driver: bridge
+
+volumes:
+  nats-data-phase1:
+  pip-cache-phase1:

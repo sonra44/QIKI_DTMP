@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+import "sensor_raw_in.proto";
+import "actuator_raw_out.proto";
+import "google/protobuf/empty.proto";
+
+package qiki.api;
+
+// Сервис для взаимодействия между Q-Core Agent и Q-Sim Service
+service QSimAPI {
+  // Запрашивает данные с сенсоров от симулятора
+  rpc GetSensorData(google.protobuf.Empty) returns (qiki.sensors.SensorReading);
+  
+  // Отправляет команду на актуаторы в симулятор
+  rpc SendActuatorCommand(qiki.actuators.ActuatorCommand) returns (google.protobuf.Empty);
+  
+  // Проверка доступности сервиса
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
+}
+
+// Ответ на проверку здоровья сервиса
+message HealthResponse {
+  string status = 1;          // "OK" или "ERROR" 
+  string message = 2;         // Дополнительная информация
+  int64 timestamp = 3;        // Время ответа в Unix timestamp
+}

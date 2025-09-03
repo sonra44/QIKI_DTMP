@@ -1,0 +1,33 @@
+2025-08-16 18:27:45,062 - q_core_agent - INFO - WorldModel initialized.
+2025-08-16 18:27:45,062 - q_core_agent - INFO - QSimService initialized.
+2025-08-16 18:27:45,062 - q_core_agent - INFO - QSimService started.
+2025-08-16 18:27:45,062 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:45.062601Z', 'scalarData': 0.0}
+2025-08-16 18:27:46,063 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:46.062981Z', 'scalarData': 0.0}
+2025-08-16 18:27:47,063 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:47.063471Z', 'scalarData': 0.0}
+2025-08-16 18:27:48,066 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:48.066135Z', 'scalarData': 0.0}
+2025-08-16 18:27:49,067 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:49.066811Z', 'scalarData': 0.0}
+2025-08-16 18:27:50,067 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:50.067475Z', 'scalarData': 0.0}
+2025-08-16 18:27:51,068 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:51.068256Z', 'scalarData': 0.0}
+2025-08-16 18:27:52,071 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:52.071606Z', 'scalarData': 0.0}
+2025-08-16 18:27:53,072 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:53.072278Z', 'scalarData': 0.0}
+2025-08-16 18:27:54,073 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:54.073056Z', 'scalarData': 0.0}
+2025-08-16 18:27:55,074 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:55.073786Z', 'scalarData': 0.0}
+2025-08-16 18:27:56,074 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:56.074455Z', 'scalarData': 0.0}
+2025-08-16 18:27:57,075 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:57.075163Z', 'scalarData': 0.0}
+2025-08-16 18:27:58,076 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:58.076022Z', 'scalarData': 0.0}
+2025-08-16 18:27:59,077 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:27:59.076924Z', 'scalarData': 0.0}
+2025-08-16 18:28:00,078 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:00.077727Z', 'scalarData': 0.0}
+2025-08-16 18:28:01,078 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:01.078328Z', 'scalarData': 0.0}
+2025-08-16 18:28:02,079 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:02.079017Z', 'scalarData': 0.0}
+2025-08-16 18:28:03,080 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:03.079830Z', 'scalarData': 0.0}
+2025-08-16 18:28:04,080 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:04.080474Z', 'scalarData': 0.0}
+2025-08-16 18:28:05,081 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:05.081235Z', 'scalarData': 0.0}
+2025-08-16 18:28:06,082 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:06.081863Z', 'scalarData': 0.0}
+2025-08-16 18:28:07,082 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:07.082412Z', 'scalarData': 0.0}
+2025-08-16 18:28:08,083 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:08.083072Z', 'scalarData': 0.0}
+2025-08-16 18:28:09,083 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:09.083620Z', 'scalarData': 0.0}
+2025-08-16 18:28:10,084 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:10.084386Z', 'scalarData': 0.0}
+2025-08-16 18:28:11,085 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:11.085196Z', 'scalarData': 0.0}
+2025-08-16 18:28:12,086 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:12.086001Z', 'scalarData': 0.0}
+2025-08-16 18:28:13,086 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:13.086680Z', 'scalarData': 0.0}
+2025-08-16 18:28:14,087 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-16T18:28:14.087248Z', 'scalarData': 0.0}

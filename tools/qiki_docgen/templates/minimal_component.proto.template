@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package qiki.{{ component_name | lower }};
+
+import "common_types.proto";
+
+// {{ component_name }} Protocol Definition
+message {{ component_proto_type }} {
+  qiki.common.UUID id = 1;
+  string name = 2;
+}

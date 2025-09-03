@@ -1,0 +1,230 @@
+---
+component_name: {{ component_name }}
+version: 0.1.0
+author: {{ author | default("Development Team") }}
+created_at: {{ created_at | default("2025-08-05") }}
+status: draft
+priority: medium
+dependencies: []
+template: advanced
+tags:
+  - microservice
+  - qiki-platform
+---
+
+# Дизайн-документ: {{ component_name }}
+
+## 0. Мета-информация
+- **Компонент:** {{ component_name }}
+- **Версия:** {{ version }}
+- **Автор/Команда:** {{ author }}  
+- **Дата создания:** {{ created_at }}
+- **Статус:** {{ status }}
+- **Приоритет:** {{ priority }}
+
+## 1. Executive Summary
+
+*Краткое резюме для руководства: что делает компонент, зачем он нужен, какие проблемы решает.*
+
+## 2. Бизнес-контекст и обоснование
+
+### 2.1 Проблема
+*Какую проблему решает этот компонент?*
+
+### 2.2 Решение
+*Как предлагаемое решение закрывает проблему?*
+
+### 2.3 Альтернативы
+*Какие альтернативные решения рассматривались и почему отклонены?*
+
+## 3. Детальная архитектура
+
+### 3.1 Системная диаграмма
+```mermaid
+graph TB
+    subgraph "{{ component_name }}"
+        A[Controller] --> B[Service Layer]
+        B --> C[Data Access]
+        B --> D[External APIs]
+    end
+    
+    E[Client] --> A
+    C --> F[(Database)]
+    D --> G[External Service]
+```
+
+### 3.2 Компоненты
+
+#### 3.2.1 Core Components
+*Описание основных компонентов системы*
+
+#### 3.2.2 Data Flow
+*Описание потоков данных между компонентами*
+
+### 3.3 Технологический стек
+- **Язык:** Python 3.11+
+- **Фреймворк:** FastAPI/gRPC
+- **База данных:** PostgreSQL/Redis
+- **Мониторинг:** Prometheus + Grafana
+
+## 4. API и контракты
+
+### 4.1 Protocol Buffers
+**Файл:** `protos/{{ component_name | lower }}.proto`
+
+### 4.2 Основные методы
+*Список ключевых API методов с описанием*
+
+### 4.3 События и сообщения
+*Описание событий, которые генерирует или потребляет компонент*
+
+## 5. Модель данных
+
+### 5.1 Сущности
+*Основные бизнес-сущности*
+
+### 5.2 Схема БД
+```sql
+-- Пример схемы для {{ component_name }}
+CREATE TABLE {{ component_name | lower }}_data (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## 6. Безопасность
+
+### 6.1 Аутентификация
+*Методы аутентификации пользователей*
+
+### 6.2 Авторизация  
+*Модель доступа и разрешений*
+
+### 6.3 Защита данных
+*Шифрование, валидация, sanitization*
+
+## 7. Производительность и масштабирование
+
+### 7.1 SLA Requirements
+- **Latency:** < 100ms для 95% запросов
+- **Throughput:** 1000 RPS
+- **Availability:** 99.9%
+
+### 7.2 Bottlenecks и решения
+*Потенциальные узкие места и способы их решения*
+
+### 7.3 Кэширование
+*Стратегия кэширования данных*
+
+## 8. Мониторинг и наблюдаемость
+
+### 8.1 Метрики
+- Business метрики (количество операций, пользователей)
+- Technical метрики (latency, error rate, throughput)
+
+### 8.2 Логирование
+*Структура логов и уровни логирования*
+
+### 8.3 Alerting
+*Критические алерты и пороговые значения*
+
+## 9. Тестирование
+
+### 9.1 Unit Tests
+**Покрытие:** >90%  
+**Локация:** `tests/unit/`
+
+### 9.2 Integration Tests
+**Локация:** `tests/integration/`  
+*Описание ключевых интеграционных сценариев*
+
+### 9.3 Performance Tests
+*Load testing сценарии и expected baseline*
+
+### 9.4 End-to-End Tests
+*Сценарии полного цикла для критических user journey*
+
+## 10. Deployment и операции
+
+### 10.1 Infrastructure
+*Требования к инфраструктуре (CPU, RAM, storage)*
+
+### 10.2 CI/CD Pipeline
+```yaml
+# Пример GitHub Actions workflow
+name: {{ component_name }} CI/CD
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: pytest tests/
+```
+
+### 10.3 Configuration Management
+*Управление конфигурацией через environment variables*
+
+### 10.4 Disaster Recovery
+*План восстановления после сбоев*
+
+## 11. Migration и backward compatibility
+
+### 11.1 Database Migrations
+*Стратегия миграций схемы БД*
+
+### 11.2 API Versioning
+*Подход к версионированию API*
+
+### 11.3 Rollback Strategy
+*План отката изменений*
+
+## 12. Зависимости и риски
+
+### 12.1 Внешние зависимости
+{% for dep in dependencies %}
+- {{ dep }}
+{% endfor %}
+
+### 12.2 Технические риски
+*Потенциальные технические проблемы*
+
+### 12.3 Бизнес-риски
+*Влияние на бизнес в случае проблем*
+
+## 13. Анти-паттерны и best practices
+
+### 13.1 Что НЕ делать
+*Список анти-паттернов специфичных для компонента*
+
+### 13.2 Рекомендуемые практики
+*Best practices для разработки и поддержки*
+
+## 14. Открытые вопросы и TODO
+
+### 14.1 Технические вопросы
+*Нерешенные технические вопросы*
+
+### 14.2 Product/Business вопросы  
+*Вопросы требующие уточнений от бизнеса*
+
+### 14.3 Action Items
+- [ ] Доработать схему БД
+- [ ] Создать proof-of-concept
+- [ ] Получить review от security team
+
+## 15. Changelog
+
+| Версия | Дата | Автор | Изменения |
+|--------|------|-------|-----------|
+| 0.1.0  | {{ created_at }} | {{ author }} | Первоначальная версия |
+
+---
+
+**Статус документа:** {{ status }}  
+**Следующий review:** TBD  
+**Связанные документы:** 
+- [Architecture Decision Records](../adr/)
+- [API Documentation](../api/)

@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package qiki.fsm;
+
+import "common_types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Enum для стандартизации названий состояний FSM
+enum FSMStateEnum {
+  FSM_STATE_UNSPECIFIED = 0;
+  BOOTING = 1;
+  IDLE = 2;
+  ACTIVE = 3;
+  ERROR_STATE = 4;
+  SHUTDOWN = 5;
+}
+
+// Статус перехода состояния
+enum FSMTransitionStatus {
+  FSM_TRANSITION_STATUS_UNSPECIFIED = 0;
+  SUCCESS = 1;
+  FAILED = 2;
+  PENDING = 3;
+}
+
+message StateTransition {
+  google.protobuf.Timestamp timestamp = 1;
+  FSMStateEnum from_state = 2;
+  FSMStateEnum to_state = 3;
+  string trigger_event = 4;
+  FSMTransitionStatus status = 5;
+  string error_message = 6;
+}
+
+message FsmStateSnapshot {
+  qiki.common.UUID snapshot_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  FSMStateEnum current_state = 3; // Используем enum для текущего состояния
+  repeated StateTransition history = 4;
+  map<string, string> context_data = 5;
+
+  // ID FSM-инстанса (на случай нескольких параллельных автоматов)
+  qiki.common.UUID fsm_instance_id = 6;
+
+  // Дополнительные параметры текущего состояния
+  map<string, string> state_metadata = 7;
+
+  // Фаза FSM (можно использовать FSMStateEnum вместо FSMPhase, если они совпадают по смыслу)
+  // FSMPhase phase = 8; // Удаляем, если FSMStateEnum достаточно
+
+  // Модуль, инициировавший последнее изменение состояния
+  string source_module = 9;
+
+  // Количество попыток перехода в текущее состояние
+  int32 attempt_count = 10;
+}

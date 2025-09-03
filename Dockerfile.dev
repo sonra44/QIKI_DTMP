@@ -1,0 +1,39 @@
+# Development Dockerfile для QIKI DTMP FastStream миграции
+# Версия: 1.0
+# Дата: 2025-08-19
+
+FROM python:3.12-slim
+
+# Метаданные
+LABEL maintainer="QIKI DTMP Development Team"
+LABEL description="Development environment for QIKI DTMP FastStream migration"
+LABEL version="1.0"
+
+# Установка рабочей директории
+WORKDIR /workspace
+
+# Установка переменных окружения, чтобы Python выводил логи сразу и не создавал .pyc файлы
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копирование файлов с зависимостями
+COPY requirements.txt .
+COPY requirements-faststream.txt .
+
+# Установка Python зависимостей
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-faststream.txt
+
+# Копирование остального кода проекта в рабочую директорию
+COPY . .
+
+# Команда по умолчанию для запуска контейнера (интерактивная сессия)
+CMD ["bash"]

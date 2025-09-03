@@ -1,0 +1,137 @@
+{
+  "schema_version": "2.0",
+  "ship_id": "QIKI-EXPLORER-001", 
+  "ship_class": "light_explorer",
+  "mode": "full",
+  
+  "hull": {
+    "integrity": 100.0,
+    "max_integrity": 100.0,
+    "mass_kg": 45000,
+    "volume_m3": 180,
+    "compartments": {
+      "bridge": {"volume": 20, "pressure": 1.0, "temperature": 295},
+      "engine_room": {"volume": 40, "pressure": 1.0, "temperature": 310}, 
+      "cargo_bay": {"volume": 60, "pressure": 0.0, "temperature": 270},
+      "life_support": {"volume": 30, "pressure": 1.0, "temperature": 295},
+      "computer_core": {"volume": 30, "pressure": 1.0, "temperature": 285}
+    }
+  },
+
+  "power_systems": {
+    "reactor": {
+      "id": "fusion_reactor_mk2",
+      "type": "fusion_reactor",
+      "max_output_mw": 50.0,
+      "current_output_mw": 35.0,
+      "fuel_remaining_hours": 168,
+      "temperature_k": 2800,
+      "status": "nominal"
+    },
+    "batteries": [
+      {
+        "id": "primary_battery_bank",
+        "type": "quantum_battery",
+        "capacity_mwh": 12.0,
+        "current_charge_mwh": 10.5,
+        "charge_rate_mw": 5.0,
+        "status": "charging"
+      }
+    ],
+    "power_distribution": {
+      "life_support": {"allocated_mw": 8.0, "priority": 1},
+      "propulsion": {"allocated_mw": 15.0, "priority": 2},
+      "sensors": {"allocated_mw": 5.0, "priority": 3},
+      "qiki_core": {"allocated_mw": 3.0, "priority": 1},
+      "shields": {"allocated_mw": 4.0, "priority": 4}
+    }
+  },
+
+  "propulsion": {
+    "main_drive": {
+      "id": "ion_drive_array",
+      "type": "ion_thruster",
+      "max_thrust_n": 850000,
+      "current_thrust_n": 0,
+      "fuel_type": "xenon",
+      "fuel_remaining_kg": 450,
+      "efficiency": 0.85,
+      "status": "idle"
+    },
+    "maneuvering_thrusters": [
+      {
+        "id": "rcs_forward", "type": "rcs_thruster", "position": [10, 0, 0], 
+        "max_thrust_n": 5000, "fuel_remaining_kg": 50, "status": "ready"
+      },
+      {
+        "id": "rcs_aft", "type": "rcs_thruster", "position": [-10, 0, 0],
+        "max_thrust_n": 5000, "fuel_remaining_kg": 50, "status": "ready"
+      },
+      {
+        "id": "rcs_port", "type": "rcs_thruster", "position": [0, -5, 0],
+        "max_thrust_n": 3000, "fuel_remaining_kg": 30, "status": "ready"
+      },
+      {
+        "id": "rcs_starboard", "type": "rcs_thruster", "position": [0, 5, 0],
+        "max_thrust_n": 3000, "fuel_remaining_kg": 30, "status": "ready"
+      }
+    ]
+  },
+
+  "sensors": [
+    {
+      "id": "long_range_radar", "type": "radar",
+      "range_km": 10000, "resolution_m": 50, "power_consumption_kw": 800,
+      "status": "active", "mount_position": [8, 0, 2]
+    },
+    {
+      "id": "navigation_computer", "type": "nav_computer", 
+      "accuracy_m": 1.0, "update_rate_hz": 100, "power_consumption_kw": 200,
+      "status": "active", "mount_position": [0, 0, 0]
+    },
+    {
+      "id": "thermal_scanner", "type": "thermal",
+      "range_km": 1000, "sensitivity_k": 0.5, "power_consumption_kw": 150,
+      "status": "standby", "mount_position": [6, 0, 1]
+    },
+    {
+      "id": "quantum_scanner", "type": "quantum_sensor",
+      "range_km": 500, "power_consumption_kw": 1200, 
+      "status": "offline", "mount_position": [0, 0, 3]
+    }
+  ],
+
+  "life_support": {
+    "atmosphere": {
+      "oxygen_percent": 21.0, "nitrogen_percent": 78.0, "co2_ppm": 400,
+      "pressure_kpa": 101.3, "temperature_k": 295, "humidity_percent": 45
+    },
+    "water_recycling": {
+      "clean_water_liters": 2500, "waste_water_liters": 150,
+      "recycling_efficiency": 0.98, "status": "active"
+    },
+    "air_recycling": {
+      "co2_scrubbers": 4, "active_scrubbers": 3, 
+      "oxygen_generators": 2, "status": "nominal"
+    }
+  },
+
+  "computing": {
+    "qiki_core": {
+      "id": "qiki_ai_core", "type": "quantum_ai_processor",
+      "processing_power_tflops": 500, "memory_pb": 10,
+      "core_temperature_k": 285, "power_consumption_kw": 3000,
+      "status": "active", "ai_personality": "analytical_explorer"
+    },
+    "backup_computers": [
+      {
+        "id": "navigation_backup", "type": "classical_processor",
+        "status": "standby", "purpose": "navigation_failsafe"
+      },
+      {
+        "id": "life_support_backup", "type": "classical_processor", 
+        "status": "active", "purpose": "life_support_monitor"
+      }
+    ]
+  }
+}
