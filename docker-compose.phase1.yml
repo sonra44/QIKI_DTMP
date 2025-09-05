@@ -46,7 +46,26 @@ services:
         condition: service_healthy
     tty: true
     stdin_open: true
-    command: python services/q_core_agent/main.py --mock
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+    command: python services/q_core_agent/main.py --grpc
+
+  q-sim-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-sim-phase1
+    
+    networks:
+      - qiki-network-phase1
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+    command: python services/q_sim_service/grpc_server.py
+    tty: true
+    stdin_open: true
+    depends_on:
+      nats:
+        condition: service_healthy
 
   faststream-bridge:
     build:

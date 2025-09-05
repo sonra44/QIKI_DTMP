@@ -1,7 +1,7 @@
 # QIKI Digital Twin Microservices Platform (QIKI_DTMP) - Полное Руководство
 
-**Версия Документа:** 2.0 (Полный анализ)  
-**Дата Последней Верификации:** 2025-09-03
+**Версия Документа:** 2.1 (Стабильный запуск)  
+**Дата Последней Верификации:** 2025-09-05
 
 ---
 
@@ -96,67 +96,40 @@
 -   **Язык:** Python 3.12
 -   **Асинхронность:** `asyncio`
 -   **Межсервисное взаимодействие:** `gRPC`, `FastStream` (поверх `NATS`)
--   **Валидация данных:** `Pydantic` (в `UP/` и `shared/`), `Protocol Buffers`
+-   **Валидация данных:** `Pydantic`, `Protocol Buffers`
 -   **Тестирование:** `pytest`, `pytest-asyncio`
 -   **Контейнеризация:** `Docker`, `Docker Compose`
 -   **Инструменты CI/CD:** `ruff` (линтинг), `shell-скрипты`
 
 ---
 
-## 4. Как запустить и использовать
+## 4. Быстрый старт (Рекомендуемый способ)
+
+Этот способ автоматически поднимет все сервисы (`qiki-dev`, `q-sim-service`, `nats`, `faststream-bridge`) в изолированной Docker-сети. `qiki-dev` по умолчанию запускается в режиме `--grpc` для взаимодействия с симулятором.
 
 ### Требования
--   Python 3.12+
 -   Docker и Docker Compose
--   `protoc` (компилятор Protocol Buffers)
 
-### Установка зависимостей
-```bash
-# Установка основных и faststream зависимостей
-pip install -r requirements.txt && pip install -r requirements-faststream.txt
-```
+### Порядок действий
 
-### Запуск через Docker (Рекомендуемый способ)
-Этот способ автоматически поднимет все сервисы, включая NATS, в изолированной сети.
-
-```bash
-# Запустить все сервисы в фоновом режиме
-docker-compose -f docker-compose.phase1.yml up --build -d
-
-# Посмотреть логи агента
-docker-compose -f docker-compose.phase1.yml logs -f qiki-dev
-```
-
-### Локальный запуск (для отладки)
-Используйте `python3`.
-
-1.  **Запустить gRPC сервер симулятора:**
+1.  **Запустить все сервисы в фоновом режиме:**
     ```bash
-    python3 services/q_sim_service/grpc_server.py
+    docker compose -f docker-compose.phase1.yml up --build -d
     ```
 
-2.  **Запустить агента в отдельном терминале:**
-    -   **В режиме gRPC (взаимодействие по сети):**
-        ```bash
-        python3 services/q_core_agent/main.py --grpc
-        ```
-    -   **В режиме с мок-данными (не требует симулятора):**
-        ```bash
-        python3 services/q_core_agent/main.py --mock
-        ```
-    -   **В Legacy режиме (прямой вызов в одном процессе):**
-        ```bash
-        python3 services/q_core_agent/main.py
-        ```
+2.  **Проверить логи для диагностики:**
+    ```bash
+    # Посмотреть логи всех сервисов
+    docker compose -f docker-compose.phase1.yml logs -f
 
-### Запуск тестов
-```bash
-# Запустить все unit и integration тесты
-python3 -m pytest
+    # Посмотреть лог конкретного сервиса (например, агента)
+    docker compose -f docker-compose.phase1.yml logs -f qiki-dev
+    ```
 
-# Запустить полный hot-test для StateStore
-./scripts/hot_test_statestore.sh
-```
+3.  **Остановить систему:**
+    ```bash
+    docker compose -f docker-compose.phase1.yml down
+    ```
 
 ---
 

@@ -21,7 +21,7 @@ class GrpcDataProvider(IDataProvider):
     Заменяет прямой доступ к экземпляру QSimService на сетевое взаимодействие.
     """
     
-    def __init__(self, grpc_server_address="localhost:50051"):
+    def __init__(self, grpc_server_address="q-sim-service:50051"):
         self.server_address = grpc_server_address
         self.channel = None
         self.stub = None
