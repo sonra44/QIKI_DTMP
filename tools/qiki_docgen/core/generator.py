@@ -14,92 +14,124 @@ logger = logging.getLogger(__name__)
 # Получаем конфигурацию
 _config = get_config()
 
+
 # Динамические пути из конфигурации
 def _get_paths():
     """Получает пути из конфигурации."""
     return {
-        'template_dir': _config.get_path('templates_dir'),
-        'protos_dir': _config.get_path('protos_dir'),
-        'generated_dir': _config.get_path('generated_dir'),
-        'docs_design_dir': _config.get_path('design_dir'),
-        'project_root': _config._project_root
+        "template_dir": _config.get_path("templates_dir"),
+        "protos_dir": _config.get_path("protos_dir"),
+        "generated_dir": _config.get_path("generated_dir"),
+        "docs_design_dir": _config.get_path("design_dir"),
+        "project_root": _config._project_root,
     }
+
 
 # Инициализируем Jinja2 окружение
 def _get_jinja_env():
     """Создает Jinja2 окружение с правильными путями."""
     paths = _get_paths()
-    return Environment(loader=FileSystemLoader(str(paths['template_dir'])))
+    return Environment(loader=FileSystemLoader(str(paths["template_dir"])))
+
 
 def to_snake_case(name: str) -> str:
     """Конвертирует имя компонента в snake_case."""
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower().replace('-', '_')
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower().replace("-", "_")
 
-def create_design_document(component_name: str, target_path: str, force: bool = False, dry_run: bool = False, template_name: str = "default"):
+
+def create_design_document(
+    component_name: str,
+    target_path: str,
+    force: bool = False,
+    dry_run: bool = False,
+    template_name: str = "default",
+):
     """
     Создает design.md документ для нового компонента.
     """
     target_path_obj = Path(target_path)
     if target_path_obj.exists() and not force:
-        logger.error(f"Файл '{target_path_obj}' уже существует. Используйте --force для перезаписи.")
+        logger.error(
+            f"Файл '{target_path_obj}' уже существует. Используйте --force для перезаписи."
+        )
         return
 
     try:
         env = _get_jinja_env()
         template = env.get_template(f"{template_name}_design.md.template")
         rendered_content = template.render(component_name=component_name)
-        
+
         if dry_run:
-            logger.info(f"Dry Run: Документ '{target_path_obj}' будет создан.\n--- Содержимое ---\n{rendered_content}\n---")
+            logger.info(
+                f"Dry Run: Документ '{target_path_obj}' будет создан.\n--- Содержимое ---\n{rendered_content}\n---"
+            )
         else:
             target_path_obj.parent.mkdir(parents=True, exist_ok=True)
             with open(target_path_obj, "w", encoding="utf-8") as f:
                 f.write(rendered_content)
             logger.info(f"Документ '{target_path_obj}' успешно создан.")
     except Exception as e:
-        logger.error(f"Ошибка при создании документа {target_path_obj}: {e}", exc_info=True)
+        logger.error(
+            f"Ошибка при создании документа {target_path_obj}: {e}", exc_info=True
+        )
 
-def create_proto_contract(component_name: str, force: bool = False, dry_run: bool = False, template_name: str = "default"):
+
+def create_proto_contract(
+    component_name: str,
+    force: bool = False,
+    dry_run: bool = False,
+    template_name: str = "default",
+):
     """Создает .proto контракт для нового компонента."""
     snake_name = to_snake_case(component_name)
-    proto_type_name = "".join(word.capitalize() for word in snake_name.split('_')) + "Message"
-    
+    proto_type_name = (
+        "".join(word.capitalize() for word in snake_name.split("_")) + "Message"
+    )
+
     paths = _get_paths()
-    target_path_obj = paths['protos_dir'] / f"{snake_name}.proto"
+    target_path_obj = paths["protos_dir"] / f"{snake_name}.proto"
 
     if target_path_obj.exists() and not force:
-        logger.error(f"Файл '{target_path_obj}' уже существует. Используйте --force для перезаписи.")
+        logger.error(
+            f"Файл '{target_path_obj}' уже существует. Используйте --force для перезаписи."
+        )
         return
 
     try:
         env = _get_jinja_env()
         template = env.get_template(f"{template_name}_component.proto.template")
         rendered_content = template.render(
-            component_name=snake_name,
-            component_proto_type=proto_type_name
+            component_name=snake_name, component_proto_type=proto_type_name
         )
-        
+
         if dry_run:
-            logger.info(f"Dry Run: Контракт '{target_path_obj}' будет создан.\n--- Содержимое ---\n{rendered_content}\n---")
+            logger.info(
+                f"Dry Run: Контракт '{target_path_obj}' будет создан.\n--- Содержимое ---\n{rendered_content}\n---"
+            )
         else:
             with open(target_path_obj, "w", encoding="utf-8") as f:
                 f.write(rendered_content)
             logger.info(f"Контракт '{target_path_obj}' успешно создан.")
     except Exception as e:
-        logger.error(f"Ошибка при создании контракта {target_path_obj}: {e}", exc_info=True)
+        logger.error(
+            f"Ошибка при создании контракта {target_path_obj}: {e}", exc_info=True
+        )
+
 
 def compile_protos(dry_run: bool = False):
     """Компилирует все .proto файлы в директории protos/."""
     if not shutil.which("protoc"):
-        logger.error("Компилятор `protoc` не найден. Убедитесь, что он установлен и находится в PATH.")
+        logger.error(
+            "Компилятор `protoc` не найден. Убедитесь, что он установлен и находится в PATH."
+        )
         return
 
     # Получаем пути из конфигурации
     paths = _get_paths()
-    protos_dir = paths['protos_dir']
-    generated_dir = paths['generated_dir']
-    
+    protos_dir = paths["protos_dir"]
+    generated_dir = paths["generated_dir"]
+
     if not dry_run:
         if generated_dir.exists():
             shutil.rmtree(str(generated_dir))
@@ -107,34 +139,34 @@ def compile_protos(dry_run: bool = False):
         # Создаем __init__.py, чтобы generated была пакетом
         (generated_dir / "__init__.py").write_text("# Auto-generated by qiki-docgen\n")
 
-    proto_files = [f for f in os.listdir(str(protos_dir)) if f.endswith('.proto')]
+    proto_files = [f for f in os.listdir(str(protos_dir)) if f.endswith(".proto")]
     if not proto_files:
         logger.warning(f".proto файлы не найдены в директории {protos_dir}.")
         return
 
     # Получаем include пути из конфигурации
     include_paths = _config.get_protoc_includes()
-    
+
     # Строим команду protoc
     command = ["protoc", f"-I={protos_dir}"]
-    
+
     # Добавляем все существующие include пути
     for include_path in include_paths:
         command.append(f"-I={include_path}")
-    
+
     # Добавляем флаги генерации - ВСЕГДА нужен хотя бы один output флаг
-    python_flags = _config.get('protoc.python_flags', ['--python_out'])
+    python_flags = _config.get("protoc.python_flags", ["--python_out"])
     if not python_flags:
-        python_flags = ['--python_out']  # Fallback если конфигурация пустая
-        
+        python_flags = ["--python_out"]  # Fallback если конфигурация пустая
+
     for flag in python_flags:
-        if flag == '--python_out':
+        if flag == "--python_out":
             command.append(f"{flag}={generated_dir}")
-        elif flag == '--pyi_out':
+        elif flag == "--pyi_out":
             command.append(f"{flag}={generated_dir}")
         else:
             command.append(flag)
-    
+
     # Добавляем proto файлы
     command.extend([str(protos_dir / f) for f in proto_files])
 
@@ -143,7 +175,9 @@ def compile_protos(dry_run: bool = False):
         logger.info("Dry Run: Компиляция Protobuf будет выполнена.")
         return
 
-    result = subprocess.run(command, capture_output=True, text=True, check=False) # check=False для ручной обработки ошибок
+    result = subprocess.run(
+        command, capture_output=True, text=True, check=False
+    )  # check=False для ручной обработки ошибок
 
     if result.returncode != 0:
         logger.error(f"Ошибка компиляции Protobuf:\n{result.stderr}")
@@ -151,16 +185,17 @@ def compile_protos(dry_run: bool = False):
     else:
         logger.info("Все .proto файлы успешно скомпилированы.")
 
+
 def build_readme(dry_run: bool = False):
     """Собирает главный README.md из дизайн-документов и протоколов."""
     components = []
     proto_info = []
-    
+
     # Получаем пути из конфигурации
     paths = _get_paths()
-    docs_design_dir = paths['docs_design_dir']
-    protos_dir = paths['protos_dir']
-    project_root = paths['project_root']
+    docs_design_dir = paths["docs_design_dir"]
+    protos_dir = paths["protos_dir"]
+    project_root = paths["project_root"]
 
     # Парсим дизайн-документы с новым DesignDocParser
     if docs_design_dir.exists():
@@ -171,17 +206,22 @@ def build_readme(dry_run: bool = False):
                 if design_file.exists():
                     try:
                         doc_data = design_parser.parse_design_doc(design_file)
-                        if doc_data['component_name']:  # Только если успешно распарсили
-                            components.append({
-                                'name': doc_data['component_name'],
-                                'overview': doc_data['overview'] or "Обзор не найден.",
-                                'path': str(design_file.relative_to(project_root)),
-                                'has_frontmatter': doc_data['has_frontmatter'],
-                                'metadata': doc_data['metadata'],
-                                'sections_count': len(doc_data['sections'])
-                            })
+                        if doc_data["component_name"]:  # Только если успешно распарсили
+                            components.append(
+                                {
+                                    "name": doc_data["component_name"],
+                                    "overview": doc_data["overview"]
+                                    or "Обзор не найден.",
+                                    "path": str(design_file.relative_to(project_root)),
+                                    "has_frontmatter": doc_data["has_frontmatter"],
+                                    "metadata": doc_data["metadata"],
+                                    "sections_count": len(doc_data["sections"]),
+                                }
+                            )
                     except Exception as e:
-                        logger.error(f"Ошибка при парсинге design документа {design_file}: {e}")
+                        logger.error(
+                            f"Ошибка при парсинге design документа {design_file}: {e}"
+                        )
 
     # Парсим .proto файлы с новым ProtoParser
     if protos_dir.exists():
@@ -189,28 +229,40 @@ def build_readme(dry_run: bool = False):
         for proto_file in protos_dir.glob("*.proto"):
             try:
                 proto_data = parser.parse_proto_file(proto_file)
-                if proto_data['messages'] or proto_data['enums'] or proto_data['services']:
-                    proto_info.append({
-                        'name': proto_file.stem,
-                        'package': proto_data['package'],
-                        'messages': len(proto_data['messages']),
-                        'enums': len(proto_data['enums']),
-                        'services': len(proto_data['services']),
-                        'path': str(proto_file.relative_to(project_root))
-                    })
+                if (
+                    proto_data["messages"]
+                    or proto_data["enums"]
+                    or proto_data["services"]
+                ):
+                    proto_info.append(
+                        {
+                            "name": proto_file.stem,
+                            "package": proto_data["package"],
+                            "messages": len(proto_data["messages"]),
+                            "enums": len(proto_data["enums"]),
+                            "services": len(proto_data["services"]),
+                            "path": str(proto_file.relative_to(project_root)),
+                        }
+                    )
             except Exception as e:
                 logger.error(f"Ошибка при парсинге proto файла {proto_file}: {e}")
 
     try:
         env = _get_jinja_env()
         template = env.get_template("README.md.template")
-        rendered_content = template.render(components=components, proto_contracts=proto_info)
+        rendered_content = template.render(
+            components=components, proto_contracts=proto_info
+        )
         target_path_obj = project_root / "README.md"
 
         if dry_run:
-            logger.info(f"Dry Run: Главный README.md будет обновлен.\n--- Содержимое ---\n{rendered_content}\n---")
+            logger.info(
+                f"Dry Run: Главный README.md будет обновлен.\n--- Содержимое ---\n{rendered_content}\n---"
+            )
         else:
             target_path_obj.write_text(rendered_content, encoding="utf-8")
-            logger.info(f"Главный README.md успешно обновлен с {len(components)} компонентами и {len(proto_info)} протоколами.")
+            logger.info(
+                f"Главный README.md успешно обновлен с {len(components)} компонентами и {len(proto_info)} протоколами."
+            )
     except Exception as e:
         logger.error(f"Ошибка при сборке README.md: {e}", exc_info=True)

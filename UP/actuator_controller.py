@@ -20,6 +20,10 @@ class ActuatorController:
             if not 0 <= value <= 1:
                 raise ActuatorError("INVALID_THRUST", "Thrust must be between 0 and 1")
             self._thrust = value
-            return OperationResult(success=True, message="Thrust updated", data={"value": value})
+            return OperationResult(
+                success=True, message="Thrust updated", data={"value": value}
+            )
         except ActuatorError as exc:
-            return OperationResult(success=False, error_code=exc.error_code, message=exc.message)
+            return OperationResult(
+                success=False, error_code=exc.error_code, message=exc.message
+            )

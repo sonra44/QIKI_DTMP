@@ -1,4 +1,3 @@
-
 import time
 import sys
 import os
@@ -7,7 +6,7 @@ import asyncio
 from typing import Dict, Any
 
 # Добавляем корневую директорию проекта в sys.path
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(ROOT_DIR)
 
 from services.q_core_agent.core.agent_logger import setup_logging, logger
@@ -17,6 +16,7 @@ from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import UUID
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.json_format import MessageToDict
+
 
 class QSimService:
     def __init__(self, config: Dict[str, Any]):
@@ -34,9 +34,11 @@ class QSimService:
         world_state = self.world_model.get_state()
         return SensorReading(
             sensor_id=UUID(value="sim_lidar_front"),
-            sensor_type=self.config.get("sim_sensor_type", 1), # LIDAR
+            sensor_type=self.config.get("sim_sensor_type", 1),  # LIDAR
             timestamp=timestamp,
-            scalar_data=world_state["position"]["x"] # Example: return X position as scalar data
+            scalar_data=world_state["position"][
+                "x"
+            ],  # Example: return X position as scalar data
         )
 
     def receive_actuator_command(self, command: ActuatorCommand):
@@ -52,7 +54,7 @@ class QSimService:
         logger.info("QSimService started.")
         try:
             while True:
-                self.step() # Call the new step method
+                self.step()  # Call the new step method
                 time.sleep(self.config.get("sim_tick_interval", 1))
         except KeyboardInterrupt:
             logger.info("QSimService stopped by user.")
@@ -74,17 +76,21 @@ class QSimService:
         else:
             logger.debug(f"Generated sensor data: {MessageToDict(sensor_data)}")
 
-def load_config(path='config.yaml'):
+
+def load_config(path="config.yaml"):
     config_path = os.path.join(os.path.dirname(__file__), path)
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
-            
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         return yaml.safe_load(f)
+
 
 if __name__ == "__main__":
     # Настройка логирования
-    log_config_path = os.path.join(os.path.dirname(__file__), '..', 'q_core_agent', 'config', 'logging.yaml')
+    log_config_path = os.path.join(
+        os.path.dirname(__file__), "..", "q_core_agent", "config", "logging.yaml"
+    )
     setup_logging(default_path=log_config_path)
 
     config = load_config()

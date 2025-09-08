@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, Generic, TypeVar
+from typing import Awaitable, Callable, Dict, Generic, TypeVar
 
 StateT = TypeVar("StateT")
 PayloadT = TypeVar("PayloadT")
@@ -12,7 +12,9 @@ class FSMEngine(Generic[StateT, PayloadT]):
     def __init__(self) -> None:
         self._registry: Dict[StateT, Callable[[PayloadT], Awaitable[PayloadT]]] = {}
 
-    def register(self, state: StateT, handler: Callable[[PayloadT], Awaitable[PayloadT]]) -> None:
+    def register(
+        self, state: StateT, handler: Callable[[PayloadT], Awaitable[PayloadT]]
+    ) -> None:
         """Регистрация обработчика для состояния."""
         self._registry[state] = handler
 

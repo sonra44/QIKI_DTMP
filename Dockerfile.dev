@@ -26,11 +26,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Копирование файлов с зависимостями
 COPY requirements.txt .
 COPY requirements-faststream.txt .
+COPY requirements-dev.txt .
 
 # Установка Python зависимостей
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-faststream.txt
+    pip install --no-cache-dir -r requirements-faststream.txt && \
+    pip install --no-cache-dir -r requirements-dev.txt
 
 # Копирование остального кода проекта в рабочую директорию
 COPY . .

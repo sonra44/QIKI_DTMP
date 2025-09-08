@@ -6,8 +6,10 @@ class ControllerError(Exception):
         self.error_code = error_code
         self.message = message
 
+
 class ActuatorError(ControllerError):
     """Ошибка исполнительного механизма."""
-    
+
+
 class FSMError(ControllerError):
     """Ошибка FSM обработчика."""

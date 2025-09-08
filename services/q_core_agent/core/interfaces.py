@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 from typing import List, Any
 
 from generated.bios_status_pb2 import BiosStatusReport, DeviceStatus
-from generated.fsm_state_pb2 import FsmStateSnapshot, StateTransition
+from generated.fsm_state_pb2 import FsmStateSnapshot
 from generated.proposal_pb2 import Proposal
 from generated.sensor_raw_in_pb2 import SensorReading
 from generated.actuator_raw_out_pb2 import ActuatorCommand
+
 
 class IDataProvider(ABC):
     """
@@ -38,18 +39,20 @@ class IDataProvider(ABC):
         """Sends an actuator command to the environment."""
         pass
 
+
 class MockDataProvider(IDataProvider):
     """
     Mock implementation of IDataProvider for testing and development.
     Provides dummy data for BIOS status, FSM state, and proposals.
     """
+
     def __init__(
         self,
         mock_bios_status: BiosStatusReport,
         mock_fsm_state: FsmStateSnapshot,
         mock_proposals: List[Proposal],
         mock_sensor_data: SensorReading,
-        mock_actuator_response: Any = None
+        mock_actuator_response: Any = None,
     ):
         self._mock_bios_status = mock_bios_status
         self._mock_fsm_state = mock_fsm_state
@@ -63,14 +66,16 @@ class MockDataProvider(IDataProvider):
     def get_fsm_state(self) -> FsmStateSnapshot:
         # При StateStore режиме возвращаем пустышку - FSM читается из StateStore
         import os
-        if os.environ.get('QIKI_USE_STATESTORE', 'false').lower() == 'true':
+
+        if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
             # Возвращаем минимальный протокол для совместимости
             from generated.fsm_state_pb2 import FSMStateEnum
             from generated.common_types_pb2 import UUID
+
             return FsmStateSnapshot(
                 snapshot_id=UUID(value="stub_fsm"),
                 current_state=FSMStateEnum.BOOTING,
-                fsm_instance_id=UUID(value="stub")
+                fsm_instance_id=UUID(value="stub"),
             )
         return self._mock_fsm_state
 
@@ -90,6 +95,7 @@ class QSimDataProvider(IDataProvider):
     DataProvider that interacts with the Q-Sim Service.
     For MVP, this will directly call methods of a QSimService instance.
     """
+
     def __init__(self, qsim_service_instance):
         self.qsim_service = qsim_service_instance
 
@@ -97,26 +103,31 @@ class QSimDataProvider(IDataProvider):
         # Generate realistic BIOS status with POST test results for known devices
         # This simulates what a real BIOS would report after Power-On Self-Test
         bios_report = BiosStatusReport(firmware_version="sim_v1.0")
-        
+
         # Simulate POST results for typical bot devices
         from generated.common_types_pb2 import UUID
+
         typical_devices = [
             ("motor_left", DeviceStatus.Status.OK, "Motor left operational"),
-            ("motor_right", DeviceStatus.Status.OK, "Motor right operational"), 
+            ("motor_right", DeviceStatus.Status.OK, "Motor right operational"),
             ("lidar_front", DeviceStatus.Status.OK, "LIDAR sensor operational"),
             ("imu_main", DeviceStatus.Status.OK, "IMU sensor operational"),
-            ("system_controller", DeviceStatus.Status.OK, "System controller operational")
+            (
+                "system_controller",
+                DeviceStatus.Status.OK,
+                "System controller operational",
+            ),
         ]
-        
+
         for device_id, status, message in typical_devices:
             device_status = DeviceStatus(
                 device_id=UUID(value=device_id),
                 status=status,
                 error_message=message,
-                status_code=DeviceStatus.StatusCode.STATUS_CODE_UNSPECIFIED
+                status_code=DeviceStatus.StatusCode.STATUS_CODE_UNSPECIFIED,
             )
             bios_report.post_results.append(device_status)
-        
+
         # BIOS will determine all_systems_go based on device statuses
         # Leave it unset here - BiosHandler will process it properly
         return bios_report
@@ -124,38 +135,40 @@ class QSimDataProvider(IDataProvider):
     def get_fsm_state(self) -> FsmStateSnapshot:
         # При StateStore режиме возвращаем пустышку - FSM читается из StateStore
         import os
-        if os.environ.get('QIKI_USE_STATESTORE', 'false').lower() == 'true':
+
+        if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
             # Возвращаем минимальный протокол для совместимости
             from generated.fsm_state_pb2 import FSMStateEnum
             from generated.common_types_pb2 import UUID
+
             return FsmStateSnapshot(
                 snapshot_id=UUID(value="stub_fsm"),
                 current_state=FSMStateEnum.BOOTING,
-                fsm_instance_id=UUID(value="stub")
+                fsm_instance_id=UUID(value="stub"),
             )
-            
+
         # Q-Sim doesn't manage FSM state, so we'll return proper initial BOOTING state
         from generated.fsm_state_pb2 import FSMStateEnum
         from generated.common_types_pb2 import UUID
         from google.protobuf.timestamp_pb2 import Timestamp
-        
+
         fsm_state = FsmStateSnapshot(
             snapshot_id=UUID(value="qsim_fsm_001"),
             current_state=FSMStateEnum.BOOTING,  # Начинаем с BOOTING как в Mock режиме
             fsm_instance_id=UUID(value="main_fsm"),
             source_module="qsim_data_provider",
-            attempt_count=1
+            attempt_count=1,
         )
-        
+
         # Добавляем timestamp
         timestamp = Timestamp()
         timestamp.GetCurrentTime()
         fsm_state.timestamp.CopyFrom(timestamp)
-        
+
         # Добавляем context_data
         fsm_state.context_data["mode"] = "legacy"
         fsm_state.context_data["initialized"] = "true"
-        
+
         return fsm_state
 
     def get_proposals(self) -> List[Proposal]:
@@ -186,7 +199,9 @@ class IFSMHandler(ABC):
     """
 
     @abstractmethod
-    def process_fsm_state(self, current_fsm_state: FsmStateSnapshot) -> FsmStateSnapshot:
+    def process_fsm_state(
+        self, current_fsm_state: FsmStateSnapshot
+    ) -> FsmStateSnapshot:
         """Processes the current FSM state and returns the next FSM state."""
         pass
 

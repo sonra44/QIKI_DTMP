@@ -4,6 +4,10 @@
 PyYAML>=6.0
 protobuf>=4.21.0
 
+# Data Validation & Modeling (Core)
+pydantic>=2.0.0
+pydantic[email]>=2.0.0
+
 # gRPC dependencies for IPC between services
 grpcio>=1.62.0
 grpcio-tools>=1.62.0

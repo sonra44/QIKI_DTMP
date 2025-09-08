@@ -1,4 +1,3 @@
-
 import json
 import os
 import hashlib
@@ -7,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 # Import generated protobuf classes
 from generated import sensor_raw_in_pb2
 from generated import actuator_raw_out_pb2
+
 
 class BotCore:
     """
@@ -22,8 +22,12 @@ class BotCore:
         self._bot_id: Optional[str] = None
         self._config: Dict[str, Any] = {}
         self._runtime_sensor_snapshot: Dict[str, sensor_raw_in_pb2.SensorReading] = {}
-        self._last_actuator_commands: Dict[str, actuator_raw_out_pb2.ActuatorCommand] = {}
-        self._sensor_callbacks: List[Callable[[sensor_raw_in_pb2.SensorReading], None]] = []
+        self._last_actuator_commands: Dict[
+            str, actuator_raw_out_pb2.ActuatorCommand
+        ] = {}
+        self._sensor_callbacks: List[
+            Callable[[sensor_raw_in_pb2.SensorReading], None]
+        ] = []
 
         self._load_config()
         self._initialize_bot_id()
@@ -33,37 +37,42 @@ class BotCore:
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Bot configuration file not found: {config_path}")
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 self._config = json.load(f)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
 
         if self._config.get("mode") == "minimal":
-            print("BotCore running in minimal mode. Sensor/actuator methods will be non-operational.")
+            print(
+                "BotCore running in minimal mode. Sensor/actuator methods will be non-operational."
+            )
 
     def _initialize_bot_id(self):
         id_path = os.path.join(self.base_path, self.BOT_ID_FILE)
         if os.path.exists(id_path):
-            with open(id_path, 'r') as f:
+            with open(id_path, "r") as f:
                 self._bot_id = f.read().strip()
         else:
             self._bot_id = self._generate_bot_id()
-            with open(id_path, 'w') as f:
+            with open(id_path, "w") as f:
                 f.write(self._bot_id)
 
     def _generate_bot_id(self) -> str:
-        timestamp = os.getenv("QIKI_BOT_INIT_TIMESTAMP", "") # For testing/reproducibility
+        timestamp = os.getenv(
+            "QIKI_BOT_INIT_TIMESTAMP", ""
+        )  # For testing/reproducibility
         if not timestamp:
             import datetime
+
             timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        
+
         # Use a combination of timestamp, hostname, and a random component for uniqueness
         unique_string = f"{timestamp}-{os.uname().nodename}-{os.urandom(8).hex()}"
         hash_val = hashlib.sha256(unique_string.encode()).hexdigest()[:8]
         return f"QIKI-{timestamp[:8]}-{hash_val}"
 
     def get_id(self) -> str:
-        """Returns the unique bot ID.""" 
+        """Returns the unique bot ID."""
         if not self._bot_id:
             raise RuntimeError("Bot ID not initialized.")
         return self._bot_id
@@ -72,26 +81,34 @@ class BotCore:
         """Retrieves a static property from the loaded configuration."""
         return self._config.get(property_name)
 
-    def register_sensor_callback(self, callback: Callable[[sensor_raw_in_pb2.SensorReading], None]):
+    def register_sensor_callback(
+        self, callback: Callable[[sensor_raw_in_pb2.SensorReading], None]
+    ):
         """Registers a callback function that will be invoked with new sensor data as it arrives."""
         self._sensor_callbacks.append(callback)
 
-    def _process_incoming_sensor_data(self, sensor_data: sensor_raw_in_pb2.SensorReading):
+    def _process_incoming_sensor_data(
+        self, sensor_data: sensor_raw_in_pb2.SensorReading
+    ):
         """Internal method to update runtime snapshot and trigger callbacks."""
         self._runtime_sensor_snapshot[sensor_data.sensor_id] = sensor_data
         for callback in self._sensor_callbacks:
             callback(sensor_data)
 
-    def get_latest_sensor_value(self, sensor_id: str) -> Optional[sensor_raw_in_pb2.SensorReading]:
+    def get_latest_sensor_value(
+        self, sensor_id: str
+    ) -> Optional[sensor_raw_in_pb2.SensorReading]:
         """Retrieves the most recent value for a specific sensor."""
         if self._config.get("mode") == "minimal":
-            return None # Non-operational in minimal mode
+            return None  # Non-operational in minimal mode
         return self._runtime_sensor_snapshot.get(sensor_id)
 
-    def get_sensor_history(self, sensor_id: str, n: int = 10) -> List[sensor_raw_in_pb2.SensorReading]:
+    def get_sensor_history(
+        self, sensor_id: str, n: int = 10
+    ) -> List[sensor_raw_in_pb2.SensorReading]:
         """Retrieves the last `n` values for a specific sensor. (Placeholder - full history not implemented yet)"""
         if self._config.get("mode") == "minimal":
-            return [] # Non-operational in minimal mode
+            return []  # Non-operational in minimal mode
         # In a real implementation, this would involve a history buffer or database
         latest = self._runtime_sensor_snapshot.get(sensor_id)
         return [latest] if latest else []
@@ -103,9 +120,14 @@ class BotCore:
             return
 
         # Validate actuator_id against hardware_profile
-        actuator_ids = [act["id"] for act in self._config.get("hardware_profile", {}).get("actuators", [])]
+        actuator_ids = [
+            act["id"]
+            for act in self._config.get("hardware_profile", {}).get("actuators", [])
+        ]
         if command.actuator_id not in actuator_ids:
-            raise ValueError(f"Unknown actuator ID: {command.actuator_id}. Must be one of {actuator_ids}")
+            raise ValueError(
+                f"Unknown actuator ID: {command.actuator_id}. Must be one of {actuator_ids}"
+            )
 
         self._last_actuator_commands[command.actuator_id] = command
         # In a real system, this would send the command to the Q-Sim Service or hardware
@@ -120,32 +142,35 @@ class BotCore:
         """Returns a dictionary of the last commands sent to all actuators."""
         return self._last_actuator_commands
 
+
 # Example Usage (for testing purposes)
 if __name__ == "__main__":
     # Create dummy config and id files for testing
     test_base_path = os.path.dirname(os.path.abspath(__file__))
-    
+
     dummy_config_content = {
-      "schema_version": "1.0",
-      "bot_id": "QIKI-TEST-001",
-      "bot_type": "test_bot",
-      "mode": "full",
-      "hardware_profile": {
-        "max_speed_mps": 1.0,
-        "power_capacity_wh": 500,
-        "actuators": [
-          {"id": "motor_left", "type": "wheel_motor"},
-          {"id": "motor_right", "type": "wheel_motor"}
-        ],
-        "sensors": [
-          {"id": "lidar_front", "type": "lidar"},
-          {"id": "imu_main", "type": "imu"}
-        ]
-      }
+        "schema_version": "1.0",
+        "bot_id": "QIKI-TEST-001",
+        "bot_type": "test_bot",
+        "mode": "full",
+        "hardware_profile": {
+            "max_speed_mps": 1.0,
+            "power_capacity_wh": 500,
+            "actuators": [
+                {"id": "motor_left", "type": "wheel_motor"},
+                {"id": "motor_right", "type": "wheel_motor"},
+            ],
+            "sensors": [
+                {"id": "lidar_front", "type": "lidar"},
+                {"id": "imu_main", "type": "imu"},
+            ],
+        },
     }
-    
+
     # Adjust path for config file to be in the 'config' subdirectory
-    config_dir = os.path.join(test_base_path, "..", "config") # Go up one level to q_core_agent, then into config
+    config_dir = os.path.join(
+        test_base_path, "..", "config"
+    )  # Go up one level to q_core_agent, then into config
     os.makedirs(config_dir, exist_ok=True)
     with open(os.path.join(config_dir, "bot_config.json"), "w") as f:
         json.dump(dummy_config_content, f, indent=2)
@@ -167,29 +192,35 @@ if __name__ == "__main__":
             timestamp_utc="2025-07-24T10:00:00Z",
             sensor_id="lidar_front",
             value=15.3,
-            unit="meters"
+            unit="meters",
         )
-        bot._process_incoming_sensor_data(sensor_data) # Simulate internal data reception
+        bot._process_incoming_sensor_data(
+            sensor_data
+        )  # Simulate internal data reception
 
-        print(f"Latest lidar value: {bot.current_sensor_snapshot.get('lidar_front').value}")
+        print(
+            f"Latest lidar value: {bot.current_sensor_snapshot.get('lidar_front').value}"
+        )
 
         # Simulate sending actuator command
         actuator_command = actuator_raw_out_pb2.ActuatorCommand(
-            actuator_id="motor_left",
-            command="set_velocity_percent",
-            value=75
+            actuator_id="motor_left", command="set_velocity_percent", value=75
         )
         bot.send_actuator_command(actuator_command)
-        print(f"Last motor_left command value: {bot.last_actuator_commands.get('motor_left').value}")
+        print(
+            f"Last motor_left command value: {bot.last_actuator_commands.get('motor_left').value}"
+        )
 
         # Test minimal mode
         dummy_config_content["mode"] = "minimal"
         with open(os.path.join(config_dir, "bot_config.json"), "w") as f:
             json.dump(dummy_config_content, f, indent=2)
-        
+
         bot_minimal = BotCore(base_path=q_core_agent_root)
         print(f"Bot ID in minimal mode: {bot_minimal.get_id()}")
-        print(f"Latest lidar value in minimal mode: {bot_minimal.get_latest_sensor_value('lidar_front')}")
+        print(
+            f"Latest lidar value in minimal mode: {bot_minimal.get_latest_sensor_value('lidar_front')}"
+        )
         bot_minimal.send_actuator_command(actuator_command)
 
     except Exception as e:

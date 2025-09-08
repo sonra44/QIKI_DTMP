@@ -16,6 +16,12 @@ class FSMHandler:
             if new_state not in self.allowed_states:
                 raise FSMError("INVALID_STATE", f"Unknown state: {new_state}")
             self.state = new_state
-            return OperationResult(success=True, message=f"State changed to {new_state}", data={"state": new_state})
+            return OperationResult(
+                success=True,
+                message=f"State changed to {new_state}",
+                data={"state": new_state},
+            )
         except FSMError as exc:
-            return OperationResult(success=False, error_code=exc.error_code, message=exc.message)
+            return OperationResult(
+                success=False, error_code=exc.error_code, message=exc.message
+            )

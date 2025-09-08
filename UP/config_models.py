@@ -30,6 +30,25 @@ class SecurityConfig(BaseModel):
     allowed_ips: List[IPvAnyAddress] = []
 
 
+class QSimServiceConfig(BaseModel):
+    """Конфигурация для Q-Sim Service."""
+
+    sim_tick_interval: int
+    sim_sensor_type: int
+    log_level: str
+
+
+class QCoreAgentConfig(BaseModel):
+    """Конфигурация для Q-Core Agent."""
+
+    tick_interval: int
+    log_level: str
+    recovery_delay: int
+    proposal_confidence_threshold: float
+    mock_neural_proposals_enabled: bool
+    grpc_server_address: str
+
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -40,4 +59,8 @@ def load_config(path: Path, model: Type[T]) -> T:
             data = yaml.safe_load(f)
         else:
             data = json.load(f)
-    return model.model_validate(data) if hasattr(model, 'model_validate') else model.parse_obj(data)
+    return (
+        model.model_validate(data)
+        if hasattr(model, "model_validate")
+        else model.parse_obj(data)
+    )

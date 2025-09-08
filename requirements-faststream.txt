@@ -5,8 +5,6 @@
 # Core FastStream
 faststream[nats]>=0.5.0
 faststream[cli]>=0.5.0
-pydantic>=2.0.0
-pydantic[email]>=2.0.0
 
 # NATS клиент
 nats-py>=2.6.0
