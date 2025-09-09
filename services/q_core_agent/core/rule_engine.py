@@ -4,13 +4,9 @@ from .agent_logger import logger
 
 if TYPE_CHECKING:
     from .agent import AgentContext
-from generated.proposal_pb2 import Proposal
-from generated.actuator_raw_out_pb2 import (
-    ActuatorCommand as ActuatorCommandPb2,
-)  # Alias to avoid conflict
-from generated.common_types_pb2 import UUID, Unit
-from generated.fsm_state_pb2 import FSMStateEnum  # Import FSMStateEnum
-from google.protobuf.timestamp_pb2 import Timestamp
+from shared.models.core import Proposal, ActuatorCommand, UnitEnum, CommandTypeEnum, ProposalTypeEnum
+from generated.fsm_state_pb2 import FSMStateEnum
+from uuid import UUID as PyUUID # For Pydantic UUID
 
 
 class RuleEngine(IRuleEngine):
@@ -31,30 +27,28 @@ class RuleEngine(IRuleEngine):
         # Example Rule: If BIOS is not OK, propose to go to SAFE_MODE
         if not context.is_bios_ok():
             logger.warning("Rule triggered: BIOS not OK. Proposing SAFE_MODE.")
-            timestamp = Timestamp()
-            timestamp.GetCurrentTime()
-
             # Create a dummy actuator command for SAFE_MODE
-            safe_mode_command = ActuatorCommandPb2(
-                actuator_id=UUID(value="system_controller"),
-                timestamp=timestamp,
-                command_type=ActuatorCommandPb2.CommandType.SET_MODE,
+            safe_mode_command = ActuatorCommand(
+                actuator_id=PyUUID("00000000-0000-0000-0000-000000000001"),
+                command_type=CommandTypeEnum.SET_MODE,
                 int_value=FSMStateEnum.ERROR_STATE,  # Assuming ERROR_STATE maps to safe mode
-                unit=Unit.UNIT_UNSPECIFIED,
+                unit=UnitEnum.UNIT_UNSPECIFIED,
             )
 
             proposal = Proposal(
-                proposal_id=UUID(value="rule_engine_safe_mode"),
+                proposal_id=PyUUID("00000000-0000-0000-0000-000000000002"), # Using a fixed, valid UUID
                 source_module_id="rule_engine",
-                timestamp=timestamp,
                 proposed_actions=[safe_mode_command],
                 justification="BIOS reported critical errors. Entering safe mode.",
                 priority=0.99,  # High priority
                 confidence=1.0,  # High confidence
-                type=Proposal.ProposalType.SAFETY,
+                type=ProposalTypeEnum.SAFETY,
             )
             proposals.append(proposal)
 
         # Add more rules here based on sensor data, FSM state, etc.
+
+        return proposals
+
 
         return proposals

@@ -48,6 +48,7 @@ services:
     stdin_open: true
     environment:
       - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace
     command: python services/q_core_agent/main.py --grpc
 
   q-sim-service:

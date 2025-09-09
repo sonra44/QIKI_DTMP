@@ -6,7 +6,7 @@ Pydantic модели для QIKI DTMP FastStream миграции.
 """
 
 import time
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from enum import IntEnum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -54,9 +54,54 @@ class SensorTypeEnum(IntEnum):
     GPS = 4
 
 
+class UnitEnum(IntEnum):
+    UNIT_UNSPECIFIED = 0
+    METERS = 1
+    DEGREES = 2
+    PERCENT = 3
+    VOLTS = 4
+    AMPS = 5
+    WATTS = 6
+    MILLISECONDS = 7
+    KELVIN = 8
+    BAR = 9
+
+
+class ProposalTypeEnum(IntEnum):
+    PROPOSAL_TYPE_UNSPECIFIED = 0
+    SAFETY = 1
+    PLANNING = 2
+    DIAGNOSTICS = 3
+    EXPLORATION = 4
+
+
+class ProposalStatusEnum(IntEnum):
+    PROPOSAL_STATUS_UNSPECIFIED = 0
+    PENDING = 1
+    ACCEPTED = 2
+    REJECTED = 3
+    EXECUTED = 4
+    EXPIRED = 5
+
+
+class CommandTypeEnum(IntEnum):
+    COMMAND_TYPE_UNSPECIFIED = 0
+    SET_VELOCITY = 1
+    ROTATE = 2
+    ENABLE = 3
+    DISABLE = 4
+    SET_MODE = 5
+
+
 # =============================================================================
 #  Вспомогательные и вложенные модели
 # =============================================================================
+class Vector3(ConfigModel):
+    x: float
+    y: float
+    z: float
+
+
 class MessageMetadata(ConfigModel):
     message_id: UUID = Field(default_factory=uuid4)
     correlation_id: Optional[UUID] = None
@@ -156,3 +201,52 @@ class ResponseMessage(ConfigModel):
         if self.success and self.error:
             raise ValueError("Success response should not have error message")
         return self
+
+
+class ActuatorCommand(ConfigModel):
+    command_id: UUID = Field(default_factory=uuid4)
+    actuator_id: UUID
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    
+    # OneOf command_value
+    float_value: Optional[float] = None
+    int_value: Optional[int] = None
+    bool_value: Optional[bool] = None
+    vector_value: Optional[Vector3] = None
+
+    unit: UnitEnum = UnitEnum.UNIT_UNSPECIFIED
+    command_type: CommandTypeEnum
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    timeout_ms: Optional[int] = None
+    ack_required: bool = False
+    retry_count: int = 0
+
+    @model_validator(mode="after")
+    def validate_command_value(self):
+        set_values = [
+            self.float_value,
+            self.int_value,
+            self.bool_value,
+            self.vector_value,
+        ]
+        if sum(1 for v in set_values if v is not None) != 1:
+            raise ValueError("Exactly one of float_value, int_value, bool_value, or vector_value must be set")
+        return self
+
+
+class Proposal(ConfigModel):
+    proposal_id: UUID = Field(default_factory=uuid4)
+    source_module_id: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    proposed_actions: List[ActuatorCommand] = Field(default_factory=list)
+    justification: str
+    priority: float = Field(ge=0.0, le=1.0)
+    expected_duration: Optional[timedelta] = None
+    type: ProposalTypeEnum
+    metadata: Dict[str, str] = Field(default_factory=dict)
+    confidence: float = Field(ge=0.0, le=1.0)
+    status: ProposalStatusEnum = ProposalStatusEnum.PROPOSAL_STATUS_UNSPECIFIED
+    depends_on: List[UUID] = Field(default_factory=list)
+    conflicts_with: List[UUID] = Field(default_factory=list)
+    proposal_signature: Optional[str] = None
+

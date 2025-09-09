@@ -4,8 +4,8 @@ import hashlib
 from typing import Any, Callable, Dict, List, Optional
 
 # Import generated protobuf classes
-from generated import sensor_raw_in_pb2
-from generated import actuator_raw_out_pb2
+from shared.models.core import SensorData, ActuatorCommand
+from shared.converters.protobuf_pydantic import proto_sensor_reading_to_pydantic_sensor_data, pydantic_actuator_command_to_proto_actuator_command
 
 
 class BotCore:
@@ -21,12 +21,12 @@ class BotCore:
         self.base_path = base_path
         self._bot_id: Optional[str] = None
         self._config: Dict[str, Any] = {}
-        self._runtime_sensor_snapshot: Dict[str, sensor_raw_in_pb2.SensorReading] = {}
+        self._runtime_sensor_snapshot: Dict[str, SensorData] = {}
         self._last_actuator_commands: Dict[
-            str, actuator_raw_out_pb2.ActuatorCommand
+            str, ActuatorCommand
         ] = {}
         self._sensor_callbacks: List[
-            Callable[[sensor_raw_in_pb2.SensorReading], None]
+            Callable[[SensorData], None]
         ] = []
 
         self._load_config()
@@ -82,13 +82,13 @@ class BotCore:
         return self._config.get(property_name)
 
     def register_sensor_callback(
-        self, callback: Callable[[sensor_raw_in_pb2.SensorReading], None]
+        self, callback: Callable[[SensorData], None]
     ):
         """Registers a callback function that will be invoked with new sensor data as it arrives."""
         self._sensor_callbacks.append(callback)
 
     def _process_incoming_sensor_data(
-        self, sensor_data: sensor_raw_in_pb2.SensorReading
+        self, sensor_data: SensorData
     ):
         """Internal method to update runtime snapshot and trigger callbacks."""
         self._runtime_sensor_snapshot[sensor_data.sensor_id] = sensor_data
@@ -97,7 +97,7 @@ class BotCore:
 
     def get_latest_sensor_value(
         self, sensor_id: str
-    ) -> Optional[sensor_raw_in_pb2.SensorReading]:
+    ) -> Optional[SensorData]:
         """Retrieves the most recent value for a specific sensor."""
         if self._config.get("mode") == "minimal":
             return None  # Non-operational in minimal mode
@@ -105,7 +105,7 @@ class BotCore:
 
     def get_sensor_history(
         self, sensor_id: str, n: int = 10
-    ) -> List[sensor_raw_in_pb2.SensorReading]:
+    ) -> List[SensorData]:
         """Retrieves the last `n` values for a specific sensor. (Placeholder - full history not implemented yet)"""
         if self._config.get("mode") == "minimal":
             return []  # Non-operational in minimal mode
@@ -113,7 +113,7 @@ class BotCore:
         latest = self._runtime_sensor_snapshot.get(sensor_id)
         return [latest] if latest else []
 
-    def send_actuator_command(self, command: actuator_raw_out_pb2.ActuatorCommand):
+    def send_actuator_command(self, command: ActuatorCommand):
         """Sends a raw command to an actuator."""
         if self._config.get("mode") == "minimal":
             print(f"Minimal mode: Actuator command for {command.actuator_id} ignored.")
@@ -124,21 +124,21 @@ class BotCore:
             act["id"]
             for act in self._config.get("hardware_profile", {}).get("actuators", [])
         ]
-        if command.actuator_id not in actuator_ids:
+        if str(command.actuator_id) not in actuator_ids:
             raise ValueError(
                 f"Unknown actuator ID: {command.actuator_id}. Must be one of {actuator_ids}"
             )
 
-        self._last_actuator_commands[command.actuator_id] = command
+        self._last_actuator_commands[str(command.actuator_id)] = command
         # In a real system, this would send the command to the Q-Sim Service or hardware
 
     @property
-    def current_sensor_snapshot(self) -> Dict[str, sensor_raw_in_pb2.SensorReading]:
+    def current_sensor_snapshot(self) -> Dict[str, SensorData]:
         """Returns a dictionary of the last known values for all sensors."""
         return self._runtime_sensor_snapshot
 
     @property
-    def last_actuator_commands(self) -> Dict[str, actuator_raw_out_pb2.ActuatorCommand]:
+    def last_actuator_commands(self) -> Dict[str, ActuatorCommand]:
         """Returns a dictionary of the last commands sent to all actuators."""
         return self._last_actuator_commands
 
@@ -188,27 +188,31 @@ if __name__ == "__main__":
         print(f"Bot Type: {bot.get_property('bot_type')}")
 
         # Simulate incoming sensor data
-        sensor_data = sensor_raw_in_pb2.SensorReading(
-            timestamp_utc="2025-07-24T10:00:00Z",
-            sensor_id="lidar_front",
-            value=15.3,
-            unit="meters",
+        # Create a Pydantic SensorData instance
+        sensor_data_pydantic = SensorData(
+            sensor_id=PyUUID("lidar_front"),
+            sensor_type=SensorTypeEnum.LIDAR,
+            scalar_data=15.3,
+            string_data="meters",
         )
         bot._process_incoming_sensor_data(
-            sensor_data
+            sensor_data_pydantic
         )  # Simulate internal data reception
 
         print(
-            f"Latest lidar value: {bot.current_sensor_snapshot.get('lidar_front').value}"
+            f"Latest lidar value: {bot.current_sensor_snapshot.get('lidar_front').scalar_data}"
         )
 
         # Simulate sending actuator command
-        actuator_command = actuator_raw_out_pb2.ActuatorCommand(
-            actuator_id="motor_left", command="set_velocity_percent", value=75
+        # Create a Pydantic ActuatorCommand instance
+        actuator_command_pydantic = ActuatorCommand(
+            actuator_id=PyUUID("motor_left"),
+            command_type=CommandTypeEnum.SET_VELOCITY,
+            int_value=75,
         )
-        bot.send_actuator_command(actuator_command)
+        bot.send_actuator_command(actuator_command_pydantic)
         print(
-            f"Last motor_left command value: {bot.last_actuator_commands.get('motor_left').value}"
+            f"Last motor_left command value: {bot.last_actuator_commands.get('motor_left').int_value}"
         )
 
         # Test minimal mode
@@ -221,7 +225,7 @@ if __name__ == "__main__":
         print(
             f"Latest lidar value in minimal mode: {bot_minimal.get_latest_sensor_value('lidar_front')}"
         )
-        bot_minimal.send_actuator_command(actuator_command)
+        bot_minimal.send_actuator_command(actuator_command_pydantic)
 
     except Exception as e:
         print(f"An error occurred: {e}")

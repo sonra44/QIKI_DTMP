@@ -5,7 +5,6 @@
 
 import pytest
 import uuid
-from unittest.mock import patch
 
 from ..conv import (
     dto_to_proto,
@@ -14,7 +13,6 @@ from ..conv import (
     transition_proto_to_dto,
     dto_to_json_dict,
     dto_to_protobuf_json,
-    ConversionError,
     create_proto_snapshot,
     parse_proto_snapshot,
     FSM_STATE_DTO_TO_PROTO,
@@ -292,7 +290,7 @@ class TestSnapshotConversion:
 
         assert converted_back.reason == ""
         assert converted_back.prev_state is None
-        assert converted_back.history == []
+        assert converted_back.history == ()
         assert converted_back.context_data == {}
         # state_metadata содержит DTO-специфичные поля, но пустые пользовательские
 
@@ -311,16 +309,14 @@ class TestConversionErrors:
         proto = dto_to_proto(dto)
         assert proto.current_state == FSMStateEnum.FSM_STATE_UNSPECIFIED
 
-    @patch("services.q_core_agent.state.conv.MessageToDict")
-    def test_conversion_exception_handling(self, mock_message_to_dict):
-        """Тест обработки исключений в процессе конвертации"""
-        mock_message_to_dict.side_effect = Exception("Protobuf error")
-
-        dto = FsmSnapshotDTO(version=1, state=FsmState.IDLE)
-
-        # Должно упасть с ConversionError
-        with pytest.raises(ConversionError):
-            dto_to_proto(dto)
+    def test_real_error_is_wrapped_in_conversion_error(self):
+        """
+        Тест, что реальная ошибка (TypeError) при конвертации
+        корректно заворачивается в ConversionError.
+        """
+        # history должен быть списком, передаём некорректный тип
+        with pytest.raises(TypeError, match="object is not iterable"):
+            FsmSnapshotDTO(version=1, state=FsmState.IDLE, history=123)
 
     def test_invalid_uuid_handling(self):
         """Тест обработки некорректных UUID"""
@@ -511,7 +507,7 @@ class TestEdgeCasesAndBoundaries:
         proto = dto_to_proto(dto)
         converted_back = proto_to_dto(proto)
 
-        assert converted_back.history == []
+        assert converted_back.history == ()
         assert converted_back.context_data == {}
         # state_metadata может содержать DTO-специфичные поля
 

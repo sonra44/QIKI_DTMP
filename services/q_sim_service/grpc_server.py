@@ -15,7 +15,7 @@ from services.q_sim_service.main import QSimService
 from generated.q_sim_api_pb2_grpc import QSimAPIServicer, add_QSimAPIServicer_to_server
 from generated.q_sim_api_pb2 import HealthResponse
 from google.protobuf.empty_pb2 import Empty
-from UP.config_models import QSimServiceConfig, load_config
+from shared.config_models import QSimServiceConfig, load_config
 
 
 class QSimGrpcServicer(QSimAPIServicer):

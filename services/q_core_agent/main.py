@@ -22,82 +22,60 @@ from services.q_core_agent.core.interfaces import (
 from services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
 from services.q_core_agent.core.tick_orchestrator import TickOrchestrator
 from services.q_core_agent.state.store import create_initialized_store
-from UP.config_models import QCoreAgentConfig, QSimServiceConfig, load_config
+from shared.config_models import QCoreAgentConfig, QSimServiceConfig, load_config
 
 # Import QSimService for direct interaction in MVP
 from services.q_sim_service.main import QSimService
 
-from generated.bios_status_pb2 import BiosStatusReport
-from generated.fsm_state_pb2 import FsmStateSnapshot
-from generated.proposal_pb2 import Proposal
-from generated.sensor_raw_in_pb2 import SensorReading
-from generated.common_types_pb2 import UUID
-from google.protobuf.json_format import MessageToDict
-from services.q_core_agent.state.conv import dto_to_proto
+from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ProposalTypeEnum, DeviceStatusEnum, FsmStateEnum, SensorTypeEnum
+from shared.converters.protobuf_pydantic import pydantic_bios_status_to_proto_bios_status_report, pydantic_proposal_to_proto_proposal, pydantic_sensor_data_to_proto_sensor_reading, proto_bios_status_report_to_pydantic_bios_status, proto_fsm_state_snapshot_to_pydantic_fsm_state_snapshot, proto_proposal_to_pydantic_proposal, proto_sensor_reading_to_pydantic_sensor_data
+from uuid import UUID as PyUUID
+from datetime import datetime, UTC
 
 
 # --- Mock данные для MockDataProvider ---
 # Создаём реалистичный BIOS статус для тестирования
 def _create_mock_bios_status():
     """Создает реалистичный BIOS status report для mock режима"""
-    from generated.bios_status_pb2 import DeviceStatus
-    from google.protobuf.timestamp_pb2 import Timestamp
-
-    bios_report = BiosStatusReport(
+    bios_report = BiosStatus(
+        bios_version="mock_v1.0",
         firmware_version="mock_v1.0",
-        all_systems_go=True,  # Ключевое исправление!
-        health_score=0.95,
+        post_results=[],
+        timestamp=datetime.now(UTC),
     )
 
     # Добавляем POST результаты для всех устройств из bot_config.json
     typical_devices = [
-        ("motor_left", DeviceStatus.Status.OK, "Motor left operational"),
-        ("motor_right", DeviceStatus.Status.OK, "Motor right operational"),
-        ("lidar_front", DeviceStatus.Status.OK, "LIDAR sensor operational"),
-        ("imu_main", DeviceStatus.Status.OK, "IMU sensor operational"),
-        ("system_controller", DeviceStatus.Status.OK, "System controller operational"),
+        ("motor_left", DeviceStatusEnum.OK, "Motor left operational"),
+        ("motor_right", DeviceStatusEnum.OK, "Motor right operational"),
+        ("lidar_front", DeviceStatusEnum.OK, "LIDAR sensor operational"),
+        ("imu_main", DeviceStatusEnum.OK, "IMU sensor operational"),
+        ("system_controller", DeviceStatusEnum.OK, "System controller operational"),
     ]
 
     for device_id, status, message in typical_devices:
         device_status = DeviceStatus(
-            device_id=UUID(value=device_id),
+            device_id=PyUUID(device_id),
             status=status,
-            error_message=message,
-            status_code=DeviceStatus.StatusCode.STATUS_CODE_UNSPECIFIED,
+            status_message=message,
         )
         bios_report.post_results.append(device_status)
-
-    # Добавляем timestamp
-    timestamp = Timestamp()
-    timestamp.GetCurrentTime()
-    bios_report.timestamp.CopyFrom(timestamp)
-    bios_report.last_checked.CopyFrom(timestamp)
-    bios_report.uptime_sec = 42  # Mock uptime
 
     return bios_report
 
 
 def _create_mock_fsm_state():
     """Создает начальное FSM состояние для mock режима"""
-    from generated.fsm_state_pb2 import FSMStateEnum
-    from google.protobuf.timestamp_pb2 import Timestamp
-
-    fsm_state = FsmStateSnapshot(
-        snapshot_id=UUID(value="mock_fsm_001"),
-        current_state=FSMStateEnum.BOOTING,  # Начинаем с BOOTING состояния
-        fsm_instance_id=UUID(value="main_fsm"),
+    fsm_state = PydanticFsmStateSnapshot(
+        current_state=FsmStateEnum.BOOTING,  # Начинаем с BOOTING состояния
+        previous_state=FsmStateEnum.OFFLINE,
+        context_data={"mode": "mock", "initialized": "true"},
+        snapshot_id=PyUUID("mock_fsm_001"),
+        fsm_instance_id=PyUUID("main_fsm"),
         source_module="mock_provider",
         attempt_count=1,
+        ts_wall=datetime.now(UTC),
     )
-
-    # Добавляем timestamp
-    timestamp = Timestamp()
-    timestamp.GetCurrentTime()
-    fsm_state.timestamp.CopyFrom(timestamp)
-
-    # Добавляем context_data
-    fsm_state.context_data["mode"] = "mock"
-    fsm_state.context_data["initialized"] = "true"
 
     return fsm_state
 
@@ -106,21 +84,28 @@ _MOCK_BIOS_STATUS = _create_mock_bios_status()
 _MOCK_FSM_STATE = _create_mock_fsm_state()
 _MOCK_PROPOSALS = [
     Proposal(
-        proposal_id=UUID(value="mock_reflex_proposal"),
+        proposal_id=PyUUID("mock_reflex_proposal"),
         source_module_id="Q_MIND_REFLEX",
         confidence=0.99,
         priority=0.8,
-        type=Proposal.ProposalType.PLANNING,
+        type=ProposalTypeEnum.PLANNING,
+        justification="Mock reflex proposal justification.",
     ),
     Proposal(
-        proposal_id=UUID(value="mock_planner_proposal"),
+        proposal_id=PyUUID("mock_planner_proposal"),
         source_module_id="Q_MIND_PLANNER",
         confidence=0.85,
         priority=0.6,
-        type=Proposal.ProposalType.PLANNING,
+        type=ProposalTypeEnum.PLANNING,
+        justification="Mock planner proposal justification.",
     ),
 ]
-_MOCK_SENSOR_DATA = SensorReading(sensor_id=UUID(value="mock_sensor"), scalar_data=1.0)
+_MOCK_SENSOR_DATA = SensorData(
+    sensor_id=PyUUID("mock_sensor"),
+    sensor_type=SensorTypeEnum.OTHER,
+    scalar_data=1.0,
+    quality_score=1.0,
+)
 
 _MOCK_DATA_PROVIDER = MockDataProvider(
     mock_bios_status=_MOCK_BIOS_STATUS,
@@ -143,12 +128,12 @@ async def run_with_statestore(
             current_state = await state_store.get()
 
             logger.info("--- Input Messages (StateStore Mode) ---")
-            logger.info(f"BIOS: {MessageToDict(data_provider.get_bios_status())}")
-            logger.info(f"FSM: {MessageToDict(dto_to_proto(current_state))}")
+            logger.info(f"BIOS: {data_provider.get_bios_status().model_dump_json()}")
+            logger.info(f"FSM: {current_state.model_dump_json()}")
             logger.info(
-                f"Proposals: {[MessageToDict(p) for p in data_provider.get_proposals()]}"
+                f"Proposals: {[p.model_dump_json() for p in data_provider.get_proposals()]}"
             )
-            logger.info(f"Sensor: {MessageToDict(data_provider.get_sensor_data())}")
+            logger.info(f"Sensor: {data_provider.get_sensor_data().model_dump_json()}")
 
             await asyncio.sleep(config.tick_interval)
     except KeyboardInterrupt:
@@ -207,14 +192,14 @@ def main():
                     orchestrator.run_tick(data_provider)
                     logger.info("--- Input Messages (Mock) ---")
                     logger.info(
-                        f"BIOS: {MessageToDict(data_provider.get_bios_status())}"
+                        f"BIOS: {data_provider.get_bios_status().model_dump_json()}"
                     )
-                    logger.info(f"FSM: {MessageToDict(agent.context.fsm_state)}")
+                    logger.info(f"FSM: {agent.context.fsm_state.model_dump_json()}")
                     logger.info(
-                        f"Proposals: {[MessageToDict(p) for p in data_provider.get_proposals()]}"
+                        f"Proposals: {[p.model_dump_json() for p in data_provider.get_proposals()]}"
                     )
                     logger.info(
-                        f"Sensor: {MessageToDict(data_provider.get_sensor_data())}"
+                        f"Sensor: {data_provider.get_sensor_data().model_dump_json()}"
                     )
                     time.sleep(config.tick_interval)
             except KeyboardInterrupt:
@@ -233,20 +218,21 @@ def main():
                     orchestrator.run_tick(data_provider)
                     logger.info("--- Input Messages (gRPC) ---")
                     logger.info(
-                        f"BIOS: {MessageToDict(data_provider.get_bios_status())}"
+                        f"BIOS: {data_provider.get_bios_status().model_dump_json()}"
                     )
-                    logger.info(f"FSM: {MessageToDict(agent.context.fsm_state)}")
+                    logger.info(f"FSM: {agent.context.fsm_state.model_dump_json()}")
                     logger.info(
-                        f"Proposals: {[MessageToDict(p) for p in data_provider.get_proposals()]}"
+                        f"Proposals: {[p.model_dump_json() for p in data_provider.get_proposals()]}"
                     )
                     logger.info(
-                        f"Sensor: {MessageToDict(data_provider.get_sensor_data())}"
+                        f"Sensor: {data_provider.get_sensor_data().model_dump_json()}"
                     )
                     time.sleep(config.tick_interval)
             except KeyboardInterrupt:
                 logger.info("gRPC run stopped by user.")
     else:
-        logger.info("Running in LEGACY mode (direct Q-Sim Service instance).")
+        logger.info("Running in LEGACY mode (direct Q-Sim Service instance).
+")
         # Initialize QSimService (for MVP, direct instance)
         qsim_config_path = Path(ROOT_DIR) / "services" / "q_sim_service" / "config.yaml"
         qsim_config = load_config(qsim_config_path, QSimServiceConfig)
@@ -267,14 +253,14 @@ def main():
                     orchestrator.run_tick(data_provider)
                     logger.info("--- Input Messages (Legacy) ---")
                     logger.info(
-                        f"BIOS: {MessageToDict(data_provider.get_bios_status())}"
+                        f"BIOS: {data_provider.get_bios_status().model_dump_json()}"
                     )
-                    logger.info(f"FSM: {MessageToDict(agent.context.fsm_state)}")
+                    logger.info(f"FSM: {agent.context.fsm_state.model_dump_json()}")
                     logger.info(
-                        f"Proposals: {[MessageToDict(p) for p in data_provider.get_proposals()]}"
+                        f"Proposals: {[p.model_dump_json() for p in data_provider.get_proposals()]}"
                     )
                     logger.info(
-                        f"Sensor: {MessageToDict(data_provider.get_sensor_data())}"
+                        f"Sensor: {data_provider.get_sensor_data().model_dump_json()}"
                     )
                     time.sleep(config.tick_interval)
             except KeyboardInterrupt:

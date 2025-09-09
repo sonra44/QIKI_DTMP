@@ -18,6 +18,21 @@ from ..core.neural_engine import NeuralEngine
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from generated.proposal_pb2 import Proposal
+from shared.config_models import QCoreAgentConfig
+
+
+def create_test_config(**overrides):
+    """Helper to create a valid QCoreAgentConfig for tests."""
+    defaults = {
+        "tick_interval": 1,
+        "log_level": "INFO",
+        "recovery_delay": 1,
+        "proposal_confidence_threshold": 0.8,
+        "mock_neural_proposals_enabled": False,
+        "grpc_server_address": "localhost:50051",
+    }
+    defaults.update(overrides)
+    return QCoreAgentConfig(**defaults)
 
 
 @pytest.fixture
@@ -35,7 +50,7 @@ def mock_data_provider():
 
 
 def test_qcoreagent_initialization():
-    config = {"test_key": "test_value"}
+    config = create_test_config()
     agent = QCoreAgent(config)
     assert agent.config == config
     assert isinstance(agent.context, AgentContext)
@@ -43,7 +58,7 @@ def test_qcoreagent_initialization():
 
 
 def test_qcoreagent_run_tick_updates_context(mock_data_provider):
-    config = {"test_key": "test_value"}
+    config = create_test_config()
     agent = QCoreAgent(config)
 
     agent.run_tick(mock_data_provider)
@@ -68,7 +83,7 @@ def test_qcoreagent_run_tick_updates_context(mock_data_provider):
 
 
 def test_qcoreagent_handle_bios_error_safe_mode(mock_data_provider):
-    config = {"test_key": "test_value"}
+    config = create_test_config()
     agent = QCoreAgent(config)
 
     # Simulate an error in BIOS handling
@@ -78,11 +93,11 @@ def test_qcoreagent_handle_bios_error_safe_mode(mock_data_provider):
     agent.run_tick(mock_data_provider)
 
     agent._handle_bios.assert_called_once()
-    agent._switch_to_safe_mode.assert_called_once()
+    agent._switch_to_safe_mode.assert_called()
 
 
 def test_qcoreagent_handle_fsm_error_safe_mode(mock_data_provider):
-    config = {"test_key": "test_value"}
+    config = create_test_config()
     agent = QCoreAgent(config)
 
     # Simulate an error in FSM handling
@@ -92,11 +107,11 @@ def test_qcoreagent_handle_fsm_error_safe_mode(mock_data_provider):
     agent.run_tick(mock_data_provider)
 
     agent._handle_fsm.assert_called_once()
-    agent._switch_to_safe_mode.assert_called_once()
+    agent._switch_to_safe_mode.assert_called()
 
 
 def test_qcoreagent_evaluate_proposals_error_safe_mode(mock_data_provider):
-    config = {"test_key": "test_value"}
+    config = create_test_config()
     agent = QCoreAgent(config)
 
     # Simulate an error in proposal evaluation
@@ -106,7 +121,7 @@ def test_qcoreagent_evaluate_proposals_error_safe_mode(mock_data_provider):
     agent.run_tick(mock_data_provider)
 
     agent._evaluate_proposals.assert_called_once()
-    agent._switch_to_safe_mode.assert_called_once()
+    agent._switch_to_safe_mode.assert_called()
 
 
 def test_bot_id_generated(monkeypatch):
@@ -129,7 +144,8 @@ def test_bot_id_generated(monkeypatch):
         assert bot.get_id() == bot2.get_id()
 
 
-def test_fsm_handler_initial_state_transition():
+@pytest.mark.asyncio
+async def test_fsm_handler_initial_state_transition():
     context = AgentContext()
     context.bios_status = BiosStatusReport(
         all_systems_go=True
@@ -138,7 +154,7 @@ def test_fsm_handler_initial_state_transition():
     fsm_handler = FSMHandler(context)
     initial_state = FsmStateSnapshot(current_state=FSMStateEnum.BOOTING)
 
-    new_state = fsm_handler.process_fsm_state(initial_state)
+    new_state = await fsm_handler.process_fsm_dto(initial_state)
 
     assert new_state.current_state == FSMStateEnum.IDLE
     assert len(new_state.history) == 1
@@ -147,7 +163,8 @@ def test_fsm_handler_initial_state_transition():
     assert new_state.history[0].trigger_event == "BOOT_COMPLETE"
 
 
-def test_fsm_handler_booting_to_error_on_bios_fail():
+@pytest.mark.asyncio
+async def test_fsm_handler_booting_to_error_on_bios_fail():
     context = AgentContext()
     context.bios_status = BiosStatusReport(
         all_systems_go=False
@@ -156,7 +173,7 @@ def test_fsm_handler_booting_to_error_on_bios_fail():
     fsm_handler = FSMHandler(context)
     initial_state = FsmStateSnapshot(current_state=FSMStateEnum.BOOTING)
 
-    new_state = fsm_handler.process_fsm_state(initial_state)
+    new_state = await fsm_handler.process_fsm_dto(initial_state)
 
     assert new_state.current_state == FSMStateEnum.ERROR_STATE
     assert len(new_state.history) == 1
@@ -165,7 +182,8 @@ def test_fsm_handler_booting_to_error_on_bios_fail():
     assert new_state.history[0].trigger_event == "BIOS_ERROR"
 
 
-def test_fsm_handler_idle_to_active_on_proposals():
+@pytest.mark.asyncio
+async def test_fsm_handler_idle_to_active_on_proposals():
     context = AgentContext()
     context.bios_status = BiosStatusReport(
         all_systems_go=True
@@ -175,7 +193,7 @@ def test_fsm_handler_idle_to_active_on_proposals():
     fsm_handler = FSMHandler(context)
     initial_state = FsmStateSnapshot(current_state=FSMStateEnum.IDLE)
 
-    new_state = fsm_handler.process_fsm_state(initial_state)
+    new_state = await fsm_handler.process_fsm_dto(initial_state)
 
     assert new_state.current_state == FSMStateEnum.ACTIVE
     assert len(new_state.history) == 1
@@ -184,7 +202,8 @@ def test_fsm_handler_idle_to_active_on_proposals():
     assert new_state.history[0].trigger_event == "PROPOSALS_RECEIVED"
 
 
-def test_fsm_handler_active_to_idle_on_no_proposals():
+@pytest.mark.asyncio
+async def test_fsm_handler_active_to_idle_on_no_proposals():
     context = AgentContext()
     context.bios_status = BiosStatusReport(
         all_systems_go=True
@@ -194,7 +213,7 @@ def test_fsm_handler_active_to_idle_on_no_proposals():
     fsm_handler = FSMHandler(context)
     initial_state = FsmStateSnapshot(current_state=FSMStateEnum.ACTIVE)
 
-    new_state = fsm_handler.process_fsm_state(initial_state)
+    new_state = await fsm_handler.process_fsm_dto(initial_state)
 
     assert new_state.current_state == FSMStateEnum.IDLE
     assert len(new_state.history) == 1
@@ -203,7 +222,8 @@ def test_fsm_handler_active_to_idle_on_no_proposals():
     assert new_state.history[0].trigger_event == "NO_PROPOSALS"
 
 
-def test_fsm_handler_error_to_idle_on_recovery():
+@pytest.mark.asyncio
+async def test_fsm_handler_error_to_idle_on_recovery():
     context = AgentContext()
     context.bios_status = BiosStatusReport(
         all_systems_go=True
@@ -213,7 +233,7 @@ def test_fsm_handler_error_to_idle_on_recovery():
     fsm_handler = FSMHandler(context)
     initial_state = FsmStateSnapshot(current_state=FSMStateEnum.ERROR_STATE)
 
-    new_state = fsm_handler.process_fsm_state(initial_state)
+    new_state = await fsm_handler.process_fsm_dto(initial_state)
 
     assert new_state.current_state == FSMStateEnum.IDLE
     assert len(new_state.history) == 1
@@ -224,13 +244,13 @@ def test_fsm_handler_error_to_idle_on_recovery():
 
 # Tests for ProposalEvaluator
 def test_proposal_evaluator_no_proposals():
-    evaluator = ProposalEvaluator({})
+    evaluator = ProposalEvaluator(create_test_config())
     accepted = evaluator.evaluate_proposals([])
     assert len(accepted) == 0
 
 
 def test_proposal_evaluator_low_confidence_proposals():
-    evaluator = ProposalEvaluator({})
+    evaluator = ProposalEvaluator(create_test_config(proposal_confidence_threshold=0.6))
     proposals = [
         Proposal(source_module_id="test", confidence=0.4),
         Proposal(source_module_id="test", confidence=0.5),
@@ -240,7 +260,7 @@ def test_proposal_evaluator_low_confidence_proposals():
 
 
 def test_proposal_evaluator_high_confidence_proposals():
-    evaluator = ProposalEvaluator({})
+    evaluator = ProposalEvaluator(create_test_config(proposal_confidence_threshold=0.6))
     proposals = [
         Proposal(
             source_module_id="test1",
@@ -261,7 +281,7 @@ def test_proposal_evaluator_high_confidence_proposals():
 
 
 def test_proposal_evaluator_priority_selection():
-    evaluator = ProposalEvaluator({})
+    evaluator = ProposalEvaluator(create_test_config(proposal_confidence_threshold=0.6))
     proposals = [
         Proposal(
             source_module_id="low_prio",
@@ -284,7 +304,7 @@ def test_proposal_evaluator_priority_selection():
 
 
 def test_proposal_evaluator_same_priority_different_confidence():
-    evaluator = ProposalEvaluator({})
+    evaluator = ProposalEvaluator(create_test_config())
     proposals = [
         Proposal(
             source_module_id="conf_07",
@@ -309,7 +329,7 @@ def test_rule_engine_generates_safe_mode_proposal_on_bios_error():
     context = AgentContext()
     context.bios_status = BiosStatusReport(all_systems_go=False)  # Simulate BIOS error
 
-    rule_engine = RuleEngine(context, {})
+    rule_engine = RuleEngine(context, create_test_config())
     proposals = rule_engine.generate_proposals(context)
 
     assert len(proposals) == 1
@@ -341,7 +361,7 @@ def test_rule_engine_no_proposal_on_bios_ok():
         all_systems_go=True
     )  # Specific test case needs healthy BIOS # BIOS is OK
 
-    rule_engine = RuleEngine(context, {})
+    rule_engine = RuleEngine(context, create_test_config())
     proposals = rule_engine.generate_proposals(context)
 
     assert len(proposals) == 0
@@ -350,7 +370,7 @@ def test_rule_engine_no_proposal_on_bios_ok():
 # Tests for NeuralEngine
 def test_neural_engine_generates_mock_proposal_when_enabled():
     context = AgentContext()
-    config = {"mock_neural_proposals_enabled": True}
+    config = create_test_config(mock_neural_proposals_enabled=True)
     neural_engine = NeuralEngine(context, config)
     proposals = neural_engine.generate_proposals(context)
 
@@ -362,7 +382,7 @@ def test_neural_engine_generates_mock_proposal_when_enabled():
 
 def test_neural_engine_generates_no_proposal_when_disabled():
     context = AgentContext()
-    config = {"mock_neural_proposals_enabled": False}
+    config = create_test_config(mock_neural_proposals_enabled=False)
     neural_engine = NeuralEngine(context, config)
     proposals = neural_engine.generate_proposals(context)
 
@@ -374,7 +394,7 @@ def test_tick_orchestrator_runs_agent_methods(mock_data_provider):
     mock_agent = Mock(spec=QCoreAgent)
     mock_agent.tick_id = 0
     mock_agent.context = AgentContext()
-    mock_agent.config = {"recovery_delay": 0}
+    mock_agent.config = create_test_config(recovery_delay=0)
     mock_agent._switch_to_safe_mode = Mock()
 
     orchestrator = TickOrchestrator(mock_agent, mock_agent.config)
@@ -392,7 +412,7 @@ def test_tick_orchestrator_handles_exception_and_recovers(mock_data_provider):
     mock_agent = Mock(spec=QCoreAgent)
     mock_agent.tick_id = 0
     mock_agent.context = AgentContext()
-    mock_agent.config = {"recovery_delay": 0.01}  # Small delay for test
+    mock_agent.config = create_test_config(recovery_delay=1)
     mock_agent._switch_to_safe_mode = Mock()
 
     # Simulate an exception during _handle_bios

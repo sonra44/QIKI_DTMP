@@ -4,10 +4,9 @@ from .agent_logger import logger
 
 if TYPE_CHECKING:
     from .agent import AgentContext
-    from UP.config_models import QCoreAgentConfig
-from generated.proposal_pb2 import Proposal
-from generated.common_types_pb2 import UUID
-from google.protobuf.timestamp_pb2 import Timestamp
+    from shared.config_models import QCoreAgentConfig
+from shared.models.core import Proposal, ProposalTypeEnum
+from uuid import UUID as PyUUID
 
 
 class NeuralEngine(INeuralEngine):
@@ -29,17 +28,14 @@ class NeuralEngine(INeuralEngine):
         proposals: List[Proposal] = []
 
         if self.mock_neural_proposals_enabled:
-            timestamp = Timestamp()
-            timestamp.GetCurrentTime()
             mock_proposal = Proposal(
-                proposal_id=UUID(value="neural_mock_proposal"),
+                proposal_id=PyUUID("00000000-0000-0000-0000-000000000002"),
                 source_module_id="neural_engine_mock",
-                timestamp=timestamp,
                 proposed_actions=[],  # No actions for mock
                 justification="Mock proposal from Neural Engine.",
                 priority=0.5,
                 confidence=0.7,
-                type=Proposal.ProposalType.PLANNING,
+                type=ProposalTypeEnum.PLANNING,
             )
             proposals.append(mock_proposal)
             logger.debug("Generated mock proposal from Neural Engine.")

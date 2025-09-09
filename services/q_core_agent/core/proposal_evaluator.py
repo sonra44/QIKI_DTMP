@@ -1,7 +1,8 @@
 from typing import List
 from .interfaces import IProposalEvaluator
 from .agent_logger import logger
-from generated.proposal_pb2 import Proposal
+from shared.models.core import Proposal, ProposalTypeEnum
+from shared.config_models import QCoreAgentConfig
 
 
 class ProposalEvaluator(IProposalEvaluator):
@@ -10,7 +11,7 @@ class ProposalEvaluator(IProposalEvaluator):
     This version considers priority and confidence.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: QCoreAgentConfig):
         self.config = config
         self.confidence_threshold = config.proposal_confidence_threshold
         logger.info(
@@ -37,7 +38,7 @@ class ProposalEvaluator(IProposalEvaluator):
                 proposal.confidence < self.confidence_threshold
             ):  # Configurable threshold
                 logger.debug(
-                    f"Rejected proposal {proposal.proposal_id.value} (Confidence too low: {proposal.confidence})"
+                    f"Rejected proposal {proposal.proposal_id} (Confidence too low: {proposal.confidence})"
                 )
                 continue
 
@@ -61,7 +62,7 @@ class ProposalEvaluator(IProposalEvaluator):
         if best_proposal:
             accepted_proposals.append(best_proposal)
             logger.info(
-                f"Accepted proposal: {best_proposal.proposal_id.value} (Source: {best_proposal.source_module_id}, Type: {best_proposal.type}, Priority: {best_proposal.priority}, Confidence: {best_proposal.confidence})"
+                f"Accepted proposal: {best_proposal.proposal_id} (Source: {best_proposal.source_module_id}, Type: {best_proposal.type}, Priority: {best_proposal.priority}, Confidence: {best_proposal.confidence})"
             )
         else:
             logger.info("No proposals met the acceptance criteria.")

@@ -255,9 +255,9 @@ class TestAsyncStateStoreConcurrency:
         # Все записи должны успешно выполниться
         assert len(results) == 50
 
-        # Финальная версия должна быть максимальной
+        # Финальная версия должна быть максимальной из переданных
         final_state = await empty_store.get()
-        assert final_state.version >= 50
+        assert final_state.version == 49
 
     @pytest.mark.asyncio
     async def test_concurrent_subscribe_unsubscribe(self, empty_store):
@@ -341,7 +341,7 @@ class TestAsyncStateStoreMetrics:
         assert "current_state" in metrics
 
         assert metrics["total_sets"] == 0
-        assert metrics["total_gets"] == 1  # get_metrics() вызвал get()
+        assert metrics["total_gets"] == 0  # get_metrics() не считается за get()
         assert metrics["current_state"] == "UNINITIALIZED"
 
     @pytest.mark.asyncio
@@ -360,7 +360,7 @@ class TestAsyncStateStoreMetrics:
         metrics2 = await empty_store.get_metrics()
 
         assert metrics2["total_sets"] == 1
-        assert metrics2["total_gets"] >= initial_gets + 3  # +2 get() + get_metrics()
+        assert metrics2["total_gets"] == initial_gets + 2  # +2 get()
         assert metrics2["current_version"] == sample_snapshot.version
         assert metrics2["current_state"] == sample_snapshot.state.name
 

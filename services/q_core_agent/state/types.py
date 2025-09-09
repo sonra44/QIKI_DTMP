@@ -3,9 +3,9 @@ DTO модель для FSM состояний без зависимостей �
 Immutable dataclasses для безопасной работы с состоянием.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntEnum
-from typing import Optional, List, Dict
+from typing import Optional, Dict, Tuple
 import time
 import uuid
 
@@ -74,14 +74,16 @@ class FsmSnapshotDTO:
     attempt_count: int = 0
 
     # История переходов и метаданные
-    history: List[TransitionDTO] = None
+    history: Tuple[TransitionDTO, ...] | None = None
     context_data: Dict[str, str] = None
     state_metadata: Dict[str, str] = None
 
     def __post_init__(self):
         # Устанавливаем значения по умолчанию для mutable полей
         if self.history is None:
-            object.__setattr__(self, "history", [])
+            object.__setattr__(self, "history", tuple())
+        else:
+            object.__setattr__(self, "history", tuple(self.history))
         if self.context_data is None:
             object.__setattr__(self, "context_data", {})
         if self.state_metadata is None:
@@ -98,6 +100,30 @@ class FsmSnapshotDTO:
             object.__setattr__(self, "snapshot_id", str(uuid.uuid4()))
         if not self.fsm_instance_id:
             object.__setattr__(self, "fsm_instance_id", str(uuid.uuid4()))
+
+    def add_transition(
+        self, transition: "TransitionDTO", max_history: int | None = None
+    ) -> "FsmSnapshotDTO":
+        """Вернуть новый снапшот с добавленным переходом.
+
+        Args:
+            transition: TransitionDTO для добавления в историю
+            max_history: Максимальная длина истории. При превышении
+                самые старые элементы удаляются.
+
+        Returns:
+            Новый FsmSnapshotDTO с обновлённой историей.
+        """
+        new_history = self.history + (transition,)
+
+        if (
+            max_history is not None
+            and max_history > 0
+            and len(new_history) > max_history
+        ):
+            new_history = new_history[-max_history:]
+
+        return replace(self, history=new_history)
 
 
 def initial_snapshot() -> FsmSnapshotDTO:
@@ -148,9 +174,9 @@ def next_snapshot(
     new_version = current.version + version_increment
 
     # Новая история переходов
-    new_history = list(current.history) if current.history else []
+    new_history = current.history if current.history else tuple()
     if transition:
-        new_history.append(transition)
+        new_history = new_history + (transition,)
 
     return FsmSnapshotDTO(
         version=new_version,

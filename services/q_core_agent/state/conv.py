@@ -120,7 +120,7 @@ def transition_dto_to_proto(dto: TransitionDTO) -> StateTransition:
         return proto
 
     except Exception as e:
-        raise ConversionError(f"Ошибка конвертации TransitionDTO->proto: {e}")
+        raise ConversionError(f"Ошибка конвертации TransitionDTO->proto: ({type(e).__name__}) {e}")
 
 
 def transition_proto_to_dto(proto: StateTransition) -> TransitionDTO:
@@ -140,7 +140,7 @@ def transition_proto_to_dto(proto: StateTransition) -> TransitionDTO:
             ts_mono=0.0,  # не храним в protobuf, только wall time
         )
     except Exception as e:
-        raise ConversionError(f"Ошибка конвертации StateTransition->DTO: {e}")
+        raise ConversionError(f"Ошибка конвертации StateTransition->DTO: ({type(e).__name__}) {e}")
 
 
 def dto_to_proto(dto: FsmSnapshotDTO) -> FsmStateSnapshot:
@@ -196,7 +196,7 @@ def dto_to_proto(dto: FsmSnapshotDTO) -> FsmStateSnapshot:
         return proto
 
     except Exception as e:
-        raise ConversionError(f"Ошибка конвертации FsmSnapshotDTO->proto: {e}")
+        raise ConversionError(f"Ошибка конвертации FsmSnapshotDTO->proto: ({type(e).__name__}) {e}")
 
 
 def proto_to_dto(proto: FsmStateSnapshot) -> FsmSnapshotDTO:
@@ -256,7 +256,7 @@ def proto_to_dto(proto: FsmStateSnapshot) -> FsmSnapshotDTO:
         )
 
     except Exception as e:
-        raise ConversionError(f"Ошибка конвертации FsmStateSnapshot->DTO: {e}")
+        raise ConversionError(f"Ошибка конвертации FsmStateSnapshot->DTO: ({type(e).__name__}) {e}")
 
 
 def dto_to_json_dict(dto: FsmSnapshotDTO) -> dict:
@@ -286,8 +286,11 @@ def dto_to_protobuf_json(dto: FsmSnapshotDTO) -> dict:
     Конвертировать DTO в JSON через protobuf (для совместимости с существующими логами).
     Более медленная, но полностью совместимая с текущим форматом логов.
     """
-    proto = dto_to_proto(dto)
-    return MessageToDict(proto)
+    try:
+        proto = dto_to_proto(dto)
+        return MessageToDict(proto)
+    except Exception as e:
+        raise ConversionError(f"Ошибка конвертации DTO->Protobuf JSON: ({type(e).__name__}) {e}")
 
 
 # Удобные функции для быстрого использования

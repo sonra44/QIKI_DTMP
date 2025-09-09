@@ -14,7 +14,7 @@ from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import UUID
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.json_format import MessageToDict
-from UP.config_models import QSimServiceConfig, load_config
+from shared.config_models import QSimServiceConfig, load_config
 
 
 class QSimService:

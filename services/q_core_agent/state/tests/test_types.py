@@ -169,7 +169,7 @@ class TestFsmSnapshotDTO:
         assert snapshot.prev_state is None
         assert snapshot.source_module == "fsm_handler"
         assert snapshot.attempt_count == 0
-        assert snapshot.history == []
+        assert snapshot.history == ()
         assert snapshot.context_data == {}
         assert snapshot.state_metadata == {}
 
@@ -326,7 +326,7 @@ class TestEdgeCases:
         assert snapshot.reason == ""
         assert snapshot.snapshot_id  # автогенерированный UUID
         assert snapshot.prev_state is None
-        assert snapshot.history == []
+        assert snapshot.history == ()
         assert snapshot.context_data == {}
 
     def test_large_history_handling(self):

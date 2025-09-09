@@ -117,7 +117,7 @@ class AsyncStateStore:
 
             logger.debug(
                 f"StateStore updated: version={new_snap.version}, "
-                f"state={new_snap.state.name}, reason='{new_snap.reason}'"
+                f"state={getattr(new_snap.state, 'name', new_snap.state)}, reason='{new_snap.reason}'"
             )
 
             return self._snap
@@ -214,13 +214,14 @@ class AsyncStateStore:
         """Получить метрики работы StateStore"""
         async with self._lock:
             uptime = time.time() - self._metrics["creation_ts"]
+            current_state_name = (
+                self._snap.state.name if self._snap else "UNINITIALIZED"
+            )
             return {
                 **self._metrics,
                 "uptime_seconds": uptime,
                 "current_version": self._snap.version if self._snap else -1,
-                "current_state": self._snap.state.name
-                if self._snap
-                else "UNINITIALIZED",
+                "current_state": current_state_name,
                 "active_subscribers": len(self._subscribers),
             }
 

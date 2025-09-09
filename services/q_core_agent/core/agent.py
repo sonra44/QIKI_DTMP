@@ -11,9 +11,7 @@ from .interfaces import (
 from .bot_core import BotCore
 
 # Импортируем сгенерированные Protobuf классы
-from generated.bios_status_pb2 import BiosStatusReport
-from generated.fsm_state_pb2 import FsmStateSnapshot
-from generated.proposal_pb2 import Proposal
+from shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal
 
 import os
 from .bios_handler import BiosHandler
@@ -24,14 +22,14 @@ from .rule_engine import RuleEngine
 from .neural_engine import NeuralEngine
 
 if TYPE_CHECKING:
-    from UP.config_models import QCoreAgentConfig
+    from shared.config_models import QCoreAgentConfig
 
 
 class AgentContext:
     def __init__(
         self,
-        bios_status: Optional[BiosStatusReport] = None,
-        fsm_state: Optional[FsmStateSnapshot] = None,
+        bios_status: Optional[BiosStatus] = None,
+        fsm_state: Optional[PydanticFsmStateSnapshot] = None,
         proposals: Optional[list[Proposal]] = None,
     ):
         self.bios_status = bios_status
@@ -138,14 +136,14 @@ class QCoreAgent:
         # For MVP, take actions from the first accepted proposal
         chosen_proposal = self.context.proposals[0]
         logger.info(
-            f"Decision: Acting on proposal {chosen_proposal.proposal_id.value} from {chosen_proposal.source_module_id}"
+            f"Decision: Acting on proposal {chosen_proposal.proposal_id} from {chosen_proposal.source_module_id}"
         )
 
         for action in chosen_proposal.proposed_actions:
             try:
                 self.bot_core.send_actuator_command(action)
                 logger.info(
-                    f"Sent actuator command: {action.actuator_id.value} - {action.command_type}"
+                    f"Sent actuator command: {action.actuator_id} - {action.command_type.name}"
                 )
             except ValueError as e:
                 logger.error(
@@ -164,7 +162,7 @@ class QCoreAgent:
         return {
             "tick_id": self.tick_id,
             "bios_ok": self.context.is_bios_ok(),
-            "fsm_state": self.context.fsm_state.current_state
+            "fsm_state": self.context.fsm_state.current_state.name
             if self.context.fsm_state
             else None,
             "proposals_count": len(self.context.proposals),

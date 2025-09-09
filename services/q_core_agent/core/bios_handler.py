@@ -1,8 +1,8 @@
 from .interfaces import IBiosHandler
 from .agent_logger import logger
 from .bot_core import BotCore
-from generated.bios_status_pb2 import BiosStatusReport, DeviceStatus
-from generated.common_types_pb2 import UUID
+from shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
+from uuid import UUID as PyUUID
 
 
 class BiosHandler(IBiosHandler):
@@ -16,15 +16,17 @@ class BiosHandler(IBiosHandler):
         self.bot_core = bot_core
         logger.info("BiosHandler initialized.")
 
-    def process_bios_status(self, bios_status: BiosStatusReport) -> BiosStatusReport:
+    def process_bios_status(self, bios_status: BiosStatus) -> BiosStatus:
         logger.debug(f"Processing BIOS status: {bios_status}")
 
         # Simulate some processing based on bot_core's hardware profile
         # In a real system, this would involve actual checks against hardware
-        updated_bios_status = BiosStatusReport()
-        updated_bios_status.CopyFrom(
-            bios_status
-        )  # Start with a copy of the incoming status
+        updated_bios_status = BiosStatus(
+            bios_version=bios_status.bios_version,
+            firmware_version=bios_status.firmware_version,
+            post_results=list(bios_status.post_results), # Create a mutable copy
+            timestamp=bios_status.timestamp
+        )
 
         all_systems_go = True
         hardware_profile = self.bot_core.get_property("hardware_profile")
@@ -33,7 +35,7 @@ class BiosHandler(IBiosHandler):
                 act["id"] for act in hardware_profile.get("actuators", [])
             }.union({sens["id"] for sens in hardware_profile.get("sensors", [])})
 
-            current_devices = {ds.device_id.value for ds in bios_status.post_results}
+            current_devices = {ds.device_id for ds in bios_status.post_results}
 
             # Check for missing devices
             for expected_device_id in expected_devices:
@@ -44,26 +46,26 @@ class BiosHandler(IBiosHandler):
                     all_systems_go = False
                     # Add a missing device status to the report
                     missing_device_status = DeviceStatus(
-                        device_id=UUID(value=expected_device_id),
-                        status=DeviceStatus.Status.NOT_FOUND,
-                        error_message="Device not reported by BIOS",
-                        status_code=DeviceStatus.StatusCode.COMPONENT_NOT_FOUND,  # Component not found
+                        device_id=PyUUID(expected_device_id),
+                        status=DeviceStatusEnum.NOT_FOUND,
+                        status_message="Device not reported by BIOS",
                     )
                     updated_bios_status.post_results.append(missing_device_status)
 
             # Check status of reported devices
             for device_status in updated_bios_status.post_results:
-                if device_status.status != DeviceStatus.Status.OK:
+                if device_status.status != DeviceStatusEnum.OK:
                     all_systems_go = False
                     logger.warning(
-                        f"Device {device_status.device_id.value} reported status {device_status.status}"
+                        f"Device {device_status.device_id} reported status {device_status.status.name}"
                     )
         else:
             logger.warning(
                 "No hardware profile found in bot_config. Assuming all systems go for minimal mode."
             )
 
-        updated_bios_status.all_systems_go = all_systems_go
+        # The all_systems_go computed field will handle this
+        # updated_bios_status.all_systems_go = all_systems_go 
 
         logger.info(
             f"BIOS processing complete. All systems go: {updated_bios_status.all_systems_go}"

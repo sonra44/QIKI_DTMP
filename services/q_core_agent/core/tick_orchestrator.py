@@ -8,10 +8,9 @@ from .interfaces import IDataProvider
 if TYPE_CHECKING:
     from .agent import QCoreAgent
     from ..state.store import AsyncStateStore
-    from UP.config_models import QCoreAgentConfig
+    from shared.config_models import QCoreAgentConfig
 
-# StateStore imports
-from ..state.conv import dto_to_proto
+from shared.models.core import FsmStateEnum
 
 
 class TickOrchestrator:
@@ -84,7 +83,7 @@ class TickOrchestrator:
                     "bios_ok": self.agent.context.bios_status.all_systems_go
                     if self.agent.context.bios_status
                     else None,
-                    "fsm_state": self.agent.context.fsm_state.current_state
+                    "fsm_state": self.agent.context.fsm_state.current_state.name
                     if self.agent.context.fsm_state
                     else None,
                     "proposals_count": len(self.agent.context.proposals),
@@ -120,9 +119,6 @@ class TickOrchestrator:
 
             # Обрабатываем FSM переходы через новый метод
             updated_dto = await self.agent.fsm_handler.process_fsm_dto(current_dto)
-
-            # Конвертируем в protobuf для контекста (для совместимости с логами)
-            self.agent.context.fsm_state = dto_to_proto(updated_dto)
 
             logger.debug(
                 f"FSM processed: v={updated_dto.version}, state={updated_dto.state.name}"
@@ -177,7 +173,7 @@ class TickOrchestrator:
                     "bios_ok": self.agent.context.bios_status.all_systems_go
                     if self.agent.context.bios_status
                     else None,
-                    "fsm_state": self.agent.context.fsm_state.current_state
+                    "fsm_state": self.agent.context.fsm_state.current_state.name
                     if self.agent.context.fsm_state
                     else None,
                     "proposals_count": len(self.agent.context.proposals),

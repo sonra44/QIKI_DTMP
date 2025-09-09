@@ -12,8 +12,7 @@ print(f"sys.path: {sys.path}")
 
 try:
     from services.q_sim_service.main import QSimService
-    from UP.config_models import QSimServiceConfig, load_config
-    from services.q_sim_service.logger import logger
+    from shared.config_models import QSimServiceConfig, load_config
 
     print("Imports successful.")
 
@@ -40,7 +39,7 @@ try:
     print("The proposed fix is correct.")
 
 except Exception as e:
-    print(f"\n--- VERIFICATION FAILED ---")
+    print("\n--- VERIFICATION FAILED ---")
     print(f"An error occurred: {e}")
     import traceback
     traceback.print_exc()
