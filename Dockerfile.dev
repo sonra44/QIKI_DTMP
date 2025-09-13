@@ -12,6 +12,10 @@ LABEL version="1.0"
 # Установка рабочей директории
 WORKDIR /workspace
 
+# Copy ruff.toml and set environment variable for RUFF config
+COPY ruff.toml /app/ruff.toml
+ENV RUFF_CONFIG=/app/ruff.toml
+
 # Установка переменных окружения, чтобы Python выводил логи сразу и не создавал .pyc файлы
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1

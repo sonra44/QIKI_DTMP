@@ -1,21 +1,18 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from .interfaces import IFSMHandler
 from .agent_logger import logger
 
 if TYPE_CHECKING:
     from .agent import AgentContext
-    from ..state.store import AsyncStateStore
 
 # StateStore imports
-from ..state.types import (
-    FsmSnapshotDTO,
-    FsmState,
-    TransitionStatus,
-    create_transition,
-    next_snapshot,
-)
-from generated.fsm_state_pb2 import FSMStateEnum as ProtoFSMStateEnum # Renamed for clarity
+from services.q_core_agent.state.types import FsmState, TransitionStatus, create_transition, next_snapshot
 from shared.converters.protobuf_pydantic import proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto, pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot
+from shared.models.core import (
+    FsmStateSnapshot as PydanticFsmStateSnapshot,
+    FsmTransition as PydanticFsmTransition,
+    FsmStateEnum,
+)
 
 class FSMHandler(IFSMHandler):
     def __init__(self, context: "AgentContext"): # Removed state_store for now
@@ -74,3 +71,41 @@ class FSMHandler(IFSMHandler):
 
     # Additional methods for FSM management (e.g., handling events, loading rules)
     # ...
+
+    def process_fsm_state(self, current_fsm_state: PydanticFsmStateSnapshot) -> PydanticFsmStateSnapshot:
+        """
+        Синхронная обработка FSM для legacy-цикла.
+        Минимальная логика: BOOTING -> IDLE при успешном BIOS; иначе вернуть текущее.
+        """
+        try:
+            state = current_fsm_state
+            if state is None:
+                # Инициализация минимального состояния при отсутствии
+                state = PydanticFsmStateSnapshot(
+                    current_state=FsmStateEnum.BOOTING,
+                    previous_state=FsmStateEnum.OFFLINE,
+                )
+
+            next_state = state.current_state
+            event = "NO_CHANGE"
+
+            if state.current_state == FsmStateEnum.BOOTING and self.context.is_bios_ok():
+                next_state = FsmStateEnum.IDLE
+                event = "BOOT_COMPLETE"
+
+            if next_state != state.current_state:
+                transition = PydanticFsmTransition(
+                    event_name=event,
+                    from_state=state.current_state,
+                    to_state=next_state,
+                )
+                # Обновления in-place
+                state.history.append(transition)
+                state.last_transition = transition
+                state.previous_state = state.current_state
+                state.current_state = next_state
+
+            return state
+        except Exception as e:
+            logger.error(f"FSMHandler.process_fsm_state failed: {e}")
+            raise

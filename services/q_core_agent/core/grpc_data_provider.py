@@ -4,8 +4,9 @@ from typing import List
 from services.q_core_agent.core.interfaces import IDataProvider
 from services.q_core_agent.core.agent_logger import logger
 
-from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatusEnum, SensorTypeEnum
-from shared.converters.protobuf_pydantic import proto_bios_status_report_to_pydantic_bios_status, pydantic_bios_status_to_proto_bios_status_report, proto_fsm_state_snapshot_to_pydantic_fsm_state_snapshot, pydantic_actuator_command_to_proto_actuator_command, proto_sensor_reading_to_pydantic_sensor_data
+from datetime import datetime, UTC
+from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatusEnum, SensorTypeEnum, FsmStateEnum
+from shared.converters.protobuf_pydantic import pydantic_actuator_command_to_proto_actuator_command, proto_sensor_reading_to_pydantic_sensor_data
 from uuid import UUID as PyUUID
 from generated.q_sim_api_pb2_grpc import QSimAPIStub
 from google.protobuf.empty_pb2 import Empty
@@ -55,20 +56,17 @@ class GrpcDataProvider(IDataProvider):
 
         # Симулируем результаты POST для типичных устройств бота
         typical_devices = [
-            ("motor_left", DeviceStatusEnum.OK, "Motor left operational"),
-            ("motor_right", DeviceStatusEnum.OK, "Motor right operational"),
-            ("lidar_front", DeviceStatusEnum.OK, "LIDAR sensor operational"),
-            ("imu_main", DeviceStatusEnum.OK, "IMU sensor operational"),
-            (
-                "system_controller",
-                DeviceStatusEnum.OK,
-                "System controller operational",
-            ),
+            ("motor_left", "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
+            ("motor_right", "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
+            ("lidar_front", "Front LIDAR", DeviceStatusEnum.OK, "LIDAR sensor operational"),
+            ("imu_main", "Main IMU", DeviceStatusEnum.OK, "IMU sensor operational"),
+            ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
         ]
 
-        for device_id, status, message in typical_devices:
+        for device_id, device_name, status, message in typical_devices:
             device_status = DeviceStatus(
-                device_id=PyUUID(device_id),
+                device_id=device_id,
+                device_name=device_name,
                 status=status,
                 status_message=message,
             )
@@ -89,12 +87,7 @@ class GrpcDataProvider(IDataProvider):
         return PydanticFsmStateSnapshot(
             current_state=FsmStateEnum.BOOTING,
             previous_state=FsmStateEnum.OFFLINE,
-            snapshot_id=PyUUID("qsim_fsm_001"),
-            fsm_instance_id=PyUUID("main_fsm"),
-            source_module="qsim_data_provider",
-            attempt_count=1,
-            ts_wall=datetime.now(UTC),
-            context_data={"mode": "legacy", "initialized": "true"},
+            context_data={"mode": "grpc", "initialized": "true"},
         )
 
     def get_proposals(self) -> List[Proposal]:

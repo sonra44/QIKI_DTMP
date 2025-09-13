@@ -4,9 +4,15 @@ from .agent_logger import logger
 
 if TYPE_CHECKING:
     from .agent import AgentContext
-from shared.models.core import Proposal, ActuatorCommand, UnitEnum, CommandTypeEnum, ProposalTypeEnum
+from shared.models.core import (
+    Proposal,
+    ActuatorCommand,
+    UnitEnum,
+    CommandTypeEnum,
+    ProposalTypeEnum,
+)
 from generated.fsm_state_pb2 import FSMStateEnum
-from uuid import UUID as PyUUID # For Pydantic UUID
+from uuid import UUID as PyUUID  # For Pydantic UUID
 
 
 class RuleEngine(IRuleEngine):
@@ -36,7 +42,7 @@ class RuleEngine(IRuleEngine):
             )
 
             proposal = Proposal(
-                proposal_id=PyUUID("00000000-0000-0000-0000-000000000002"), # Using a fixed, valid UUID
+                proposal_id=uuid4(),  # Using a generated UUID
                 source_module_id="rule_engine",
                 proposed_actions=[safe_mode_command],
                 justification="BIOS reported critical errors. Entering safe mode.",
@@ -49,6 +55,5 @@ class RuleEngine(IRuleEngine):
         # Add more rules here based on sensor data, FSM state, etc.
 
         return proposals
-
 
         return proposals

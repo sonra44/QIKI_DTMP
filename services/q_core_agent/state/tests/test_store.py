@@ -7,14 +7,8 @@ import pytest
 import asyncio
 from unittest.mock import Mock
 
-from ..store import (
-    AsyncStateStore,
-    StateStoreError,
-    StateVersionError,
-    create_store,
-    create_initialized_store,
-)
-from ..types import FsmSnapshotDTO, FsmState, initial_snapshot
+from q_core_agent.state.store import AsyncStateStore, StateStoreError, StateVersionError, create_store, create_initialized_store
+from q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot
 
 
 @pytest.fixture
@@ -190,7 +184,7 @@ class TestAsyncStateStorePubSub:
     async def test_queue_overflow_handling(self, empty_store):
         """Тест обработки переполнения очереди подписчика"""
         # Создаём подписчика с маленькой очередью
-        queue = await empty_store.subscribe("overflow_test")
+        await empty_store.subscribe("overflow_test")
 
         # Заполняем очередь до отказа (maxsize=64 в StateStore)
         for i in range(70):  # больше чем maxsize
@@ -217,7 +211,7 @@ class TestAsyncStateStorePubSub:
         await empty_store.set(test_snapshot)
 
         # Проверяем что подписчик удалён
-        metrics = await empty_store.get_metrics()
+        await empty_store.get_metrics()
         # После очистки мёртвых очередей активных подписчиков должно быть меньше
 
 

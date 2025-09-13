@@ -44,19 +44,27 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      q-sim-service:
+        condition: service_healthy
     tty: true
     stdin_open: true
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/workspace
     command: python services/q_core_agent/main.py --grpc
+    restart: on-failure
 
   q-sim-service:
     build:
       context: .
       dockerfile: Dockerfile.dev
     container_name: qiki-sim-phase1
-    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc,sys; from generated.q_sim_api_pb2_grpc import QSimAPIStub; from google.protobuf.empty_pb2 import Empty; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIStub(ch); stub.HealthCheck(Empty(), timeout=2.0)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - qiki-network-phase1
     environment:

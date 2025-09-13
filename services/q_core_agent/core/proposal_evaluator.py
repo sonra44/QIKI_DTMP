@@ -1,7 +1,7 @@
 from typing import List
 from .interfaces import IProposalEvaluator
 from .agent_logger import logger
-from shared.models.core import Proposal, ProposalTypeEnum
+from shared.models.core import Proposal
 from shared.config_models import QCoreAgentConfig
 
 

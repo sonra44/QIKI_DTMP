@@ -28,7 +28,6 @@ class BiosHandler(IBiosHandler):
             timestamp=bios_status.timestamp
         )
 
-        all_systems_go = True
         hardware_profile = self.bot_core.get_property("hardware_profile")
         if hardware_profile:
             expected_devices = {
@@ -43,7 +42,6 @@ class BiosHandler(IBiosHandler):
                     logger.warning(
                         f"Device {expected_device_id} from hardware profile not found in BIOS report."
                     )
-                    all_systems_go = False
                     # Add a missing device status to the report
                     missing_device_status = DeviceStatus(
                         device_id=PyUUID(expected_device_id),
@@ -55,7 +53,6 @@ class BiosHandler(IBiosHandler):
             # Check status of reported devices
             for device_status in updated_bios_status.post_results:
                 if device_status.status != DeviceStatusEnum.OK:
-                    all_systems_go = False
                     logger.warning(
                         f"Device {device_status.device_id} reported status {device_status.status.name}"
                     )

@@ -28,8 +28,7 @@ from shared.config_models import QCoreAgentConfig, QSimServiceConfig, load_confi
 from services.q_sim_service.main import QSimService
 
 from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ProposalTypeEnum, DeviceStatusEnum, FsmStateEnum, SensorTypeEnum
-from shared.converters.protobuf_pydantic import pydantic_bios_status_to_proto_bios_status_report, pydantic_proposal_to_proto_proposal, pydantic_sensor_data_to_proto_sensor_reading, proto_bios_status_report_to_pydantic_bios_status, proto_fsm_state_snapshot_to_pydantic_fsm_state_snapshot, proto_proposal_to_pydantic_proposal, proto_sensor_reading_to_pydantic_sensor_data
-from uuid import UUID as PyUUID
+from uuid import UUID as PyUUID, uuid4
 from datetime import datetime, UTC
 
 
@@ -46,16 +45,17 @@ def _create_mock_bios_status():
 
     # Добавляем POST результаты для всех устройств из bot_config.json
     typical_devices = [
-        ("motor_left", DeviceStatusEnum.OK, "Motor left operational"),
-        ("motor_right", DeviceStatusEnum.OK, "Motor right operational"),
-        ("lidar_front", DeviceStatusEnum.OK, "LIDAR sensor operational"),
-        ("imu_main", DeviceStatusEnum.OK, "IMU sensor operational"),
-        ("system_controller", DeviceStatusEnum.OK, "System controller operational"),
+        ("motor_left", "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
+        ("motor_right", "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
+        ("lidar_front", "Front LIDAR", DeviceStatusEnum.OK, "LIDAR sensor operational"),
+        ("imu_main", "Main IMU", DeviceStatusEnum.OK, "IMU sensor operational"),
+        ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
     ]
 
-    for device_id, status, message in typical_devices:
+    for device_id, device_name, status, message in typical_devices:
         device_status = DeviceStatus(
-            device_id=PyUUID(device_id),
+            device_id=device_id,
+            device_name=device_name,
             status=status,
             status_message=message,
         )
@@ -70,11 +70,11 @@ def _create_mock_fsm_state():
         current_state=FsmStateEnum.BOOTING,  # Начинаем с BOOTING состояния
         previous_state=FsmStateEnum.OFFLINE,
         context_data={"mode": "mock", "initialized": "true"},
-        snapshot_id=PyUUID("mock_fsm_001"),
-        fsm_instance_id=PyUUID("main_fsm"),
+        snapshot_id=uuid4(), # Use uuid4() to generate a valid UUID
+        fsm_instance_id=uuid4(), # Use uuid4() to generate a valid UUID
         source_module="mock_provider",
         attempt_count=1,
-        ts_wall=datetime.now(UTC),
+        ts_wall=time.time(),
     )
 
     return fsm_state
@@ -84,7 +84,7 @@ _MOCK_BIOS_STATUS = _create_mock_bios_status()
 _MOCK_FSM_STATE = _create_mock_fsm_state()
 _MOCK_PROPOSALS = [
     Proposal(
-        proposal_id=PyUUID("mock_reflex_proposal"),
+        proposal_id=uuid4(), # Use uuid4() to generate a valid UUID
         source_module_id="Q_MIND_REFLEX",
         confidence=0.99,
         priority=0.8,
@@ -92,7 +92,7 @@ _MOCK_PROPOSALS = [
         justification="Mock reflex proposal justification.",
     ),
     Proposal(
-        proposal_id=PyUUID("mock_planner_proposal"),
+        proposal_id=uuid4(), # Use uuid4() to generate a valid UUID
         source_module_id="Q_MIND_PLANNER",
         confidence=0.85,
         priority=0.6,
@@ -101,7 +101,7 @@ _MOCK_PROPOSALS = [
     ),
 ]
 _MOCK_SENSOR_DATA = SensorData(
-    sensor_id=PyUUID("mock_sensor"),
+    sensor_id=str(uuid4()),
     sensor_type=SensorTypeEnum.OTHER,
     scalar_data=1.0,
     quality_score=1.0,
@@ -231,8 +231,7 @@ def main():
             except KeyboardInterrupt:
                 logger.info("gRPC run stopped by user.")
     else:
-        logger.info("Running in LEGACY mode (direct Q-Sim Service instance).
-")
+        logger.info("Running in LEGACY mode (direct Q-Sim Service instance).")
         # Initialize QSimService (for MVP, direct instance)
         qsim_config_path = Path(ROOT_DIR) / "services" / "q_sim_service" / "config.yaml"
         qsim_config = load_config(qsim_config_path, QSimServiceConfig)

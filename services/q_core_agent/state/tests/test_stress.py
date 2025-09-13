@@ -10,13 +10,9 @@ import gc
 import psutil
 import random
 
-from ..store import create_initialized_store
-from ..types import (
-    FsmSnapshotDTO,
-    FsmState,
-    next_snapshot,
-)
-from ..conv import dto_to_proto, dto_to_json_dict
+from q_core_agent.state.store import create_initialized_store
+from q_core_agent.state.types import FsmSnapshotDTO, FsmState, next_snapshot
+from q_core_agent.state.conv import dto_to_proto, dto_to_json_dict
 
 
 # Настройки для stress тестов
@@ -357,7 +353,7 @@ class TestConcurrencyStress:
                 tasks.append(fast_consumer(queue, f"fast_{i}"))
 
             results = await asyncio.gather(*tasks)
-            producer_result = results[0]
+            results[0]
             slow_results = results[1:11]
             fast_results = results[11:21]
 
@@ -388,7 +384,7 @@ class TestMemoryStress:
                     for j in range(100)  # много данных
                 }
 
-                large_history = [
+                [
                     next_snapshot(
                         current=FsmSnapshotDTO(version=k, state=FsmState.IDLE),
                         new_state=FsmState.ACTIVE,
@@ -414,7 +410,7 @@ class TestMemoryStress:
 
         # Проверяем что память не утекла критично
         gc.collect()
-        final_memory = psutil.Process().memory_info().rss
+        psutil.Process().memory_info().rss
 
         # Проверяем финальное состояние
         final_state = await stress_store.get()
@@ -538,7 +534,7 @@ class TestLongRunningStability:
         """Выполнить операцию конвертации"""
         snapshot = await store.get()
         if snapshot:
-            proto = dto_to_proto(snapshot)
+            dto_to_proto(snapshot)
             json_dict = dto_to_json_dict(snapshot)
             assert isinstance(json_dict, dict)
 

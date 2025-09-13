@@ -1,13 +1,10 @@
-import pytest
 from datetime import datetime, timezone
-from google.protobuf.timestamp_pb2 import Timestamp
 import uuid # Added import for uuid module
 
 from services.q_core_agent.state.types import FsmSnapshotDTO, TransitionDTO, FsmState, TransitionStatus
 from services.q_core_agent.state.conv import dto_to_proto, proto_to_dto, transition_dto_to_proto, transition_proto_to_dto
 
-from generated.fsm_state_pb2 import FsmStateSnapshot, StateTransition, FSMStateEnum, FSMTransitionStatus
-from generated.common_types_pb2 import UUID
+from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 
 
 class TestPydanticProtobufCompatibility:

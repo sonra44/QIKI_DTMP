@@ -6,26 +6,8 @@
 import pytest
 import uuid
 
-from ..conv import (
-    dto_to_proto,
-    proto_to_dto,
-    transition_dto_to_proto,
-    transition_proto_to_dto,
-    dto_to_json_dict,
-    dto_to_protobuf_json,
-    create_proto_snapshot,
-    parse_proto_snapshot,
-    FSM_STATE_DTO_TO_PROTO,
-    FSM_STATE_PROTO_TO_DTO,
-)
-from ..types import (
-    FsmSnapshotDTO,
-    TransitionDTO,
-    FsmState,
-    TransitionStatus,
-    initial_snapshot,
-    create_transition,
-)
+from q_core_agent.state.conv import dto_to_proto, proto_to_dto, transition_dto_to_proto, transition_proto_to_dto, dto_to_json_dict, dto_to_protobuf_json, create_proto_snapshot, parse_proto_snapshot, FSM_STATE_DTO_TO_PROTO, FSM_STATE_PROTO_TO_DTO
+from q_core_agent.state.types import FsmSnapshotDTO, TransitionDTO, FsmState, TransitionStatus, initial_snapshot, create_transition
 
 # Импорт protobuf для тестов
 from generated.fsm_state_pb2 import (

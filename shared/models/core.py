@@ -49,9 +49,10 @@ class DeviceStatusEnum(IntEnum):
 class SensorTypeEnum(IntEnum):
     OTHER = 0
     LIDAR = 1
-    CAMERA = 2
-    IMU = 3
+    IMU = 2
+    CAMERA = 3
     GPS = 4
+    THERMAL = 5
 
 
 class UnitEnum(IntEnum):
@@ -249,4 +250,3 @@ class Proposal(ConfigModel):
     depends_on: List[UUID] = Field(default_factory=list)
     conflicts_with: List[UUID] = Field(default_factory=list)
     proposal_signature: Optional[str] = None
-

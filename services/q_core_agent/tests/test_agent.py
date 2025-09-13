@@ -5,16 +5,14 @@ import os
 import json
 import tempfile
 
-from ..core.agent import QCoreAgent, AgentContext
-from ..core.bot_core import BotCore
-from ..core.interfaces import (
-    IDataProvider,
-)
-from ..core.fsm_handler import FSMHandler
-from ..core.proposal_evaluator import ProposalEvaluator
-from ..core.tick_orchestrator import TickOrchestrator
-from ..core.rule_engine import RuleEngine
-from ..core.neural_engine import NeuralEngine
+from q_core_agent.core.agent import QCoreAgent, AgentContext
+from q_core_agent.core.bot_core import BotCore
+from q_core_agent.core.interfaces import IDataProvider
+from q_core_agent.core.fsm_handler import FSMHandler
+from q_core_agent.core.proposal_evaluator import ProposalEvaluator
+from q_core_agent.core.tick_orchestrator import TickOrchestrator
+from q_core_agent.core.rule_engine import RuleEngine
+from q_core_agent.core.neural_engine import NeuralEngine
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from generated.proposal_pb2 import Proposal

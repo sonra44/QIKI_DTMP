@@ -8,15 +8,9 @@ import asyncio
 import os
 from unittest.mock import Mock, AsyncMock, patch
 
-from ..store import AsyncStateStore, create_initialized_store
-from ..types import (
-    FsmSnapshotDTO,
-    FsmState,
-    initial_snapshot,
-    next_snapshot,
-    create_transition,
-)
-from ..conv import dto_to_proto, proto_to_dto, dto_to_json_dict
+from q_core_agent.state.store import AsyncStateStore, create_initialized_store
+from q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot, next_snapshot, create_transition
+from q_core_agent.state.conv import dto_to_proto, proto_to_dto, dto_to_json_dict
 
 # Импорт компонентов для интеграции (мокаем для изоляции от core)
 
@@ -510,7 +504,7 @@ class TestErrorHandlingIntegration:
         assert result2.state == FsmState.ACTIVE  # переход всё равно произошёл
 
         # StateStore может быть в несогласованном состоянии
-        stored = await store.get()
+        await store.get()
         # Может не совпадать с result2 из-за ошибки записи
 
     @pytest.mark.asyncio
@@ -592,7 +586,7 @@ class TestFeatureFlagIntegration:
         with patch.dict(os.environ, {"QIKI_USE_STATESTORE": "false"}):
             handler_disabled = MockFSMHandler(mock_context, None)
 
-            result_disabled = await handler_disabled.process_fsm_dto(initial)
+            await handler_disabled.process_fsm_dto(initial)
 
             # StateStore не должен обновляться
             stored_after = await store.get()

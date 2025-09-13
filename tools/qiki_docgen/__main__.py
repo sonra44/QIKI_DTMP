@@ -57,12 +57,12 @@ def main():
     )
 
     # --- Команда 'compile-protos' ---
-    parser_compile = subparsers.add_parser(
+    subparsers.add_parser(
         "compile-protos", help="Скомпилировать все .proto контракты."
     )
 
     # --- Команда 'build-readme' ---
-    parser_readme = subparsers.add_parser(
+    subparsers.add_parser(
         "build-readme", help="Собрать главный README.md из документов."
     )
 

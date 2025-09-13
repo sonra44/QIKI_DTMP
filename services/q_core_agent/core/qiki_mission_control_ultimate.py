@@ -360,7 +360,7 @@ class QIKIMissionControlUltimate:
         battery_cap = self.live_telemetry.get("battery_capacity", 12)
         reactor_temp = self.live_telemetry.get("reactor_temp", 2800)
         oxygen = self.live_telemetry.get("oxygen_level", 21.0)
-        co2 = self.live_telemetry.get("co2_level", 400)
+        self.live_telemetry.get("co2_level", 400)
 
         # Навигация
         nav_x = self.live_telemetry.get("nav_x", 324167.89)

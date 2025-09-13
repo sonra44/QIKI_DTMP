@@ -8,15 +8,7 @@ import time
 import uuid
 from dataclasses import FrozenInstanceError
 
-from ..types import (
-    FsmSnapshotDTO,
-    TransitionDTO,
-    FsmState,
-    TransitionStatus,
-    initial_snapshot,
-    create_transition,
-    next_snapshot,
-)
+from q_core_agent.state.types import FsmSnapshotDTO, TransitionDTO, FsmState, TransitionStatus, initial_snapshot, create_transition, next_snapshot
 
 
 class TestFsmState:

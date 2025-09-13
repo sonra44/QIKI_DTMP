@@ -2,10 +2,10 @@ import json
 import os
 import hashlib
 from typing import Any, Callable, Dict, List, Optional
+from uuid import UUID as PyUUID
 
 # Import generated protobuf classes
-from shared.models.core import SensorData, ActuatorCommand
-from shared.converters.protobuf_pydantic import proto_sensor_reading_to_pydantic_sensor_data, pydantic_actuator_command_to_proto_actuator_command
+from shared.models.core import SensorData, ActuatorCommand, SensorTypeEnum, CommandTypeEnum
 
 
 class BotCore:

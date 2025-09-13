@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
 from uuid import UUID as PyUUID, uuid4
 
 from google.protobuf.timestamp_pb2 import Timestamp as ProtoTimestamp
@@ -26,7 +25,7 @@ from generated.common_types_pb2 import UUID as ProtoUUID, Vector3 as ProtoVector
 from generated.proposal_pb2 import Proposal as ProtoProposal
 from generated.actuator_raw_out_pb2 import ActuatorCommand as ProtoActuatorCommand
 from generated.sensor_raw_in_pb2 import SensorReading as ProtoSensorReading
-from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot, FSMStateEnum
+from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot
 from services.q_core_agent.state.types import FsmSnapshotDTO, FsmState, TransitionStatus, TransitionDTO
 
 
@@ -244,15 +243,35 @@ def pydantic_proposal_to_proto_proposal(pydantic_p: Proposal) -> ProtoProposal:
 
 
 def proto_sensor_reading_to_pydantic_sensor_data(proto_sr: ProtoSensorReading) -> SensorData:
+    """Convert Proto SensorReading to Pydantic SensorData.
+
+    Протокол SensorReading использует oneof `sensor_data` с полями:
+    - vector_data (Vector3)
+    - scalar_data (float)
+    - binary_data (bytes)
+
+    В текущем MVP отсутствуют поля `matrix_data`, `string_data`, `metadata`, `quality_score`.
+    Поэтому безопасно маппим только доступные поля и ставим дефолты.
+    """
+    data_kind = proto_sr.WhichOneof('sensor_data')
+    scalar = None
+    vector = None
+
+    if data_kind == 'scalar_data':
+        scalar = proto_sr.scalar_data
+    elif data_kind == 'vector_data':
+        vec = proto_sr.vector_data
+        # vec — это message Vector3, соберём список [x, y, z]
+        vector = [vec.x, vec.y, vec.z]
+    # binary_data игнорируем для текущего слоя абстракции
+
     return SensorData(
-        sensor_id=proto_uuid_to_pydantic_uuid(proto_sr.sensor_id),
+        sensor_id=str(proto_uuid_to_pydantic_uuid(proto_sr.sensor_id)),
         sensor_type=proto_sensor_type_to_pydantic_enum(proto_sr.sensor_type),
-        scalar_data=proto_sr.scalar_data if proto_sr.HasField('scalar_data') else None,
-        vector_data=[v for v in proto_sr.vector_data] if proto_sr.vector_data else None,
-        matrix_data=[[m for m in row] for row in proto_sr.matrix_data] if proto_sr.matrix_data else None,
-        string_data=proto_sr.string_data if proto_sr.string_data else None,
-        metadata=dict(proto_sr.metadata),
-        quality_score=proto_sr.quality_score,
+        scalar_data=scalar,
+        vector_data=vector,
+        metadata={},
+        quality_score=1.0,
     )
 
 def pydantic_sensor_data_to_proto_sensor_reading(pydantic_sd: SensorData) -> ProtoSensorReading:

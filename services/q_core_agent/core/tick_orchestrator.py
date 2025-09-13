@@ -7,10 +7,9 @@ from .interfaces import IDataProvider
 
 if TYPE_CHECKING:
     from .agent import QCoreAgent
-    from ..state.store import AsyncStateStore
+    from q_core_agent.state.store import AsyncStateStore
     from shared.config_models import QCoreAgentConfig
 
-from shared.models.core import FsmStateEnum
 
 
 class TickOrchestrator:

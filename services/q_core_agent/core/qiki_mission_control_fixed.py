@@ -245,7 +245,7 @@ class QIKIMissionControlFixed:
                     power = float(parts[1])
                     if 0 <= power <= 100:
                         self.live_params["thruster_power"] = power
-                        success = self.actuator_controller.set_main_drive_thrust(power)
+                        self.actuator_controller.set_main_drive_thrust(power)
                         self.log("PROPULSION", f"🚀 Main drive: {power}%")
                     else:
                         self.log("ERROR", "❌ Thrust must be 0-100%")
@@ -264,7 +264,7 @@ class QIKIMissionControlFixed:
 
             elif cmd == "emergency":
                 self.live_params["thruster_power"] = 0.0
-                success = self.actuator_controller.emergency_stop()
+                self.actuator_controller.emergency_stop()
                 self.log("EMERGENCY", "🚨 EMERGENCY STOP")
 
             elif cmd == "status":
