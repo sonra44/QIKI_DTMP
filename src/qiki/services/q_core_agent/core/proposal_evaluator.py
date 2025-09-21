@@ -1,8 +1,8 @@
 from typing import List
 from .interfaces import IProposalEvaluator
 from .agent_logger import logger
-from shared.models.core import Proposal
-from shared.config_models import QCoreAgentConfig
+from qiki.shared.models.core import Proposal
+from qiki.shared.config_models import QCoreAgentConfig
 
 
 class ProposalEvaluator(IProposalEvaluator):

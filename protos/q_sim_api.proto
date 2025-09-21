@@ -2,25 +2,51 @@ syntax = "proto3";
 
 import "sensor_raw_in.proto";
 import "actuator_raw_out.proto";
-import "google/protobuf/empty.proto";
+import "radar/v1/radar.proto";
 
 package qiki.api;
 
 // Сервис для взаимодействия между Q-Core Agent и Q-Sim Service
-service QSimAPI {
+service QSimAPIService {
   // Запрашивает данные с сенсоров от симулятора
-  rpc GetSensorData(google.protobuf.Empty) returns (qiki.sensors.SensorReading);
+  rpc GetSensorData(GetSensorDataRequest) returns (GetSensorDataResponse);
   
   // Отправляет команду на актуаторы в симулятор
-  rpc SendActuatorCommand(qiki.actuators.ActuatorCommand) returns (google.protobuf.Empty);
+  rpc SendActuatorCommand(SendActuatorCommandRequest) returns (SendActuatorCommandResponse);
   
   // Проверка доступности сервиса
-  rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Возвращает минимальный кадр радара (v1)
+  rpc GetRadarFrame(GetRadarFrameRequest) returns (GetRadarFrameResponse);
 }
 
+message GetSensorDataRequest {}
+
+message GetSensorDataResponse {
+  qiki.sensors.SensorReading reading = 1;
+}
+
+message SendActuatorCommandRequest {
+  qiki.actuators.ActuatorCommand command = 1;
+}
+
+message SendActuatorCommandResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message HealthCheckRequest {}
+
 // Ответ на проверку здоровья сервиса
-message HealthResponse {
+message HealthCheckResponse {
   string status = 1;          // "OK" или "ERROR" 
   string message = 2;         // Дополнительная информация
   int64 timestamp = 3;        // Время ответа в Unix timestamp
+}
+
+message GetRadarFrameRequest {}
+
+message GetRadarFrameResponse {
+  qiki.radar.v1.RadarFrame frame = 1;
 }

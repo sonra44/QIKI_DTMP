@@ -2,7 +2,7 @@ import pytest
 import nats
 from uuid import uuid4
 
-from shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
+from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 
 # Адрес NATS сервера из Docker Compose
 NATS_URL = "nats://nats:4222"

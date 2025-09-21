@@ -7,14 +7,14 @@ set -e
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 
-# Set PYTHONPATH to include the project root for module imports
-export PYTHONPATH="$PROJECT_ROOT"
+# Set PYTHONPATH to include src layout for module imports
+export PYTHONPATH="$PROJECT_ROOT/src:$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "Running tests..."
-pytest "$PROJECT_ROOT/services/q_core_agent/tests/"
+pytest "$PROJECT_ROOT/src/qiki/services/q_core_agent/tests/"
 
 echo "Running linter (ruff)..."
-q_core_agent_path="$PROJECT_ROOT/services/q_core_agent/"
+q_core_agent_path="$PROJECT_ROOT/src/qiki/services/q_core_agent/"
 ruff check "$q_core_agent_path"
 
 echo "Checking Protobuf files..."

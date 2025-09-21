@@ -1,97 +1,99 @@
-from typing import TYPE_CHECKING
+from __future__ import annotations
+
+from typing import Optional, TYPE_CHECKING
+
 from .interfaces import IFSMHandler
 from .agent_logger import logger
+from .guard_table import GuardEvaluationResult
 
 if TYPE_CHECKING:
     from .agent import AgentContext
+    from .world_model import WorldModel
 
-# StateStore imports
-from services.q_core_agent.state.types import FsmState, TransitionStatus, create_transition, next_snapshot
-from shared.converters.protobuf_pydantic import proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto, pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot
-from shared.models.core import (
+from qiki.services.q_core_agent.state.types import (
+    FsmState,
+    TransitionStatus,
+    create_transition,
+    next_snapshot,
+)
+from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot
+
+from qiki.shared.converters.protobuf_pydantic import (
+    proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto,
+    pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot,
+)
+from qiki.shared.models.core import (
     FsmStateSnapshot as PydanticFsmStateSnapshot,
     FsmTransition as PydanticFsmTransition,
     FsmStateEnum,
 )
 
+
 class FSMHandler(IFSMHandler):
-    def __init__(self, context: "AgentContext"): # Removed state_store for now
+    def __init__(
+        self, context: "AgentContext", world_model: Optional["WorldModel"] = None
+    ):
         self.context = context
-        # self.state_store = state_store # Removed state_store for now
+        self.world_model = world_model
         logger.info("FSMHandler initialized.")
 
-    # Removed duplicate import here, it's already at the top of the file
+    async def process_fsm_dto(
+        self, proto_fsm_state: "ProtoFsmStateSnapshot"
+    ) -> "ProtoFsmStateSnapshot":
+        current_fsm_state_dto = proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(
+            proto_fsm_state
+        )
 
-    async def process_fsm_dto(self, proto_fsm_state: "ProtoFsmStateSnapshot") -> "ProtoFsmStateSnapshot":
-        # Convert Protobuf snapshot to Pydantic DTO
-        current_fsm_state_dto = proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(proto_fsm_state)
+        logger.debug(
+            "FSMHandler: Processing FSM state: %s",
+            current_fsm_state_dto.state.name,
+        )
 
-        logger.debug(f"FSMHandler: Processing FSM state: {current_fsm_state_dto.state.name}") # Use .name for FsmState
+        guard_event = self._select_guard_event()
+        if guard_event:
+            next_state, trigger_event = self._apply_guard_event(
+                guard_event, current_fsm_state_dto.state
+            )
+        else:
+            next_state, trigger_event = self._apply_standard_rules(
+                current_fsm_state_dto.state
+            )
 
-        next_state = current_fsm_state_dto.state # Default to no change (FsmState enum)
-        trigger_event = "NO_CHANGE" # Default trigger event
-
-        # Example FSM logic (using FsmState enum)
-        # If current state is BOOTING and BIOS is OK, transition to IDLE
-        if current_fsm_state_dto.state == FsmState.BOOTING and self.context.is_bios_ok():
-            next_state = FsmState.IDLE
-            trigger_event = "BOOT_COMPLETE"
-        # If current state is BOOTING and BIOS is NOT OK, transition to ERROR_STATE
-        elif current_fsm_state_dto.state == FsmState.BOOTING and not self.context.is_bios_ok():
-            next_state = FsmState.ERROR_STATE
-            trigger_event = "BIOS_ERROR"
-        # If current state is IDLE and there are proposals, transition to ACTIVE
-        elif current_fsm_state_dto.state == FsmState.IDLE and self.context.has_valid_proposals():
-            next_state = FsmState.ACTIVE
-            trigger_event = "PROPOSALS_RECEIVED"
-        # If current state is ACTIVE and there are no proposals, transition to IDLE
-        elif current_fsm_state_dto.state == FsmState.ACTIVE and not self.context.has_valid_proposals():
-            next_state = FsmState.IDLE
-            trigger_event = "NO_PROPOSALS"
-        # If current state is ERROR_STATE and BIOS is OK, transition to IDLE (recovery)
-        elif current_fsm_state_dto.state == FsmState.ERROR_STATE and self.context.is_bios_ok():
-            next_state = FsmState.IDLE
-            trigger_event = "ERROR_CLEARED"
-
-        # Create a transition DTO
         transition_dto = create_transition(
             from_state=current_fsm_state_dto.state,
             to_state=next_state,
             trigger=trigger_event,
-            status=TransitionStatus.SUCCESS # Always success for now in FSMHandler
+            status=TransitionStatus.SUCCESS,
         )
 
-        # Create a new snapshot with the next state, including the transition
-        new_snapshot_dto = next_snapshot(current_fsm_state_dto, next_state, trigger_event, transition_dto)
+        new_snapshot_dto = next_snapshot(
+            current_fsm_state_dto, next_state, trigger_event, transition_dto
+        )
 
-        logger.debug(f"FSM transitioned from {current_fsm_state_dto.state.name} to {new_snapshot_dto.state.name}") # Use .name for FsmState
-        
-        # Convert Pydantic DTO back to Protobuf snapshot
+        logger.debug(
+            "FSM transitioned from %s to %s",
+            current_fsm_state_dto.state.name,
+            new_snapshot_dto.state.name,
+        )
+
         return pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot(new_snapshot_dto)
 
-    # Additional methods for FSM management (e.g., handling events, loading rules)
-    # ...
-
-    def process_fsm_state(self, current_fsm_state: PydanticFsmStateSnapshot) -> PydanticFsmStateSnapshot:
-        """
-        Синхронная обработка FSM для legacy-цикла.
-        Минимальная логика: BOOTING -> IDLE при успешном BIOS; иначе вернуть текущее.
-        """
+    def process_fsm_state(
+        self, current_fsm_state: PydanticFsmStateSnapshot
+    ) -> PydanticFsmStateSnapshot:
         try:
             state = current_fsm_state
             if state is None:
-                # Инициализация минимального состояния при отсутствии
                 state = PydanticFsmStateSnapshot(
                     current_state=FsmStateEnum.BOOTING,
                     previous_state=FsmStateEnum.OFFLINE,
                 )
 
-            next_state = state.current_state
-            event = "NO_CHANGE"
-
-            if state.current_state == FsmStateEnum.BOOTING and self.context.is_bios_ok():
-                next_state = FsmStateEnum.IDLE
-                event = "BOOT_COMPLETE"
+            guard_event = self._select_guard_event()
+            if guard_event:
+                next_state, event = self._apply_guard_event(guard_event, state.current_state)
+            else:
+                next_state, event = self._apply_standard_rules(state.current_state)
 
             if next_state != state.current_state:
                 transition = PydanticFsmTransition(
@@ -99,13 +101,63 @@ class FSMHandler(IFSMHandler):
                     from_state=state.current_state,
                     to_state=next_state,
                 )
-                # Обновления in-place
                 state.history.append(transition)
                 state.last_transition = transition
                 state.previous_state = state.current_state
                 state.current_state = next_state
 
             return state
-        except Exception as e:
-            logger.error(f"FSMHandler.process_fsm_state failed: {e}")
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"FSMHandler.process_fsm_state failed: {exc}")
             raise
+
+    def _apply_standard_rules(
+        self, current_state: FsmState | FsmStateEnum
+    ) -> tuple[FsmState | FsmStateEnum, str]:
+        if current_state == FsmState.BOOTING and self.context.is_bios_ok():
+            return FsmState.IDLE, "BOOT_COMPLETE"
+
+        if current_state == FsmState.BOOTING and not self.context.is_bios_ok():
+            return FsmState.ERROR_STATE, "BIOS_ERROR"
+
+        if current_state == FsmState.IDLE and self.context.has_valid_proposals():
+            return FsmState.ACTIVE, "PROPOSALS_RECEIVED"
+
+        if current_state == FsmState.ACTIVE and not self.context.has_valid_proposals():
+            return FsmState.IDLE, "NO_PROPOSALS"
+
+        if current_state == FsmState.ERROR_STATE and self.context.is_bios_ok():
+            return FsmState.IDLE, "ERROR_CLEARED"
+
+        return current_state, "NO_CHANGE"
+
+    def _select_guard_event(self) -> Optional[GuardEvaluationResult]:
+        if self.context.guard_events:
+            return max(
+                self.context.guard_events,
+                key=lambda event: event.severity_weight,
+            )
+        if self.world_model:
+            return self.world_model.most_critical_guard()
+        return None
+
+    def _apply_guard_event(
+        self,
+        guard_event: GuardEvaluationResult,
+        current_state: FsmState | FsmStateEnum,
+    ) -> tuple[FsmState | FsmStateEnum, str]:
+        logger.warning(
+            "Guard event detected: rule=%s severity=%s track=%s range=%.2fm",
+            guard_event.rule_id,
+            guard_event.severity,
+            guard_event.track_id,
+            guard_event.range_m,
+        )
+
+        if guard_event.severity == "critical":
+            return FsmState.ERROR_STATE, guard_event.fsm_event
+
+        if guard_event.severity == "warning" and current_state == FsmState.IDLE:
+            return FsmState.ACTIVE, guard_event.fsm_event
+
+        return current_state, guard_event.fsm_event

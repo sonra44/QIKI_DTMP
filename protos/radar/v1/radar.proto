@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package qiki.radar.v1;
+
+import "google/protobuf/timestamp.proto";
+import "common_types.proto"; // qiki.common.{UUID, Unit, Vector3, SensorType}
+
+// Тип объекта, определяемый классификатором
+enum ObjectType {
+  OBJECT_TYPE_UNSPECIFIED = 0;
+  DRONE = 1;
+  SHIP = 2;
+  STATION = 3;
+  ASTEROID = 4;
+  DEBRIS = 5;
+}
+
+// IFF классификация
+enum FriendFoe {
+  FRIEND_FOE_UNSPECIFIED = 0;
+  FRIEND = 1;
+  FOE = 2;
+  UNKNOWN = 3;
+}
+
+// Режим транспондера
+enum TransponderMode {
+  TRANSPONDER_MODE_OFF = 0;
+  TRANSPONDER_MODE_ON = 1;
+  TRANSPONDER_MODE_SILENT = 2;
+  TRANSPONDER_MODE_SPOOF = 3;
+}
+
+// Статус радара (трек)
+enum RadarTrackStatus {
+  RADAR_TRACK_STATUS_UNSPECIFIED = 0;
+  RADAR_TRACK_STATUS_NEW = 1;
+  RADAR_TRACK_STATUS_TRACKED = 2;
+  RADAR_TRACK_STATUS_LOST = 3;
+}
+
+// Одна отметка радара
+message RadarDetection {
+  double range_m = 1;        // дальность, м
+  double bearing_deg = 2;    // азимут, градусы [0,360)
+  double elev_deg = 3;       // угол места, градусы [-90,90]
+  double vr_mps = 4;         // радиальная скорость, м/с (отрицательная — приближение)
+  double snr_db = 5;         // SNR, дБ
+  double rcs_dbsm = 6;       // эффективная площадь рассеяния, дБ·м^2
+  bool transponder_on = 7;   // транспондер включён
+  TransponderMode transponder_mode = 8; // режим транспондера
+  string transponder_id = 9;           // идентификатор транспондера/IFF
+}
+
+// Кадр детекций радара
+message RadarFrame {
+  uint32 schema_version = 1;                   // версия схемы сообщения
+  qiki.common.UUID frame_id = 2;               // идентификатор кадра
+  qiki.common.UUID sensor_id = 3;              // идентификатор сенсора
+  google.protobuf.Timestamp timestamp = 4;     // время съёмки
+  repeated RadarDetection detections = 5;      // массив детекций
+}
+
+// Стабилизированный трек (после ассоциации детекций)
+message RadarTrack {
+  uint32 schema_version = 1;
+  qiki.common.UUID track_id = 2;
+  ObjectType object_type = 3;
+  FriendFoe iff = 4;
+  bool transponder_on = 5;
+  double quality = 6;                          // доверие [0..1]
+
+  // Параметры цели (полярная система);
+  double range_m = 7;
+  double bearing_deg = 8;
+  double elev_deg = 9;
+  double vr_mps = 10;
+  double snr_db = 11;
+  double rcs_dbsm = 12;
+
+  google.protobuf.Timestamp timestamp = 13;    // время актуализации трека
+  TransponderMode transponder_mode = 14;       // режим транспондера
+  string transponder_id = 15;                  // идентификатор транспондера/IFF
+  RadarTrackStatus status = 16;                // статус трека (NEW/TRACKED/LOST)
+  qiki.common.Vector3 position = 17;           // позиция в декартовой системе (м)
+  qiki.common.Vector3 velocity = 18;           // скорость в декартовой системе (м/с)
+  repeated double position_covariance = 19;    // ковариация позиции (6 элементов)
+  repeated double velocity_covariance = 20;    // ковариация скорости (6 элементов)
+  double age_s = 21;                           // возраст трека в секундах
+  uint32 miss_count = 22;                      // количество подряд пропущенных кадров
+}

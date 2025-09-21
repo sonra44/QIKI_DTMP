@@ -6,8 +6,26 @@
 import pytest
 import uuid
 
-from q_core_agent.state.conv import dto_to_proto, proto_to_dto, transition_dto_to_proto, transition_proto_to_dto, dto_to_json_dict, dto_to_protobuf_json, create_proto_snapshot, parse_proto_snapshot, FSM_STATE_DTO_TO_PROTO, FSM_STATE_PROTO_TO_DTO
-from q_core_agent.state.types import FsmSnapshotDTO, TransitionDTO, FsmState, TransitionStatus, initial_snapshot, create_transition
+from qiki.services.q_core_agent.state.conv import (
+    FSM_STATE_DTO_TO_PROTO,
+    FSM_STATE_PROTO_TO_DTO,
+    create_proto_snapshot,
+    dto_to_json_dict,
+    dto_to_protobuf_json,
+    dto_to_proto,
+    parse_proto_snapshot,
+    proto_to_dto,
+    transition_dto_to_proto,
+    transition_proto_to_dto,
+)
+from qiki.services.q_core_agent.state.types import (
+    FsmSnapshotDTO,
+    TransitionDTO,
+    FsmState,
+    TransitionStatus,
+    create_transition,
+    initial_snapshot,
+)
 
 # Импорт protobuf для тестов
 from generated.fsm_state_pb2 import (
@@ -409,7 +427,7 @@ class TestTimestampHandling:
 
     def test_float_to_timestamp_conversion(self):
         """Тест конвертации float времени в protobuf Timestamp"""
-        from services.q_core_agent.state.conv import (
+        from qiki.services.q_core_agent.state.conv import (
             _float_to_timestamp,
             _timestamp_to_float,
         )
@@ -426,7 +444,7 @@ class TestTimestampHandling:
 
     def test_zero_timestamp_handling(self):
         """Тест обработки нулевых временных меток"""
-        from services.q_core_agent.state.conv import (
+        from qiki.services.q_core_agent.state.conv import (
             _float_to_timestamp,
             _timestamp_to_float,
         )

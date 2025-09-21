@@ -1,0 +1,47 @@
+version: 1
+kind: BotSpec
+metadata:
+  id: QIKI-DODECA-01
+components:
+  hull:
+    type: structure
+    provides:
+      - collision_mesh
+      - hardpoints
+  power:
+    type: dc_bus
+    provides:
+      - dc_out
+      - energy_status
+  propulsion:
+    type: propulsors
+    provides:
+      - motion_command
+  sensors:
+    type: sensing_suite
+    provides:
+      - sensor_frame
+  comms:
+    type: datalink
+    provides:
+      - uplink
+      - downlink
+  shields:
+    type: defensive
+    provides:
+      - shield_status
+  navigation:
+    type: nav_stack
+    provides:
+      - nav_state
+  protocols:
+    type: executor
+event_bus:
+  channels:
+    - SensorFrame
+    - TrackSet
+    - ProtocolCmd
+    - EnergyStatus
+    - ShieldStatus
+    - NavState
+    - RegistrarEvent

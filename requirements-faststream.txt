@@ -8,6 +8,7 @@ faststream[cli]>=0.5.0
 
 # NATS клиент
 nats-py>=2.6.0
+prometheus-client>=0.20.0
 
 # Тестирование
 pytest>=7.4.0

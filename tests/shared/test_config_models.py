@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shared.config_models import QSimServiceConfig, QCoreAgentConfig, load_config
+from qiki.shared.config_models import QSimServiceConfig, QCoreAgentConfig, load_config
 
 # Создаем временную директорию для тестовых файлов
 @pytest.fixture
@@ -23,7 +23,11 @@ class TestConfigModels:
 
     def test_qsim_service_config_invalid_type(self):
         with pytest.raises(ValidationError):
-            QSimServiceConfig(sim_tick_interval="abc", sim_sensor_type=1, log_level="INFO")
+            QSimServiceConfig(
+                sim_tick_interval="abc",
+                sim_sensor_type=1,
+                log_level="INFO",
+            )
 
     def test_qsim_service_config_missing_field(self):
         with pytest.raises(ValidationError):
@@ -48,11 +52,24 @@ class TestConfigModels:
 
     def test_qcore_agent_config_invalid_type(self):
         with pytest.raises(ValidationError):
-            QCoreAgentConfig(tick_interval="abc", log_level="INFO", recovery_delay=10, proposal_confidence_threshold=0.5, mock_neural_proposals_enabled=False, grpc_server_address="localhost:50051")
+            QCoreAgentConfig(
+                tick_interval="abc",
+                log_level="INFO",
+                recovery_delay=10,
+                proposal_confidence_threshold=0.5,
+                mock_neural_proposals_enabled=False,
+                grpc_server_address="localhost:50051",
+            )
 
     def test_qcore_agent_config_missing_field(self):
         with pytest.raises(ValidationError):
-            QCoreAgentConfig(log_level="INFO", recovery_delay=10, proposal_confidence_threshold=0.5, mock_neural_proposals_enabled=False, grpc_server_address="localhost:50051")
+            QCoreAgentConfig(
+                log_level="INFO",
+                recovery_delay=10,
+                proposal_confidence_threshold=0.5,
+                mock_neural_proposals_enabled=False,
+                grpc_server_address="localhost:50051",
+            )
 
 
 class TestLoadConfig:

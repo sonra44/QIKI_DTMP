@@ -4,6 +4,7 @@ package qiki.sensors;
 
 import "common_types.proto";
 import "google/protobuf/timestamp.proto";
+import "radar/v1/radar.proto";
 
 message SensorReading {
   // Уникальный ID сенсора, который отправил данные
@@ -20,6 +21,8 @@ message SensorReading {
     qiki.common.Vector3 vector_data = 4; // Например, для IMU или GPS
     float scalar_data = 5;             // Например, температура или дистанция
     bytes binary_data = 7;             // Например, для изображения с камеры
+    qiki.radar.v1.RadarFrame radar_data = 12; // Радарный кадр (v1)
+    qiki.radar.v1.RadarTrack radar_track = 13; // Стабилизированный трек радара (v1)
   }
 
   // Единица измерения для скалярных данных (если применимо)

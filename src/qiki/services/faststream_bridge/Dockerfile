@@ -8,7 +8,7 @@ COPY ruff.toml /app/ruff.toml
 ENV RUFF_CONFIG=/app/ruff.toml
 
 # Устанавливаем PYTHONPATH, чтобы включить корень проекта
-ENV PYTHONPATH=.
+ENV PYTHONPATH=/workspace/src:/workspace
 
 # Копируем и устанавливаем зависимости
 COPY requirements.txt .
@@ -21,4 +21,4 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . . 
 
 # Запускаем FastStream приложение
-CMD ["faststream", "run", "services.faststream_bridge.app:app"]
+CMD ["faststream", "run", "qiki.services.faststream_bridge.app:app"]

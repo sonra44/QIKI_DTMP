@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID as PyUUID
 
 # Import generated protobuf classes
-from shared.models.core import SensorData, ActuatorCommand, SensorTypeEnum, CommandTypeEnum
+from qiki.shared.models.core import SensorData, ActuatorCommand, SensorTypeEnum, CommandTypeEnum
 
 
 class BotCore:
@@ -94,6 +94,11 @@ class BotCore:
         self._runtime_sensor_snapshot[sensor_data.sensor_id] = sensor_data
         for callback in self._sensor_callbacks:
             callback(sensor_data)
+
+    def ingest_sensor_data(self, sensor_data: SensorData) -> None:
+        """Public hook for feeding sensor data into the bot core."""
+
+        self._process_incoming_sensor_data(sensor_data)
 
     def get_latest_sensor_value(
         self, sensor_id: str

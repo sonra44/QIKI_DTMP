@@ -1,6 +1,7 @@
 import pytest
+from uuid import uuid4
 from pydantic import ValidationError
-from shared.models.core import (
+from qiki.shared.models.core import (
     BiosStatus,
     DeviceStatus,
     DeviceStatusEnum,
@@ -9,6 +10,7 @@ from shared.models.core import (
     SensorData,
     SensorTypeEnum,
 )
+from qiki.shared.models.radar import RadarDetectionModel, RadarFrameModel
 
 
 def test_bios_status_healthy():
@@ -61,6 +63,28 @@ def test_sensor_data_validation():
         SensorData(sensor_id="lidar1", sensor_type=SensorTypeEnum.LIDAR)
 
     assert "Sensor data must have at least one data field" in str(excinfo.value)
+
+
+def test_sensor_data_rejects_multiple_payloads():
+    det = RadarDetectionModel(
+        range_m=10.0,
+        bearing_deg=90.0,
+        elev_deg=0.0,
+        vr_mps=0.0,
+        snr_db=3.0,
+        rcs_dbsm=0.2,
+    )
+    frame = RadarFrameModel(sensor_id=uuid4(), detections=[det])
+
+    with pytest.raises(ValidationError) as excinfo:
+        SensorData(
+            sensor_id=str(frame.sensor_id),
+            sensor_type=SensorTypeEnum.RADAR,
+            radar_frame=frame,
+            scalar_data=1.0,
+        )
+
+    assert "exactly one payload representation" in str(excinfo.value)
 
 
 def test_fsm_snapshot_defaults():

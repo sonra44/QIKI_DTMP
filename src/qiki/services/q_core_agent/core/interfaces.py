@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Any
 
-from shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatus, DeviceStatusEnum
+from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatus, DeviceStatusEnum
 
 
 class IDataProvider(ABC):
@@ -65,7 +65,7 @@ class MockDataProvider(IDataProvider):
 
         if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
             # Возвращаем минимальный Pydantic FsmStateSnapshot для совместимости
-            from shared.models.core import FsmStateEnum
+            from qiki.shared.models.core import FsmStateEnum
 
             return PydanticFsmStateSnapshot(
                 current_state=FsmStateEnum.BOOTING,
@@ -129,7 +129,7 @@ class QSimDataProvider(IDataProvider):
 
         if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
             # Возвращаем минимальный Pydantic FsmStateSnapshot для совместимости
-            from shared.models.core import FsmStateEnum
+            from qiki.shared.models.core import FsmStateEnum
 
             return PydanticFsmStateSnapshot(
                 current_state=FsmStateEnum.BOOTING,
@@ -137,19 +137,19 @@ class QSimDataProvider(IDataProvider):
             )
 
         # Q-Sim doesn't manage FSM state, so we'll return proper initial BOOTING state
-        from shared.models.core import FsmStateEnum
-        from uuid import UUID
-        from datetime import datetime, UTC
+        from qiki.shared.models.core import FsmStateEnum
+        from uuid import uuid4
+        import time
 
         fsm_state = PydanticFsmStateSnapshot(
             current_state=FsmStateEnum.BOOTING,  # Начинаем с BOOTING как в Mock режиме
             previous_state=FsmStateEnum.OFFLINE,
             context_data={"mode": "legacy", "initialized": "true"},
-            snapshot_id=str(UUID("qsim_fsm_001")),
-            fsm_instance_id=str(UUID("main_fsm")),
+            snapshot_id=str(uuid4()),
+            fsm_instance_id=str(uuid4()),
             source_module="qsim_data_provider",
             attempt_count=1,
-            ts_wall=datetime.now(UTC),
+            ts_wall=time.time(),
         )
 
         return fsm_state
@@ -162,7 +162,7 @@ class QSimDataProvider(IDataProvider):
         return self.qsim_service.generate_sensor_data()
 
     def send_actuator_command(self, command: ActuatorCommand):
-        from shared.converters.protobuf_pydantic import pydantic_actuator_command_to_proto_actuator_command
+        from qiki.shared.converters.protobuf_pydantic import pydantic_actuator_command_to_proto_actuator_command
         proto_command = pydantic_actuator_command_to_proto_actuator_command(command)
         self.qsim_service.receive_actuator_command(proto_command)
 

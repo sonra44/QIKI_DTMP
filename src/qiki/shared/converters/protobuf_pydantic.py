@@ -4,7 +4,7 @@ from uuid import UUID as PyUUID, uuid4
 from google.protobuf.timestamp_pb2 import Timestamp as ProtoTimestamp
 from google.protobuf.duration_pb2 import Duration as ProtoDuration
 
-from shared.models.core import (
+from qiki.shared.models.core import (
     BiosStatus,
     DeviceStatus,
     DeviceStatusEnum,
@@ -20,13 +20,26 @@ from shared.models.core import (
 )
 
 # Import Protobuf generated classes
-from generated.bios_status_pb2 import BiosStatusReport as ProtoBiosStatusReport, DeviceStatus as ProtoDeviceStatus
-from generated.common_types_pb2 import UUID as ProtoUUID, Vector3 as ProtoVector3, Unit as ProtoUnit, SensorType as ProtoSensorType
+from generated.bios_status_pb2 import (
+    BiosStatusReport as ProtoBiosStatusReport,
+    DeviceStatus as ProtoDeviceStatus,
+)
+from generated.common_types_pb2 import (
+    UUID as ProtoUUID,
+    Vector3 as ProtoVector3,
+    Unit as ProtoUnit,
+    SensorType as ProtoSensorType,
+)
 from generated.proposal_pb2 import Proposal as ProtoProposal
 from generated.actuator_raw_out_pb2 import ActuatorCommand as ProtoActuatorCommand
 from generated.sensor_raw_in_pb2 import SensorReading as ProtoSensorReading
 from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot
-from services.q_core_agent.state.types import FsmSnapshotDTO, FsmState, TransitionStatus, TransitionDTO
+from qiki.services.q_core_agent.state.types import (
+    FsmSnapshotDTO,
+    FsmState,
+    TransitionStatus,
+    TransitionDTO,
+)
 
 
 # =============================================================================
@@ -40,7 +53,9 @@ def pydantic_uuid_to_proto_uuid(pydantic_uuid: PyUUID) -> ProtoUUID:
 
 
 def proto_timestamp_to_datetime(proto_ts: ProtoTimestamp) -> datetime:
-    return proto_ts.ToDatetime(tzinfo=timezone.utc) if proto_ts.seconds or proto_ts.nanos else datetime.now(timezone.utc)
+    if proto_ts.seconds or proto_ts.nanos:
+        return proto_ts.ToDatetime(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc)
 
 def datetime_to_proto_timestamp(dt: datetime) -> ProtoTimestamp:
     proto_ts = ProtoTimestamp()
@@ -49,7 +64,9 @@ def datetime_to_proto_timestamp(dt: datetime) -> ProtoTimestamp:
 
 
 def proto_duration_to_timedelta(proto_dur: ProtoDuration) -> timedelta:
-    return proto_dur.ToTimedelta() if proto_dur.seconds or proto_dur.nanos else timedelta(0)
+    if proto_dur.seconds or proto_dur.nanos:
+        return proto_dur.ToTimedelta()
+    return timedelta(0)
 
 def timedelta_to_proto_duration(td: timedelta) -> ProtoDuration:
     proto_dur = ProtoDuration()
@@ -60,17 +77,26 @@ def timedelta_to_proto_duration(td: timedelta) -> ProtoDuration:
 # =============================================================================
 #  Enum Converters
 # =============================================================================
-def proto_device_status_to_pydantic_enum(proto_enum: ProtoDeviceStatus) -> DeviceStatusEnum:
+def proto_device_status_to_pydantic_enum(
+    proto_enum: ProtoDeviceStatus,
+) -> DeviceStatusEnum:
     return DeviceStatusEnum(proto_enum)
 
-def pydantic_device_status_to_proto_enum(pydantic_enum: DeviceStatusEnum) -> ProtoDeviceStatus:
+def pydantic_device_status_to_proto_enum(
+    pydantic_enum: DeviceStatusEnum,
+) -> ProtoDeviceStatus:
     return ProtoDeviceStatus(pydantic_enum.value)
 
-def proto_sensor_type_to_pydantic_enum(proto_enum: ProtoSensorType) -> SensorTypeEnum:
+def proto_sensor_type_to_pydantic_enum(
+    proto_enum: ProtoSensorType,
+) -> SensorTypeEnum:
     return SensorTypeEnum(proto_enum)
 
-def pydantic_sensor_type_to_proto_enum(pydantic_enum: SensorTypeEnum) -> ProtoSensorType:
-    return ProtoSensorType(pydantic_enum.value)
+def pydantic_sensor_type_to_proto_enum(
+    pydantic_enum: SensorTypeEnum,
+) -> ProtoSensorType:
+    # В python-протобуф enum поле принимает int значение
+    return pydantic_enum.value
 
 def proto_unit_to_pydantic_enum(proto_enum: ProtoUnit) -> UnitEnum:
     return UnitEnum(proto_enum)
@@ -78,22 +104,34 @@ def proto_unit_to_pydantic_enum(proto_enum: ProtoUnit) -> UnitEnum:
 def pydantic_unit_to_proto_enum(pydantic_enum: UnitEnum) -> ProtoUnit:
     return ProtoUnit(pydantic_enum.value)
 
-def proto_proposal_type_to_pydantic_enum(proto_enum: ProtoProposal.ProposalType) -> ProposalTypeEnum:
+def proto_proposal_type_to_pydantic_enum(
+    proto_enum: ProtoProposal.ProposalType,
+) -> ProposalTypeEnum:
     return ProposalTypeEnum(proto_enum)
 
-def pydantic_proposal_type_to_proto_enum(pydantic_enum: ProposalTypeEnum) -> ProtoProposal.ProposalType:
+def pydantic_proposal_type_to_proto_enum(
+    pydantic_enum: ProposalTypeEnum,
+) -> ProtoProposal.ProposalType:
     return ProtoProposal.ProposalType(pydantic_enum.value)
 
-def proto_proposal_status_to_pydantic_enum(proto_enum: ProtoProposal.ProposalStatus) -> ProposalStatusEnum:
+def proto_proposal_status_to_pydantic_enum(
+    proto_enum: ProtoProposal.ProposalStatus,
+) -> ProposalStatusEnum:
     return ProposalStatusEnum(proto_enum)
 
-def pydantic_proposal_status_to_proto_enum(pydantic_enum: ProposalStatusEnum) -> ProtoProposal.ProposalStatus:
+def pydantic_proposal_status_to_proto_enum(
+    pydantic_enum: ProposalStatusEnum,
+) -> ProtoProposal.ProposalStatus:
     return ProtoProposal.ProposalStatus(pydantic_enum.value)
 
-def proto_command_type_to_pydantic_enum(proto_enum: ProtoActuatorCommand.CommandType) -> CommandTypeEnum:
+def proto_command_type_to_pydantic_enum(
+    proto_enum: ProtoActuatorCommand.CommandType,
+) -> CommandTypeEnum:
     return CommandTypeEnum(proto_enum)
 
-def pydantic_command_type_to_proto_enum(pydantic_enum: CommandTypeEnum) -> ProtoActuatorCommand.CommandType:
+def pydantic_command_type_to_proto_enum(
+    pydantic_enum: CommandTypeEnum,
+) -> ProtoActuatorCommand.CommandType:
     return ProtoActuatorCommand.CommandType(pydantic_enum.value)
 
 
@@ -107,7 +145,9 @@ def pydantic_vector3_to_proto_vector3(pydantic_vec: Vector3) -> ProtoVector3:
     return ProtoVector3(x=pydantic_vec.x, y=pydantic_vec.y, z=pydantic_vec.z)
 
 
-def proto_device_status_to_pydantic_device_status(proto_ds: ProtoDeviceStatus) -> DeviceStatus:
+def proto_device_status_to_pydantic_device_status(
+    proto_ds: ProtoDeviceStatus,
+) -> DeviceStatus:
     return DeviceStatus(
         device_id=proto_ds.device_id,
         device_name=proto_ds.device_name,
@@ -115,7 +155,9 @@ def proto_device_status_to_pydantic_device_status(proto_ds: ProtoDeviceStatus) -
         status_message=proto_ds.status_message if proto_ds.status_message else None,
     )
 
-def pydantic_device_status_to_proto_device_status(pydantic_ds: DeviceStatus) -> ProtoDeviceStatus:
+def pydantic_device_status_to_proto_device_status(
+    pydantic_ds: DeviceStatus,
+) -> ProtoDeviceStatus:
     return ProtoDeviceStatus(
         device_id=pydantic_ds.device_id,
         device_name=pydantic_ds.device_name,
@@ -124,7 +166,9 @@ def pydantic_device_status_to_proto_device_status(pydantic_ds: DeviceStatus) -> 
     )
 
 
-def proto_bios_status_report_to_pydantic_bios_status(proto_bsr: ProtoBiosStatusReport) -> BiosStatus:
+def proto_bios_status_report_to_pydantic_bios_status(
+    proto_bsr: ProtoBiosStatusReport,
+) -> BiosStatus:
     return BiosStatus(
         bios_version=proto_bsr.bios_version,
         firmware_version=proto_bsr.firmware_version,
@@ -135,7 +179,9 @@ def proto_bios_status_report_to_pydantic_bios_status(proto_bsr: ProtoBiosStatusR
         timestamp=proto_timestamp_to_datetime(proto_bsr.timestamp),
     )
 
-def pydantic_bios_status_to_proto_bios_status_report(pydantic_bs: BiosStatus) -> ProtoBiosStatusReport:
+def pydantic_bios_status_to_proto_bios_status_report(
+    pydantic_bs: BiosStatus,
+) -> ProtoBiosStatusReport:
     return ProtoBiosStatusReport(
         bios_version=pydantic_bs.bios_version,
         firmware_version=pydantic_bs.firmware_version,
@@ -147,7 +193,9 @@ def pydantic_bios_status_to_proto_bios_status_report(pydantic_bs: BiosStatus) ->
     )
 
 
-def proto_actuator_command_to_pydantic_actuator_command(proto_ac: ProtoActuatorCommand) -> ActuatorCommand:
+def proto_actuator_command_to_pydantic_actuator_command(
+    proto_ac: ProtoActuatorCommand,
+) -> ActuatorCommand:
     pydantic_ac = ActuatorCommand(
         command_id=proto_uuid_to_pydantic_uuid(proto_ac.command_id),
         actuator_id=proto_uuid_to_pydantic_uuid(proto_ac.actuator_id),
@@ -167,10 +215,14 @@ def proto_actuator_command_to_pydantic_actuator_command(proto_ac: ProtoActuatorC
     elif proto_ac.HasField('bool_value'):
         pydantic_ac.bool_value = proto_ac.bool_value
     elif proto_ac.HasField('vector_value'):
-        pydantic_ac.vector_value = proto_vector3_to_pydantic_vector3(proto_ac.vector_value)
+        pydantic_ac.vector_value = proto_vector3_to_pydantic_vector3(
+            proto_ac.vector_value
+        )
     return pydantic_ac
 
-def pydantic_actuator_command_to_proto_actuator_command(pydantic_ac: ActuatorCommand) -> ProtoActuatorCommand:
+def pydantic_actuator_command_to_proto_actuator_command(
+    pydantic_ac: ActuatorCommand,
+) -> ProtoActuatorCommand:
     proto_ac = ProtoActuatorCommand(
         command_id=pydantic_uuid_to_proto_uuid(pydantic_ac.command_id),
         actuator_id=pydantic_uuid_to_proto_uuid(pydantic_ac.actuator_id),
@@ -192,7 +244,9 @@ def pydantic_actuator_command_to_proto_actuator_command(pydantic_ac: ActuatorCom
     elif pydantic_ac.bool_value is not None:
         proto_ac.bool_value = pydantic_ac.bool_value
     elif pydantic_ac.vector_value is not None:
-        proto_ac.vector_value.CopyFrom(pydantic_vector3_to_proto_vector3(pydantic_ac.vector_value))
+        proto_ac.vector_value.CopyFrom(
+            pydantic_vector3_to_proto_vector3(pydantic_ac.vector_value)
+        )
     return proto_ac
 
 
@@ -207,14 +261,22 @@ def proto_proposal_to_pydantic_proposal(proto_p: ProtoProposal) -> Proposal:
         ],
         justification=proto_p.justification,
         priority=proto_p.priority,
-        expected_duration=proto_duration_to_timedelta(proto_p.expected_duration) if proto_p.HasField('expected_duration') else None,
+        expected_duration=
+        proto_duration_to_timedelta(proto_p.expected_duration)
+        if proto_p.HasField('expected_duration')
+        else None,
         type=proto_proposal_type_to_pydantic_enum(proto_p.type),
         metadata=dict(proto_p.metadata),
         confidence=proto_p.confidence,
         status=proto_proposal_status_to_pydantic_enum(proto_p.status),
         depends_on=[proto_uuid_to_pydantic_uuid(u) for u in proto_p.depends_on],
-        conflicts_with=[proto_uuid_to_pydantic_uuid(u) for u in proto_p.conflicts_with],
-        proposal_signature=proto_p.proposal_signature if proto_p.proposal_signature else None,
+        conflicts_with=[
+            proto_uuid_to_pydantic_uuid(u) for u in proto_p.conflicts_with
+        ],
+        proposal_signature=
+        proto_p.proposal_signature
+        if proto_p.proposal_signature
+        else None,
     )
 
 def pydantic_proposal_to_proto_proposal(pydantic_p: Proposal) -> ProtoProposal:
@@ -233,16 +295,22 @@ def pydantic_proposal_to_proto_proposal(pydantic_p: Proposal) -> ProtoProposal:
         confidence=pydantic_p.confidence,
         status=pydantic_proposal_status_to_proto_enum(pydantic_p.status),
         depends_on=[pydantic_uuid_to_proto_uuid(u) for u in pydantic_p.depends_on],
-        conflicts_with=[pydantic_uuid_to_proto_uuid(u) for u in pydantic_p.conflicts_with],
+        conflicts_with=[
+            pydantic_uuid_to_proto_uuid(u) for u in pydantic_p.conflicts_with
+        ],
     )
     if pydantic_p.expected_duration is not None:
-        proto_p.expected_duration.CopyFrom(timedelta_to_proto_duration(pydantic_p.expected_duration))
+        proto_p.expected_duration.CopyFrom(
+            timedelta_to_proto_duration(pydantic_p.expected_duration)
+        )
     if pydantic_p.proposal_signature is not None:
         proto_p.proposal_signature = pydantic_p.proposal_signature
     return proto_p
 
 
-def proto_sensor_reading_to_pydantic_sensor_data(proto_sr: ProtoSensorReading) -> SensorData:
+def proto_sensor_reading_to_pydantic_sensor_data(
+    proto_sr: ProtoSensorReading,
+) -> SensorData:
     """Convert Proto SensorReading to Pydantic SensorData.
 
     Протокол SensorReading использует oneof `sensor_data` с полями:
@@ -250,12 +318,14 @@ def proto_sensor_reading_to_pydantic_sensor_data(proto_sr: ProtoSensorReading) -
     - scalar_data (float)
     - binary_data (bytes)
 
-    В текущем MVP отсутствуют поля `matrix_data`, `string_data`, `metadata`, `quality_score`.
-    Поэтому безопасно маппим только доступные поля и ставим дефолты.
+    В текущем MVP отсутствуют поля `matrix_data`, `string_data`, `metadata`,
+    `quality_score`, поэтому маппим только доступные поля и ставим дефолты.
     """
     data_kind = proto_sr.WhichOneof('sensor_data')
     scalar = None
     vector = None
+    radar_frame = None
+    radar_track = None
 
     if data_kind == 'scalar_data':
         scalar = proto_sr.scalar_data
@@ -263,6 +333,16 @@ def proto_sensor_reading_to_pydantic_sensor_data(proto_sr: ProtoSensorReading) -
         vec = proto_sr.vector_data
         # vec — это message Vector3, соберём список [x, y, z]
         vector = [vec.x, vec.y, vec.z]
+    elif data_kind == 'radar_data':
+        # Локальный импорт (избегаем цикла)
+        from qiki.shared.converters import radar_proto_pydantic as radar_conv
+
+        radar_frame = radar_conv.proto_frame_to_model(proto_sr.radar_data)
+    elif data_kind == 'radar_track':
+        # Локальный импорт (избегаем цикла)
+        from qiki.shared.converters import radar_proto_pydantic as radar_conv
+
+        radar_track = radar_conv.proto_track_to_model(proto_sr.radar_track)
     # binary_data игнорируем для текущего слоя абстракции
 
     return SensorData(
@@ -270,42 +350,69 @@ def proto_sensor_reading_to_pydantic_sensor_data(proto_sr: ProtoSensorReading) -
         sensor_type=proto_sensor_type_to_pydantic_enum(proto_sr.sensor_type),
         scalar_data=scalar,
         vector_data=vector,
-        metadata={},
+        radar_frame=radar_frame,
+        radar_track=radar_track,
+        metadata={
+            "encoding": proto_sr.encoding,
+            "source_module": proto_sr.source_module,
+            "is_valid": proto_sr.is_valid,
+            "signal_strength": proto_sr.signal_strength,
+        },
         quality_score=1.0,
     )
 
-def pydantic_sensor_data_to_proto_sensor_reading(pydantic_sd: SensorData) -> ProtoSensorReading:
+def pydantic_sensor_data_to_proto_sensor_reading(
+    pydantic_sd: SensorData,
+) -> ProtoSensorReading:
+    """Convert SensorData into a proto SensorReading with supported fields only."""
+    # sensor_id в Pydantic модели — str; в Proto — message UUID с полем value
     proto_sr = ProtoSensorReading(
-        sensor_id=pydantic_uuid_to_proto_uuid(pydantic_sd.sensor_id),
+        sensor_id=ProtoUUID(value=str(pydantic_sd.sensor_id)),
         sensor_type=pydantic_sensor_type_to_proto_enum(pydantic_sd.sensor_type),
-        metadata=pydantic_sd.metadata,
-        quality_score=pydantic_sd.quality_score,
     )
+
     if pydantic_sd.scalar_data is not None:
-        proto_sr.scalar_data = pydantic_sd.scalar_data
-    if pydantic_sd.vector_data is not None:
-        proto_sr.vector_data.extend(pydantic_sd.vector_data)
-    if pydantic_sd.matrix_data is not None:
-        # Matrix data in protobuf is repeated message, so we need to iterate and add rows
-        for row in pydantic_sd.matrix_data:
-            proto_sr.matrix_data.add().values.extend(row)
-    if pydantic_sd.string_data is not None:
-        proto_sr.string_data = pydantic_sd.string_data
+        proto_sr.scalar_data = float(pydantic_sd.scalar_data)
+
+    if pydantic_sd.vector_data is not None and len(pydantic_sd.vector_data) >= 3:
+        x, y, z = pydantic_sd.vector_data[:3]
+        proto_sr.vector_data.CopyFrom(ProtoVector3(x=float(x), y=float(y), z=float(z)))
+
+    if pydantic_sd.radar_frame is not None and pydantic_sd.radar_track is not None:
+        raise ValueError("SensorData cannot contain both radar_frame and radar_track")
+
+    if pydantic_sd.radar_frame is not None:
+        # Локальный импорт (избегаем цикла)
+        from qiki.shared.converters import radar_proto_pydantic as radar_conv
+
+        proto_sr.radar_data.CopyFrom(radar_conv.model_frame_to_proto(pydantic_sd.radar_frame))
+
+    if pydantic_sd.radar_track is not None:
+        # Локальный импорт (избегаем цикла)
+        from qiki.shared.converters import radar_proto_pydantic as radar_conv
+
+        proto_sr.radar_track.CopyFrom(radar_conv.model_track_to_proto(pydantic_sd.radar_track))
+
     return proto_sr
 
 
-def proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(proto_snapshot: ProtoFsmStateSnapshot) -> FsmSnapshotDTO:
-    history = []
+def proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(
+    proto_snapshot: ProtoFsmStateSnapshot,
+) -> FsmSnapshotDTO:
+    history: list[TransitionDTO] = []
     for transition in proto_snapshot.history:
-        history.append(TransitionDTO(
-            from_state=FsmState(transition.from_state),
-            to_state=FsmState(transition.to_state),
-            trigger_event=transition.trigger_event,
-            status=TransitionStatus(transition.status),
-            error_message=transition.error_message,
-            ts_mono=transition.timestamp.ToDatetime().timestamp(), # Using timestamp for both for now
-            ts_wall=transition.timestamp.ToDatetime().timestamp() # Using timestamp for both for now
-        ))
+        history.append(
+            TransitionDTO(
+                from_state=FsmState(transition.from_state),
+                to_state=FsmState(transition.to_state),
+                trigger_event=transition.trigger_event,
+                status=TransitionStatus(transition.status),
+                error_message=transition.error_message,
+                # Using timestamp for both for now
+                ts_mono=transition.timestamp.ToDatetime().timestamp(),
+                ts_wall=transition.timestamp.ToDatetime().timestamp(),
+            )
+        )
 
     # Extract version from state_metadata, default to 0 if not found or invalid
     version = int(proto_snapshot.state_metadata.get("dto_version", 0))
@@ -324,7 +431,9 @@ def proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(proto_snapshot: ProtoF
         state_metadata=dict(proto_snapshot.state_metadata)
     )
 
-def pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot(pydantic_dto: FsmSnapshotDTO) -> ProtoFsmStateSnapshot:
+def pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot(
+    pydantic_dto: FsmSnapshotDTO,
+) -> ProtoFsmStateSnapshot:
     proto_snapshot = ProtoFsmStateSnapshot(
         current_state=pydantic_dto.state.value, # Convert enum to its integer value
         snapshot_id=ProtoUUID(value=str(pydantic_dto.snapshot_id)),
@@ -340,7 +449,7 @@ def pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot(pydantic_dto: FsmSnaps
     #     proto_snapshot.prev_state = pydantic_dto.prev_state.value
 
     # Handle history
-    for transition in pydantic_dto.history:
+    for transition in pydantic_dto.history or ():
         proto_transition = proto_snapshot.history.add()
         proto_transition.from_state = transition.from_state.value
         proto_transition.to_state = transition.to_state.value

@@ -1,20 +1,45 @@
 import logging
+import os
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
 
 # Импортируем наши Pydantic модели
 # Важно, чтобы PYTHONPATH был настроен правильно, чтобы найти shared
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
-from shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
+from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
+from qiki.shared.models.radar import RadarFrameModel
+from qiki.services.faststream_bridge.radar_handlers import frame_to_track
+from qiki.services.faststream_bridge.track_publisher import RadarTrackPublisher
+from qiki.services.faststream_bridge.lag_monitor import (
+    ConsumerTarget,
+    JetStreamLagMonitor,
+)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Инициализация NATS брокера
-# Имя контейнера 'qiki-nats-phase1' используется как хост
-broker = NatsBroker("nats://qiki-nats-phase1:4222")
+NATS_URL = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
+RADAR_FRAMES_SUBJECT = os.getenv("RADAR_FRAMES_SUBJECT", "qiki.radar.v1.frames")
+RADAR_TRACKS_SUBJECT = os.getenv("RADAR_TRACKS_SUBJECT", "qiki.radar.v1.tracks")
+RADAR_FRAMES_DURABLE = os.getenv("RADAR_FRAMES_DURABLE", "radar_frames_pull")
+RADAR_TRACKS_DURABLE = os.getenv("RADAR_TRACKS_DURABLE", "radar_tracks_pull")
+LAG_MONITOR_INTERVAL = float(os.getenv("RADAR_LAG_MONITOR_INTERVAL_SEC", "5"))
+
+broker = NatsBroker(NATS_URL)
 app = FastStream(broker)
+
+_track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
+_lag_monitor = JetStreamLagMonitor(
+    nats_url=NATS_URL,
+    stream=os.getenv("RADAR_STREAM", "QIKI_RADAR_V1"),
+    consumers=[
+        ConsumerTarget(durable=RADAR_FRAMES_DURABLE, label="radar_frames_pull"),
+        ConsumerTarget(durable=RADAR_TRACKS_DURABLE, label="radar_tracks_pull"),
+    ],
+    interval_sec=LAG_MONITOR_INTERVAL,
+)
 
 
 @broker.subscriber("qiki.commands.control")
@@ -51,8 +76,39 @@ async def handle_control_command(
 @app.on_startup
 async def on_startup():
     logger.info("FastStream bridge service has started.")
+    await _lag_monitor.start()
 
 
 @app.on_shutdown
 async def on_shutdown():
     logger.info("FastStream bridge service is shutting down.")
+    await _lag_monitor.stop()
+
+
+# ------------------------ Radar frames handling ------------------------
+@broker.subscriber(RADAR_FRAMES_SUBJECT)
+async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
+    """
+    Минимальный потребитель кадров радара.
+    На данном этапе — только логирование метрик кадра.
+    """
+    try:
+        count = len(msg.detections)
+        logger.info(
+            "Radar frame received: frame_id=%s sensor_id=%s detections=%d",
+            msg.frame_id,
+            msg.sensor_id,
+            count,
+        )
+        # Минимальная агрегация: кадр -> трек
+        track = frame_to_track(msg)
+        _track_publisher.publish_track(track)
+        logger.debug(
+            "Track published with CloudEvents headers: track_id=%s", track.track_id
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to handle radar frame: %s", exc)
+        fallback = frame_to_track(
+            RadarFrameModel(sensor_id=msg.sensor_id, detections=[])
+        )
+        _track_publisher.publish_track(fallback)

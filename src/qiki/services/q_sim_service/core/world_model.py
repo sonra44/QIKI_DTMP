@@ -1,7 +1,7 @@
 from typing import Dict, Any
 import math
 
-from services.q_sim_service.logger import logger
+from qiki.services.q_sim_service.logger import logger
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Vector3
 

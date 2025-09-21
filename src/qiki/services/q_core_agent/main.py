@@ -13,22 +13,32 @@ from pathlib import Path
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(ROOT_DIR)
 
-from services.q_core_agent.core.agent_logger import setup_logging, logger
-from services.q_core_agent.core.agent import QCoreAgent
-from services.q_core_agent.core.interfaces import (
+from qiki.services.q_core_agent.core.agent_logger import setup_logging, logger
+from qiki.services.q_core_agent.core.agent import QCoreAgent
+from qiki.services.q_core_agent.core.interfaces import (
     MockDataProvider,
     QSimDataProvider,
 )
-from services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
-from services.q_core_agent.core.tick_orchestrator import TickOrchestrator
-from services.q_core_agent.state.store import create_initialized_store
-from shared.config_models import QCoreAgentConfig, QSimServiceConfig, load_config
+from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
+from qiki.services.q_core_agent.core.tick_orchestrator import TickOrchestrator
+from qiki.services.q_core_agent.state.store import create_initialized_store
+from qiki.shared.config_models import QCoreAgentConfig, QSimServiceConfig, load_config
 
 # Import QSimService for direct interaction in MVP
-from services.q_sim_service.main import QSimService
+from qiki.services.q_sim_service.main import QSimService
 
-from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ProposalTypeEnum, DeviceStatusEnum, FsmStateEnum, SensorTypeEnum
-from uuid import UUID as PyUUID, uuid4
+from qiki.shared.models.core import (
+    BiosStatus,
+    DeviceStatus,
+    FsmStateSnapshot as PydanticFsmStateSnapshot,
+    Proposal,
+    SensorData,
+    ProposalTypeEnum,
+    DeviceStatusEnum,
+    FsmStateEnum,
+    SensorTypeEnum,
+)
+from uuid import uuid4
 from datetime import datetime, UTC
 
 
@@ -70,8 +80,8 @@ def _create_mock_fsm_state():
         current_state=FsmStateEnum.BOOTING,  # Начинаем с BOOTING состояния
         previous_state=FsmStateEnum.OFFLINE,
         context_data={"mode": "mock", "initialized": "true"},
-        snapshot_id=uuid4(), # Use uuid4() to generate a valid UUID
-        fsm_instance_id=uuid4(), # Use uuid4() to generate a valid UUID
+        snapshot_id=uuid4(),  # Use uuid4() to generate a valid UUID
+        fsm_instance_id=uuid4(),  # Use uuid4() to generate a valid UUID
         source_module="mock_provider",
         attempt_count=1,
         ts_wall=time.time(),
@@ -84,7 +94,7 @@ _MOCK_BIOS_STATUS = _create_mock_bios_status()
 _MOCK_FSM_STATE = _create_mock_fsm_state()
 _MOCK_PROPOSALS = [
     Proposal(
-        proposal_id=uuid4(), # Use uuid4() to generate a valid UUID
+        proposal_id=uuid4(),  # Use uuid4() to generate a valid UUID
         source_module_id="Q_MIND_REFLEX",
         confidence=0.99,
         priority=0.8,
@@ -92,7 +102,7 @@ _MOCK_PROPOSALS = [
         justification="Mock reflex proposal justification.",
     ),
     Proposal(
-        proposal_id=uuid4(), # Use uuid4() to generate a valid UUID
+        proposal_id=uuid4(),  # Use uuid4() to generate a valid UUID
         source_module_id="Q_MIND_PLANNER",
         confidence=0.85,
         priority=0.6,

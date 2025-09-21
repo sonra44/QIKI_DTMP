@@ -14,6 +14,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+PROJECT_ROOT="$(pwd)"
+export PYTHONPATH="$PROJECT_ROOT/src:$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
 # Функции для вывода
 info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[OK]${NC} $1"; }
@@ -25,7 +28,7 @@ check_environment() {
     info "Проверка окружения..."
     
     # Проверяем что находимся в правильной директории
-    if [[ ! -f "services/q_core_agent/state/types.py" ]]; then
+    if [[ ! -f "src/qiki/services/q_core_agent/state/types.py" ]]; then
         error "Скрипт должен запускаться из корня проекта QIKI_DTMP"
         exit 1
     fi
@@ -38,9 +41,9 @@ check_environment() {
     
     # Проверяем что StateStore модули существуют
     local modules=(
-        "services/q_core_agent/state/types.py"
-        "services/q_core_agent/state/store.py" 
-        "services/q_core_agent/state/conv.py"
+        "src/qiki/services/q_core_agent/state/types.py"
+        "src/qiki/services/q_core_agent/state/store.py" 
+        "src/qiki/services/q_core_agent/state/conv.py"
     )
     
     for module in "${modules[@]}"; do
@@ -58,9 +61,9 @@ syntax_check() {
     info "Проверка синтаксиса StateStore модулей..."
     
     local modules=(
-        "services/q_core_agent/state/types.py"
-        "services/q_core_agent/state/store.py"
-        "services/q_core_agent/state/conv.py"
+        "src/qiki/services/q_core_agent/state/types.py"
+        "src/qiki/services/q_core_agent/state/store.py"
+        "src/qiki/services/q_core_agent/state/conv.py"
     )
     
     for module in "${modules[@]}"; do
@@ -79,10 +82,11 @@ import_check() {
     
     # Тестируем основные импорты
     if ! python3 -c "
-import sys; sys.path.append('.')
-from services.q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot
-from services.q_core_agent.state.store import AsyncStateStore, create_store
-from services.q_core_agent.state.conv import dto_to_proto, proto_to_dto
+import sys
+sys.path.extend(['.', 'src'])
+from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot
+from qiki.services.q_core_agent.state.store import AsyncStateStore, create_store
+from qiki.services.q_core_agent.state.conv import dto_to_proto, proto_to_dto
 print('Все основные импорты работают')
 " 2>/dev/null; then
         error "Проблемы с импортами StateStore"
@@ -97,9 +101,9 @@ run_unit_tests() {
     info "Запуск unit тестов..."
     
     local test_files=(
-        "services/q_core_agent/state/tests/test_types.py"
-        "services/q_core_agent/state/tests/test_store.py"
-        "services/q_core_agent/state/tests/test_conv.py"
+        "src/qiki/services/q_core_agent/state/tests/test_types.py"
+        "src/qiki/services/q_core_agent/state/tests/test_store.py"
+        "src/qiki/services/q_core_agent/state/tests/test_conv.py"
     )
     
     local passed=0
@@ -134,8 +138,8 @@ run_unit_tests() {
 run_integration_tests() {
     info "Запуск integration тестов..."
     
-    if [[ -f "services/q_core_agent/state/tests/test_integration.py" ]]; then
-        if python3 -m pytest "services/q_core_agent/state/tests/test_integration.py" -v --tb=short; then
+    if [[ -f "src/qiki/services/q_core_agent/state/tests/test_integration.py" ]]; then
+        if python3 -m pytest "src/qiki/services/q_core_agent/state/tests/test_integration.py" -v --tb=short; then
             success "Integration тесты пройдены"
         else
             warning "Integration тесты провалены"
@@ -150,9 +154,9 @@ run_integration_tests() {
 run_stress_tests() {
     info "Запуск stress тестов (быстрая версия)..."
     
-    if [[ -f "services/q_core_agent/state/tests/test_stress.py" ]]; then
+    if [[ -f "src/qiki/services/q_core_agent/state/tests/test_stress.py" ]]; then
         # Запускаем только важные stress тесты с коротким таймаутом
-        if python3 -m pytest "services/q_core_agent/state/tests/test_stress.py" \
+        if python3 -m pytest "src/qiki/services/q_core_agent/state/tests/test_stress.py" \
            -k "test_concurrent_writers_stress or test_high_volume_sets_and_gets" \
            -v --tb=short --timeout=30; then
             success "Stress тесты пройдены"
@@ -172,11 +176,11 @@ functional_test() {
     cat > /tmp/statestore_functional_test.py << 'EOF'
 import asyncio
 import sys
-sys.path.append('.')
+sys.path.extend(['.', 'src'])
 
-from services.q_core_agent.state.types import *
-from services.q_core_agent.state.store import *
-from services.q_core_agent.state.conv import *
+from qiki.services.q_core_agent.state.types import *
+from qiki.services.q_core_agent.state.store import *
+from qiki.services.q_core_agent.state.conv import *
 
 async def test_basic_functionality():
     print("1. Создание StateStore...")
@@ -250,10 +254,10 @@ performance_test() {
 import asyncio
 import time
 import sys
-sys.path.append('.')
+sys.path.extend(['.', 'src'])
 
-from services.q_core_agent.state.types import *
-from services.q_core_agent.state.store import *
+from qiki.services.q_core_agent.state.types import *
+from qiki.services.q_core_agent.state.store import *
 
 async def test_performance():
     store = create_store()
@@ -312,11 +316,12 @@ compatibility_test() {
     
     # Проверяем что можем импортировать protobuf типы
     if python3 -c "
-import sys; sys.path.append('.')
+import sys
+sys.path.extend(['.', 'src'])
 try:
     from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
-    from services.q_core_agent.state.conv import dto_to_proto, proto_to_dto
-    from services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
+    from qiki.services.q_core_agent.state.conv import dto_to_proto, proto_to_dto
+    from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
     
     # Тест roundtrip конвертации
     dto = FsmSnapshotDTO(version=1, state=FsmState.IDLE, reason='COMPATIBILITY_TEST')
@@ -346,10 +351,10 @@ memory_leak_test() {
 import asyncio
 import gc
 import sys
-sys.path.append('.')
+sys.path.extend(['.', 'src'])
 
-from services.q_core_agent.state.store import create_store
-from services.q_core_agent.state.types import *
+from qiki.services.q_core_agent.state.store import create_store
+from qiki.services.q_core_agent.state.types import *
 
 async def memory_test():
     initial_objects = len(gc.get_objects())
@@ -446,13 +451,13 @@ generate_report() {
 
 \`\`\`bash
 # Все unit тесты
-python3 -m pytest services/q_core_agent/state/tests/ -v
+python3 -m pytest src/qiki/services/q_core_agent/state/tests/ -v
 
 # Stress тесты (длительные)
-python3 -m pytest services/q_core_agent/state/tests/test_stress.py -v -s
+python3 -m pytest src/qiki/services/q_core_agent/state/tests/test_stress.py -v -s
 
 # Integration тесты
-python3 -m pytest services/q_core_agent/state/tests/test_integration.py -v
+python3 -m pytest src/qiki/services/q_core_agent/state/tests/test_integration.py -v
 \`\`\`
 
 ---

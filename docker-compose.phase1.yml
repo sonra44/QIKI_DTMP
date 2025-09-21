@@ -44,14 +44,20 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      nats-js-init:
+        condition: service_completed_successfully
       q-sim-service:
         condition: service_healthy
+      q-sim-radar:
+        condition: service_started
+      faststream-bridge:
+        condition: service_started
     tty: true
     stdin_open: true
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace
-    command: python services/q_core_agent/main.py --grpc
+      - PYTHONPATH=/workspace/src:/workspace
+    command: python -m qiki.services.q_core_agent.main --grpc
     restart: on-failure
 
   q-sim-service:
@@ -60,7 +66,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: qiki-sim-phase1
     healthcheck:
-      test: ["CMD", "python", "-c", "import grpc,sys; from generated.q_sim_api_pb2_grpc import QSimAPIStub; from google.protobuf.empty_pb2 import Empty; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIStub(ch); stub.HealthCheck(Empty(), timeout=2.0)"]
+      test: ["CMD", "python", "-c", "import grpc,sys; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); stub.HealthCheck(HealthCheckRequest(), timeout=2.0)"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -69,17 +75,40 @@ services:
       - qiki-network-phase1
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-    command: python services/q_sim_service/grpc_server.py
+      - PYTHONPATH=/workspace/src:/workspace
+      - RADAR_ENABLED=1
+      - RADAR_NATS_ENABLED=1
+      - NATS_URL=nats://qiki-nats-phase1:4222
+    command: python -m qiki.services.q_sim_service.grpc_server
     tty: true
     stdin_open: true
     depends_on:
       nats:
         condition: service_healthy
 
+  # Отдельный сервис, который крутит симуляцию и публикует кадры радара в NATS
+  q-sim-radar:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-sim-radar-phase1
+    networks:
+      - qiki-network-phase1
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace/src:/workspace
+      - RADAR_ENABLED=1
+      - RADAR_NATS_ENABLED=1
+      - NATS_URL=nats://qiki-nats-phase1:4222
+    command: python -m qiki.services.q_sim_service.main
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: on-failure
   faststream-bridge:
     build:
       context: .
-      dockerfile: services/faststream_bridge/Dockerfile
+      dockerfile: src/qiki/services/faststream_bridge/Dockerfile
     container_name: qiki-faststream-bridge-phase1
     networks:
       - qiki-network-phase1
@@ -88,6 +117,49 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  # Registrar service for event auditing
+  registrar:
+    build:
+      context: .
+      dockerfile: src/qiki/services/registrar/Dockerfile
+    container_name: qiki-registrar-phase1
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - registrar-data-phase1:/var/log/qiki
+    restart: on-failure
+
+  # Инициализация JetStream Stream для радарных топиков
+  nats-js-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-nats-js-init
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace/src:/workspace
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - RADAR_STREAM=QIKI_RADAR_V1
+      - RADAR_SUBJECTS=qiki.radar.v1.*
+      - RADAR_DUPLICATE_WINDOW_SEC=120
+      - RADAR_MAX_BYTES=10485760
+      - RADAR_MAX_AGE_SEC=3600
+      - RADAR_CONSUMER_ACK_WAIT_SEC=45
+      - RADAR_CONSUMER_MAX_DELIVER=7
+      - RADAR_CONSUMER_MAX_ACK_PENDING=512
+      - RADAR_FRAMES_DURABLE=radar_frames_pull
+      - RADAR_TRACKS_DURABLE=radar_tracks_pull
+    command: python tools/js_init.py
+    restart: "no"
+
 networks:
   qiki-network-phase1:
     driver: bridge
@@ -95,3 +167,4 @@ networks:
 volumes:
   nats-data-phase1:
   pip-cache-phase1:
+  registrar-data-phase1:

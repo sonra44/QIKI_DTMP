@@ -10,9 +10,13 @@ import gc
 import psutil
 import random
 
-from q_core_agent.state.store import create_initialized_store
-from q_core_agent.state.types import FsmSnapshotDTO, FsmState, next_snapshot
-from q_core_agent.state.conv import dto_to_proto, dto_to_json_dict
+from qiki.services.q_core_agent.state.store import create_initialized_store
+from qiki.services.q_core_agent.state.types import (
+    FsmSnapshotDTO,
+    FsmState,
+    next_snapshot,
+)
+from qiki.services.q_core_agent.state.conv import dto_to_proto, dto_to_json_dict
 
 
 # Настройки для stress тестов
@@ -140,7 +144,7 @@ class TestHighVolumeOperations:
             for queue in subscribers:
                 try:
                     await queue.get()
-                except:
+                except Exception:
                     pass
 
             # Генерируем обновления
@@ -316,7 +320,7 @@ class TestConcurrencyStress:
                     await queue.get()
                     consumed += 1
                     await asyncio.sleep(0.05)  # медленно обрабатываем
-            except:
+            except Exception:
                 pass
             return consumed
 
@@ -612,7 +616,7 @@ class TestErrorHandlingStress:
             for queue in subscribers:
                 try:
                     await stress_store.unsubscribe(queue)
-                except:
+                except Exception:
                     pass
 
         # Проверяем что система восстановилась

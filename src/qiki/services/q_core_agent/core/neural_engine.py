@@ -4,8 +4,8 @@ from .agent_logger import logger
 
 if TYPE_CHECKING:
     from .agent import AgentContext
-    from shared.config_models import QCoreAgentConfig
-from shared.models.core import Proposal, ProposalTypeEnum
+    from qiki.shared.config_models import QCoreAgentConfig
+from qiki.shared.models.core import Proposal, ProposalTypeEnum
 from uuid import UUID as PyUUID
 
 

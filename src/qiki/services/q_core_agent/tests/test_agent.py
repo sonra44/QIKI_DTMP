@@ -16,7 +16,8 @@ from q_core_agent.core.neural_engine import NeuralEngine
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from generated.proposal_pb2 import Proposal
-from shared.config_models import QCoreAgentConfig
+from qiki.shared.config_models import QCoreAgentConfig
+from qiki.shared.models.core import SensorData, SensorTypeEnum
 
 
 def create_test_config(**overrides):
@@ -44,6 +45,11 @@ def mock_data_provider():
     provider.get_bios_status.return_value = mock_bios
     provider.get_fsm_state.return_value = mock_fsm
     provider.get_proposals.return_value = mock_proposals
+    provider.get_sensor_data.return_value = SensorData(
+        sensor_id="lidar_front",
+        sensor_type=SensorTypeEnum.LIDAR,
+        scalar_data=1.0,
+    )
     return provider
 
 
@@ -78,6 +84,7 @@ def test_qcoreagent_run_tick_updates_context(mock_data_provider):
     mock_data_provider.get_bios_status.assert_called_once()
     mock_data_provider.get_fsm_state.assert_called_once()
     mock_data_provider.get_proposals.assert_called_once()
+    mock_data_provider.get_sensor_data.assert_called_once()
 
 
 def test_qcoreagent_handle_bios_error_safe_mode(mock_data_provider):

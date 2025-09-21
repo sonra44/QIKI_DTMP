@@ -8,7 +8,15 @@ import time
 import uuid
 from dataclasses import FrozenInstanceError
 
-from q_core_agent.state.types import FsmSnapshotDTO, TransitionDTO, FsmState, TransitionStatus, initial_snapshot, create_transition, next_snapshot
+from qiki.services.q_core_agent.state.types import (
+    FsmSnapshotDTO,
+    TransitionDTO,
+    FsmState,
+    TransitionStatus,
+    create_transition,
+    initial_snapshot,
+    next_snapshot,
+)
 
 
 class TestFsmState:

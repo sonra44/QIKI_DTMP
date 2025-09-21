@@ -7,8 +7,10 @@ set -e
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 
-Q_SIM_SERVICE_PATH="$PROJECT_ROOT/services/q_sim_service/main.py"
-Q_CORE_AGENT_PATH="$PROJECT_ROOT/services/q_core_agent/main.py"
+export PYTHONPATH="$PROJECT_ROOT/src:$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+Q_SIM_SERVICE_MODULE="qiki.services.q_sim_service.main"
+Q_CORE_AGENT_MODULE="qiki.services.q_core_agent.main"
 
 LOG_DIR="$PROJECT_ROOT/.agent/logs/$(date +%Y-%m-%d)"
 mkdir -p "$LOG_DIR"
@@ -17,14 +19,14 @@ Q_SIM_LOG="$LOG_DIR/q_sim_service.log"
 Q_CORE_LOG="$LOG_DIR/q_core_agent.log"
 
 echo "Starting Q-Sim Service..."
-python3 "$Q_SIM_SERVICE_PATH" > "$Q_SIM_LOG" 2>&1 &
+python3 -m "$Q_SIM_SERVICE_MODULE" > "$Q_SIM_LOG" 2>&1 &
 Q_SIM_PID=$!
 echo "Q-Sim Service started with PID: $Q_SIM_PID (Log: $Q_SIM_LOG)"
 
 sleep 2 # Give Q-Sim a moment to start
 
 echo "Starting Q-Core Agent..."
-python3 "$Q_CORE_AGENT_PATH" > "$Q_CORE_LOG" 2>&1 &
+python3 -m "$Q_CORE_AGENT_MODULE" > "$Q_CORE_LOG" 2>&1 &
 Q_CORE_PID=$!
 echo "Q-Core Agent started with PID: $Q_CORE_PID (Log: $Q_CORE_LOG)"
 

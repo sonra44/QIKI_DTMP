@@ -1,15 +1,22 @@
 import grpc
 from typing import List
 
-from services.q_core_agent.core.interfaces import IDataProvider
-from services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.interfaces import IDataProvider
+from qiki.services.q_core_agent.core.agent_logger import logger
 
 from datetime import datetime, UTC
-from shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatusEnum, SensorTypeEnum, FsmStateEnum
-from shared.converters.protobuf_pydantic import pydantic_actuator_command_to_proto_actuator_command, proto_sensor_reading_to_pydantic_sensor_data
-from uuid import UUID as PyUUID
-from generated.q_sim_api_pb2_grpc import QSimAPIStub
-from google.protobuf.empty_pb2 import Empty
+from qiki.shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatusEnum, SensorTypeEnum, FsmStateEnum
+from qiki.shared.converters.protobuf_pydantic import (
+    pydantic_actuator_command_to_proto_actuator_command,
+    proto_sensor_reading_to_pydantic_sensor_data,
+)
+from uuid import uuid4
+from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub
+from generated.q_sim_api_pb2 import (
+    GetSensorDataRequest,
+    SendActuatorCommandRequest,
+    HealthCheckRequest,
+)
 
 
 class GrpcDataProvider(IDataProvider):
@@ -28,10 +35,10 @@ class GrpcDataProvider(IDataProvider):
         """Устанавливает gRPC соединение с симулятором"""
         try:
             self.channel = grpc.insecure_channel(self.server_address)
-            self.stub = QSimAPIStub(self.channel)
+            self.stub = QSimAPIServiceStub(self.channel)
 
             # Проверяем соединение
-            response = self.stub.HealthCheck(Empty(), timeout=5.0)
+            response = self.stub.HealthCheck(HealthCheckRequest(), timeout=5.0)
             logger.info(
                 f"Connected to Q-Sim Service at {self.server_address}: {response.message}"
             )
@@ -97,20 +104,31 @@ class GrpcDataProvider(IDataProvider):
     def get_sensor_data(self) -> SensorData:
         """Запрашивает данные сенсоров через gRPC"""
         try:
-            response = self.stub.GetSensorData(Empty(), timeout=10.0)
-            logger.debug(f"Received sensor data via gRPC: {response.sensor_id.value}")
-            return proto_sensor_reading_to_pydantic_sensor_data(response)
+            response = self.stub.GetSensorData(GetSensorDataRequest(), timeout=10.0)
+            reading = response.reading
+            logger.debug(f"Received sensor data via gRPC: {reading.sensor_id.value}")
+            return proto_sensor_reading_to_pydantic_sensor_data(reading)
         except grpc.RpcError as e:
             logger.error(f"Failed to get sensor data via gRPC: {e}")
             # Возвращаем пустое показание при ошибке
-            return SensorData(sensor_id=PyUUID("error_sensor"), sensor_type=SensorTypeEnum.OTHER, scalar_data=0.0)
+            return SensorData(sensor_id=str(uuid4()), sensor_type=SensorTypeEnum.OTHER, scalar_data=0.0)
 
     def send_actuator_command(self, command: ActuatorCommand):
         """Отправляет команду актуатору через gRPC"""
         try:
             proto_command = pydantic_actuator_command_to_proto_actuator_command(command)
-            self.stub.SendActuatorCommand(proto_command, timeout=10.0)
-            logger.info(f"Sent actuator command via gRPC: {command.actuator_id}")
+            response = self.stub.SendActuatorCommand(
+                SendActuatorCommandRequest(command=proto_command),
+                timeout=10.0,
+            )
+            if response.accepted:
+                logger.info(f"Sent actuator command via gRPC: {command.actuator_id}")
+            else:
+                logger.warning(
+                    "Actuator command rejected via gRPC: %s (%s)",
+                    command.actuator_id,
+                    response.message,
+                )
         except grpc.RpcError as e:
             logger.error(f"Failed to send actuator command via gRPC: {e}")
 

@@ -9,6 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
+# Добавляем src/ в PYTHONPATH
+export PYTHONPATH="$PROJECT_ROOT/src:$PROJECT_ROOT"
+
 # Проверяем наличие Python
 if ! command -v python3 &> /dev/null; then
     echo "Error: python3 is not installed or not in PATH"
@@ -33,14 +36,15 @@ fi
 
 # Проверяем доступность симулятора
 echo "Checking Q-Sim Server availability..."
+# shellcheck disable=SC2016
 if ! python3 -c "
 import grpc
-from generated.q_sim_api_pb2_grpc import QSimAPIStub
-from google.protobuf.empty_pb2 import Empty
+from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub
+from generated.q_sim_api_pb2 import HealthCheckRequest
 try:
     channel = grpc.insecure_channel('localhost:50051')
-    stub = QSimAPIStub(channel)
-    response = stub.HealthCheck(Empty(), timeout=3.0)
+    stub = QSimAPIServiceStub(channel)
+    response = stub.HealthCheck(HealthCheckRequest(), timeout=3.0)
     print(f'Q-Sim Server is available: {response.message}')
     channel.close()
 except Exception as e:
@@ -55,6 +59,6 @@ fi
 
 # Запускаем агента в режиме gRPC
 echo "Launching Q-Core Agent with gRPC..."
-python3 services/q_core_agent/main.py --grpc
+python3 -m qiki.services.q_core_agent.main --grpc
 
 echo "Q-Core Agent stopped."

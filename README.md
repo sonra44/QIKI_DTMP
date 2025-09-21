@@ -1,148 +1,95 @@
-# QIKI Digital Twin Microservices Platform (QIKI_DTMP) - Полное Руководство
+# QIKI Digital Twin Microservices Platform (QIKI_DTMP)
 
-**Версия Документа:** 2.1 (Стабильный запуск)  
-**Дата Последней Верификации:** 2025-09-05
+**Версия: Phase 1 (сентябрь 2025)**
 
----
+Этот документ содержит основную информацию о проекте, его архитектуре и инструкции по запуску и проверке системы.
 
-## 1. Философия и Назначение Проекта
+## Описание
 
-**QIKI_DTMP** — это высокопроизводительная, модульная платформа для разработки, симуляции и запуска интеллектуальных агентов, спроектированная с фокусом на надежность и масштабируемость. Изначально задуманный как архитектурный макет и "цифровой двойник" для AI-агента, проект эволюционировал в сложную экосистему, готовую к реальным задачам.
+QIKI_DTMP — это высокопроизводительная, модульная платформа для разработки и симуляции интеллектуальных агентов, построенная на микросервисной архитектуре. Текущая версия (Phase 1) включает полностью интегрированный радарный пайплайн (Radar v1) с обработкой данных через NATS JetStream.
 
-### Ключевые Принципы ("Почему?"):
+## Архитектура Phase 1
 
--   **Надежность превыше всего:** Проект является прямым ответом на предыдущие неудачные итерации, страдавшие от гонок состояний, неконсистентности данных и скрытых ошибок. Главный принцип — создание предсказуемой и стабильной системы.
--   **Document-First & Contract-Oriented:** Каждый компонент сначала описывается в детальных дизайн-документах, а взаимодействие между сервисами строго регламентируется через Protobuf-контракты. Это гарантирует, что все части системы "говорят на одном языке".
--   **Эволюционная Архитектура:** Система спроектирована для роста — от базового наземного робота (`Bot`) до сложного космического аппарата (`Ship`) и, в перспективе, до управления флотом.
--   **Проверяемость и Честность:** Встроенные механизмы (`ANTI_FRAUD_DOCUMENTATION_PROTOCOL.md`, `AI_DEVELOPER_PRINCIPLES.md`) требуют, чтобы каждое утверждение о готовности системы было подкреплено практическими тестами.
+Система состоит из следующих контейнеров:
 
-### Как это работает ("Как?"):
+-   **`qiki-nats-phase1`**: Брокер сообщений NATS с включенным JetStream.
+-   **`q-sim-service`**: Основной gRPC сервис симуляции, предоставляющий данные сенсоров.
+-   **`q-sim-radar`**: Генератор радарных кадров, который публикует данные в NATS.
+-   **`faststream-bridge`**: Приложение на FastStream, которое обрабатывает радарные кадры и генерирует треки.
+-   **`qiki-dev`**: Основной контейнер для разработки и запуска Q-Core Agent.
+-   **`nats-js-init`** (one-shot): Утилита, которая инициализирует необходимые потоки (streams) и потребителей (consumers) в JetStream при первом запуске.
+-   **`qiki-registrar-phase1`**: Сервис аудита событий, который записывает структурированные логи событий системы с кодами 1xx-9xx.
 
-Система состоит из двух ключевых микросервисов:
-1.  **`Q-Core Agent`**: "Мозг" агента. Работает в дискретном цикле ("тике"), на каждом шаге получая данные, обрабатывая их через конечный автомат (FSM) и принимая решения.
-2.  **`Q-Sim Service`**: Симулятор физического мира. Генерирует данные сенсоров и исполняет команды, полученные от агента.
+## Быстрый старт
 
-Взаимодействие между ними происходит через два независимых слоя коммуникации:
--   **gRPC:** Для прямых, синхронных запросов (например, "получить данные сенсора").
--   **NATS (через FastStream):** Для асинхронного, событийно-ориентированного обмена сообщениями в распределенной среде.
+Все команды выполняются из корневой директории проекта `QIKI_DTMP`.
 
-Дополнительно см. «Архитектура (Phase 1)»: `docs/ARCHITECTURE.md` — краткая схема контейнеров, последовательности вызовов и health/readiness.
+### 1. Сборка и запуск
 
----
+Эта команда соберет и запустит все сервисы в фоновом режиме.
 
-## 2. Детальный Анализ Компонентов
+```bash
+docker compose -f docker-compose.phase1.yml up -d --build
+```
 
-Для глубокого понимания каждого компонента, его роли, принципов работы и взаимодействия с другими модулями, пожалуйста, ознакомьтесь с детальными аналитическими файлами:
+### 2. Проверка статуса контейнеров
 
-### 2.1. Компоненты Q-Core Agent
+```bash
+docker compose -f docker-compose.phase1.yml ps
+```
 
--   **Основная логика агента:**
-    -   [`agent.py`](docs/analysis/agent.py.md) - Главный оркестратор агента.
-    -   [`main.py`](docs/analysis/main.py.md) - Точка входа и сборщик зависимостей агента.
-    -   [`tick_orchestrator.py`](docs/analysis/tick_orchestrator.py.md) - Дирижер цикла работы агента.
-    -   [`bot_core.py`](docs/analysis/bot_core.py.md) - Низкоуровневое ядро и идентификация бота.
-    -   [`interfaces.py`](docs/analysis/interfaces.py.md) - Абстрактные интерфейсы для модульности.
-    -   [`agent_logger.py`](docs/analysis/agent_logger.py.md) - Независимая система логирования агента.
+### 3. Проверка работоспособности (Health Checks)
 
--   **Управление состоянием FSM:**
-    -   [`store.py`](docs/analysis/store.py.md) - Единственный источник правды для состояния FSM (AsyncStateStore).
-    -   [`types.py`](docs/analysis/types.py.md) - Неизменяемые DTO для состояний FSM.
-    -   [`conv.py`](docs/analysis/conv.py.md) - Конвертер между DTO и Protobuf.
-    -   [`fsm_handler.py`](docs/analysis/fsm_handler.py.md) - Хранитель логики переходов FSM.
+#### NATS Health Check
 
--   **Движки Принятия Решений:**
-    -   [`rule_engine.py`](docs/analysis/rule_engine.py.md) - Генерация предложений на основе правил.
-    -   [`neural_engine.py`](docs/analysis/neural_engine.py.md) - Генерация предложений на основе ML-моделей (заглушка).
-    -   [`proposal_evaluator.py`](docs/analysis/proposal_evaluator.py.md) - Оценка и выбор предложений.
+```bash
+curl -sf http://localhost:8222/healthz
+```
 
-### 2.2. Компоненты Q-Sim Service
+Ожидаемый ответ: `{ "status": "ok" }`
 
--   [`main.py`](docs/analysis/q_sim_service_main.py.md) - Основной сервис симулятора.
--   [`core/world_model.py`](docs/analysis/world_model.py.md) - Модель симулируемого мира.
--   [`grpc_server.py`](docs/analysis/q_sim_service_grpc_server.py.md) - gRPC-сервер для симулятора.
--   [`logger.py`](docs/analysis/q_sim_service_logger.py.md) - Независимая система логирования симулятора.
+#### gRPC Health Check (q-sim-service)
 
-### 2.3. Общие Модели Данных
+```bash
+docker compose -f docker-compose.phase1.yml exec -T q-sim-service python - <<\'PY\'
+import grpc
+from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub
+from generated.q_sim_api_pb2 import HealthCheckRequest
+channel = grpc.insecure_channel(\'localhost:50051\'')
+stub = QSimAPIServiceStub(channel)
+print(stub.HealthCheck(HealthCheckRequest(), timeout=3.0))
+PY
+```
 
--   [`shared/models/core.py`](docs/analysis/shared_models_core.py.md) - Pydantic-модели для FastStream-коммуникации.
--   [`shared/models/validators.py`](docs/analysis/shared_models_validators.py.md) - Пользовательские валидаторы Pydantic.
+### 4. Запуск тестов
 
-### 2.4. FastStream Bridge
+#### Интеграционные тесты радарного пайплайна
 
--   [`services/faststream_bridge/app.py`](docs/analysis/faststream_bridge_app.py.md) - Мост для FastStream-коммуникации через NATS.
+Эта команда проверит, что данные от радара корректно проходят через NATS JetStream.
 
-### 2.5. Определения Protobuf (.proto)
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  pytest -q tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
+```
 
--   [`common_types.proto`](docs/analysis/protos_common_types.proto.md) - Фундаментальные типы данных.
--   [`sensor_raw_in.proto`](docs/analysis/protos_sensor_raw_in.proto.md) - Формат сообщений для сенсорных данных.
--   [`actuator_raw_out.proto`](docs/analysis/protos_actuator_raw_out.proto.md) - Формат сообщений для команд актуаторам.
--   [`bios_status.proto`](docs/analysis/protos_bios_status.proto.md) - Формат сообщений для отчетов BIOS.
--   [`fsm_state.proto`](docs/analysis/protos_fsm_state.proto.md) - Формат сообщений для снимков состояния FSM.
--   [`proposal.proto`](docs/analysis/protos_proposal.proto.md) - Формат сообщений для предложений.
--   [`q_sim_api.proto`](docs/analysis/protos_q_sim_api.proto.md) - gRPC-сервисный интерфейс для Q-Sim Service.
+#### Smoke-тесты Stage 0
 
-### 2.6. Тестовые Файлы
+Эта команда запускает комплексную проверку всех компонентов Stage 0, включая BotSpec, CloudEvents, мониторинг лагов, сервис регистратора и другие компоненты.
 
--   [`tests/models/test_pydantic_compatibility.py`](docs/analysis/tests_models_test_pydantic_compatibility.py.md) - Тесты совместимости Pydantic-моделей.
--   [`shared/models/tests/test_pydantic_models.py`](docs/analysis/shared_models_tests_pydantic_models.py.md) - Юнит-тесты для Pydantic-моделей.
--   [`tests/integration/test_faststream_bridge.py`](docs/analysis/tests_integration_test_faststream_bridge.py.md) - Интеграционные тесты FastStream-моста.
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  bash /workspace/scripts/smoke_test.sh
+```
 
-### 2.7. Скрипты Автоматизации
+#### Полный набор тестов
 
--   [`scripts/run_qiki_demo.sh`](docs/analysis/scripts_run_qiki_demo.sh.md) - Скрипт для запуска демо-системы.
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests
+```
 
----
+### 5. Остановка системы
 
-## 3. Технологический Стек
+```bash
+docker compose -f docker-compose.phase1.yml down
+```
 
--   **Язык:** Python 3.12
--   **Асинхронность:** `asyncio`
--   **Межсервисное взаимодействие:** `gRPC`, `FastStream` (поверх `NATS`)
--   **Валидация данных:** `Pydantic`, `Protocol Buffers`
--   **Тестирование:** `pytest`, `pytest-asyncio`
--   **Контейнеризация:** `Docker`, `Docker Compose`
--   **Инструменты CI/CD:** `ruff` (линтинг), `shell-скрипты`
-
----
-
-## 4. Быстрый старт (Рекомендуемый способ)
-
-Этот способ автоматически поднимет все сервисы (`qiki-dev`, `q-sim-service`, `nats`, `faststream-bridge`) в изолированной Docker-сети. `qiki-dev` по умолчанию запускается в режиме `--grpc` для взаимодействия с симулятором.
-
-### Требования
--   Docker и Docker Compose
-
-### Порядок действий
-
-1.  **Запустить все сервисы в фоновом режиме:**
-    ```bash
-    docker compose -f docker-compose.phase1.yml up --build -d
-    ```
-
-2.  **Проверить логи для диагностики:**
-    ```bash
-    # Посмотреть логи всех сервисов
-    docker compose -f docker-compose.phase1.yml logs -f
-
-    # Посмотреть лог конкретного сервиса (например, агента)
-    docker compose -f docker-compose.phase1.yml logs -f qiki-dev
-    ```
-
-3.  **Остановить систему:**
-    ```bash
-    docker compose -f docker-compose.phase1.yml down
-    ```
-
----
-
-## 5. Структура Проекта
-
--   **/services**: Исходный код основных микросервисов (`q_core_agent`, `q_sim_service`, `faststream_bridge`).
--   **/UP**: Альтернативная реализация ядра системы на Pydantic.
--   **/protos**: `.proto` файлы, определяющие контракты данных для gRPC.
--   **/generated**: Автоматически сгенерированный Python-код из `.proto` файлов.
--   **/docs**: Проектная и архитектурная документация.
--   **/tests**: Комплексные тесты для проекта.
--   **/scripts**: Вспомогательные скрипты для тестирования и автоматизации.
--   **docker-compose.phase1.yml**: Файл для оркестрации сервисов с помощью Docker.
--   **requirements.txt**: Основные зависимости проекта.

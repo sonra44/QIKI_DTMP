@@ -7,8 +7,18 @@ import pytest
 import asyncio
 from unittest.mock import Mock
 
-from q_core_agent.state.store import AsyncStateStore, StateStoreError, StateVersionError, create_store, create_initialized_store
-from q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot
+from qiki.services.q_core_agent.state.store import (
+    AsyncStateStore,
+    StateStoreError,
+    StateVersionError,
+    create_initialized_store,
+    create_store,
+)
+from qiki.services.q_core_agent.state.types import (
+    FsmSnapshotDTO,
+    FsmState,
+    initial_snapshot,
+)
 
 
 @pytest.fixture

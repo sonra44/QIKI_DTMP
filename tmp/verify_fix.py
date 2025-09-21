@@ -11,8 +11,8 @@ print(f"ROOT_DIR: {ROOT_DIR}")
 print(f"sys.path: {sys.path}")
 
 try:
-    from services.q_sim_service.main import QSimService
-    from shared.config_models import QSimServiceConfig, load_config
+    from qiki.services.q_sim_service.main import QSimService
+    from qiki.shared.config_models import QSimServiceConfig, load_config
 
     print("Imports successful.")
 

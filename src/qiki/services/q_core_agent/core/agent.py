@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, TYPE_CHECKING, List
 from .agent_logger import logger
 from .interfaces import (
     IDataProvider,
@@ -11,7 +11,12 @@ from .interfaces import (
 from .bot_core import BotCore
 
 # Импортируем сгенерированные Protobuf классы
-from shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal
+from qiki.shared.models.core import (
+    BiosStatus,
+    FsmStateSnapshot as PydanticFsmStateSnapshot,
+    Proposal,
+    SensorData,
+)
 
 import os
 from .bios_handler import BiosHandler
@@ -20,9 +25,11 @@ from .proposal_evaluator import ProposalEvaluator
 from .tick_orchestrator import TickOrchestrator
 from .rule_engine import RuleEngine
 from .neural_engine import NeuralEngine
+from .guard_table import GuardEvaluationResult, load_guard_table
+from .world_model import WorldModel
 
 if TYPE_CHECKING:
-    from shared.config_models import QCoreAgentConfig
+    from qiki.shared.config_models import QCoreAgentConfig
 
 
 class AgentContext:
@@ -35,6 +42,9 @@ class AgentContext:
         self.bios_status = bios_status
         self.fsm_state = fsm_state
         self.proposals = proposals if proposals is not None else []
+        self.latest_sensor_data: Optional[SensorData] = None
+        self.guard_events: List[GuardEvaluationResult] = []
+        self.world_snapshot: Dict[str, Any] = {}
 
     def update_from_provider(self, data_provider: IDataProvider):
         self.bios_status = data_provider.get_bios_status()
@@ -68,9 +78,14 @@ class QCoreAgent:
         )
         self.bot_core = BotCore(base_path=q_core_agent_root)
 
+        self.guard_table = load_guard_table()
+        self.world_model = WorldModel(self.guard_table)
+
         # Initialize handlers
         self.bios_handler: IBiosHandler = BiosHandler(self.bot_core)
-        self.fsm_handler: IFSMHandler = FSMHandler(self.context)
+        self.fsm_handler: IFSMHandler = FSMHandler(
+            self.context, world_model=self.world_model
+        )
         self.proposal_evaluator: IProposalEvaluator = ProposalEvaluator(config)
         self.rule_engine: IRuleEngine = RuleEngine(self.context, config)
         self.neural_engine: INeuralEngine = NeuralEngine(self.context, config)
@@ -82,10 +97,32 @@ class QCoreAgent:
 
     def _update_context(self, data_provider: IDataProvider):
         self.context.update_from_provider(data_provider)
+        self._ingest_sensor_data(data_provider)
 
     def _update_context_without_fsm(self, data_provider: IDataProvider):
         """Обновляет контекст без FSM (для StateStore режима)"""
         self.context.update_from_provider_without_fsm(data_provider)
+        self._ingest_sensor_data(data_provider)
+
+    def _ingest_sensor_data(self, data_provider: IDataProvider) -> None:
+        try:
+            sensor_data = data_provider.get_sensor_data()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Failed to fetch sensor data: {exc}")
+            return
+
+        if sensor_data is None:
+            return
+
+        self.context.latest_sensor_data = sensor_data
+        try:
+            self.bot_core.ingest_sensor_data(sensor_data)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"BotCore sensor ingest failed: {exc}")
+
+        self.world_model.ingest_sensor_data(sensor_data)
+        self.context.guard_events = self.world_model.guard_results()
+        self.context.world_snapshot = self.world_model.snapshot()
 
     def run_tick(self, data_provider: IDataProvider):
         self.orchestrator.run_tick(data_provider)

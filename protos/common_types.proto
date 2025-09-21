@@ -23,6 +23,7 @@ enum SensorType {
   CAMERA = 3;
   GPS = 4;
   THERMAL = 5;
+  RADAR = 6;
 }
 
 enum ActuatorType {

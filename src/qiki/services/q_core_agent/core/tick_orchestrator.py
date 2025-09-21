@@ -8,7 +8,7 @@ from .interfaces import IDataProvider
 if TYPE_CHECKING:
     from .agent import QCoreAgent
     from q_core_agent.state.store import AsyncStateStore
-    from shared.config_models import QCoreAgentConfig
+    from qiki.shared.config_models import QCoreAgentConfig
 
 
 

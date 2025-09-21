@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, computed_field, model_validator, ConfigDict
+from qiki.shared.models.radar import RadarFrameModel, RadarTrackModel
 from pydantic.alias_generators import to_camel
 
 
@@ -53,6 +54,7 @@ class SensorTypeEnum(IntEnum):
     CAMERA = 3
     GPS = 4
     THERMAL = 5
+    RADAR = 6
 
 
 class UnitEnum(IntEnum):
@@ -148,7 +150,6 @@ class BiosStatus(ConfigModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @computed_field
-    @property
     def all_systems_go(self) -> bool:
         """Вычисляет общее состояние системы на основе статусов устройств."""
         if not self.post_results:
@@ -163,6 +164,8 @@ class SensorData(ConfigModel):
     vector_data: Optional[List[float]] = None
     matrix_data: Optional[List[List[float]]] = None
     string_data: Optional[str] = None
+    radar_frame: Optional[RadarFrameModel] = None
+    radar_track: Optional[RadarTrackModel] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     quality_score: float = Field(ge=0.0, le=1.0, default=1.0)
 
@@ -173,10 +176,19 @@ class SensorData(ConfigModel):
             self.vector_data,
             self.matrix_data,
             self.string_data,
+            self.radar_frame,
+            self.radar_track,
         ]
-        if not any(field is not None for field in data_fields):
+        set_count = sum(field is not None for field in data_fields)
+        if set_count == 0:
             raise ValueError("Sensor data must have at least one data field")
+        if set_count > 1:
+            raise ValueError(
+                "Sensor data must provide exactly one payload representation"
+            )
         return self
+
+
 
 
 # =============================================================================
@@ -231,7 +243,10 @@ class ActuatorCommand(ConfigModel):
             self.vector_value,
         ]
         if sum(1 for v in set_values if v is not None) != 1:
-            raise ValueError("Exactly one of float_value, int_value, bool_value, or vector_value must be set")
+            raise ValueError(
+                "Exactly one of float_value, int_value, bool_value, "
+                "or vector_value must be set"
+            )
         return self
 
 

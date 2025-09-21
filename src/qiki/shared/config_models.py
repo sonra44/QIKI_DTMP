@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Type, TypeVar
+from typing import Annotated, List, Type, TypeVar
 import json
-import yaml
+import yaml  # type: ignore[import-untyped]
 
-from pydantic import BaseModel, PositiveFloat, conint, IPvAnyAddress
+from pydantic import BaseModel, PositiveFloat, Field, IPvAnyAddress
 
 
 class ShipConfig(BaseModel):
@@ -13,14 +13,14 @@ class ShipConfig(BaseModel):
 
     name: str
     max_speed: PositiveFloat
-    capacity: conint(ge=0)
+    capacity: Annotated[int, Field(ge=0)]
 
 
 class NetworkConfig(BaseModel):
     """Параметры сети."""
 
     host: str
-    port: conint(gt=0, lt=65536)
+    port: Annotated[int, Field(gt=0, lt=65536)]
 
 
 class SecurityConfig(BaseModel):

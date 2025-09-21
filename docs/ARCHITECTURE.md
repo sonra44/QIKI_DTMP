@@ -1,18 +1,22 @@
 # Архитектура QIKI_DTMP (Phase 1)
 
-Этот документ описывает текущую архитектуру из 4 контейнеров, порядок запуска и пошаговую схему работы бота (тик цикла), а также ключевые взаимодействия (gRPC, NATS/FastStream) и health‑механики.
+Документ описывает актуальную архитектуру Phase 1 (сентябрь 2025): состав контейнеров, порядок запуска, потоки данных (включая Radar v1) и health‑механики.
 
 ## Контейнеры и роли
-- nats: брокер сообщений (JetStream), порты: 4222 (клиент), 8222 (HTTP health).
-- q-sim-service: gRPC сервис симуляции (порт 50051). Эндпоинты: HealthCheck, GetSensorData, SendActuatorCommand.
-- faststream-bridge: мост между NATS и доменной логикой (подписка `qiki.commands.control`, публикация `qiki.responses.control`).
-- qiki-dev: агент (Q-Core Agent), запускает `services/q_core_agent/main.py --grpc`.
+- **qiki-nats-phase1** — брокер сообщений NATS + JetStream (Порты: 4222, 8222). Хранит поток `QIKI_RADAR_V1`.
+- **q-sim-service** — gRPC сервис симуляции (порт 50051). RPC: `HealthCheck`, `GetSensorData`, `SendActuatorCommand`, `GetRadarFrame`.
+- **q-sim-radar** — генератор радарных кадров; публикует `RadarFrame` в `qiki.radar.v1.frames`.
+- **faststream-bridge** — FastStream приложение. Подписки: `qiki.radar.v1.frames`, `qiki.commands.control`. Публикации: `qiki.radar.v1.tracks`, `qiki.responses.control`.
+- **qiki-dev** — Q-Core Agent (`python -m qiki.services.q_core_agent.main --grpc`). Потребляет gRPC/NATS потоки.
+- **nats-js-init** (one-shot) — утилита инициализации JetStream: создаёт stream `QIKI_RADAR_V1`, durable-консьюмеры `radar_frames_pull` / `radar_tracks_pull`.
 
 ## Порядок запуска и readiness
-- nats стартует первым; health: `GET /healthz` на 8222.
-- q-sim-service стартует вторым; health: gRPC HealthCheck (канальный вызов).
-- faststream-bridge стартует параллельно после nats; подписка на NATS subject’ы.
-- qiki-dev стартует после того, как q-sim-service стал healthy (depends_on + healthcheck).
+- NATS стартует первым; health-check: `GET /healthz` на `http://localhost:8222/healthz`.
+- `nats-js-init` выполняется после здоровья NATS → создаёт JetStream stream/consumers.
+- `q-sim-service` стартует после NATS; health-check через gRPC `HealthCheck`.
+- `q-sim-radar` подключается к NATS и публикует кадры (логирует `Connected to NATS…`).
+- `faststream-bridge` подписывается на NATS (кадры/команды) и публикует ответы/треки.
+- `qiki-dev` стартует последним (ожидает health `q-sim-service`).
 
 ## Пошаговая схема тика (legacy)
 1) Обновление контекста агента
@@ -34,9 +38,10 @@
 ## Диаграмма последовательностей
 ```mermaid
 sequenceDiagram
-    participant Dev as qiki-dev (Q-Core Agent)
+    participant Dev as qiki-dev (Agent)
     participant Sim as q-sim-service (gRPC)
-    participant NATS as NATS Broker
+    participant Radar as q-sim-radar
+    participant NATS as NATS JetStream
     participant Bridge as FastStream Bridge
 
     Dev->>Sim: HealthCheck()
@@ -44,23 +49,33 @@ sequenceDiagram
     loop Tick
         Dev->>Sim: GetSensorData()
         Sim-->>Dev: SensorReading
-        Dev->>Dev: BIOS/FSM (BOOTING→IDLE при BIOS OK)
+        Dev->>Dev: BIOS/FSM update
         alt Есть предложения
             Dev->>Sim: SendActuatorCommand()
-            Sim-->>Dev: Empty
+            Sim-->>Dev: Ack
         end
     end
 
-    Dev->>NATS: Publish Command (qiki.commands.control)
-    Bridge->>NATS: Subscribe (qiki.commands.control)
-    NATS-->>Bridge: Deliver Command
-    Bridge-->>NATS: Publish Response (qiki.responses.control)
-    Dev->>NATS: Subscribe (qiki.responses.control)
-    NATS-->>Dev: Deliver Response
+    Radar->>NATS: Publish RadarFrame (qiki.radar.v1.frames)
+    Bridge->>NATS: Subscribe frames
+    NATS-->>Bridge: Deliver RadarFrame
+    Bridge->>NATS: Publish RadarTrack (qiki.radar.v1.tracks)
+    Dev->>NATS: Subscribe tracks
+    NATS-->>Dev: Deliver RadarTrack
 ```
 
+## Radar v1 — поток данных
+
+1. `q-sim-radar` генерирует `RadarFrameModel` (Pydantic) → конвертирует в proto → отправляет JSON-пэйлоад в `qiki.radar.v1.frames` c заголовком `Nats-Msg-Id` (UUID кадра).
+2. JetStream (`QIKI_RADAR_V1`) сохраняет сообщение с deduplication окном 120 с; durable `radar_frames_pull` гарантирует чтение FastStream Bridge.
+3. FastStream Bridge (`handle_radar_frame`) валидирует кадр, формирует минимальный `RadarTrackModel` и публикует в `qiki.radar.v1.tracks`.
+4. `radar_tracks_pull` потребитель доступен для подписчиков; `qiki-dev` и другие сервисы могут слушать тему и принимать решения.
+5. gRPC `GetRadarFrame` остаётся синхронной точкой доступа для fallback или отладки (возвращает последний сгенерированный кадр).
+
 ## Health/Recovery и наблюдаемость
-- docker compose: `q-sim-service` имеет healthcheck (gRPC HealthCheck), `qiki-dev` ждёт readiness.
+- docker-compose healthchecks: `q-sim-service` (gRPC HealthCheck), `qiki-dev` (waits for dependency), `nats` (`/healthz`).
+- `q-sim-radar` логирует подключение к NATS; при ошибке публикации выводит предупреждения.
+- В логах FastStream Bridge фиксируются принятые кадры (frame_id, detections).
 - Агент: при исключении в фазе тика — SAFE MODE, пауза `recovery_delay`, повтор.
 - Логи: структурированы по фазам тика; рекомендуется унифицировать JSON‑формат и пробрасывать `correlation_id`.
 
@@ -73,5 +88,12 @@ sequenceDiagram
 - gRPC клиент: задать таймауты и политику retry через `grpc.service_config` и keepalive/backoff опции канала.
 - nats.py: включить auto reconnect (бесконечные попытки), callbacks on disconnect/reconnect, настроить JetStream (stream/consumer) при необходимости.
 - FastStream: обработка исключений в хендлере, ограничение concurrency, backpressure.
-- CI: ruff (E,F,TID252) с line-length=120, mypy, pytest с coverage.
+- WorldModel: экспортирует Prometheus-метрики (`qiki_agent_radar_active_tracks`,
+  `qiki_agent_guard_critical_active`, `qiki_agent_guard_warning_total`),
+  дедуплицирует guard-ивенты и передаёт RuleEngine триггеры SAFE_MODE.
 
+### Radar v1 (контракты)
+- Protobuf: `protos/radar/v1/radar.proto` (сообщения: `RadarDetection`, `RadarFrame`, `RadarTrack`).
+- Версионирование: `schema_version` в сообщениях; темы NATS `qiki.radar.v1.frames`, `qiki.radar.v1.tracks`.
+- Генерация Python stubs: `tools/gen_protos.sh` (использует `grpcio-tools`, вывод в `generated/`).
+- CI: ruff (E,F,TID252) с line-length=120, mypy, pytest с coverage.

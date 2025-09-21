@@ -10,6 +10,7 @@ import sys
 import os
 import time
 import threading
+import importlib.util
 from datetime import datetime
 from typing import Dict, Any
 
@@ -21,6 +22,8 @@ sys.path.append(current_dir)
 
 ASCII_INTERFACE_AVAILABLE = True
 print("✅ ASCII Live Interface loaded - full terminal control")
+
+PROMPT_TOOLKIT_AVAILABLE = importlib.util.find_spec("prompt_toolkit") is not None
 
 from ship_core import ShipCore
 from ship_actuators import (
@@ -884,7 +887,7 @@ def run_enhanced_mode():
                         status_area.text = mission_control._create_status_content()
                         app.invalidate()
                         await asyncio.sleep(1)
-                    except:
+                    except Exception:
                         break
 
             return app, refresh_loop

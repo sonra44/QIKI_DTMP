@@ -1,7 +1,7 @@
 from .interfaces import IBiosHandler
 from .agent_logger import logger
 from .bot_core import BotCore
-from shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
+from qiki.shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
 from uuid import UUID as PyUUID
 
 

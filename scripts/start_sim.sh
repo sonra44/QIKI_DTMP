@@ -9,6 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
+# Добавляем src/ в PYTHONPATH
+export PYTHONPATH="$PROJECT_ROOT/src:$PROJECT_ROOT"
+
 # Проверяем наличие Python
 if ! command -v python3 &> /dev/null; then
     echo "Error: python3 is not installed or not in PATH"
@@ -33,6 +36,6 @@ fi
 
 # Запускаем gRPC сервер симулятора
 echo "Launching Q-Sim gRPC Server..."
-python3 services/q_sim_service/grpc_server.py
+python3 -m qiki.services.q_sim_service.grpc_server
 
 echo "Q-Sim Server stopped."
