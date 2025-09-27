@@ -1,9 +1,9 @@
-# CURRENT STATE — Состояние проекта (обновлено 2025-09-20)
+# CURRENT STATE — Состояние проекта (обновлено 2025-09-27)
 
 ## Обзор
 - **Техническая готовность:** ~88%
 - **Основной стек:** Phase 1 docker-compose (NATS + JetStream, q-sim-service, q-sim-radar, faststream-bridge, qiki-dev, nats-js-init).
-- **Radar v1:** реализован end-to-end (protobuf → Pydantic → JetStream → FastStream → интеграционные тесты).
+- **Radar v1:** реализован end-to-end (protobuf → Pydantic → JetStream → FastStream → интеграционные тесты), базовая LR/SR сегрегация подтверждена docker-тестом.
 - **Документация:** обновляется (README, ARCHITECTURE, RESTART_CHECKLIST — актуализированы; остальная документация в процессе).
 
 ## Компоненты и статусы
@@ -13,10 +13,10 @@
 | Protocol Buffers | 100% | Контракты обновлены (`SensorType.RADAR`, `RadarFrame/Track`, `GetRadarFrame`). |
 | Generated Stubs + shim | 100% | `generated/`, `radar/`, `*_pb2.py` shim — импорты работают в Docker-образах. |
 | Q-Sim Service | 95% | gRPC (`HealthCheck`, `GetSensorData`, `GetRadarFrame`), генерация радара; поддерживает режимы транспондера через `RADAR_TRANSPONDER_MODE`. |
-| Q-Sim Radar | 90% | Публикует кадры в JetStream, используется в интеграционных тестах; бизнес-логика генерации базовая. |
+| Q-Sim Radar | 95% | Публикует LR/SR кадры в JetStream, автоматический `RadarRangeBand`, базовая бизнес-логика генерации без физики деталей. |
 | FastStream Bridge | 90% | Внедрён TrackStore (α-β фильтр, stateful трекинг), публикует треки/метрики и поля транспондера; guard-правила/визуализация впереди. |
 | Q-Core Agent | 80% | Tick-цикл стабилен; потребляет команды/трековые события; визуализация/алерты не реализованы. |
-| Testing | 85% | `ruff`, `mypy`, `pytest` зелёные; интеграции радара (`test_radar_flow`, `test_radar_tracks_flow`) + Stage 0 компонентов проходят. Нагрузочные тесты отсутствуют. |
+| Testing | 88% | `ruff`, `mypy`, `pytest` зелёные; интеграции радара (`test_radar_flow`, `test_radar_tracks_flow`, `test_radar_lr_sr_topics`) выполняются в `qiki-dev`. Нагрузочные тесты отсутствуют. |
 | Documentation | 75% | README/ARCHITECTURE/RESTART_CHECKLIST обновлены; CLAUDE_MEMORY, ROADMAP и др. требуют пересмотра; Stage 0 документирован в `journal/2025-09-21_Stage0-Implementation/task.md`. |
 | Observability | 70% | Дополнены метрики WorldModel (`qiki_agent_radar_active_tracks`, `qiki_agent_guard_critical_active`, `qiki_agent_guard_warning_total`) и JetStream лаги; остаётся http-экспорт, алерты и дополнительные JetStream показатели. |
 | Configuration Management | 90% | Реализован BotSpec с валидатором и генератором конфигов; интеграция с docker-compose. |
@@ -27,6 +27,7 @@
 
 ## Ключевые достижения (сентябрь 2025)
 - Radar v1 интегрирован во все уровни: контракты, симулятор, FastStream, тесты.
+- 2025-09-27: Реализована база Stage 1 — LR/SR разделение радара, обновлённые протобафы, docker-интеграционный тест `test_radar_lr_sr_topics` зелёный.
 - Транспондерные режимы (ON/OFF/SILENT/SPOOF) добавлены в симулятор и треки, поддерживаются тестами.
 - Phase 1 docker-compose успешно поднимает весь стек; `nats-js-init` исправлен (2025-09-18) и инициализирует JetStream без ошибок преобразования таймингов.
 - Контейнерный прогон `ruff`/`mypy`/`pytest` (2025-09-18) подтверждён — 100 % зелёный результат.

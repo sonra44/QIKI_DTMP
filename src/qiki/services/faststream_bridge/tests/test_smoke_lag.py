@@ -1,6 +1,5 @@
 """Smoke test for JetStream lag monitoring."""
 
-import time
 from unittest.mock import Mock, patch
 
 import pytest

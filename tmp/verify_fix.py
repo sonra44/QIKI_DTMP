@@ -1,45 +1,42 @@
-# /workspace/tmp/verify_fix.py
-import sys
-import os
-from pathlib import Path
+import asyncio
+import json
+import uuid
+import nats
 
-# Настройка путей, как в реальном приложении
-ROOT_DIR = os.path.abspath(os.path.join('/workspace'))
-sys.path.append(ROOT_DIR)
+async def main():
+    nc = None
+    try:
+        print("Connecting to NATS...")
+        nc = await nats.connect('nats://qiki-nats-phase1:4222')
+        print("Connected.")
+        fut = asyncio.get_running_loop().create_future()
 
-print(f"ROOT_DIR: {ROOT_DIR}")
-print(f"sys.path: {sys.path}")
+        async def handler(msg):
+            print(f"Received response: {msg.data.decode()}")
+            if not fut.done():
+                fut.set_result(msg)
 
-try:
-    from qiki.services.q_sim_service.main import QSimService
-    from qiki.shared.config_models import QSimServiceConfig, load_config
+        await nc.subscribe('qiki.responses.control', cb=handler)
+        print("Subscribed to response topic.")
 
-    print("Imports successful.")
+        payload = {
+            'command_name': 'PING',
+            'parameters': {'echo': 'hello'},
+            'metadata': {'message_id': str(uuid.uuid4()), 'source': 'checklist'}
+        }
+        
+        print("Publishing PING command...")
+        await nc.publish('qiki.commands.control', json.dumps(payload).encode())
+        
+        msg = await asyncio.wait_for(fut, timeout=5.0)
+        print("--- NATS Round-trip Test Passed ---")
+        # print(f"Response payload: {msg.data.decode()}")
+    except Exception as e:
+        print(f"--- NATS Round-trip Test FAILED: {e} ---")
+    finally:
+        if nc and nc.is_connected:
+            await nc.close()
+            print("Connection closed.")
 
-    # 1. Загружаем конфиг с помощью правильной функции
-    config_path = Path('services/q_sim_service/config.yaml')
-    print(f"Attempting to load config from: {config_path.resolve()}")
-    
-    if not config_path.exists():
-        raise FileNotFoundError(f"Test script could not find config at {config_path.resolve()}")
-
-    pydantic_config = load_config(config_path, QSimServiceConfig)
-    print(f"Config loaded successfully: {pydantic_config}")
-
-    # 2. Инициализируем сервис с Pydantic-конфигом
-    service = QSimService(pydantic_config)
-    print("QSimService initialized successfully with Pydantic config.")
-
-    # 3. Вызываем проблемный метод
-    sensor_data = service.generate_sensor_data()
-    print("generate_sensor_data() executed successfully.")
-    print(f"Result: {sensor_data}")
-
-    print("\n--- VERIFICATION SUCCESSFUL ---")
-    print("The proposed fix is correct.")
-
-except Exception as e:
-    print("\n--- VERIFICATION FAILED ---")
-    print(f"An error occurred: {e}")
-    import traceback
-    traceback.print_exc()
+if __name__ == "__main__":
+    asyncio.run(main())

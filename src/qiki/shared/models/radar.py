@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, UTC
 from enum import IntEnum
-from typing import List, Optional
+from typing import List, Optional, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 class ObjectTypeEnum(IntEnum):
@@ -29,6 +29,12 @@ class TransponderModeEnum(IntEnum):
     ON = 1
     SILENT = 2
     SPOOF = 3
+
+
+class RangeBand(IntEnum):
+    RR_UNSPECIFIED = 0
+    RR_LR = 1
+    RR_SR = 2
 
 
 class RadarTrackStatusEnum(IntEnum):
@@ -57,6 +63,8 @@ class RadarDetectionModel(BaseModel):
     transponder_on: bool = False
     transponder_mode: TransponderModeEnum = TransponderModeEnum.OFF
     transponder_id: Optional[str] = None
+    range_band: RangeBand = RangeBand.RR_UNSPECIFIED
+    id_present: Optional[bool] = None
 
     @field_validator("bearing_deg")
     @classmethod
@@ -71,6 +79,16 @@ class RadarDetectionModel(BaseModel):
         if not (-90.0 <= v <= 90.0):
             raise ValueError("elev_deg must be in [-90, 90]")
         return v
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    @classmethod
+    def _validate_range_band(cls, model: Self) -> Self:
+        if model.range_band == RangeBand.RR_LR:
+            if model.transponder_id:
+                raise ValueError("LR band must not carry transponder_id")
+            if model.id_present:
+                raise ValueError("LR band must not carry id_present")
+        return model
 
 
 class RadarFrameModel(BaseModel):
@@ -111,6 +129,8 @@ class RadarTrackModel(BaseModel):
     miss_count: int = Field(ge=0, default=0)
 
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    range_band: RangeBand = RangeBand.RR_UNSPECIFIED
+    id_present: Optional[bool] = None
 
     @field_validator("bearing_deg")
     @classmethod
@@ -136,3 +156,15 @@ class RadarTrackModel(BaseModel):
                 "covariance must contain exactly 6 elements (upper-triangle)"
             )
         return v
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    @classmethod
+    def _validate_lr_constraints(cls, model: Self) -> Self:
+        if model.range_band == RangeBand.RR_LR:
+            if model.transponder_id:
+                raise ValueError("LR band must not carry transponder_id")
+            if model.id_present:
+                raise ValueError("LR band must not carry id_present")
+            if model.transponder_mode not in (TransponderModeEnum.OFF,):
+                raise ValueError("LR band must not carry transponder_mode")
+        return model

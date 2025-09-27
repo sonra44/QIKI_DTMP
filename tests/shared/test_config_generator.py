@@ -4,7 +4,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from qiki.shared.config.generator import generate_bot_config_from_spec, save_bot_config
 

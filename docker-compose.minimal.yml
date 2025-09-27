@@ -163,44 +163,8 @@ services:
     command: python tools/js_init.py
     restart: "no"
 
-  loki:
-    image: grafana/loki:2.9.0
-    container_name: qiki-loki-phase1
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./config/loki-config.yaml:/etc/loki/config.yaml
-      - loki-data-phase1:/loki
-    command: -config.file=/etc/loki/config.yaml
-    networks:
-      - qiki-network-phase1
-    restart: unless-stopped
 
-  promtail:
-    image: grafana/promtail:2.9.0
-    container_name: qiki-promtail-phase1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./config/promtail-config.yaml:/etc/promtail/config.yaml
-    command: -config.file=/etc/promtail/config.yaml
-    networks:
-      - qiki-network-phase1
-    restart: unless-stopped
 
-  grafana:
-    image: grafana/grafana:10.4.2
-    container_name: qiki-grafana-phase1
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./config/grafana.ini:/etc/grafana/grafana.ini
-      - ./config/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
-      - grafana-data-phase1:/var/lib/grafana
-    networks:
-      - qiki-network-phase1
-    depends_on:
-      - loki
-    restart: unless-stopped
 
 networks:
   qiki-network-phase1:
@@ -210,5 +174,3 @@ volumes:
   nats-data-phase1:
   pip-cache-phase1:
   registrar-data-phase1:
-  loki-data-phase1: {}
-  grafana-data-phase1: {}

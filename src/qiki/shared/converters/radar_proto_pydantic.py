@@ -15,6 +15,7 @@ from qiki.shared.models.radar import (
     TransponderModeEnum,
     RadarTrackStatusEnum,
     Vector3Model,
+    RangeBand,
 )
 from qiki.shared.converters.protobuf_pydantic import (
     proto_uuid_to_pydantic_uuid,
@@ -35,11 +36,13 @@ def proto_detection_to_model(p: ProtoRadarDetection) -> RadarDetectionModel:
         transponder_on=p.transponder_on,
         transponder_mode=TransponderModeEnum(p.transponder_mode),
         transponder_id=p.transponder_id or None,
+        range_band=RangeBand(p.range_band),
+        id_present=p.id_present if p.HasField("id_present") else None,
     )
 
 
 def model_detection_to_proto(m: RadarDetectionModel) -> ProtoRadarDetection:
-    return ProtoRadarDetection(
+    proto = ProtoRadarDetection(
         range_m=float(m.range_m),
         bearing_deg=float(m.bearing_deg),
         elev_deg=float(m.elev_deg),
@@ -49,7 +52,11 @@ def model_detection_to_proto(m: RadarDetectionModel) -> ProtoRadarDetection:
         transponder_on=bool(m.transponder_on),
         transponder_mode=m.transponder_mode.value,
         transponder_id=m.transponder_id or "",
+        range_band=m.range_band.value,
     )
+    if m.id_present is not None:
+        proto.id_present = bool(m.id_present)
+    return proto
 
 
 def proto_frame_to_model(p: ProtoRadarFrame) -> RadarFrameModel:
@@ -105,6 +112,8 @@ def proto_track_to_model(p: ProtoRadarTrack) -> RadarTrackModel:
         velocity_covariance=list(p.velocity_covariance) or None,
         age_s=p.age_s,
         miss_count=p.miss_count,
+        range_band=RangeBand(p.range_band),
+        id_present=p.id_present if p.HasField("id_present") else None,
     )
 
 
@@ -127,6 +136,9 @@ def model_track_to_proto(m: RadarTrackModel) -> ProtoRadarTrack:
     p.transponder_mode = m.transponder_mode.value
     p.transponder_id = m.transponder_id or ""
     p.status = m.status.value
+    p.range_band = m.range_band.value
+    if m.id_present is not None:
+        p.id_present = bool(m.id_present)
     if m.position is not None:
         p.position.x = float(m.position.x)
         p.position.y = float(m.position.y)

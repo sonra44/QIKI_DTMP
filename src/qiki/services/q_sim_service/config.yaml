@@ -2,3 +2,5 @@
 sim_tick_interval: 1
 sim_sensor_type: 1 # LIDAR
 log_level: INFO
+radar:
+  sr_threshold_m: 5000

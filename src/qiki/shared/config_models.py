@@ -30,12 +30,17 @@ class SecurityConfig(BaseModel):
     allowed_ips: List[IPvAnyAddress] = []
 
 
+class RadarSettings(BaseModel):
+    sr_threshold_m: PositiveFloat = Field(default=5000.0, description="Порог между SR/LR диапазонами, метры")
+
+
 class QSimServiceConfig(BaseModel):
     """Конфигурация для Q-Sim Service."""
 
     sim_tick_interval: int
     sim_sensor_type: int
     log_level: str
+    radar: RadarSettings = Field(default_factory=RadarSettings)
 
 
 class QCoreAgentConfig(BaseModel):

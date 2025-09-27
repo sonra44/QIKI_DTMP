@@ -23,6 +23,12 @@ enum FriendFoe {
   UNKNOWN = 3;
 }
 
+enum RadarRangeBand {
+  RR_UNSPECIFIED = 0;
+  RR_LR = 1;
+  RR_SR = 2;
+}
+
 // Режим транспондера
 enum TransponderMode {
   TRANSPONDER_MODE_OFF = 0;
@@ -50,6 +56,8 @@ message RadarDetection {
   bool transponder_on = 7;   // транспондер включён
   TransponderMode transponder_mode = 8; // режим транспондера
   string transponder_id = 9;           // идентификатор транспондера/IFF
+  RadarRangeBand range_band = 90;      // классификация диапазона (LR/SR)
+  optional bool id_present = 91;       // наличие идентификатора/IFF
 }
 
 // Кадр детекций радара
@@ -88,4 +96,6 @@ message RadarTrack {
   repeated double velocity_covariance = 20;    // ковариация скорости (6 элементов)
   double age_s = 21;                           // возраст трека в секундах
   uint32 miss_count = 22;                      // количество подряд пропущенных кадров
+  RadarRangeBand range_band = 90;              // классификация диапазона (LR/SR)
+  optional bool id_present = 91;               // наличие IFF/ID
 }
