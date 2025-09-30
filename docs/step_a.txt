@@ -1,0 +1,63 @@
+step-A: Форма бота + двигатели + крепёж/стыковка. Коротко, жёстко, проверяемо.
+
+Этап-A — техпромпт внедрения (корпус/движители/крепёж)
+
+BotSpec (скелет узлов)
+
+Добавь shared/specs/BotSpec.yaml: hull, propulsion, power, docking[2], antenna_xpdr, sensor_mounts[].
+
+Валидация pydantic: обязательные provides/consumes, уникальные ID, согласованные оси.
+
+Геометрия корпуса
+
+assets/geometry/dodecahedron.glb + hull_collision.json (AABB/BVH).
+
+Генератор LOS-маски для сенсоров (окклюзии лучом).
+
+RCS-схема (16 штук, 4×4 кластера)
+
+config/propulsion/thrusters.json: для каждого index → pos (m), dir (unit), F_max, cluster_id.
+
+Инвариант: матрица аллокации полного ранга (6 DOF).
+
+Аллокатор управления
+
+src/.../control/allocation.py: QP/NNLS → PWPF на импульсы.
+
+Режимы: ZTT, FTG, ADAPTIVE (флаг отказа по faults[]).
+
+Энергобюджет (HESS)
+
+power_budget: P_avail, P_peak, SoC_bat, SoC_cap; ограничение импульсов при пиках.
+
+Паблиш EnergyStatus в шину.
+
+Стыковка/мост
+
+config/docking/ports.json: 2 байонета (pose, hard/soft-capture).
+
+Стейты: align → soft → hard → bridge, профили: power/data/full.
+
+Антенна/XPDR
+
+config/comms/antenna.json: поза/сектор; статусы OK/ANT_FAULT/XPDR_FAULT.
+
+Флаг xpdr_mode: ON/OFF/SILENT/SPOOF (только статус, логики ещё нет).
+
+Контракты/IO
+
+Убедись, что есть: ThrusterCmd, ModeCmd, ProtocolCmd, EnergyStatus.
+
+Топики: qiki.control.v1.thruster|mode|protocol, qiki.status.v1.energy.
+
+Тесты (минимум, быстрые)
+
+Юнит: ранк матрицы аллокации = 6; ZTT даёт ≈0 линейной; отказ 1 RCS → задача решаема.
+
+Интеграция: послать Mode=IDS + Motion{v,ω} → получить ненулевые импульсы без превышения P_peak.
+
+Ruff/mypy: чисто.
+
+DoD
+
+Корпус/крепёж/антенна описаны и валидируются; 16 RCS работают через аллокатор; энерголимиты соблюдаются; стыковка проходит стейты; базовые тесты зелёные.

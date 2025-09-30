@@ -1,0 +1,18 @@
+{
+  "primary": {
+    "pose_m": {
+      "position": [0.0, 1.05, 0.25],
+      "orientation_quat": [0.0, 0.0, 0.0, 1.0]
+    },
+    "azimuth_sector_deg": [-110.0, 110.0],
+    "elevation_sector_deg": [-20.0, 80.0]
+  },
+  "transponder": {
+    "pose_m": {
+      "position": [0.0, -1.05, 0.25],
+      "orientation_quat": [0.0, 0.0, 1.0, 0.0]
+    },
+    "modes": ["ON", "OFF", "SILENT", "SPOOF"],
+    "default_mode": "ON"
+  }
+}

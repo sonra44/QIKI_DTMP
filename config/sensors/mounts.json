@@ -1,0 +1,14 @@
+[
+  {
+    "id": "radar_lr",
+    "position_m": [0.55, 0.0, 0.20],
+    "normal": [0.0, 0.0, 1.0],
+    "los_mask_asset": "assets/geometry/los_masks/radar_lr.png"
+  },
+  {
+    "id": "radar_sr",
+    "position_m": [-0.55, 0.0, 0.20],
+    "normal": [0.0, 0.0, 1.0],
+    "los_mask_asset": "assets/geometry/los_masks/radar_sr.png"
+  }
+]
