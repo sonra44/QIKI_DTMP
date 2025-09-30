@@ -5,8 +5,8 @@
 ## Контейнеры и роли
 - **qiki-nats-phase1** — брокер сообщений NATS + JetStream (Порты: 4222, 8222). Хранит поток `QIKI_RADAR_V1`.
 - **q-sim-service** — gRPC сервис симуляции (порт 50051). RPC: `HealthCheck`, `GetSensorData`, `SendActuatorCommand`, `GetRadarFrame`.
-- **q-sim-radar** — генератор радарных кадров; публикует `RadarFrame` в `qiki.radar.v1.frames`.
-- **faststream-bridge** — FastStream приложение. Подписки: `qiki.radar.v1.frames`, `qiki.commands.control`. Публикации: `qiki.radar.v1.tracks`, `qiki.responses.control`.
+- **q-sim-radar** — генератор радарных кадров; публикует `RadarFrame` в `qiki.radar.v1.frames.lr`, `qiki.radar.v1.tracks.sr` и совместимый `qiki.radar.v1.frames`.
+- **faststream-bridge** — FastStream приложение. Подписки: `qiki.radar.v1.frames.lr`, `qiki.radar.v1.tracks.sr`, `qiki.radar.v1.frames`, `qiki.commands.control`. Публикации: `qiki.radar.v1.tracks`, `qiki.responses.control`.
 - **qiki-dev** — Q-Core Agent (`python -m qiki.services.q_core_agent.main --grpc`). Потребляет gRPC/NATS потоки.
 - **nats-js-init** (one-shot) — утилита инициализации JetStream: создаёт stream `QIKI_RADAR_V1`, durable-консьюмеры `radar_frames_pull` / `radar_tracks_pull`.
 
@@ -56,8 +56,8 @@ sequenceDiagram
         end
     end
 
-    Radar->>NATS: Publish RadarFrame (qiki.radar.v1.frames)
-    Bridge->>NATS: Subscribe frames
+    Radar->>NATS: Publish RadarFrame (qiki.radar.v1.frames.lr / qiki.radar.v1.tracks.sr / qiki.radar.v1.frames)
+    Bridge->>NATS: Subscribe frames (LR/SR + union)
     NATS-->>Bridge: Deliver RadarFrame
     Bridge->>NATS: Publish RadarTrack (qiki.radar.v1.tracks)
     Dev->>NATS: Subscribe tracks
@@ -66,10 +66,10 @@ sequenceDiagram
 
 ## Radar v1 — поток данных
 
-1. `q-sim-radar` генерирует `RadarFrameModel` (Pydantic) → конвертирует в proto → отправляет JSON-пэйлоад в `qiki.radar.v1.frames` c заголовком `Nats-Msg-Id` (UUID кадра).
-2. JetStream (`QIKI_RADAR_V1`) сохраняет сообщение с deduplication окном 120 с; durable `radar_frames_pull` гарантирует чтение FastStream Bridge.
-3. FastStream Bridge (`handle_radar_frame`) валидирует кадр, формирует минимальный `RadarTrackModel` и публикует в `qiki.radar.v1.tracks`.
-4. `radar_tracks_pull` потребитель доступен для подписчиков; `qiki-dev` и другие сервисы могут слушать тему и принимать решения.
+1. `q-sim-radar` генерирует `RadarFrameModel` (Pydantic) → конвертирует в proto → отправляет JSON-пэйлоад в `qiki.radar.v1.frames.lr` (кадры без ID/IFF), `qiki.radar.v1.tracks.sr` (SR-объекты с транспондером) и совместимый `qiki.radar.v1.frames`; заголовки включают `Nats-Msg-Id` и `x-range-band`.
+2. JetStream (`QIKI_RADAR_V1`) сохраняет сообщения с deduplication окном 120 с; durable `radar_frames_pull` гарантирует чтение FastStream Bridge.
+3. FastStream Bridge (`handle_radar_frame`) валидирует кадр, формирует минимальный `RadarTrackModel`, учитывая `range_band`, и публикует в `qiki.radar.v1.tracks`.
+4. `radar_tracks_pull` потребитель доступен для подписчиков; `qiki-dev` и другие сервисы могут слушать тему и принимать решения с использованием `x-range-band`.
 5. gRPC `GetRadarFrame` остаётся синхронной точкой доступа для fallback или отладки (возвращает последний сгенерированный кадр).
 
 ## Health/Recovery и наблюдаемость
@@ -81,7 +81,7 @@ sequenceDiagram
 
 ## Параметры конфигурации (Pydantic v2)
 - QCoreAgentConfig: `tick_interval`, `recovery_delay`, `grpc_server_address`, пороги и флаги.
-- QSimServiceConfig: `sim_tick_interval`, `sim_sensor_type`, `log_level`.
+- QSimServiceConfig: `sim_tick_interval`, `sim_sensor_type`, `log_level`, `radar.sr_threshold_m` (порог разделения LR/SR, метры).
 - Рекомендуется перейти на Pydantic Settings для override через ENV.
 
 ## Рекомендации (стабильность и DX)

@@ -28,6 +28,11 @@ docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
   pytest -q tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
 ```
 
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  pytest -q tests/integration/test_radar_lr_sr_topics.py
+```
+
 ## 5) FastStream / NATS раунд-трип (управляющие топики)
 ```bash
 docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'

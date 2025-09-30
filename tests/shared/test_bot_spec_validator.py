@@ -52,6 +52,10 @@ components:
     type: dc_bus
   propulsion:
     type: propulsors
+  docking:
+    type: docking_system
+  antenna_xpdr:
+    type: datalink
   sensors:
     type: sensing_suite
   comms:
@@ -60,6 +64,8 @@ components:
     type: defensive
   navigation:
     type: nav_stack
+  sensor_mounts:
+    type: platform_fixtures
   protocols:
     type: executor
 event_bus:

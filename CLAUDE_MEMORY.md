@@ -61,6 +61,13 @@
 - Docker Phase 1 стек (qiki-dev/q-sim-service/q-sim-radar) успешно поднят; интеграционный тест `tests/integration/test_radar_lr_sr_topics.py` зелёный наряду с `test_radar_flow` и `test_radar_tracks_flow`.
 - Журнал `journal/2025-09-27_Radar-Phase1-Regression/task.md` фиксирует перегенерацию протобафов и прогон docker QA.
 
+### 0.7 Обновление 2025-09-28 — Step-A Infrastructure Kickoff
+- Расширен `BotSpec` (компоненты `docking`, `antenna_xpdr`, `sensor_mounts`), добавлены каналы `ThrusterCmd`, `ModeCmd`.
+- Подготовлены конфиги Step-A: `config/propulsion/thrusters.json`, `config/power/hess.json`,
+  `config/docking/ports.json`, `config/comms/antenna.json`, `config/sensors/mounts.json`.
+- Заложены геометрические артефакты: `assets/geometry/hull_collision.json`, README для экспорта `dodecahedron.glb` и LOS масок.
+- Сформирован `docs/STEP_A_ROADMAP.md`, создан журнал `journal/2025-09-28_StepA-Preparation/task.md`.
+
 ### 0.4 Обновление 2025-09-20 — Guard Telemetry & Documentation Closure
 - WorldModel дедуплицирует guard-ивенты, экспортирует Prometheus-метрики (`qiki_agent_radar_active_tracks`,
 -  `qiki_agent_guard_critical_active`, `qiki_agent_guard_warning_total`) и расширяет snapshot для UI.

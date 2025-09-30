@@ -13,16 +13,21 @@ REQUIRED_COMPONENTS = {
     "hull",
     "power",
     "propulsion",
+    "docking",
+    "antenna_xpdr",
     "sensors",
     "comms",
     "shields",
     "navigation",
+    "sensor_mounts",
     "protocols",
 }
 
 REQUIRED_CHANNELS = {
     "SensorFrame",
     "TrackSet",
+    "ThrusterCmd",
+    "ModeCmd",
     "ProtocolCmd",
     "EnergyStatus",
     "ShieldStatus",

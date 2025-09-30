@@ -1,9 +1,9 @@
-# QIKI_DTMP — Implementation Roadmap (обновлено 2025-09-18)
+# QIKI_DTMP — Implementation Roadmap (обновлено 2025-09-27)
 
 ## 0. Метаданные
 - **Дата создания:** 2025-07-30  
-- **Последняя ревизия:** 2025-09-21 (Stage 0 Implementation Complete)  
-- **Текущая готовность:** ~92%  
+- **Последняя ревизия:** 2025-09-27 (Stage 1 LR/SR foundation)  
+- **Текущая готовность:** ~93%  
 - **Цель:** ≥95% Production-ready цифровой двойник
 
 ## 1. Архитектурное видение
@@ -17,7 +17,7 @@
 |-----------|------------|--------|------------|
 | Protocol Buffers | 100% | ✅ Radar v1 (`SensorType.RADAR`, `GetRadarFrame`). | Контракты синхронизированы с кодом. |
 | Generated Stubs & Shim | 100% | ✅ Работают в docker-образах. | `generated/`, `radar/`, `*_pb2.py` shim. |
-| Services (q-sim-service, q-sim-radar, faststream-bridge) | 85% | ⚠️ Требуется продвинутый трекинг/визуализация. | Базовый пайплайн работает. |
+| Services (q-sim-service, q-sim-radar, faststream-bridge) | 88% | ⚠️ Требуется продвинутый трекинг/визуализация. | LR/SR-разделение внедрено, union-топик сохранён. |
 | Q-Core Agent | 85% | ⚠️ Tick-цикл стабилен, UI/алерты отсутствуют. | |
 | Scripts & Automation | 92% | ✅ docker-compose Phase 1 + `nats-js-init` (фиксы 2025-09-18 исключают падения при инициализации). | |
 | Testing | 80% | ⚠️ Unit + integration (radar + Stage 0) зелёные; нет нагрузочных сценариев. | |
@@ -36,6 +36,7 @@
 - Dockerfile.dev — устанавливает `buf`; Phase 1 docker-compose содержит radar pipeline.
 - `tools/js_init.py` (2025-09-18) — числовые параметры JetStream, идемпотентное создание consumer’ов, контейнерный запуск без ошибок.
 - Stage 0 Implementation (2025-09-21) — завершены все задачи Stage 0: BotSpec, CloudEvents, JetStream monitoring, Registrar, smoke tests.
+- Stage 1 LR/SR foundation (2025-09-27) — внедрены `RadarRangeBand`, новые топики `frames.lr`/`tracks.sr`, `x-range-band`-хедеры, порог `radar.sr_threshold_m`, интеграционный тест `test_radar_lr_sr_topics.py` зелёный.
 
 ### Новые риски / TODO
 - Продвинутый stateful трекинг, учёт IFF/транспондера, алерты.
@@ -72,7 +73,7 @@
 | F3.4 | Multi-sensor integration | Интегрировать радар в общий поток `SensorReading` на стороне агента и клиентов. |
 
 ## 4. Метрики успеха
-- Интеграционные тесты радара выполняются в CI.
+- Интеграционные тесты радара выполняются в CI (включая `test_radar_lr_sr_topics.py`).
 - Метрики JetStream (latency, backlog, drop rate) мониторятся и имеют алерты.
 - UI/операторский сценарий демонстрирует кадры/треки в реальном времени.
 - Документация не старше 7 дней (см. DOCUMENTATION_UPDATE_PROTOCOL.md).

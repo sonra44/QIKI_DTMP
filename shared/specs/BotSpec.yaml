@@ -13,14 +13,30 @@ components:
     provides:
       - dc_out
       - energy_status
+    consumes:
+      - power_budget
   propulsion:
     type: propulsors
     provides:
       - motion_command
+      - thruster_allocation
+    consumes:
+      - thruster_schedule
+  docking:
+    type: docking_system
+    provides:
+      - docking_ports
+      - bridge_profiles
+  antenna_xpdr:
+    type: datalink
+    provides:
+      - antenna_status
+      - xpdr_status
   sensors:
     type: sensing_suite
     provides:
       - sensor_frame
+      - los_masks
   comms:
     type: datalink
     provides:
@@ -34,12 +50,19 @@ components:
     type: nav_stack
     provides:
       - nav_state
+  sensor_mounts:
+    type: platform_fixtures
+    provides:
+      - mount_points
+      - orientation_frames
   protocols:
     type: executor
 event_bus:
   channels:
     - SensorFrame
     - TrackSet
+    - ThrusterCmd
+    - ModeCmd
     - ProtocolCmd
     - EnergyStatus
     - ShieldStatus
