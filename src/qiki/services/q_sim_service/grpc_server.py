@@ -28,21 +28,43 @@ class QSimAPIService(QSimAPIServiceServicer):
         return GetSensorDataResponse(reading=sensor_data)
 
 
+async def sim_service_loop(sim_service: QSimService) -> None:
+    """Background task that runs the simulation step loop."""
+    logging.info("Starting QSimService background loop")
+    try:
+        while True:
+            sim_service.step()
+            await asyncio.sleep(sim_service.config.sim_tick_interval)
+    except asyncio.CancelledError:
+        logging.info("QSimService loop cancelled")
+        raise
+
+
 async def serve() -> None:
+    """Start gRPC server with background simulation loop."""
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
-    
+
     config_path = Path(__file__).resolve().parent / "config.yaml"
     config = load_config(config_path, QSimServiceConfig)
     sim_service = QSimService(config)
-    
+
     add_QSimAPIServiceServicer_to_server(QSimAPIService(sim_service), server)
     server.add_insecure_port("[::]:50051")
     await server.start()
     logging.info("gRPC server started on port 50051")
-    
+
+    # Start the simulation loop in the background
+    sim_task = asyncio.create_task(sim_service_loop(sim_service))
+
     _cleanup_coroutines = []
+
     async def server_graceful_shutdown():
         logging.info("Starting graceful shutdown...")
+        sim_task.cancel()
+        try:
+            await sim_task
+        except asyncio.CancelledError:
+            pass
         await server.stop(5)
 
     _cleanup_coroutines.append(server_graceful_shutdown())
