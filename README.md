@@ -1,24 +1,26 @@
 # QIKI Digital Twin Microservices Platform (QIKI_DTMP)
 
-**Версия: Phase 1 (сентябрь 2025)**
+**Версия: Production Ready (октябрь 2025)**
 
 Этот документ содержит основную информацию о проекте, его архитектуре и инструкции по запуску и проверке системы.
 
 ## Описание
 
-QIKI_DTMP — это высокопроизводительная, модульная платформа для разработки и симуляции интеллектуальных агентов, построенная на микросервисной архитектуре. Текущая версия (Phase 1) включает полностью интегрированный радарный пайплайн (Radar v1) с обработкой данных через NATS JetStream.
+QIKI_DTMP — это высокопроизводительная, модульная платформа для разработки и симуляции интеллектуальных агентов, построенная на микросервисной архитектуре. Система включает полностью интегрированный радарный пайплайн (Radar v1) с обработкой данных через NATS JetStream.
 
-## Архитектура Phase 1
+## Архитектура системы
+
+**Оптимизированная архитектура для эффективной разработки:**
 
 Система состоит из следующих контейнеров:
 
--   **`qiki-nats-phase1`**: Брокер сообщений NATS с включенным JetStream.
--   **`q-sim-service`**: Основной gRPC сервис симуляции, предоставляющий данные сенсоров.
--   **`q-sim-radar`**: Генератор радарных кадров, который публикует данные в NATS.
--   **`faststream-bridge`**: Приложение на FastStream, которое обрабатывает радарные кадры и генерирует треки.
--   **`qiki-dev`**: Основной контейнер для разработки и запуска Q-Core Agent.
--   **`nats-js-init`** (one-shot): Утилита, которая инициализирует необходимые потоки (streams) и потребителей (consumers) в JetStream при первом запуске.
--   **`qiki-registrar-phase1`**: Сервис аудита событий, который записывает структурированные логи событий системы с кодами 1xx-9xx.
+-   **`qiki-nats-phase1`**: Брокер сообщений NATS с включенным JetStream (порты: 4222, 8222).
+-   **`qiki-sim-phase1`**: Основной gRPC сервис симуляции, предоставляющий данные сенсоров.
+-   **`qiki-sim-radar-phase1`**: Генератор радарных кадров, который публикует данные в NATS.
+-   **`qiki-faststream-bridge-phase1`**: Приложение на FastStream, которое обрабатывает радарные кадры и генерирует треки.
+-   **`qiki-dev-phase1`**: Основной контейнер для разработки и запуска Q-Core Agent.
+-   **`qiki-nats-js-init`** (one-shot): Утилита инициализации потоков JetStream.
+-   **`qiki-registrar-phase1`**: Сервис аудита событий.
 
 ### LR/SR разделение радара
 
@@ -28,20 +30,24 @@ QIKI_DTMP — это высокопроизводительная, модуль�
 
 ## Быстрый старт
 
-Все команды выполняются из корневой директории проекта `QIKI_DTMP`.
+Все команды выполняются из корневой директории проекта `QIKI_DTMP_LOCAL`.
+
+**Требования:**
+- Docker Desktop запущен и работает
+- Protobuf файлы сгенерированы в папке `generated/`
+- Windows PowerShell или Bash
 
 ### 1. Сборка и запуск
 
-Эта команда соберет и запустит все сервисы в фоновом режиме.
-
 ```bash
-docker compose -f docker-compose.phase1.yml up -d --build
+# Стандартный запуск системы
+docker compose up -d --build
 ```
 
 ### 2. Проверка статуса контейнеров
 
 ```bash
-docker compose -f docker-compose.phase1.yml ps
+docker compose ps
 ```
 
 ### 3. Проверка работоспособности (Health Checks)
@@ -49,55 +55,77 @@ docker compose -f docker-compose.phase1.yml ps
 #### NATS Health Check
 
 ```bash
+# В Linux/WSL
 curl -sf http://localhost:8222/healthz
+
+# В Windows PowerShell
+Invoke-WebRequest -Uri http://localhost:8222/healthz -UseBasicParsing | Select-Object -ExpandProperty Content
 ```
 
-Ожидаемый ответ: `{ "status": "ok" }`
+Ожидаемый ответ: `{"status":"ok"}`
 
 #### gRPC Health Check (q-sim-service)
 
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T q-sim-service python - <<\'PY\'
-import grpc
-from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub
-from generated.q_sim_api_pb2 import HealthCheckRequest
-channel = grpc.insecure_channel(\'localhost:50051\'')
-stub = QSimAPIServiceStub(channel)
-print(stub.HealthCheck(HealthCheckRequest(), timeout=3.0))
-PY
+docker compose exec q-sim-service python -c "import grpc; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); print(stub.HealthCheck(HealthCheckRequest(), timeout=3.0))"
 ```
 
-### 4. Запуск тестов
+### 4. Функциональное тестирование
 
 #### Интеграционные тесты радарного пайплайна
 
 Эти команды проверяют, что данные от радара корректно проходят через NATS JetStream и что LR/SR-разделение работает.
 
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
-  pytest -q tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
+docker compose exec qiki-dev pytest -v tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
 
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
-  pytest -q tests/integration/test_radar_lr_sr_topics.py
+docker compose exec qiki-dev pytest -v tests/integration/test_radar_lr_sr_topics.py
 ```
 
 #### Smoke-тесты Stage 0
 
-Эта команда запускает комплексную проверку всех компонентов Stage 0, включая BotSpec, CloudEvents, мониторинг лагов, сервис регистратора и другие компоненты.
+Комплексная проверка всех компонентов системы.
 
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
-  bash /workspace/scripts/smoke_test.sh
+docker compose exec qiki-dev bash /workspace/scripts/smoke_test.sh
 ```
 
 #### Полный набор тестов
 
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests
+docker compose exec qiki-dev pytest -v tests/
 ```
 
 ### 5. Остановка системы
 
 ```bash
-docker compose -f docker-compose.phase1.yml down
+docker compose down
 ```
+
+## Устранение неисправностей
+
+### Protobuf файлы
+Если система не запускается с ошибкой "ModuleNotFoundError: No module named 'generated'":
+
+```bash
+# Сгенерировать protobuf файлы
+docker run --rm -v ${PWD}:/workspace -w /workspace qiki_dtmp_local-qiki-dev bash -c "
+python -m grpc_tools.protoc -I./protos --python_out=./generated --grpc_python_out=./generated ./protos/*.proto
+python -m grpc_tools.protoc -I./protos --python_out=./generated ./protos/radar/v1/radar.proto
+"
+```
+
+### Просмотр логов
+
+```bash
+# Логи конкретного сервиса
+docker logs qiki-sim-phase1 -f
+docker logs qiki-nats-phase1 --tail 50
+
+# Статус ресурсов
+docker stats
+```
+
+---
+
+**Готово к разработке!** Система оптимизирована для быстрого запуска и эффективной разработки.

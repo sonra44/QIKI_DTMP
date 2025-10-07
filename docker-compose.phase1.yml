@@ -65,6 +65,10 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: qiki-sim-phase1
+    volumes:
+      - .:/workspace
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
     healthcheck:
       test: ["CMD", "python", "-c", "import grpc,sys; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); stub.HealthCheck(HealthCheckRequest(), timeout=2.0)"]
       interval: 5s
@@ -92,6 +96,10 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: qiki-sim-radar-phase1
+    volumes:
+      - .:/workspace
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
     networks:
       - qiki-network-phase1
     environment:
