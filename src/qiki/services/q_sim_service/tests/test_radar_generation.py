@@ -38,19 +38,30 @@ def test_generate_radar_frame_basic():
     assert isinstance(rf.frame_id, PyUUID)
     assert isinstance(rf.sensor_id, PyUUID)
 
-    # Validate detection contents
-    assert len(rf.detections) == 1
-    det = rf.detections[0]
-    assert isinstance(det, RadarDetectionModel)
-
-    # Ranges and bounds enforced by validators
-    assert det.range_m >= 0.0
-    assert 0.0 <= det.bearing_deg < 360.0
-    assert -90.0 <= det.elev_deg <= 90.0
-    assert det.snr_db >= 0.0
-    assert det.transponder_mode == TransponderModeEnum.ON
-    assert det.transponder_on is True
-    assert det.transponder_id is not None
+    # Validate detection contents - should have 2 detections (LR and SR)
+    assert len(rf.detections) == 2
+    
+    # Check LR detection (first one - no transponder)
+    lr_det = rf.detections[0]
+    assert isinstance(lr_det, RadarDetectionModel)
+    assert lr_det.range_m >= 0.0
+    assert 0.0 <= lr_det.bearing_deg < 360.0
+    assert -90.0 <= lr_det.elev_deg <= 90.0
+    assert lr_det.snr_db >= 0.0
+    assert lr_det.transponder_mode == TransponderModeEnum.OFF
+    assert lr_det.transponder_on is False
+    assert lr_det.transponder_id is None
+    
+    # Check SR detection (second one - with transponder)
+    sr_det = rf.detections[1]
+    assert isinstance(sr_det, RadarDetectionModel)
+    assert sr_det.range_m >= 0.0
+    assert 0.0 <= sr_det.bearing_deg < 360.0
+    assert -90.0 <= sr_det.elev_deg <= 90.0
+    assert sr_det.snr_db >= 0.0
+    assert sr_det.transponder_mode == TransponderModeEnum.ON
+    assert sr_det.transponder_on is True
+    assert sr_det.transponder_id is not None
 
 
 def test_generate_sensor_data_produces_radar_when_enabled():
@@ -79,12 +90,13 @@ def test_transponder_modes(monkeypatch, mode, expected_on, expected_id):
     sim = QSimService(cfg)
 
     frame = sim.generate_radar_frame()
-    det = frame.detections[0]
+    # SR detection is the second one (index 1) which has transponder info
+    sr_det = frame.detections[1]
 
-    assert det.transponder_mode == TransponderModeEnum[mode]
-    assert det.transponder_on is expected_on
+    assert sr_det.transponder_mode == TransponderModeEnum[mode]
+    assert sr_det.transponder_on is expected_on
     if expected_id is None:
-        assert det.transponder_id is None
+        assert sr_det.transponder_id is None
     else:
-        assert det.transponder_id is not None
-        assert det.transponder_id.startswith(expected_id)
+        assert sr_det.transponder_id is not None
+        assert sr_det.transponder_id.startswith(expected_id)

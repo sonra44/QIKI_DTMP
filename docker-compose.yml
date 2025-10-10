@@ -143,6 +143,40 @@ services:
       - PYTHONPATH=/app/src
     restart: on-failure
 
+  # Operator Console - TUI для мониторинга и управления
+  operator-console:
+    build:
+      context: ./src/qiki/services/operator_console
+      dockerfile: Dockerfile
+    container_name: qiki-operator-console
+    networks:
+      - qiki-network-phase1
+    environment:
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - GRPC_HOST=q-sim-service
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+    volumes:
+      # Монтируем код для разработки (hot reload)
+      - ./src/qiki/services/operator_console:/app
+      # Монтируем proto файлы
+      - ./proto:/app/proto:ro
+      # Монтируем shared модули QIKI если нужно
+      - ./src/qiki/core:/app/qiki/core:ro
+      - ./src/qiki/models:/app/qiki/models:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+      q-sim-service:
+        condition: service_healthy
+    stdin_open: true  # Для интерактивного TUI
+    tty: true         # Для работы с терминалом
+    command: python main.py
+    profiles: ["full", "console"]  # Запускается только с профилем
+
   # Инициализация JetStream Stream для радарных топиков
   nats-js-init:
     build:

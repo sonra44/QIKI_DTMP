@@ -4,18 +4,18 @@ from uuid import uuid4
 
 import pytest
 
-import q_core_agent.core.world_model as world_model_module
+import qiki.services.q_core_agent.core.world_model as world_model_module
 
-from q_core_agent.core.agent import AgentContext
-from q_core_agent.core.fsm_handler import FSMHandler
-from q_core_agent.core.guard_table import (
+from qiki.services.q_core_agent.core.agent import AgentContext
+from qiki.services.q_core_agent.core.fsm_handler import FSMHandler
+from qiki.services.q_core_agent.core.guard_table import (
     GuardEvaluationResult,
     GuardRule,
     GuardTable,
     load_guard_table,
 )
-from q_core_agent.core.rule_engine import RuleEngine
-from q_core_agent.core.world_model import WorldModel
+from qiki.services.q_core_agent.core.rule_engine import RuleEngine
+from qiki.services.q_core_agent.core.world_model import WorldModel
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from qiki.shared.models.core import ProposalTypeEnum, SensorData, SensorTypeEnum

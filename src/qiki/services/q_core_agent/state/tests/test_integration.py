@@ -8,9 +8,9 @@ import asyncio
 import os
 from unittest.mock import Mock, AsyncMock, patch
 
-from q_core_agent.state.store import AsyncStateStore, create_initialized_store
-from q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot, next_snapshot, create_transition
-from q_core_agent.state.conv import dto_to_proto, proto_to_dto, dto_to_json_dict
+from qiki.services.q_core_agent.state.store import AsyncStateStore, create_initialized_store
+from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState, initial_snapshot, next_snapshot, create_transition
+from qiki.services.q_core_agent.state.conv import dto_to_proto, proto_to_dto, dto_to_json_dict
 
 # Импорт компонентов для интеграции (мокаем для изоляции от core)
 

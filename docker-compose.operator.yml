@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  operator-console:
+    build:
+      context: ./src/qiki/services/operator_console
+      dockerfile: Dockerfile
+    container_name: qiki-operator-console
+    environment:
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - GRPC_HOST=q-sim-service
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Монтируем код для разработки (hot reload)
+      - ./src/qiki/services/operator_console:/app
+      # Монтируем proto файлы
+      - ./proto:/app/proto:ro
+      # Монтируем shared модули QIKI если нужно
+      - ./src/qiki/core:/app/qiki/core:ro
+      - ./src/qiki/models:/app/qiki/models:ro
+    networks:
+      - qiki-network
+    depends_on:
+      - qiki-nats-phase1
+    stdin_open: true  # Для интерактивного TUI
+    tty: true         # Для работы с терминалом
+    command: python -m operator_console.main
+
+  # NATS сервер (если не запущен в основном compose)
+  qiki-nats-phase1:
+    image: nats:2.10-alpine
+    container_name: qiki-nats-phase1
+    ports:
+      - "4222:4222"  # Client port
+      - "8222:8222"  # Monitoring port
+    command: [
+      "-js",           # Enable JetStream
+      "-sd", "/data",  # Store directory
+      "-m", "8222",    # Monitoring port
+      "--name", "qiki-nats-phase1"
+    ]
+    volumes:
+      - nats-data:/data
+    networks:
+      - qiki-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  qiki-network:
+    external: true
+    name: qiki_dtmp_local_qiki-network-phase1
+
+volumes:
+  nats-data:
