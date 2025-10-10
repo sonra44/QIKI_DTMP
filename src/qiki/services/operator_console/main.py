@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+"""
+QIKI Operator Console - Main Application.
+
+Terminal User Interface for monitoring and controlling QIKI Digital Twin.
+"""
+
+import asyncio
+import os
+from datetime import datetime
+from typing import Optional
+import random  # Для демо данных
+
+from rich.console import RenderableType
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.reactive import reactive
+from textual.widgets import (
+    Header, Footer, Static, DataTable, 
+    RichLog, Input, Button, Label, TabbedContent, TabPane
+)
+from textual.binding import Binding
+
+
+class TelemetryPanel(Static):
+    """Panel for displaying real-time telemetry data."""
+    
+    def compose(self) -> ComposeResult:
+        """Compose telemetry widgets."""
+        yield Label("📊 Telemetry", classes="panel-title")
+        table = DataTable(id="telemetry-table")
+        table.add_columns("Metric", "Value", "Unit", "Updated")
+        # Пример данных, будут обновляться из NATS
+        table.add_row("Position X", "0.0", "m", datetime.now().strftime("%H:%M:%S"))
+        table.add_row("Position Y", "0.0", "m", datetime.now().strftime("%H:%M:%S"))
+        table.add_row("Velocity", "0.0", "m/s", datetime.now().strftime("%H:%M:%S"))
+        table.add_row("Heading", "0.0", "deg", datetime.now().strftime("%H:%M:%S"))
+        table.add_row("Battery", "100", "%", datetime.now().strftime("%H:%M:%S"))
+        yield table
+
+
+class RadarPanel(Static):
+    """Panel for displaying radar tracks."""
+    
+    def compose(self) -> ComposeResult:
+        """Compose radar widgets."""
+        yield Label("🎯 Radar Tracks", classes="panel-title")
+        table = DataTable(id="radar-table")
+        table.add_columns("Track ID", "Range", "Bearing", "Velocity", "Type")
+        # Пример трека
+        table.add_row("TRK-001", "150.5", "45.0", "25.3", "Unknown")
+        yield table
+
+
+class ChatPanel(Static):
+    """Panel for agent chat interaction."""
+    
+    def compose(self) -> ComposeResult:
+        """Compose chat widgets."""
+        with Vertical():
+            yield Label("💬 Agent Chat", classes="panel-title")
+            yield RichLog(id="chat-log", highlight=True, markup=True)
+            with Horizontal(classes="chat-input-container"):
+                yield Input(
+                    placeholder="Type your message to Q-Agent...",
+                    id="chat-input"
+                )
+                yield Button("Send", variant="primary", id="send-button")
+
+
+class CommandPanel(Static):
+    """Panel for quick commands."""
+    
+    def compose(self) -> ComposeResult:
+        """Compose command widgets."""
+        yield Label("⚡ Quick Commands", classes="panel-title")
+        with Vertical(classes="command-buttons"):
+            yield Button("▶️ Start Simulation", id="cmd-start", variant="success")
+            yield Button("⏸️ Pause Simulation", id="cmd-pause", variant="warning")
+            yield Button("⏹️ Stop Simulation", id="cmd-stop", variant="error")
+            yield Button("🔄 Reset System", id="cmd-reset")
+            yield Button("📊 Export Telemetry", id="cmd-export")
+            yield Button("🔧 System Diagnostics", id="cmd-diagnostics")
+
+
+class OperatorConsoleApp(App):
+    """Main Operator Console Application."""
+    
+    CSS = """
+    .panel-title {
+        text-align: center;
+        text-style: bold;
+        background: $boost;
+        padding: 1;
+        margin-bottom: 1;
+    }
+    
+    #telemetry-table {
+        height: 10;
+    }
+    
+    #radar-table {
+        height: 10;
+    }
+    
+    #chat-log {
+        height: 15;
+        border: solid $primary;
+        padding: 1;
+    }
+    
+    .chat-input-container {
+        height: 3;
+        padding: 1;
+    }
+    
+    #chat-input {
+        width: 80%;
+    }
+    
+    .command-buttons {
+        padding: 1;
+    }
+    
+    .command-buttons Button {
+        width: 100%;
+        margin: 1 0;
+    }
+    
+    TabPane {
+        padding: 1;
+    }
+    """
+    
+    BINDINGS = [
+        Binding("ctrl+q", "quit", "Quit", priority=True),
+        Binding("ctrl+t", "toggle_tab('telemetry')", "Telemetry"),
+        Binding("ctrl+r", "toggle_tab('radar')", "Radar"),
+        Binding("ctrl+c", "toggle_tab('chat')", "Chat"),
+        Binding("ctrl+d", "toggle_dark", "Toggle Dark Mode"),
+        Binding("f1", "show_help", "Help"),
+    ]
+    
+    TITLE = "QIKI Operator Console v0.1.0"
+    SUB_TITLE = "Digital Twin Control Center"
+    
+    def __init__(self):
+        """Initialize the application."""
+        super().__init__()
+        self.nats_client = None
+        self.grpc_client = None
+        self.theme = "textual-dark"  # Начинаем с тёмной темы
+        
+    def compose(self) -> ComposeResult:
+        """Create the application layout."""
+        yield Header()
+        
+        with TabbedContent(initial="telemetry"):
+            with TabPane("📊 Telemetry", id="telemetry"):
+                with Horizontal():
+                    with Vertical(classes="left-panel"):
+                        yield TelemetryPanel()
+                        yield RadarPanel()
+                    with Vertical(classes="right-panel"):
+                        yield CommandPanel()
+                        
+            with TabPane("💬 Agent Chat", id="chat"):
+                yield ChatPanel()
+                
+            with TabPane("📈 Metrics", id="metrics"):
+                yield Label("Metrics visualization coming soon...")
+                
+            with TabPane("⚙️ Settings", id="settings"):
+                yield Label("Settings panel coming soon...")
+                
+        yield Footer()
+    
+    async def on_mount(self) -> None:
+        """Handle mount event - initialize connections."""
+        self.log("Operator Console started")
+        self.log(f"NATS URL: {os.getenv('NATS_URL', 'not configured')}")
+        self.log(f"gRPC Host: {os.getenv('GRPC_HOST', 'not configured')}")
+        
+        # Initialize NATS client
+        await self.init_nats_client()
+        
+    async def init_nats_client(self) -> None:
+        """Initialize NATS client and subscribe to streams."""
+        from clients.nats_client import NATSClient
+        
+        self.nats_client = NATSClient()
+        try:
+            await self.nats_client.connect()
+            self.log("✅ Connected to NATS")
+            
+            # Subscribe to radar tracks
+            await self.nats_client.subscribe_tracks(self.handle_track_data)
+            self.log("📡 Subscribed to radar tracks")
+            
+        except Exception as e:
+            self.log(f"❌ Failed to connect to NATS: {e}")
+            
+    async def handle_track_data(self, data: dict) -> None:
+        """Handle incoming track data from NATS."""
+        try:
+            # Update radar table with new track data
+            radar_table = self.query_one("#radar-table", DataTable)
+            if radar_table:
+                track_data = data.get('data', {})
+                # Clear and update table (simplified for now)
+                radar_table.clear()
+                radar_table.add_row(
+                    track_data.get('id', 'N/A'),
+                    str(track_data.get('range', 0)),
+                    str(track_data.get('bearing', 0)),
+                    str(track_data.get('velocity', 0)),
+                    track_data.get('type', 'Unknown')
+                )
+        except Exception as e:
+            self.log(f"Error handling track data: {e}")
+        
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press events."""
+        button_id = event.button.id
+        
+        if button_id == "send-button":
+            await self.send_chat_message()
+        elif button_id == "cmd-start":
+            self.log("Starting simulation...")
+            # TODO: Send start command via gRPC
+        elif button_id == "cmd-pause":
+            self.log("Pausing simulation...")
+            # TODO: Send pause command via gRPC
+        elif button_id == "cmd-stop":
+            self.log("Stopping simulation...")
+            # TODO: Send stop command via gRPC
+        elif button_id == "cmd-reset":
+            self.log("Resetting system...")
+            # TODO: Send reset command via gRPC
+        elif button_id == "cmd-export":
+            self.log("Exporting telemetry...")
+            # TODO: Export telemetry data
+        elif button_id == "cmd-diagnostics":
+            self.log("Running diagnostics...")
+            # TODO: Run system diagnostics
+            
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle input submission (Enter key in chat)."""
+        if event.input.id == "chat-input":
+            await self.send_chat_message()
+            
+    async def send_chat_message(self) -> None:
+        """Send chat message to Q-Agent."""
+        chat_input = self.query_one("#chat-input", Input)
+        message = chat_input.value.strip()
+        
+        if message:
+            chat_log = self.query_one("#chat-log", RichLog)
+            chat_log.write(f"[bold cyan]You:[/bold cyan] {message}")
+            chat_input.clear()
+            
+            # TODO: Send message via gRPC and get response
+            # response = await self.grpc_client.send_message(message)
+            # chat_log.write(f"[bold green]Q-Agent:[/bold green] {response}")
+            
+            # Временный ответ для демо
+            chat_log.write("[bold green]Q-Agent:[/bold green] Message received. Processing...")
+    
+    def action_toggle_dark(self) -> None:
+        """Toggle dark mode."""
+        self.theme = "textual-dark" if self.theme == "textual-light" else "textual-light"
+        
+    def action_show_help(self) -> None:
+        """Show help information."""
+        self.log("Help: Use Ctrl+Q to quit, Ctrl+T/R/C to switch tabs")
+
+
+def main():
+    """Entry point for the application."""
+    app = OperatorConsoleApp()
+    app.run()
+
+
+if __name__ == "__main__":
+    main()
