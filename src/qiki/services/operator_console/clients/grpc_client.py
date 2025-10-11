@@ -40,8 +40,9 @@ class QSimGrpcClient:
             host: gRPC server host
             port: gRPC server port
         """
-        self.host = host or os.getenv("GRPC_HOST", "localhost")
-        self.port = port or int(os.getenv("GRPC_PORT", "50051"))
+        # In Docker, use service names from docker-compose
+        self.host = host or os.getenv("QSIM_GRPC_HOST", os.getenv("GRPC_HOST", "q-sim-service"))
+        self.port = port or int(os.getenv("QSIM_GRPC_PORT", os.getenv("GRPC_PORT", "50051")))
         self.channel: Optional[aio.Channel] = None
         self.stub = None
         self.connected = False
@@ -95,6 +96,7 @@ class QSimGrpcClient:
         """Disconnect from gRPC server."""
         if self.channel:
             await self.channel.close()
+            self.channel = None
             self.connected = False
             logger.info("Disconnected from gRPC server")
             
@@ -115,7 +117,8 @@ class QSimGrpcClient:
             # For now, we'll just check if the channel is ready
             state = self.channel.get_state()
             
-            if state == grpc.ChannelConnectivity.READY:
+            # grpc.ChannelConnectivity.READY has value 1
+            if state == grpc.ChannelConnectivity.READY or state == 1:
                 result = {
                     "status": "OK",
                     "message": "Service is healthy",
@@ -333,7 +336,8 @@ class QAgentGrpcClient:
     
     def __init__(self, host: Optional[str] = None, port: Optional[int] = None):
         """Initialize agent client."""
-        self.host = host or os.getenv("AGENT_GRPC_HOST", "localhost")
+        # In Docker, use service names from docker-compose
+        self.host = host or os.getenv("AGENT_GRPC_HOST", "q-core-agent")
         self.port = port or int(os.getenv("AGENT_GRPC_PORT", "50052"))
         self.connected = False
         

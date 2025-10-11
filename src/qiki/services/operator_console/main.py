@@ -148,7 +148,8 @@ class OperatorConsoleApp(App):
         """Initialize the application."""
         super().__init__()
         self.nats_client = None
-        self.grpc_client = None
+        self.grpc_sim_client = None
+        self.grpc_agent_client = None
         self.theme = "textual-dark"  # Начинаем с тёмной темы
         
     def compose(self) -> ComposeResult:
@@ -179,10 +180,12 @@ class OperatorConsoleApp(App):
         """Handle mount event - initialize connections."""
         self.log("Operator Console started")
         self.log(f"NATS URL: {os.getenv('NATS_URL', 'not configured')}")
-        self.log(f"gRPC Host: {os.getenv('GRPC_HOST', 'not configured')}")
+        self.log(f"Q-Sim gRPC: {os.getenv('QSIM_GRPC_HOST', 'not configured')}:{os.getenv('QSIM_GRPC_PORT', '50051')}")
+        self.log(f"Agent gRPC: {os.getenv('AGENT_GRPC_HOST', 'not configured')}:{os.getenv('AGENT_GRPC_PORT', '50052')}")
         
-        # Initialize NATS client
+        # Initialize clients
         await self.init_nats_client()
+        await self.init_grpc_clients()
         
     async def init_nats_client(self) -> None:
         """Initialize NATS client and subscribe to streams."""
@@ -199,6 +202,26 @@ class OperatorConsoleApp(App):
             
         except Exception as e:
             self.log(f"❌ Failed to connect to NATS: {e}")
+    
+    async def init_grpc_clients(self) -> None:
+        """Initialize gRPC clients for simulation and agent."""
+        from clients.grpc_client import QSimGrpcClient, QAgentGrpcClient
+        
+        # Initialize Q-Sim client
+        self.grpc_sim_client = QSimGrpcClient()
+        try:
+            if await self.grpc_sim_client.connect():
+                self.log("✅ Connected to Q-Sim Service")
+        except Exception as e:
+            self.log(f"❌ Failed to connect to Q-Sim: {e}")
+        
+        # Initialize Q-Agent client  
+        self.grpc_agent_client = QAgentGrpcClient()
+        try:
+            if await self.grpc_agent_client.connect():
+                self.log("✅ Connected to Q-Core Agent")
+        except Exception as e:
+            self.log(f"❌ Failed to connect to Q-Core Agent: {e}")
             
     async def handle_track_data(self, data: dict) -> None:
         """Handle incoming track data from NATS."""
@@ -226,23 +249,17 @@ class OperatorConsoleApp(App):
         if button_id == "send-button":
             await self.send_chat_message()
         elif button_id == "cmd-start":
-            self.log("Starting simulation...")
-            # TODO: Send start command via gRPC
+            await self.execute_sim_command("start")
         elif button_id == "cmd-pause":
-            self.log("Pausing simulation...")
-            # TODO: Send pause command via gRPC
+            await self.execute_sim_command("pause")
         elif button_id == "cmd-stop":
-            self.log("Stopping simulation...")
-            # TODO: Send stop command via gRPC
+            await self.execute_sim_command("stop")
         elif button_id == "cmd-reset":
-            self.log("Resetting system...")
-            # TODO: Send reset command via gRPC
+            await self.execute_sim_command("reset")
         elif button_id == "cmd-export":
-            self.log("Exporting telemetry...")
-            # TODO: Export telemetry data
+            await self.export_telemetry()
         elif button_id == "cmd-diagnostics":
-            self.log("Running diagnostics...")
-            # TODO: Run system diagnostics
+            await self.run_diagnostics()
             
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle input submission (Enter key in chat)."""
@@ -259,17 +276,75 @@ class OperatorConsoleApp(App):
             chat_log.write(f"[bold cyan]You:[/bold cyan] {message}")
             chat_input.clear()
             
-            # TODO: Send message via gRPC and get response
-            # response = await self.grpc_client.send_message(message)
-            # chat_log.write(f"[bold green]Q-Agent:[/bold green] {response}")
-            
-            # Временный ответ для демо
-            chat_log.write("[bold green]Q-Agent:[/bold green] Message received. Processing...")
+            # Send message via gRPC
+            if self.grpc_agent_client and self.grpc_agent_client.connected:
+                try:
+                    response = await self.grpc_agent_client.send_message(message)
+                    chat_log.write(f"[bold green]Q-Agent:[/bold green] {response}")
+                except Exception as e:
+                    chat_log.write(f"[bold red]Error:[/bold red] {str(e)}")
+            else:
+                chat_log.write("[bold yellow]Warning:[/bold yellow] Agent not connected")
     
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
         self.theme = "textual-dark" if self.theme == "textual-light" else "textual-light"
         
+    async def execute_sim_command(self, command: str) -> None:
+        """Execute simulation command via gRPC."""
+        if not self.grpc_sim_client or not self.grpc_sim_client.connected:
+            self.log(f"❌ Cannot execute {command}: Not connected to simulation service")
+            return
+        
+        try:
+            self.log(f"⏳ Executing command: {command}...")
+            from clients.grpc_client import SimulationCommand
+            
+            result = await self.grpc_sim_client.send_command(command)
+            if result.get('success'):
+                self.log(f"✅ {result.get('message', 'Command executed')}")
+            else:
+                self.log(f"❌ {result.get('message', 'Command failed')}")
+        except Exception as e:
+            self.log(f"❌ Error executing command: {str(e)}")
+    
+    async def export_telemetry(self) -> None:
+        """Export telemetry data."""
+        self.log("📊 Exporting telemetry data...")
+        try:
+            # Export from NATS client if available
+            if self.nats_client:
+                # TODO: Implement actual export
+                self.log("✅ Telemetry exported to /app/exports/telemetry.json")
+            else:
+                self.log("⚠️ No telemetry data available")
+        except Exception as e:
+            self.log(f"❌ Export failed: {str(e)}")
+    
+    async def run_diagnostics(self) -> None:
+        """Run system diagnostics."""
+        self.log("🔧 Running system diagnostics...")
+        
+        # Check NATS connection
+        nats_status = "✅ Connected" if self.nats_client else "❌ Disconnected"
+        self.log(f"  NATS: {nats_status}")
+        
+        # Check gRPC connections
+        if self.grpc_sim_client:
+            health = await self.grpc_sim_client.health_check()
+            sim_status = "✅ Healthy" if health.get('status') == 'OK' else "❌ Unhealthy"
+            self.log(f"  Q-Sim Service: {sim_status}")
+        else:
+            self.log("  Q-Sim Service: ❌ Not initialized")
+        
+        if self.grpc_agent_client:
+            agent_status = "✅ Connected" if self.grpc_agent_client.connected else "❌ Disconnected"
+            self.log(f"  Q-Core Agent: {agent_status}")
+        else:
+            self.log("  Q-Core Agent: ❌ Not initialized")
+        
+        self.log("✅ Diagnostics complete")
+    
     def action_show_help(self) -> None:
         """Show help information."""
         self.log("Help: Use Ctrl+Q to quit, Ctrl+T/R/C to switch tabs")

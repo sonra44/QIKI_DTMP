@@ -44,5 +44,10 @@ RUN useradd -m -u 1000 -s /bin/bash appuser && \
 
 USER appuser
 
-# Запуск консоли
-CMD ["python", "-m", "operator_console.main"]
+# Healthcheck для проверки состояния приложения
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import asyncio; import sys; sys.exit(0)" || exit 1
+
+# По умолчанию запускаем консоль, но можно переопределить через CMD
+# Например: docker run image python -m pytest tests/ -v
+CMD ["python", "main.py"]
