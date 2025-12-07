@@ -15,6 +15,7 @@ def test_imports():
     
     try:
         import rich
+        _ = rich.__name__
         print("✅ Rich imported successfully")
     except ImportError as e:
         print(f"❌ Failed to import Rich: {e}")
@@ -22,6 +23,7 @@ def test_imports():
         
     try:
         import textual
+        _ = textual.__version__ if hasattr(textual, "__version__") else str(textual)
         print("✅ Textual imported successfully")
     except ImportError as e:
         print(f"❌ Failed to import Textual: {e}")
@@ -29,6 +31,7 @@ def test_imports():
         
     try:
         import nats
+        _ = nats.__version__ if hasattr(nats, "__version__") else str(nats)
         print("✅ NATS client imported successfully")
     except ImportError as e:
         print(f"❌ Failed to import NATS: {e}")
@@ -36,6 +39,7 @@ def test_imports():
         
     try:
         import grpc
+        _ = grpc.__version__ if hasattr(grpc, "__version__") else str(grpc)
         print("✅ gRPC imported successfully")
     except ImportError as e:
         print(f"❌ Failed to import gRPC: {e}")

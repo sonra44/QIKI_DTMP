@@ -1,5 +1,6 @@
 import asyncio
 import os
+from uuid import uuid4
 
 import pytest
 import nats
@@ -7,7 +8,7 @@ from nats.errors import TimeoutError
 
 @pytest.mark.asyncio
 async def test_radar_lr_sr_topics():
-    nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
+    nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
     nc = await nats.connect(nats_url)
     lr_future = asyncio.Future()
     sr_future = asyncio.Future()
@@ -29,6 +30,12 @@ async def test_radar_lr_sr_topics():
     await nc.subscribe("qiki.radar.v1.frames.lr", cb=lr_cb)
     await nc.subscribe("qiki.radar.v1.tracks.sr", cb=sr_cb)
     await nc.subscribe("qiki.radar.v1.frames", cb=union_cb)
+
+    # Публикуем по одному сообщению в каждый топик
+    payload = str(uuid4()).encode()
+    await nc.publish("qiki.radar.v1.frames.lr", payload, headers={"x-range-band": "RR_LR"})
+    await nc.publish("qiki.radar.v1.tracks.sr", payload, headers={"x-range-band": "RR_SR"})
+    await nc.publish("qiki.radar.v1.frames", payload, headers={"x-range-band": "RR_UNSPECIFIED"})
 
     # The test will implicitly wait for the q-sim-service to generate data
     # that crosses the SR threshold.

@@ -8,10 +8,13 @@ services:
     container_name: qiki-operator-console
     environment:
       - NATS_URL=nats://qiki-nats-phase1:4222
-      - GRPC_HOST=q-sim-service
-      - GRPC_PORT=50051
+      - QSIM_GRPC_HOST=q-sim-service
+      - QSIM_GRPC_PORT=50051
+      - AGENT_GRPC_HOST=q-core-agent
+      - AGENT_GRPC_PORT=50052
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      - TERM=xterm-256color
     volumes:
       # Монтируем код для разработки (hot reload)
       - ./src/qiki/services/operator_console:/app

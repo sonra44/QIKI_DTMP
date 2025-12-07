@@ -25,11 +25,12 @@ class NATSClient:
         Args:
             url: NATS server URL, defaults to env var NATS_URL
         """
-        self.url = url or os.getenv("NATS_URL", "nats://localhost:4222")
+        env_url = os.getenv("NATS_URL", "nats://localhost:4222") or "nats://localhost:4222"
+        self.url: str = url if url is not None else env_url
         self.nc: Optional[nats.NATS] = None
         self.js: Optional[JetStreamContext] = None
-        self.subscriptions = {}
-        self.callbacks: Dict[str, Callable] = {}
+        self.subscriptions: Dict[str, Any] = {}
+        self.callbacks: Dict[str, Callable[[Dict[str, Any]], Any]] = {}
         
     async def connect(self) -> None:
         """Connect to NATS server and initialize JetStream."""

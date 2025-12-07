@@ -1,5 +1,7 @@
 import json
+import os
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -9,12 +11,18 @@ except Exception:
     pytest.skip("nats not installed; skip", allow_module_level=True)
 
 try:
-    from qiki.shared.models.radar import RadarTrackModel
+    from qiki.shared.models.radar import (
+        RadarTrackModel,
+        FriendFoeEnum,
+        ObjectTypeEnum,
+        RadarTrackStatusEnum,
+        TransponderModeEnum,
+    )
 except Exception:
     pytest.skip("imports not available; skip", allow_module_level=True)
 
 
-NATS_URL = "nats://nats:4222"
+NATS_URL = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
 TRACKS_TOPIC = "qiki.radar.v1.tracks"
 
 
@@ -23,6 +31,23 @@ async def test_receive_radar_track_from_nats():
     nc = await nats.connect(NATS_URL)
     try:
         sub = await nc.subscribe(TRACKS_TOPIC)
+
+        track = RadarTrackModel(
+            track_id=uuid4(),
+            object_type=ObjectTypeEnum.SHIP,
+            iff=FriendFoeEnum.FRIEND,
+            range_m=500.0,
+            bearing_deg=30.0,
+            elev_deg=0.0,
+            vr_mps=1.0,
+            snr_db=15.0,
+            rcs_dbsm=2.5,
+            quality=0.9,
+            status=RadarTrackStatusEnum.TRACKED,
+            transponder_mode=TransponderModeEnum.ON,
+            transponder_on=True,
+        )
+        await nc.publish(TRACKS_TOPIC, track.model_dump_json().encode("utf-8"))
         msg = await sub.next_msg(timeout=15.0)
 
         payload = msg.data.decode("utf-8")

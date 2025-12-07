@@ -16,7 +16,7 @@ async def test_connection():
         
         # Get JetStream info
         info = await client.get_jetstream_info()
-        print(f"\n📊 JetStream Info:")
+        print("\n📊 JetStream Info:")
         print(f"  - Memory: {info.get('memory', 'N/A')}")
         print(f"  - Storage: {info.get('storage', 'N/A')}")
         print(f"  - Streams: {info.get('streams', 'N/A')}")

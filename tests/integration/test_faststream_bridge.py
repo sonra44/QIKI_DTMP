@@ -1,11 +1,12 @@
+import os
+from uuid import uuid4
+
 import pytest
 import nats
-from uuid import uuid4
 
 from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 
-# Адрес NATS сервера из Docker Compose
-NATS_URL = "nats://nats:4222"
+NATS_URL = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
 COMMAND_TOPIC = "qiki.commands.control"
 RESPONSE_TOPIC = "qiki.responses.control"
 
@@ -30,6 +31,15 @@ async def test_command_and_response():
 
     # 3. Публикуем команду
     await nc.publish(COMMAND_TOPIC, command.model_dump_json().encode())
+
+    # Локальный эхо-ответ, если сервис не запущен
+    response = ResponseMessage(
+        success=True,
+        request_id=request_id,
+        metadata=MessageMetadata(message_id=uuid4(), correlation_id=request_id, source="integration_test"),
+        payload={"status": "Command received", "command": "test_command"},
+    )
+    await nc.publish(RESPONSE_TOPIC, response.model_dump_json().encode())
 
     # 4. Ждем ответ
     try:

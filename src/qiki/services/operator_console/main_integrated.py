@@ -6,10 +6,9 @@ Terminal UI with real NATS data streams integration.
 """
 
 import asyncio
-import os
-from datetime import datetime
 from collections import deque
-from typing import Dict, List, Any, Optional
+from datetime import datetime
+from typing import Optional
 
 from rich.table import Table
 from rich.live import Live
@@ -19,7 +18,6 @@ from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
-import time
 
 from clients.nats_realtime_client import RealtimeNATSClient, RadarFrame
 
@@ -267,9 +265,13 @@ class QIKIOperatorConsole:
         
         # Footer
         footer_text = Align.center(
-            Text(f"Connected to QIKI Digital Twin | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Frames: {self.stats['frames_received']}", 
-                 style="dim"),
-            vertical="middle"
+            Text(
+                "Connected to QIKI Digital Twin | "
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
+                f"Frames: {self.stats['frames_received']}",
+                style="dim",
+            ),
+            vertical="middle",
         )
         layout["footer"].update(footer_text)
         
@@ -305,9 +307,14 @@ class QIKIOperatorConsole:
                     
                     # Update footer
                     footer_text = Align.center(
-                        Text(f"Connected to QIKI | {datetime.now().strftime('%H:%M:%S')} | Frames: {self.stats['frames_received']} | Events: {self.stats['events_received']}", 
-                             style="dim"),
-                        vertical="middle"
+                        Text(
+                            "Connected to QIKI | "
+                            f"{datetime.now().strftime('%H:%M:%S')} | "
+                            f"Frames: {self.stats['frames_received']} | "
+                            f"Events: {self.stats['events_received']}",
+                            style="dim",
+                        ),
+                        vertical="middle",
                     )
                     layout["footer"].update(footer_text)
                     

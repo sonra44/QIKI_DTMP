@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa
 """
 QIKI Mission Control TUI
 Modern terminal interface for spacecraft telemetry and control
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, UTC
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import sys
 
@@ -198,7 +199,7 @@ class RadarWidget(Static):
         content = []
         
         # Mock radar data for demonstration
-        tracks = [
+        tracks: List[Dict[str, Any]] = [
             {"id": "T01", "type": "SHIP", "range": 850, "bearing": 45, "velocity": 2.1, "snr": 24.5, "iff": "FRIEND"},
             {"id": "T02", "type": "DRONE", "range": 1200, "bearing": 120, "velocity": -1.8, "snr": 18.2, "iff": "UNKNOWN"},
             {"id": "T03", "type": "DEBRIS", "range": 3800, "bearing": 280, "velocity": 0.0, "snr": 12.1, "iff": "NEUTRAL"}
@@ -338,7 +339,7 @@ class PowerWidget(Static):
         content.append("")
         
         # Consumers
-        consumers = [
+        consumers: List[Dict[str, Any]] = [
             {"name": "MAIN SYSTEMS", "name_ru": "ОСНОВНЫЕ", "power": 15.0, "pct": 67},
             {"name": "SENSORS", "name_ru": "СЕНСОРЫ", "power": 3.5, "pct": 16},
             {"name": "LIFE SUPPORT", "name_ru": "ЖО", "power": 2.0, "pct": 9},
@@ -373,7 +374,7 @@ class EventLogWidget(Static):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.events = []
+        self.events: List[Dict[str, Any]] = []
         
     def add_event(self, level: str, message_en: str, message_ru: str) -> None:
         """Add new event to log"""

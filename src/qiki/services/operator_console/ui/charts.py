@@ -4,17 +4,15 @@ Charts and metrics visualization for Operator Console.
 Provides sparklines, histograms and other visual components.
 """
 
-from typing import List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 import math
 
 from rich.text import Text
 from rich.panel import Panel
 from rich.table import Table
-from rich.console import Console, ConsoleOptions, RenderResult
-from rich.segment import Segment
-from rich.style import Style
+from rich.console import Console
 
 
 class Sparkline:
@@ -22,7 +20,7 @@ class Sparkline:
     
     BARS = " ▁▂▃▄▅▆▇█"
     
-    def __init__(self, data: List[float], width: int = 20, height: int = 1):
+    def __init__(self, data: Sequence[float], width: int = 20, height: int = 1):
         """
         Initialize sparkline.
         
@@ -31,7 +29,8 @@ class Sparkline:
             width: Width of the chart in characters
             height: Height (not used yet, for future multi-line charts)
         """
-        self.data = data[-width:] if len(data) > width else data
+        data_list = [float(val) for val in data]
+        self.data: List[float] = data_list[-width:] if len(data_list) > width else data_list
         self.width = width
         self.height = height
         
@@ -80,11 +79,12 @@ class ProgressBar:
     def render(self) -> str:
         """Render progress bar."""
         if self.max_value == 0:
-            percentage = 0
+            percentage: float = 0.0
+            filled_width = 0
         else:
             percentage = (self.value / self.max_value) * 100
+            filled_width = int((self.value / self.max_value) * self.width)
             
-        filled_width = int((self.value / self.max_value) * self.width)
         empty_width = self.width - filled_width
         
         bar = "█" * filled_width + "░" * empty_width
@@ -110,7 +110,7 @@ class MetricsHistory:
             max_points: Maximum number of data points to keep
         """
         self.max_points = max_points
-        self.metrics = {}
+        self.metrics: Dict[str, Deque[Dict[str, Any]]] = {}
         
     def add_metric(self, name: str, value: float, timestamp: Optional[datetime] = None):
         """Add a metric value."""
@@ -121,7 +121,7 @@ class MetricsHistory:
             self.metrics[name] = deque(maxlen=self.max_points)
             
         self.metrics[name].append({
-            "value": value,
+            "value": float(value),
             "timestamp": timestamp
         })
         

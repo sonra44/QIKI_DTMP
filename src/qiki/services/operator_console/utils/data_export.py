@@ -6,7 +6,6 @@ Provides export functionality for telemetry data to CSV and JSON formats.
 
 import json
 import csv
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -115,22 +114,22 @@ class DataExporter:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         if format == "json":
-            data = {
+            json_payload = {
                 "export_timestamp": datetime.now().isoformat(),
                 "telemetry": telemetry_buffer
             }
-            return self.export_to_json(data, f"telemetry_{timestamp}.json")
+            return self.export_to_json(json_payload, f"telemetry_{timestamp}.json")
             
         elif format == "csv":
             # Convert telemetry to list format for CSV
-            data = []
+            rows: List[Dict[str, str]] = []
             for key, value in telemetry_buffer.items():
-                data.append({
+                rows.append({
                     "timestamp": datetime.now().isoformat(),
                     "metric": key,
                     "value": str(value)
                 })
-            return self.export_to_csv(data, f"telemetry_{timestamp}.csv")
+            return self.export_to_csv(rows, f"telemetry_{timestamp}.csv")
             
         else:
             raise ValueError(f"Unsupported format: {format}")
