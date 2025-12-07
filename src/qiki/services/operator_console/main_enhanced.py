@@ -6,11 +6,10 @@ Complete console with charts, metrics history, and data export.
 """
 
 import asyncio
-import os
-import sys
-from datetime import datetime
 from collections import deque
-from typing import Dict, List, Any, Optional
+from datetime import datetime
+from typing import Any, Dict, Optional
+import sys
 import uuid
 
 from rich.table import Table
@@ -21,12 +20,25 @@ from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
-import time
 
 from clients.nats_realtime_client import RealtimeNATSClient, RadarFrame
 from clients.grpc_client import QSimGrpcClient, QAgentGrpcClient, SimulationCommand
-from ui.charts import MetricsHistory, MetricsPanel, Sparkline, BatteryIndicator, RadarVisualization
+from ui.charts import MetricsHistory, MetricsPanel, BatteryIndicator, RadarVisualization
 from utils.data_export import DataExporter, DataLogger
+
+
+class SignalStrength:
+    """Utility for rendering signal strength as text."""
+
+    @staticmethod
+    def render(value: int) -> str:
+        if value >= 80:
+            style = "bold green"
+        elif value >= 50:
+            style = "yellow"
+        else:
+            style = "red"
+        return f"[{style}]{value}%[/]"
 
 
 console = Console()
@@ -158,6 +170,12 @@ class QIKIOperatorConsoleEnhanced:
             "timestamp": datetime.now()
         })
         
+        if self.grpc_sim_client is None or self.grpc_agent_client is None:
+            return "gRPC clients are not initialized"
+
+        sim_client = self.grpc_sim_client
+        agent_client = self.grpc_agent_client
+
         cmd_lower = command.lower().strip()
         
         # Export commands
@@ -166,23 +184,23 @@ class QIKIOperatorConsoleEnhanced:
             
         # Simulation commands
         elif cmd_lower == "start":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.START)
+            result = await sim_client.send_command(SimulationCommand.START)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "stop":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.STOP)
+            result = await sim_client.send_command(SimulationCommand.STOP)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "pause":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.PAUSE)
+            result = await sim_client.send_command(SimulationCommand.PAUSE)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "resume":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.RESUME)
+            result = await sim_client.send_command(SimulationCommand.RESUME)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "reset":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.RESET)
+            result = await sim_client.send_command(SimulationCommand.RESET)
             # Clear metrics history on reset
             self.metrics_history = MetricsHistory(max_points=100)
             return result.get("message", "Command sent")
@@ -190,14 +208,14 @@ class QIKIOperatorConsoleEnhanced:
         elif cmd_lower.startswith("speed "):
             try:
                 speed = float(cmd_lower.split()[1])
-                result = await self.grpc_sim_client.set_simulation_speed(speed)
+                result = await sim_client.set_simulation_speed(speed)
                 return result.get("message", "Speed updated")
-            except:
+            except ValueError:
                 return "Invalid speed value"
                 
         elif cmd_lower == "status":
-            sim_state = self.grpc_sim_client.get_simulation_state()
-            fsm_state = await self.grpc_agent_client.get_fsm_state()
+            sim_state = sim_client.get_simulation_state()
+            fsm_state = await agent_client.get_fsm_state()
             return f"Sim: {'Running' if sim_state['running'] else 'Stopped'} | FSM: {fsm_state['current_state']}"
             
         elif cmd_lower == "help":
@@ -206,7 +224,7 @@ class QIKIOperatorConsoleEnhanced:
             
         elif cmd_lower.startswith("chat "):
             message = command[5:]
-            response = await self.grpc_agent_client.send_message(message)
+            response = await agent_client.send_message(message)
             self.chat_history.append({
                 "role": "user",
                 "message": message,
@@ -441,7 +459,10 @@ class QIKIOperatorConsoleEnhanced:
     
     async def run(self):
         """Main application loop."""
-        console.print(f"\n[bold cyan]Starting QIKI Operator Console Enhanced (Session: {self.session_id})...[/bold cyan]\n")
+        console.print(
+            "\n[bold cyan]Starting QIKI Operator Console Enhanced "
+            f"(Session: {self.session_id})...[/bold cyan]\n"
+        )
         
         try:
             # Initialize connections

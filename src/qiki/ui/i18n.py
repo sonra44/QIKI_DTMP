@@ -3,7 +3,7 @@ Internationalization (i18n) module for QIKI Mission Control TUI.
 Supports English and Russian languages.
 """
 
-from typing import Dict, Any
+from typing import Dict, Optional
 from enum import Enum
 
 
@@ -18,10 +18,10 @@ class I18n:
     
     def __init__(self, default_language: Language = Language.ENGLISH):
         """Initialize i18n with default language."""
-        self.current_language = default_language
-        self.translations = self._load_translations()
+        self.current_language: Language = default_language
+        self.translations: Dict[str, Dict[Language, str]] = self._load_translations()
     
-    def _load_translations(self) -> Dict[str, Dict[str, str]]:
+    def _load_translations(self) -> Dict[str, Dict[Language, str]]:
         """Load all translations."""
         return {
             # Headers and Titles
@@ -380,7 +380,7 @@ class I18n:
 
 
 # Global instance
-_i18n_instance: I18n = None
+_i18n_instance: Optional[I18n] = None
 
 
 def get_i18n() -> I18n:

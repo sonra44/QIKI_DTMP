@@ -3,10 +3,8 @@ Tests for gRPC clients functionality.
 """
 
 import pytest
-import asyncio
 import grpc
-from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch, call
+from unittest.mock import MagicMock, AsyncMock, patch
 import os
 import sys
 

@@ -7,7 +7,7 @@ Handles actual QIKI data streams from JetStream.
 import asyncio
 import json
 import os
-from typing import Any, Callable, Dict, Optional, List
+from typing import Any, Callable, Dict, List, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -41,12 +41,13 @@ class RealtimeNATSClient:
     
     def __init__(self, url: Optional[str] = None):
         """Initialize NATS client."""
-        self.url = url or os.getenv("NATS_URL", "nats://localhost:4222")
+        env_url = os.getenv("NATS_URL", "nats://localhost:4222") or "nats://localhost:4222"
+        self.url: str = url if url is not None else env_url
         self.nc: Optional[nats.NATS] = None
         self.js: Optional[JetStreamContext] = None
-        self.subscriptions = {}
-        self.callbacks: Dict[str, List[Callable]] = {}
-        self.latest_data = {
+        self.subscriptions: Dict[str, Any] = {}
+        self.callbacks: Dict[str, List[Callable[..., Any]]] = {}
+        self.latest_data: Dict[str, Any] = {
             "radar_frames": [],
             "tracks": [],
             "telemetry": {},
@@ -100,6 +101,8 @@ class RealtimeNATSClient:
         """Subscribe to radar frame streams."""
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
             
         async def message_handler(msg):
             """Handle incoming radar frame messages."""
@@ -276,7 +279,7 @@ class RealtimeNATSClient:
             info = await self.js.account_info()
             
             # Try to get stream list
-            streams = []
+            streams: List[Any] = []
             # This is a simplified version - actual implementation would enumerate streams
             
             return {
@@ -332,7 +335,7 @@ async def test_realtime_client():
         
         # Get latest data
         latest = client.get_latest_data()
-        print(f"\n📈 Latest data summary:")
+        print("\n📈 Latest data summary:")
         print(f"  - Radar frames: {len(latest['radar_frames'])}")
         print(f"  - Events: {len(latest['events'])}")
         print(f"  - Telemetry: {latest['telemetry']}")

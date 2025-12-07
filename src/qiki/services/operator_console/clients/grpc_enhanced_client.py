@@ -8,7 +8,6 @@ import logging
 from typing import Optional, Dict, Any, Callable
 from enum import Enum
 from dataclasses import dataclass
-import grpc
 from grpc import aio
 
 # Import protobuf definitions (these should be generated from .proto files)

@@ -5,16 +5,11 @@ QIKI Operator Console - Main Application.
 Terminal User Interface for monitoring and controlling QIKI Digital Twin.
 """
 
-import asyncio
 import os
 from datetime import datetime
-from typing import Optional
-import random  # Для демо данных
 
-from rich.console import RenderableType
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.reactive import reactive
+from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Header, Footer, Static, DataTable, 
     RichLog, Input, Button, Label, TabbedContent, TabPane
@@ -28,7 +23,7 @@ class TelemetryPanel(Static):
     def compose(self) -> ComposeResult:
         """Compose telemetry widgets."""
         yield Label("📊 Telemetry", classes="panel-title")
-        table = DataTable(id="telemetry-table")
+        table: DataTable = DataTable(id="telemetry-table")
         table.add_columns("Metric", "Value", "Unit", "Updated")
         # Пример данных, будут обновляться из NATS
         table.add_row("Position X", "0.0", "m", datetime.now().strftime("%H:%M:%S"))
@@ -45,7 +40,7 @@ class RadarPanel(Static):
     def compose(self) -> ComposeResult:
         """Compose radar widgets."""
         yield Label("🎯 Radar Tracks", classes="panel-title")
-        table = DataTable(id="radar-table")
+        table: DataTable = DataTable(id="radar-table")
         table.add_columns("Track ID", "Range", "Bearing", "Velocity", "Type")
         # Пример трека
         table.add_row("TRK-001", "150.5", "45.0", "25.3", "Unknown")
@@ -180,8 +175,16 @@ class OperatorConsoleApp(App):
         """Handle mount event - initialize connections."""
         self.log("Operator Console started")
         self.log(f"NATS URL: {os.getenv('NATS_URL', 'not configured')}")
-        self.log(f"Q-Sim gRPC: {os.getenv('QSIM_GRPC_HOST', 'not configured')}:{os.getenv('QSIM_GRPC_PORT', '50051')}")
-        self.log(f"Agent gRPC: {os.getenv('AGENT_GRPC_HOST', 'not configured')}:{os.getenv('AGENT_GRPC_PORT', '50052')}")
+        self.log(
+            "Q-Sim gRPC: "
+            f"{os.getenv('QSIM_GRPC_HOST', 'not configured')}:"
+            f"{os.getenv('QSIM_GRPC_PORT', '50051')}"
+        )
+        self.log(
+            "Agent gRPC: "
+            f"{os.getenv('AGENT_GRPC_HOST', 'not configured')}:"
+            f"{os.getenv('AGENT_GRPC_PORT', '50052')}"
+        )
         
         # Initialize clients
         await self.init_nats_client()
@@ -298,8 +301,6 @@ class OperatorConsoleApp(App):
         
         try:
             self.log(f"⏳ Executing command: {command}...")
-            from clients.grpc_client import SimulationCommand
-            
             result = await self.grpc_sim_client.send_command(command)
             if result.get('success'):
                 self.log(f"✅ {result.get('message', 'Command executed')}")

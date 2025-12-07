@@ -5,11 +5,10 @@ QIKI Operator Console - Live Data Version.
 Terminal User Interface with real-time data updates.
 """
 
-import asyncio
-import os
 import random
 from datetime import datetime
-from typing import Optional
+import os
+import time
 
 from rich.table import Table
 from rich.live import Live
@@ -18,7 +17,6 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
-import time
 
 
 console = Console()

@@ -6,7 +6,7 @@ Collects system metrics from NATS, gRPC services, and internal sensors.
 import asyncio
 import logging
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, Deque, Dict, List, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from collections import deque
@@ -21,14 +21,14 @@ class MetricPoint:
     """Single metric data point."""
     timestamp: datetime
     value: float
-    labels: Dict[str, str] = None
+    labels: Optional[Dict[str, str]] = None
 
 
 @dataclass  
 class MetricSeries:
     """Time series of metric values."""
     name: str
-    points: deque
+    points: Deque[MetricPoint]
     unit: str = ""
     description: str = ""
     
@@ -55,18 +55,18 @@ class MetricsClient:
         self.running = False
         
         # External clients for metrics collection
-        self.nats_client = None
-        self.grpc_clients = {}
+        self.nats_client: Optional[Any] = None
+        self.grpc_clients: Dict[str, Any] = {}
         
         # Internal counters
         self.start_time = time.time()
         self.last_collection = time.time()
         
-    def register_nats_client(self, nats_client):
+    def register_nats_client(self, nats_client: Any) -> None:
         """Register NATS client for metrics collection."""
         self.nats_client = nats_client
         
-    def register_grpc_client(self, name: str, grpc_client):
+    def register_grpc_client(self, name: str, grpc_client: Any) -> None:
         """Register gRPC client for metrics collection."""
         self.grpc_clients[name] = grpc_client
     
@@ -150,32 +150,35 @@ class MetricsClient:
         except Exception as e:
             logger.error(f"❌ Error collecting system metrics: {e}")
     
-    async def _collect_nats_metrics(self, timestamp: datetime):
+    async def _collect_nats_metrics(self, timestamp: datetime) -> None:
         """Collect NATS-related metrics."""
+        client = self.nats_client
+        if client is None:
+            return
         try:
-            if hasattr(self.nats_client, 'is_connected') and self.nats_client.is_connected:
+            if getattr(client, "is_connected", False):
                 # Connection status
                 self.add_metric("nats.connection.status", 1.0, timestamp,
-                              description="NATS connection status (1=connected, 0=disconnected)")
+                                description="NATS connection status (1=connected, 0=disconnected)")
                 
                 # Message processing metrics (if available)
-                if hasattr(self.nats_client, 'messages_received'):
+                if hasattr(client, 'messages_received'):
                     self.add_metric("nats.messages.received_total", 
-                                  float(getattr(self.nats_client, 'messages_received', 0)), 
+                                  float(getattr(client, 'messages_received', 0)), 
                                   timestamp, description="Total messages received")
                 
-                if hasattr(self.nats_client, 'messages_processed'):
+                if hasattr(client, 'messages_processed'):
                     self.add_metric("nats.messages.processed_total",
-                                  float(getattr(self.nats_client, 'messages_processed', 0)),
+                                  float(getattr(client, 'messages_processed', 0)),
                                   timestamp, description="Total messages processed")
             else:
                 self.add_metric("nats.connection.status", 0.0, timestamp,
-                              description="NATS connection status")
-                              
+                                description="NATS connection status")
+                                
         except Exception as e:
             logger.error(f"❌ Error collecting NATS metrics: {e}")
     
-    async def _collect_grpc_metrics(self, name: str, client, timestamp: datetime):
+    async def _collect_grpc_metrics(self, name: str, client: Any, timestamp: datetime):
         """Collect gRPC client metrics."""
         try:
             # Connection status
@@ -220,8 +223,15 @@ class MetricsClient:
         except Exception as e:
             logger.error(f"❌ Error collecting app metrics: {e}")
     
-    def add_metric(self, name: str, value: float, timestamp: datetime = None, 
-                   unit: str = "", description: str = "", labels: Dict[str, str] = None):
+    def add_metric(
+        self,
+        name: str,
+        value: float,
+        timestamp: Optional[datetime] = None,
+        unit: str = "",
+        description: str = "",
+        labels: Optional[Dict[str, str]] = None,
+    ) -> None:
         """
         Add a metric data point.
         
@@ -269,7 +279,7 @@ class MetricsClient:
                 latest[name] = series.points[-1].value
         return latest
     
-    def get_metric_history(self, name: str, duration: timedelta = None) -> List[MetricPoint]:
+    def get_metric_history(self, name: str, duration: Optional[timedelta] = None) -> List[MetricPoint]:
         """
         Get metric history for specified duration.
         
@@ -291,7 +301,7 @@ class MetricsClient:
         cutoff_time = datetime.now() - duration
         return [point for point in points if point.timestamp >= cutoff_time]
     
-    def get_metric_summary(self, name: str, duration: timedelta = None) -> Dict[str, Any]:
+    def get_metric_summary(self, name: str, duration: Optional[timedelta] = None) -> Dict[str, Any]:
         """
         Get metric summary statistics.
         
@@ -347,7 +357,7 @@ class MetricsClient:
         """Export metrics as JSON."""
         import json
         
-        export_data = {
+        export_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "metrics": {}
         }

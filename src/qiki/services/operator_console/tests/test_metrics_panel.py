@@ -5,7 +5,7 @@ Tests for MetricsPanel widget.
 import pytest
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 import os
 import sys
 
@@ -13,8 +13,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from textual.app import App, ComposeResult
-from textual.widgets import Widget
-from textual.screen import Screen
 from widgets.metrics_panel import MetricsPanel
 from clients.metrics_client import MetricsClient
 

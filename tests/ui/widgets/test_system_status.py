@@ -2,7 +2,6 @@
 Tests for SystemStatusWidget
 """
 
-import pytest
 from rich.panel import Panel
 from unittest.mock import MagicMock
 

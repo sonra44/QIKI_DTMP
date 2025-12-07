@@ -7,7 +7,6 @@ Provides various test execution options with reporting.
 import argparse
 import subprocess
 import sys
-import os
 from pathlib import Path
 
 

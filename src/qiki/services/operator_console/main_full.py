@@ -6,11 +6,10 @@ Complete console with NATS data, gRPC commands, and agent chat.
 """
 
 import asyncio
-import os
-import sys
-from datetime import datetime
 from collections import deque
-from typing import Dict, List, Any, Optional
+from datetime import datetime
+from typing import Optional
+import sys
 
 from rich.table import Table
 from rich.live import Live
@@ -20,8 +19,6 @@ from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Prompt
-import time
 
 from clients.nats_realtime_client import RealtimeNATSClient, RadarFrame
 from clients.grpc_client import QSimGrpcClient, QAgentGrpcClient, SimulationCommand
@@ -124,40 +121,46 @@ class QIKIOperatorConsoleFull:
             "timestamp": datetime.now()
         })
         
+        if self.grpc_sim_client is None or self.grpc_agent_client is None:
+            return "gRPC clients are not initialized"
+
+        sim_client = self.grpc_sim_client
+        agent_client = self.grpc_agent_client
+        
         # Parse and execute command
         cmd_lower = command.lower().strip()
         
         if cmd_lower == "start":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.START)
+            result = await sim_client.send_command(SimulationCommand.START)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "stop":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.STOP)
+            result = await sim_client.send_command(SimulationCommand.STOP)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "pause":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.PAUSE)
+            result = await sim_client.send_command(SimulationCommand.PAUSE)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "resume":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.RESUME)
+            result = await sim_client.send_command(SimulationCommand.RESUME)
             return result.get("message", "Command sent")
             
         elif cmd_lower == "reset":
-            result = await self.grpc_sim_client.send_command(SimulationCommand.RESET)
+            result = await sim_client.send_command(SimulationCommand.RESET)
             return result.get("message", "Command sent")
             
         elif cmd_lower.startswith("speed "):
             try:
                 speed = float(cmd_lower.split()[1])
-                result = await self.grpc_sim_client.set_simulation_speed(speed)
+                result = await sim_client.set_simulation_speed(speed)
                 return result.get("message", "Speed updated")
-            except:
+            except ValueError:
                 return "Invalid speed value"
                 
         elif cmd_lower == "status":
-            sim_state = self.grpc_sim_client.get_simulation_state()
-            fsm_state = await self.grpc_agent_client.get_fsm_state()
+            sim_state = sim_client.get_simulation_state()
+            fsm_state = await agent_client.get_fsm_state()
             return f"Sim: {'Running' if sim_state['running'] else 'Stopped'} | FSM: {fsm_state['current_state']}"
             
         elif cmd_lower == "help":
@@ -165,7 +168,7 @@ class QIKIOperatorConsoleFull:
             
         elif cmd_lower.startswith("chat "):
             message = command[5:]  # Remove "chat " prefix
-            response = await self.grpc_agent_client.send_message(message)
+            response = await agent_client.send_message(message)
             self.chat_history.append({
                 "role": "user",
                 "message": message,
@@ -358,7 +361,7 @@ class QIKIOperatorConsoleFull:
             self.running = True
             
             # Start command loop
-            command_task = asyncio.create_task(self.run_command_loop())
+            asyncio.create_task(self.run_command_loop())
             
             # Main display loop
             with Live(self.create_layout(), refresh_per_second=2, screen=True) as live:
@@ -380,9 +383,15 @@ class QIKIOperatorConsoleFull:
                     # Footer
                     uptime = datetime.now() - self.stats["uptime_start"]
                     footer_text = Align.center(
-                        Text(f"QIKI Digital Twin | Uptime: {uptime.seconds//60}m | F: {self.stats['frames_received']} | E: {self.stats['events_received']} | C: {self.stats['commands_sent']}", 
-                             style="dim"),
-                        vertical="middle"
+                        Text(
+                            "QIKI Digital Twin | "
+                            f"Uptime: {uptime.seconds//60}m | "
+                            f"F: {self.stats['frames_received']} | "
+                            f"E: {self.stats['events_received']} | "
+                            f"C: {self.stats['commands_sent']}",
+                            style="dim",
+                        ),
+                        vertical="middle",
                     )
                     layout["footer"].update(footer_text)
                     

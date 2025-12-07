@@ -4,7 +4,7 @@ Displays system metrics with charts and real-time updates.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from textual.widgets import Static, Label
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.reactive import reactive
@@ -50,7 +50,7 @@ class SimpleChart:
         latest = values[-1] if values else 0
         return f"{title}: {sparkline} ({latest:.2f})"
     
-    def create_bar_chart(self, values: List[float], labels: List[str] = None, title: str = "") -> str:
+    def create_bar_chart(self, values: List[float], labels: Optional[List[str]] = None, title: str = "") -> str:
         """Create a simple horizontal bar chart."""
         if not values:
             return f"{title}: No data"
@@ -295,14 +295,14 @@ class MetricsPanel(ScrollableContainer):
             # Log error but don't break the UI
             pass
     
-    def get_metrics_summary(self) -> Dict[str, any]:
+    def get_metrics_summary(self) -> Dict[str, Any]:
         """Get summary of current metrics."""
         if not self.metrics_client:
             return {"error": "No metrics client"}
         
         latest = self.metrics_client.get_latest_values()
         
-        summary = {
+        summary: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "metrics_count": len(latest),
             "system": {},

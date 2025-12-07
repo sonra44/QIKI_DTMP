@@ -3,7 +3,6 @@ Tests for UI components and panels from main application.
 """
 
 import pytest
-import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 import os
 import sys

@@ -7,8 +7,7 @@ from textual.widgets import Static
 from textual.reactive import reactive
 from rich.console import RenderableType
 from rich.text import Text
-from rich.table import Table
-from typing import Dict, Optional
+from typing import Dict
 
 
 class ConnectionStatus:

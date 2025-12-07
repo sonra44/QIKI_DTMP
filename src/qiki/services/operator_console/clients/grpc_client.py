@@ -48,7 +48,7 @@ class QSimGrpcClient:
         self.connected = False
         
         # Simulation state
-        self.sim_state = {
+        self.sim_state: Dict[str, Any] = {
             "running": False,
             "paused": False,
             "speed": 1.0,
@@ -370,7 +370,10 @@ class QAgentGrpcClient:
         elif "start" in message.lower():
             return "Initiating simulation startup sequence..."
         elif "help" in message.lower():
-            return "I can help you monitor system status, control simulation, and analyze radar data. What would you like to know?"
+            return (
+                "I can help you monitor system status, control simulation, "
+                "and analyze radar data. What would you like to know?"
+            )
         else:
             return f"Acknowledged: '{message}'. Processing request..."
             

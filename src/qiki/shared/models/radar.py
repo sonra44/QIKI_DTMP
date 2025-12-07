@@ -80,15 +80,14 @@ class RadarDetectionModel(BaseModel):
             raise ValueError("elev_deg must be in [-90, 90]")
         return v
 
-    @model_validator(mode="after")  # type: ignore[misc]
-    @classmethod
-    def _validate_range_band(cls, model: Self) -> Self:
-        if model.range_band == RangeBand.RR_LR:
-            if model.transponder_id:
+    @model_validator(mode="after")
+    def _validate_range_band(self) -> Self:
+        if self.range_band == RangeBand.RR_LR:
+            if self.transponder_id:
                 raise ValueError("LR band must not carry transponder_id")
-            if model.id_present:
+            if self.id_present:
                 raise ValueError("LR band must not carry id_present")
-        return model
+        return self
 
 
 class RadarFrameModel(BaseModel):
@@ -157,14 +156,13 @@ class RadarTrackModel(BaseModel):
             )
         return v
 
-    @model_validator(mode="after")  # type: ignore[misc]
-    @classmethod
-    def _validate_lr_constraints(cls, model: Self) -> Self:
-        if model.range_band == RangeBand.RR_LR:
-            if model.transponder_id:
+    @model_validator(mode="after")
+    def _validate_lr_constraints(self) -> Self:
+        if self.range_band == RangeBand.RR_LR:
+            if self.transponder_id:
                 raise ValueError("LR band must not carry transponder_id")
-            if model.id_present:
+            if self.id_present:
                 raise ValueError("LR band must not carry id_present")
-            if model.transponder_mode not in (TransponderModeEnum.OFF,):
+            if self.transponder_mode not in (TransponderModeEnum.OFF,):
                 raise ValueError("LR band must not carry transponder_mode")
-        return model
+        return self

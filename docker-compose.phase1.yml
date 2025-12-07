@@ -79,7 +79,7 @@ services:
       - qiki-network-phase1
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - NATS_URL=nats://qiki-nats-phase1:4222
@@ -104,7 +104,7 @@ services:
       - qiki-network-phase1
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - NATS_URL=nats://qiki-nats-phase1:4222
@@ -156,7 +156,7 @@ services:
         condition: service_healthy
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - NATS_URL=nats://qiki-nats-phase1:4222
       - RADAR_STREAM=QIKI_RADAR_V1
       - RADAR_SUBJECTS=qiki.radar.v1.*

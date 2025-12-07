@@ -5,7 +5,7 @@ Tests for i18n localization functionality.
 import pytest
 import os
 import sys
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, MagicMock
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
