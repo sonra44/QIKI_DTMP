@@ -1,14 +1,18 @@
 @echo off
+setlocal
+pushd "%~dp0"
+
 echo ===============================================
 echo    QIKI Operator Console Launcher
 echo ===============================================
 echo.
 
 echo Checking Docker services...
-docker ps --filter "name=qiki-nats-phase1" --format "{{.Names}}" > nul 2>&1
-if errorlevel 1 (
+set "NATS_RUNNING="
+for /f "usebackq delims=" %%i in (`docker ps --filter "name=qiki-nats-phase1" --format "{{.Names}}"`) do set "NATS_RUNNING=1"
+if not defined NATS_RUNNING (
     echo Starting QIKI services...
-    docker compose up -d nats q-sim-service q-sim-radar faststream-bridge
+    docker compose -f docker-compose.phase1.yml up -d nats q-sim-service q-sim-radar faststream-bridge
     timeout /t 5 > nul
 )
 
@@ -23,17 +27,11 @@ echo F1     - Help
 echo ====================
 echo.
 
-docker run -it --rm ^
-    --network qiki_dtmp_local_qiki-network-phase1 ^
-    -e NATS_URL=nats://qiki-nats-phase1:4222 ^
-    -e GRPC_HOST=qiki-sim-phase1 ^
-    -e GRPC_PORT=50051 ^
-    -e TERM=xterm-256color ^
-    -e COLORTERM=truecolor ^
-    --name qiki-operator-console-interactive ^
-    qiki-operator-console:latest ^
-    python main.py
+docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml run --rm --build operator-console
 
 echo.
 echo Console closed.
 pause
+
+popd
+endlocal

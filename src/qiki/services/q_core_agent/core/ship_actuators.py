@@ -92,8 +92,8 @@ class ThrusterAxis(Enum):
 
     FORWARD = "forward"  # +X axis
     BACKWARD = "backward"  # -X axis
-    PORT = "port"  # -Y axis (left)
-    STARBOARD = "starboard"  # +Y axis (right)
+    PORT = "port"  # +Y axis (left)
+    STARBOARD = "starboard"  # -Y axis (right)
     UP = "up"  # +Z axis
     DOWN = "down"  # -Z axis
 
@@ -281,9 +281,7 @@ class ShipActuatorController:
             # Y-axis (port/starboard)
             if abs(thrust_vector.y) > 0.1:
                 total_commands += 1
-                axis = (
-                    ThrusterAxis.STARBOARD if thrust_vector.y > 0 else ThrusterAxis.PORT
-                )
+                axis = ThrusterAxis.PORT if thrust_vector.y > 0 else ThrusterAxis.STARBOARD
                 thrust_percent = min(100.0, abs(thrust_vector.y))
                 if self.fire_rcs_thruster(axis, thrust_percent, duration_sec):
                     success_count += 1

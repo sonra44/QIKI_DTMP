@@ -270,20 +270,14 @@ class TestOperatorConsoleApp:
     
     @pytest.mark.asyncio  
     async def test_execute_sim_command(self, app):
-        """Test executing simulation commands."""
-        mock_sim_client = AsyncMock()
-        mock_sim_client.connected = True
-        mock_sim_client.send_command.return_value = {
-            'success': True,
-            'message': 'Simulation started'
-        }
-        
-        app.grpc_sim_client = mock_sim_client
+        """Test executing simulation commands (published via NATS)."""
+        mock_nats_client = AsyncMock()
+        app.nats_client = mock_nats_client
         
         with patch.object(app, 'log') as mock_log:
             await app.execute_sim_command("start")
-            
-            mock_sim_client.send_command.assert_called_once_with("start")
+
+            mock_nats_client.publish_command.assert_called_once()
             mock_log.assert_called()
     
     @pytest.mark.asyncio

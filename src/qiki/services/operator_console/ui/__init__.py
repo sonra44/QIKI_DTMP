@@ -13,6 +13,7 @@ from .charts import (
     BatteryIndicator,
     SignalStrength
 )
+from .profile_panel import ProfilePanel
 
 __all__ = [
     "Sparkline",
@@ -21,5 +22,6 @@ __all__ = [
     "MetricsPanel",
     "RadarVisualization",
     "BatteryIndicator",
-    "SignalStrength"
+    "SignalStrength",
+    "ProfilePanel",
 ]

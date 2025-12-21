@@ -37,6 +37,11 @@ class JsConsumerConfig:
     max_ack_pending: int
 
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    raw = os.getenv(name, default).strip().lower()
+    return raw not in ("0", "false", "no", "off", "")
+
+
 def _parse_env() -> JsConfig:
     url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
     stream = os.getenv("RADAR_STREAM", "QIKI_RADAR_V1")
@@ -44,6 +49,17 @@ def _parse_env() -> JsConfig:
     dup = int(os.getenv("RADAR_DUPLICATE_WINDOW_SEC", "120"))
     max_bytes = int(os.getenv("RADAR_MAX_BYTES", str(10 * 1024 * 1024)))
     max_age = int(os.getenv("RADAR_MAX_AGE_SEC", "3600"))
+    subjects = [s.strip() for s in subjects_s.split(",") if s.strip()]
+    return JsConfig(url, stream, subjects, dup, max_bytes, max_age)
+
+
+def _parse_events_env() -> JsConfig:
+    url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
+    stream = os.getenv("EVENTS_STREAM", "QIKI_EVENTS_V1")
+    subjects_s = os.getenv("EVENTS_SUBJECTS", "qiki.events.v1.>")
+    dup = int(os.getenv("EVENTS_DUPLICATE_WINDOW_SEC", "120"))
+    max_bytes = int(os.getenv("EVENTS_MAX_BYTES", str(10 * 1024 * 1024)))
+    max_age = int(os.getenv("EVENTS_MAX_AGE_SEC", "3600"))
     subjects = [s.strip() for s in subjects_s.split(",") if s.strip()]
     return JsConfig(url, stream, subjects, dup, max_bytes, max_age)
 
@@ -74,6 +90,25 @@ def _parse_consumer_env(stream: str) -> List[JsConsumerConfig]:
             max_deliver=max_deliver,
             max_ack_pending=max_ack_pending,
         ),
+    ]
+
+
+def _parse_events_consumer_env(stream: str) -> List[JsConsumerConfig]:
+    ack_wait = int(os.getenv("EVENTS_CONSUMER_ACK_WAIT_SEC", "30"))
+    max_deliver = int(os.getenv("EVENTS_CONSUMER_MAX_DELIVER", "5"))
+    max_ack_pending = int(os.getenv("EVENTS_CONSUMER_MAX_ACK_PENDING", "256"))
+    audit_subject = os.getenv("EVENTS_AUDIT_SUBJECT", "qiki.events.v1.audit")
+    audit_durable = os.getenv("EVENTS_AUDIT_DURABLE", "events_audit_pull")
+
+    return [
+        JsConsumerConfig(
+            stream=stream,
+            durable_name=audit_durable,
+            filter_subject=audit_subject,
+            ack_wait_sec=ack_wait,
+            max_deliver=max_deliver,
+            max_ack_pending=max_ack_pending,
+        )
     ]
 
 
@@ -143,12 +178,18 @@ async def _ensure_consumers(cfg: JsConfig, consumers: List[JsConsumerConfig]) ->
 
 
 def main() -> int:  # pragma: no cover - run in container
-    cfg = _parse_env()
-    consumers = _parse_consumer_env(cfg.stream)
-    stream_result = asyncio.run(_ensure_stream(cfg))
-    consumer_results = asyncio.run(_ensure_consumers(cfg, consumers))
-    # Return sum of creations for observability
-    return stream_result + sum(consumer_results)
+    radar_cfg = _parse_env()
+    radar_consumers = _parse_consumer_env(radar_cfg.stream)
+    created = asyncio.run(_ensure_stream(radar_cfg))
+    created += sum(asyncio.run(_ensure_consumers(radar_cfg, radar_consumers)))
+
+    if _env_flag("EVENTS_ENABLED", "0"):
+        events_cfg = _parse_events_env()
+        events_consumers = _parse_events_consumer_env(events_cfg.stream)
+        created += asyncio.run(_ensure_stream(events_cfg))
+        created += sum(asyncio.run(_ensure_consumers(events_cfg, events_consumers)))
+
+    return created
 
 
 if __name__ == "__main__":  # pragma: no cover

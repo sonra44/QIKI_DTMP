@@ -15,6 +15,7 @@ from qiki.services.q_core_agent.core.rule_engine import RuleEngine
 from qiki.services.q_core_agent.core.neural_engine import NeuralEngine
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
+from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
 from generated.proposal_pb2 import Proposal
 from qiki.shared.config_models import QCoreAgentConfig
 from qiki.shared.models.core import SensorData, SensorTypeEnum
@@ -157,14 +158,19 @@ async def test_fsm_handler_initial_state_transition():
     )  # Specific test case needs healthy BIOS
 
     fsm_handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.BOOTING)
+    initial_state = FsmSnapshotDTO(
+        version=0,
+        state=FsmState.BOOTING,
+        reason="INIT",
+        history=tuple()
+    )
 
     new_state = await fsm_handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.IDLE
+    assert new_state.state == FsmState.IDLE
     assert len(new_state.history) == 1
-    assert new_state.history[0].from_state == FSMStateEnum.BOOTING
-    assert new_state.history[0].to_state == FSMStateEnum.IDLE
+    assert new_state.history[0].from_state == FsmState.BOOTING
+    assert new_state.history[0].to_state == FsmState.IDLE
     assert new_state.history[0].trigger_event == "BOOT_COMPLETE"
 
 
@@ -176,14 +182,19 @@ async def test_fsm_handler_booting_to_error_on_bios_fail():
     )  # Simulate BIOS failure
 
     fsm_handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.BOOTING)
+    initial_state = FsmSnapshotDTO(
+        version=0,
+        state=FsmState.BOOTING,
+        reason="INIT",
+        history=tuple()
+    )
 
     new_state = await fsm_handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.ERROR_STATE
+    assert new_state.state == FsmState.ERROR_STATE
     assert len(new_state.history) == 1
-    assert new_state.history[0].from_state == FSMStateEnum.BOOTING
-    assert new_state.history[0].to_state == FSMStateEnum.ERROR_STATE
+    assert new_state.history[0].from_state == FsmState.BOOTING
+    assert new_state.history[0].to_state == FsmState.ERROR_STATE
     assert new_state.history[0].trigger_event == "BIOS_ERROR"
 
 
@@ -196,14 +207,19 @@ async def test_fsm_handler_idle_to_active_on_proposals():
     context.proposals.append(Proposal(source_module_id="test"))  # Simulate a proposal
 
     fsm_handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.IDLE)
+    initial_state = FsmSnapshotDTO(
+        version=1,
+        state=FsmState.IDLE,
+        reason="IDLE",
+        history=tuple()
+    )
 
     new_state = await fsm_handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.ACTIVE
+    assert new_state.state == FsmState.ACTIVE
     assert len(new_state.history) == 1
-    assert new_state.history[0].from_state == FSMStateEnum.IDLE
-    assert new_state.history[0].to_state == FSMStateEnum.ACTIVE
+    assert new_state.history[0].from_state == FsmState.IDLE
+    assert new_state.history[0].to_state == FsmState.ACTIVE
     assert new_state.history[0].trigger_event == "PROPOSALS_RECEIVED"
 
 
@@ -216,14 +232,19 @@ async def test_fsm_handler_active_to_idle_on_no_proposals():
     context.proposals = []  # No proposals
 
     fsm_handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.ACTIVE)
+    initial_state = FsmSnapshotDTO(
+        version=2,
+        state=FsmState.ACTIVE,
+        reason="ACTIVE",
+        history=tuple()
+    )
 
     new_state = await fsm_handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.IDLE
+    assert new_state.state == FsmState.IDLE
     assert len(new_state.history) == 1
-    assert new_state.history[0].from_state == FSMStateEnum.ACTIVE
-    assert new_state.history[0].to_state == FSMStateEnum.IDLE
+    assert new_state.history[0].from_state == FsmState.ACTIVE
+    assert new_state.history[0].to_state == FsmState.IDLE
     assert new_state.history[0].trigger_event == "NO_PROPOSALS"
 
 
@@ -236,14 +257,19 @@ async def test_fsm_handler_error_to_idle_on_recovery():
     context.proposals = []  # No proposals
 
     fsm_handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.ERROR_STATE)
+    initial_state = FsmSnapshotDTO(
+        version=3,
+        state=FsmState.ERROR_STATE,
+        reason="ERROR",
+        history=tuple()
+    )
 
     new_state = await fsm_handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.IDLE
+    assert new_state.state == FsmState.IDLE
     assert len(new_state.history) == 1
-    assert new_state.history[0].from_state == FSMStateEnum.ERROR_STATE
-    assert new_state.history[0].to_state == FSMStateEnum.IDLE
+    assert new_state.history[0].from_state == FsmState.ERROR_STATE
+    assert new_state.history[0].to_state == FsmState.IDLE
     assert new_state.history[0].trigger_event == "ERROR_CLEARED"
 
 

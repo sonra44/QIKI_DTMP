@@ -1,14 +1,52 @@
 # QIKI_DTMP - Текущее Состояние Проекта
 
-**Дата обновления:** 2025-10-08 06:35  
+**Дата обновления:** 2025-12-13  
 **Статус:** Production Ready (93-95%)  
-**Последние изменения:** Исправлены все тесты  
+**Последние изменения:** QoS-preflight: выровнены NATS subject’ы/JetStream, устранены entrypoint-import/sys.path хаки, интеграционные тесты изолированы  
 
 ---
 
 ## 🎯 **КЛЮЧЕВЫЕ ДОСТИЖЕНИЯ**
 
-### ✅ **Завершено сегодня (2025-10-08):**
+### ✅ **Завершено сегодня (2025-12-13):**
+
+1. **Консистентность NATS subject’ов и базовая подготовка к QoS**
+   - Добавлен единый реестр `src/qiki/shared/nats_subjects.py`.
+   - Operator Console NATS client переведён на `qiki.radar.v1.*` (LR/SR/tracks) по умолчанию.
+
+2. **JetStream и аудит событий**
+   - FastStream Bridge: подписка на радарные кадры привязана к JetStream durable consumer (durable+stream).
+   - Registrar: публикует audit-записи в `qiki.events.v1.audit` (CloudEvents headers), добавлен `QIKI_EVENTS_V1` stream init через `tools/js_init.py` + compose env.
+
+3. **Чистая импорт-структура (entrypoint hygiene)**
+   - `QSimService` вынесен из entrypoint `main.py` в `src/qiki/services/q_sim_service/service.py`.
+   - Убраны `sys.path` хаки в ключевых entrypoint’ах (q-sim-service, q-core-agent, registrar).
+
+4. **Тестовая дисциплина**
+   - Integration тесты автоматически маркируются и по умолчанию исключены из `pytest`.
+   - Integration тесты с NATS теперь быстро skip’аются при отсутствии сервера (connect_timeout=1).
+   - Проверка: `pytest` → 57 passed, 2 skipped, 5 deselected.
+   - Проверка integration: `docker compose -f docker-compose.phase1.yml up -d nats nats-js-init` + `pytest -o addopts='' -m integration -q` → 5 passed.
+
+5. **FastStream совместимость**
+   - Подтверждено внутри `Dockerfile.dev`-окружения, что `faststream.nats.NatsBroker.subscriber` принимает `durable` и `stream` (inspect signature).
+   - Исправлено: для JetStream durable consumption используется `pull_sub=True` (runtime verified в полном стеке).
+
+6. **Полная верификация стека**
+   - Полный Phase1 стек + operator overlay поднят и проверен: NATS/Loki/Grafana healthchecks OK, `qiki-dev` успешно коннектится по gRPC к `q-sim-service`.
+   - Integration тесты проходят на host и внутри контейнера `qiki-dev` (см. memory: `QIKI_DTMP_full_stack_verified_2025-12-13`).
+
+### ✅ **Завершено ранее (2025-12-12):**
+
+1. **Локальные проверки стали “тихими”**
+   - `pytest` проходит без `PytestCacheWarning` (исправлены права на `.pytest_cache/v`).
+   - Зафиксирован безопасный cache dir: `pytest.ini` → `cache_dir=/tmp/pytest_cache`.
+
+2. **Operator Console overlay приведён к рабочему виду**
+   - `docker-compose.operator.yml` теперь можно подключать поверх `docker-compose.phase1.yml` без дублирования NATS.
+   - Выровнены `GRPC_HOST/GRPC_PORT` и external network name.
+
+### ✅ **Завершено ранее (2025-10-08):**
 
 1. **Исправлены ВСЕ падающие тесты** 
    - Было: 68% success rate (множественные ошибки)

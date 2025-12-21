@@ -1,4 +1,9 @@
-version: '3.8'
+#
+# Operator Console overlay for Phase1 stack.
+#
+# Usage:
+#   docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d operator-console
+#
 
 services:
   operator-console:
@@ -7,15 +12,16 @@ services:
       dockerfile: Dockerfile
     container_name: qiki-operator-console
     environment:
+      - QIKI_REPO_ROOT=/workspace
+      - PYTHONPATH=/workspace/src:/workspace/generated:/app
       - NATS_URL=nats://qiki-nats-phase1:4222
-      - QSIM_GRPC_HOST=q-sim-service
-      - QSIM_GRPC_PORT=50051
-      - AGENT_GRPC_HOST=q-core-agent
-      - AGENT_GRPC_PORT=50052
+      - GRPC_HOST=q-sim-service
+      - GRPC_PORT=50051
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
       - TERM=xterm-256color
     volumes:
+      - ./:/workspace:ro
       # Монтируем код для разработки (hot reload)
       - ./src/qiki/services/operator_console:/app
       # Монтируем proto файлы
@@ -26,38 +32,13 @@ services:
     networks:
       - qiki-network
     depends_on:
-      - qiki-nats-phase1
+      - nats
+      - q-sim-service
     stdin_open: true  # Для интерактивного TUI
     tty: true         # Для работы с терминалом
-    command: python -m operator_console.main
-
-  # NATS сервер (если не запущен в основном compose)
-  qiki-nats-phase1:
-    image: nats:2.10-alpine
-    container_name: qiki-nats-phase1
-    ports:
-      - "4222:4222"  # Client port
-      - "8222:8222"  # Monitoring port
-    command: [
-      "-js",           # Enable JetStream
-      "-sd", "/data",  # Store directory
-      "-m", "8222",    # Monitoring port
-      "--name", "qiki-nats-phase1"
-    ]
-    volumes:
-      - nats-data:/data
-    networks:
-      - qiki-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    command: python main.py
 
 networks:
   qiki-network:
     external: true
-    name: qiki_dtmp_local_qiki-network-phase1
-
-volumes:
-  nats-data:
+    name: qiki_dtmp_qiki-network-phase1

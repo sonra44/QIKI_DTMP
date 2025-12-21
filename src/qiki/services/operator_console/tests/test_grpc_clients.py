@@ -119,16 +119,14 @@ class TestQSimGrpcClient:
     
     @pytest.mark.asyncio
     async def test_send_command_start(self, client):
-        """Test sending start command."""
+        """Test sending start command (not implemented; no-mocks)."""
         client.connected = True
         
         result = await client.send_command(SimulationCommand.START)
         
-        assert result["success"] is True
-        assert result["message"] == "Simulation started"
+        assert result["success"] is False
+        assert "Not implemented" in result["message"]
         assert result["command"] == "start"
-        assert client.sim_state["running"] is True
-        assert client.sim_state["paused"] is False
     
     @pytest.mark.asyncio
     async def test_send_command_disconnected(self, client):
@@ -140,28 +138,25 @@ class TestQSimGrpcClient:
     
     @pytest.mark.asyncio
     async def test_send_command_stop(self, client):
-        """Test stopping simulation."""
+        """Test stopping simulation (not implemented; no-mocks)."""
         client.connected = True
         client.sim_state["running"] = True  # Set initial state
         
         result = await client.send_command(SimulationCommand.STOP)
         
-        assert result["success"] is True
-        assert result["message"] == "Simulation stopped"
-        assert client.sim_state["running"] is False
-        assert client.sim_state["paused"] is False
+        assert result["success"] is False
+        assert "Not implemented" in result["message"]
     
     @pytest.mark.asyncio
     async def test_send_command_pause(self, client):
-        """Test pausing simulation."""
+        """Test pausing simulation (not implemented; no-mocks)."""
         client.connected = True
         client.sim_state["running"] = True
         
         result = await client.send_command(SimulationCommand.PAUSE)
         
-        assert result["success"] is True
-        assert result["message"] == "Simulation paused"
-        assert client.sim_state["paused"] is True
+        assert result["success"] is False
+        assert "Not implemented" in result["message"]
         
     @pytest.mark.asyncio
     async def test_get_simulation_state(self, client):
@@ -178,14 +173,13 @@ class TestQSimGrpcClient:
         
     @pytest.mark.asyncio
     async def test_set_simulation_speed(self, client):
-        """Test setting simulation speed."""
+        """Test setting simulation speed (not implemented; no-mocks)."""
         client.connected = True
         
         result = await client.set_simulation_speed(2.5)
         
-        assert result["success"] is True
-        assert result["speed"] == 2.5
-        assert client.sim_state["speed"] == 2.5
+        assert result["success"] is False
+        assert "Not implemented" in result["message"]
 
 
 class TestQAgentGrpcClient:
@@ -205,19 +199,24 @@ class TestQAgentGrpcClient:
     @pytest.mark.asyncio
     async def test_agent_connect(self, agent_client):
         """Test agent connection."""
-        result = await agent_client.connect()
-        
-        assert result is True
-        assert agent_client.connected is True
+        with patch('grpc.aio.insecure_channel') as mock_channel:
+            mock_channel_instance = AsyncMock()
+            mock_channel_instance.channel_ready = AsyncMock()
+            mock_channel.return_value = mock_channel_instance
+
+            result = await agent_client.connect()
+
+            assert result is True
+            assert agent_client.connected is True
     
     @pytest.mark.asyncio
     async def test_send_message_connected(self, agent_client):
-        """Test sending message when connected."""
+        """Test sending message when connected (RPC not implemented)."""
         agent_client.connected = True
         
         result = await agent_client.send_message("What is the system status?")
         
-        assert "status" in result.lower() or "operational" in result.lower()
+        assert "not implemented" in result.lower()
         
     @pytest.mark.asyncio
     async def test_send_message_disconnected(self, agent_client):
@@ -231,10 +230,7 @@ class TestQAgentGrpcClient:
         """Test getting FSM state."""
         result = await agent_client.get_fsm_state()
         
-        assert "current_state" in result
-        assert "previous_state" in result
-        assert "transitions_count" in result
-        assert "last_transition" in result
+        assert "error" in result
         
     @pytest.mark.asyncio
     async def test_get_proposals(self, agent_client):
@@ -242,8 +238,7 @@ class TestQAgentGrpcClient:
         result = await agent_client.get_proposals()
         
         assert isinstance(result, list)
-        if len(result) > 0:
-            assert "id" in result[0]
+        assert result == []
 
 
 if __name__ == "__main__":

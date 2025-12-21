@@ -7,12 +7,24 @@ Handles connection to NATS JetStream and subscribes to telemetry streams.
 import asyncio
 import json
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Awaitable
 from datetime import datetime
 
 import nats
 from nats.js import JetStreamContext
 from nats.errors import TimeoutError, NoServersError
+
+from qiki.shared.nats_subjects import (
+    OPERATOR_CONSOLE_RADAR_LR_DURABLE,
+    OPERATOR_CONSOLE_RADAR_SR_DURABLE,
+    OPERATOR_CONSOLE_TRACKS_DURABLE,
+    EVENTS_V1_WILDCARD,
+    RADAR_FRAMES_LR,
+    RADAR_TRACKS,
+    RADAR_TRACKS_SR,
+    SYSTEM_TELEMETRY,
+    RESPONSES_CONTROL,
+)
 
 
 class NATSClient:
@@ -35,7 +47,12 @@ class NATSClient:
     async def connect(self) -> None:
         """Connect to NATS server and initialize JetStream."""
         try:
-            self.nc = await nats.connect(self.url)
+            self.nc = await nats.connect(
+                servers=[self.url],
+                connect_timeout=5,
+                reconnect_time_wait=1,
+                max_reconnect_attempts=-1,
+            )
             self.js = self.nc.jetstream()
             print(f"✅ Connected to NATS at {self.url}")
         except (NoServersError, TimeoutError) as e:
@@ -49,7 +66,7 @@ class NATSClient:
             await self.nc.close()
             print("Disconnected from NATS")
             
-    async def subscribe_radar_sr(self, callback: Callable[[Dict], None]) -> None:
+    async def subscribe_radar_sr(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to short-range radar stream.
         
@@ -76,19 +93,20 @@ class NATSClient:
                 
         # Subscribe to the stream
         try:
+            subject = os.getenv("RADAR_SR_SUBJECT", RADAR_TRACKS_SR)
             sub = await self.js.subscribe(
-                "RADAR.frames.sr",
+                subject,
                 cb=message_handler,
-                durable="operator-console-sr",
+                durable=OPERATOR_CONSOLE_RADAR_SR_DURABLE,
                 manual_ack=True
             )
             self.subscriptions["RADAR_SR"] = sub
-            print("✅ Subscribed to RADAR_SR stream")
+            print(f"✅ Subscribed to RADAR_SR stream: {subject}")
         except Exception as e:
             print(f"❌ Failed to subscribe to RADAR_SR: {e}")
             raise
             
-    async def subscribe_radar_lr(self, callback: Callable[[Dict], None]) -> None:
+    async def subscribe_radar_lr(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to long-range radar stream.
         
@@ -115,19 +133,20 @@ class NATSClient:
                 
         # Subscribe to the stream
         try:
+            subject = os.getenv("RADAR_LR_SUBJECT", RADAR_FRAMES_LR)
             sub = await self.js.subscribe(
-                "RADAR.frames.lr",
+                subject,
                 cb=message_handler,
-                durable="operator-console-lr",
+                durable=OPERATOR_CONSOLE_RADAR_LR_DURABLE,
                 manual_ack=True
             )
             self.subscriptions["RADAR_LR"] = sub
-            print("✅ Subscribed to RADAR_LR stream")
+            print(f"✅ Subscribed to RADAR_LR stream: {subject}")
         except Exception as e:
             print(f"❌ Failed to subscribe to RADAR_LR: {e}")
             raise
             
-    async def subscribe_tracks(self, callback: Callable[[Dict], None]) -> None:
+    async def subscribe_tracks(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to radar tracks stream.
         
@@ -154,16 +173,78 @@ class NATSClient:
                 
         # Subscribe to the stream
         try:
+            subject = os.getenv("RADAR_TRACKS_SUBJECT", RADAR_TRACKS)
             sub = await self.js.subscribe(
-                "RADAR.tracks",
+                subject,
                 cb=message_handler,
-                durable="operator-console-tracks",
+                durable=OPERATOR_CONSOLE_TRACKS_DURABLE,
                 manual_ack=True
             )
             self.subscriptions["TRACKS"] = sub
-            print("✅ Subscribed to TRACKS stream")
+            print(f"✅ Subscribed to TRACKS stream: {subject}")
         except Exception as e:
             print(f"❌ Failed to subscribe to TRACKS: {e}")
+            raise
+
+    async def subscribe_system_telemetry(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to system telemetry (core NATS, not JetStream by default)."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "SYSTEM_TELEMETRY",
+                        "timestamp": datetime.now().isoformat(),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing SYSTEM_TELEMETRY message: {e}")
+
+        subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", SYSTEM_TELEMETRY)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["SYSTEM_TELEMETRY"] = sub
+            print(f"✅ Subscribed to SYSTEM_TELEMETRY: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to SYSTEM_TELEMETRY: {e}")
+            raise
+
+    async def subscribe_events(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to system events wildcard (core NATS)."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "EVENTS",
+                        "timestamp": datetime.now().isoformat(),
+                        "subject": getattr(msg, "subject", None),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing EVENTS message: {e}")
+
+        subject = os.getenv("EVENTS_SUBJECT", EVENTS_V1_WILDCARD)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["EVENTS"] = sub
+            print(f"✅ Subscribed to EVENTS: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to EVENTS: {e}")
             raise
             
     async def publish_command(self, subject: str, command: Dict[str, Any]) -> None:
@@ -178,11 +259,43 @@ class NATSClient:
             raise RuntimeError("Not connected to NATS")
             
         try:
-            payload = json.dumps(command).encode()
+            # `command` can include UUID/datetime values from Pydantic models.
+            payload = json.dumps(command, default=str).encode()
             await self.nc.publish(subject, payload)
             print(f"📤 Published command to {subject}: {command}")
         except Exception as e:
             print(f"❌ Failed to publish command: {e}")
+            raise
+
+    async def subscribe_control_responses(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to control responses emitted by FastStream bridge."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "CONTROL_RESPONSES",
+                        "timestamp": datetime.now().isoformat(),
+                        "subject": getattr(msg, "subject", None),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing CONTROL_RESPONSES message: {e}")
+
+        subject = os.getenv("RESPONSES_CONTROL_SUBJECT", RESPONSES_CONTROL)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["CONTROL_RESPONSES"] = sub
+            print(f"✅ Subscribed to CONTROL_RESPONSES: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to CONTROL_RESPONSES: {e}")
             raise
             
     async def get_jetstream_info(self) -> Dict[str, Any]:

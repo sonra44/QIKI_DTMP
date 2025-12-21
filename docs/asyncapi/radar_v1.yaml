@@ -1,0 +1,56 @@
+asyncapi: "2.6.0"
+info:
+  title: "QIKI Radar v1 (NATS)"
+  version: "0.0.0"
+  description: |
+    Stub AsyncAPI specification for Radar v1.
+
+    Source of truth:
+    - Protobuf contracts: `protos/radar/v1/radar.proto`
+    - Contract evolution rules: `docs/CONTRACT_POLICY.md`
+
+servers:
+  nats:
+    url: "nats://localhost:4222"
+    protocol: "nats"
+    description: "Local NATS broker (Phase1)."
+
+channels:
+  qiki.radar.v1.frames:
+    description: "Radar frames (compat union topic). Payload encoding: protobuf/JSON (TBD)."
+    subscribe:
+      message:
+        $ref: "#/components/messages/RadarFrame"
+  qiki.radar.v1.frames.lr:
+    description: "Radar frames (Long Range)."
+    subscribe:
+      message:
+        $ref: "#/components/messages/RadarFrame"
+  qiki.radar.v1.tracks.sr:
+    description: "Short Range objects/frames (SR)."
+    subscribe:
+      message:
+        $ref: "#/components/messages/RadarFrame"
+  qiki.radar.v1.tracks:
+    description: "Aggregated radar tracks."
+    subscribe:
+      message:
+        $ref: "#/components/messages/RadarTrack"
+
+components:
+  messages:
+    RadarFrame:
+      name: "RadarFrame"
+      title: "RadarFrame"
+      summary: "Serialized `qiki.radar.v1.RadarFrame`."
+      payload:
+        type: object
+        description: "Payload is a protobuf message; schema is defined in `protos/radar/v1/radar.proto`."
+    RadarTrack:
+      name: "RadarTrack"
+      title: "RadarTrack"
+      summary: "Serialized `qiki.radar.v1.RadarTrack`."
+      payload:
+        type: object
+        description: "Payload is a protobuf message; schema is defined in `protos/radar/v1/radar.proto`."
+

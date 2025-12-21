@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 import nats
+from nats.errors import NoServersError, TimeoutError
 
 from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 
@@ -16,7 +17,10 @@ async def test_command_and_response():
     """
     Тестирует полный цикл: отправка команды и получение ответа через NATS.
     """
-    nc = await nats.connect(NATS_URL)
+    try:
+        nc = await nats.connect(NATS_URL, connect_timeout=1)
+    except (NoServersError, TimeoutError, OSError) as exc:
+        pytest.skip(f"NATS is not available at {NATS_URL}: {exc}")
 
     # 1. Создаем команду
     request_id = uuid4()

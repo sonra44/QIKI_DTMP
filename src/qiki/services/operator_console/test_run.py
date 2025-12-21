@@ -77,7 +77,7 @@ def main():
         
     print("\n✅ All tests passed! Environment is ready.")
     print("\nYou can now run the main application:")
-    print("  python -m operator_console.main")
+    print("  python main.py")
     
     return 0
 

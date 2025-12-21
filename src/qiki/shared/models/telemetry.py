@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class Position3D(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+
+
+class AttitudeTelemetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Radians, right-handed frame (x forward, y left, z up).
+    roll_rad: float = Field(ge=-6.283185307179586, le=6.283185307179586)
+    pitch_rad: float = Field(ge=-6.283185307179586, le=6.283185307179586)
+    yaw_rad: float = Field(ge=-6.283185307179586, le=6.283185307179586)
+
+
+class HullTelemetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    integrity: float = Field(ge=0.0, le=100.0)
+
+
+class PowerTelemetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    soc_pct: float = Field(ge=0.0, le=100.0)
+    power_in_w: float = Field(ge=0.0)
+    power_out_w: float = Field(ge=0.0)
+    bus_v: float = Field(ge=0.0)
+    bus_a: float = Field(ge=0.0)
+
+
+class ThermalNodeTelemetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    temp_c: float
+
+
+class ThermalTelemetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nodes: list[ThermalNodeTelemetry]
+
+
+class TelemetrySnapshotModel(BaseModel):
+    """Telemetry snapshot published to `qiki.telemetry`.
+
+    Contract goals:
+    - `position` is always 3D (x,y,z required).
+    - timestamp is provided as both RFC3339 string and unix ms for easy UI freshness checks.
+    - extra keys are allowed for forward compatibility, but core keys are strict.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    schema_version: int = Field(default=1, ge=1)
+    source: str
+    timestamp: str
+    ts_unix_ms: int = Field(ge=0)
+
+    position: Position3D
+    velocity: float
+    heading: float
+    attitude: AttitudeTelemetry
+    battery: float
+
+    hull: HullTelemetry
+    power: PowerTelemetry
+    thermal: ThermalTelemetry
+    radiation_usvh: float
+    temp_external_c: float
+    temp_core_c: float
+    cpu_usage: float | None = Field(default=None, ge=0.0, le=100.0)
+    memory_usage: float | None = Field(default=None, ge=0.0, le=100.0)
+
+    @field_validator("source", "timestamp")
+    @classmethod
+    def _non_empty_str(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("must be a non-empty string")
+        return v
+
+    @field_validator("schema_version")
+    @classmethod
+    def _schema_version_supported(cls, v: int) -> int:
+        if v != 1:
+            raise ValueError("unsupported schema_version")
+        return v
+
+    @classmethod
+    def normalize_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        """Validate and return a normalized JSON-ready dict."""
+
+        model = cls.model_validate(payload)
+        return model.model_dump(mode="json")

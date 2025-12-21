@@ -4,12 +4,15 @@ from uuid import uuid4
 
 import pytest
 import nats
-from nats.errors import TimeoutError
+from nats.errors import NoServersError, TimeoutError as NatsTimeoutError
 
 @pytest.mark.asyncio
 async def test_radar_lr_sr_topics():
     nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
-    nc = await nats.connect(nats_url)
+    try:
+        nc = await nats.connect(nats_url, connect_timeout=1)
+    except (NoServersError, NatsTimeoutError, OSError) as exc:
+        pytest.skip(f"NATS is not available at {nats_url}: {exc}")
     lr_future = asyncio.Future()
     sr_future = asyncio.Future()
     union_future = asyncio.Future()
@@ -53,7 +56,7 @@ async def test_radar_lr_sr_topics():
         assert sr_msg.headers['x-range-band'] == 'RR_SR'
         assert union_msg.headers['x-range-band'] == 'RR_UNSPECIFIED'
 
-    except TimeoutError:
+    except asyncio.TimeoutError:
         pytest.fail("Timeout waiting for NATS messages")
 
     finally:

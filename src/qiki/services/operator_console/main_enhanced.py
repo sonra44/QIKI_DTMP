@@ -8,7 +8,7 @@ Complete console with charts, metrics history, and data export.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Deque, List
 import sys
 import uuid
 
@@ -56,11 +56,11 @@ class QIKIOperatorConsoleEnhanced:
         self.running = False
         
         # Data buffers
-        self.telemetry_buffer = {}
-        self.radar_frames_buffer = deque(maxlen=100)
-        self.events_buffer = deque(maxlen=50)
-        self.chat_history = deque(maxlen=50)
-        self.command_history = deque(maxlen=50)
+        self.telemetry_buffer: Dict[str, Any] = {}
+        self.radar_frames_buffer: Deque[Dict[str, Any]] = deque(maxlen=100)
+        self.events_buffer: Deque[Dict[str, Any]] = deque(maxlen=50)
+        self.chat_history: Deque[Dict[str, Any]] = deque(maxlen=50)
+        self.command_history: Deque[Dict[str, Any]] = deque(maxlen=50)
         
         # Metrics history for visualization
         self.metrics_history = MetricsHistory(max_points=100)
@@ -70,7 +70,7 @@ class QIKIOperatorConsoleEnhanced:
         self.data_logger = DataLogger("/app/logs")
         
         # Statistics
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "frames_received": 0,
             "events_received": 0,
             "commands_sent": 0,
@@ -101,21 +101,24 @@ class QIKIOperatorConsoleEnhanced:
                 
     async def init_nats(self):
         """Initialize NATS connection."""
-        await self.nats_client.connect()
-        
-        # Register callbacks
-        self.nats_client.register_callback("radar_frames", self.on_radar_frame)
-        self.nats_client.register_callback("telemetry", self.on_telemetry)
-        self.nats_client.register_callback("events", self.on_event)
-        
-        # Subscribe to streams
-        await self.nats_client.subscribe_all()
+        if self.nats_client:
+            await self.nats_client.connect()
+            
+            # Register callbacks
+            self.nats_client.register_callback("radar_frames", self.on_radar_frame)
+            self.nats_client.register_callback("telemetry", self.on_telemetry)
+            self.nats_client.register_callback("events", self.on_event)
+            
+            # Subscribe to streams
+            await self.nats_client.subscribe_all()
         
     async def init_grpc(self):
         """Initialize gRPC connections."""
-        await self.grpc_sim_client.connect()
-        await self.grpc_agent_client.connect()
-        
+        if self.grpc_sim_client:
+            await self.grpc_sim_client.connect()
+        if self.grpc_agent_client:
+            await self.grpc_agent_client.connect()
+            
     async def on_radar_frame(self, frame: RadarFrame):
         """Handle incoming radar frame."""
         self.stats["frames_received"] += 1
@@ -170,7 +173,7 @@ class QIKIOperatorConsoleEnhanced:
             "timestamp": datetime.now()
         })
         
-        if self.grpc_sim_client is None or self.grpc_agent_client is None:
+        if not self.grpc_sim_client or not self.grpc_agent_client:
             return "gRPC clients are not initialized"
 
         sim_client = self.grpc_sim_client
@@ -271,7 +274,11 @@ class QIKIOperatorConsoleEnhanced:
             
     def get_session_data(self) -> Dict[str, Any]:
         """Get complete session data."""
-        uptime = (datetime.now() - self.stats["uptime_start"]).seconds
+        uptime = 0
+        start_time = self.stats.get("uptime_start")
+        if isinstance(start_time, datetime):
+            uptime = (datetime.now() - start_time).seconds
+            
         return {
             "session_id": self.session_id,
             "uptime_seconds": uptime,
@@ -491,7 +498,11 @@ class QIKIOperatorConsoleEnhanced:
                     layout["chat"].update(self.create_chat_panel())
                     
                     # Footer
-                    uptime = (datetime.now() - self.stats["uptime_start"]).seconds
+                    uptime = 0
+                    start_time = self.stats.get("uptime_start")
+                    if isinstance(start_time, datetime):
+                        uptime = (datetime.now() - start_time).seconds
+                        
                     footer_text = Align.center(
                         Text(f"Uptime: {uptime//60}m | Frames: {self.stats['frames_received']} | "
                              f"Events: {self.stats['events_received']} | Exports: {self.stats['exports_created']}", 

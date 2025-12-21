@@ -5,6 +5,7 @@ from tools.js_init import (
     build_stream_params,
     build_consumer_params,
     _parse_consumer_env,
+    _parse_events_consumer_env,
 )
 
 
@@ -87,3 +88,39 @@ def test_build_consumer_params_uses_timedelta():
     assert params["ack_wait"] == 45
     assert params["max_deliver"] == 7
     assert params["max_ack_pending"] == 512
+
+
+def test_parse_events_consumer_env_defaults(monkeypatch):
+    monkeypatch.delenv("EVENTS_CONSUMER_ACK_WAIT_SEC", raising=False)
+    monkeypatch.delenv("EVENTS_CONSUMER_MAX_DELIVER", raising=False)
+    monkeypatch.delenv("EVENTS_CONSUMER_MAX_ACK_PENDING", raising=False)
+    monkeypatch.delenv("EVENTS_AUDIT_SUBJECT", raising=False)
+    monkeypatch.delenv("EVENTS_AUDIT_DURABLE", raising=False)
+
+    consumers = _parse_events_consumer_env("QIKI_EVENTS_V1")
+    assert len(consumers) == 1
+
+    (audit,) = consumers
+    assert audit.stream == "QIKI_EVENTS_V1"
+    assert audit.durable_name == "events_audit_pull"
+    assert audit.filter_subject == "qiki.events.v1.audit"
+    assert audit.ack_wait_sec == 30
+    assert audit.max_deliver == 5
+    assert audit.max_ack_pending == 256
+
+
+def test_parse_events_consumer_env_overrides(monkeypatch):
+    monkeypatch.setenv("EVENTS_CONSUMER_ACK_WAIT_SEC", "12")
+    monkeypatch.setenv("EVENTS_CONSUMER_MAX_DELIVER", "9")
+    monkeypatch.setenv("EVENTS_CONSUMER_MAX_ACK_PENDING", "1024")
+    monkeypatch.setenv("EVENTS_AUDIT_SUBJECT", "qiki.events.v1.audit.custom")
+    monkeypatch.setenv("EVENTS_AUDIT_DURABLE", "audit_durable")
+
+    consumers = _parse_events_consumer_env("STREAM")
+    (audit,) = consumers
+    assert audit.stream == "STREAM"
+    assert audit.ack_wait_sec == 12
+    assert audit.max_deliver == 9
+    assert audit.max_ack_pending == 1024
+    assert audit.filter_subject == "qiki.events.v1.audit.custom"
+    assert audit.durable_name == "audit_durable"

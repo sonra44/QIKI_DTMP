@@ -7,7 +7,7 @@ try:
 except Exception:
     pytest.skip("pydantic not installed; skipping radar tests", allow_module_level=True)
 
-from qiki.services.q_sim_service.main import QSimService
+from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.models.radar import (
     RadarFrameModel,

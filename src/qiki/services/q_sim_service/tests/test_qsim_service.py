@@ -1,7 +1,7 @@
 """Test for QSimService functionality."""
 
 import pytest
-from qiki.services.q_sim_service.main import QSimService
+from qiki.services.q_sim_service.service import QSimService
 from qiki.services.q_sim_service.grpc_server import QSimAPIService
 from qiki.shared.config_models import QSimServiceConfig
 from generated.q_sim_api_pb2 import HealthCheckRequest, HealthCheckResponse
@@ -74,3 +74,20 @@ def test_generate_sensor_data():
     assert sensor_data.sensor_id is not None
     assert sensor_data.sensor_type is not None
     assert sensor_data.is_valid is True
+
+
+def test_telemetry_payload_includes_3d_position() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+    assert isinstance(payload, dict)
+    assert payload.get("schema_version") == 1
+    assert isinstance(payload.get("ts_unix_ms"), int)
+
+    position = payload.get("position")
+    assert isinstance(position, dict)
+    assert set(position.keys()) >= {"x", "y", "z"}
+    assert isinstance(position["x"], float)
+    assert isinstance(position["y"], float)
+    assert isinstance(position["z"], float)

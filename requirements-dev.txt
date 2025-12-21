@@ -4,3 +4,4 @@ ruff>=0.6.9
 mypy>=1.11.1
 pre-commit>=3.7
 psutil>=5.9.0
+textual>=0.60.0

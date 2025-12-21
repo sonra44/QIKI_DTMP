@@ -15,6 +15,8 @@ import nats
 from nats.js import JetStreamContext
 from nats.errors import TimeoutError, NoServersError
 
+from qiki.shared.nats_subjects import EVENTS_V1_WILDCARD, RADAR_FRAMES, SYSTEM_TELEMETRY
+
 
 @dataclass
 class RadarFrame:
@@ -132,8 +134,10 @@ class RealtimeNATSClient:
                 # Call registered callbacks
                 for callback in self.callbacks.get("radar_frames", []):
                     await callback(frame)
-                    
-                await msg.ack()
+
+                ack = getattr(msg, "ack", None)
+                if callable(ack):
+                    await ack()
                 
             except Exception as e:
                 print(f"Error processing radar frame: {e}")
@@ -142,11 +146,11 @@ class RealtimeNATSClient:
         try:
             # Try to subscribe to the actual QIKI radar stream
             sub = await self.nc.subscribe(
-                "qiki.radar.v1.frames",
+                RADAR_FRAMES,
                 cb=message_handler
             )
             self.subscriptions["radar_frames"] = sub
-            print("✅ Subscribed to radar frames (qiki.radar.v1.frames)")
+            print(f"✅ Subscribed to radar frames ({RADAR_FRAMES})")
             
         except Exception as e:
             print(f"⚠️ Could not subscribe to JetStream, falling back to regular NATS: {e}")
@@ -176,6 +180,7 @@ class RealtimeNATSClient:
                     "timestamp": datetime.now().isoformat(),
                     "position_x": data.get("position", {}).get("x", 0),
                     "position_y": data.get("position", {}).get("y", 0),
+                    "position_z": data.get("position", {}).get("z", 0),
                     "velocity": data.get("velocity", 0),
                     "heading": data.get("heading", 0),
                     "battery": data.get("battery", 100),
@@ -193,7 +198,7 @@ class RealtimeNATSClient:
         # Subscribe to telemetry
         try:
             sub = await self.nc.subscribe(
-                "qiki.telemetry",
+                SYSTEM_TELEMETRY,
                 cb=message_handler
             )
             self.subscriptions["telemetry"] = sub
@@ -235,12 +240,13 @@ class RealtimeNATSClient:
                 
         # Subscribe to events
         try:
+            subject = os.getenv("EVENTS_SUBJECT", EVENTS_V1_WILDCARD)
             sub = await self.nc.subscribe(
-                "qiki.events.>",  # Wildcard for all event types
+                subject,
                 cb=message_handler
             )
             self.subscriptions["events"] = sub
-            print("✅ Subscribed to system events")
+            print(f"✅ Subscribed to system events: {subject}")
         except Exception as e:
             print(f"⚠️ Could not subscribe to events: {e}")
             

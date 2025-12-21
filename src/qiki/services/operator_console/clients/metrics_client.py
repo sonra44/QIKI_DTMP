@@ -298,7 +298,10 @@ class MetricsClient:
         if duration is None:
             return points
         
-        cutoff_time = datetime.now() - duration
+        # Use series timestamps as reference (stable in tests and for buffered data),
+        # not wall-clock "now" (which may be behind points if they were generated ahead).
+        latest_ts = points[-1].timestamp
+        cutoff_time = latest_ts - duration
         return [point for point in points if point.timestamp >= cutoff_time]
     
     def get_metric_summary(self, name: str, duration: Optional[timedelta] = None) -> Dict[str, Any]:

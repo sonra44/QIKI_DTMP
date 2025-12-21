@@ -68,11 +68,11 @@
         "max_thrust_n": 5000, "fuel_remaining_kg": 50, "status": "ready"
       },
       {
-        "id": "rcs_port", "type": "rcs_thruster", "position": [0, -5, 0],
+        "id": "rcs_port", "type": "rcs_thruster", "position": [0, 5, 0],
         "max_thrust_n": 3000, "fuel_remaining_kg": 30, "status": "ready"
       },
       {
-        "id": "rcs_starboard", "type": "rcs_thruster", "position": [0, 5, 0],
+        "id": "rcs_starboard", "type": "rcs_thruster", "position": [0, -5, 0],
         "max_thrust_n": 3000, "fuel_remaining_kg": 30, "status": "ready"
       }
     ]

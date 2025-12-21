@@ -56,7 +56,8 @@ services:
     stdin_open: true
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - QIKI_USE_STATESTORE=true
     command: python -m qiki.services.q_core_agent.main --grpc
     restart: on-failure
 
@@ -79,7 +80,7 @@ services:
       - qiki-network-phase1
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - NATS_URL=nats://qiki-nats-phase1:4222
@@ -104,7 +105,7 @@ services:
       - qiki-network-phase1
     environment:
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/workspace/src:/workspace
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - NATS_URL=nats://qiki-nats-phase1:4222
@@ -141,6 +142,7 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app/src
+      - NATS_URL=nats://qiki-nats-phase1:4222
     restart: on-failure
 
   # Operator Console - TUI для мониторинга и управления
@@ -202,6 +204,17 @@ services:
       - RADAR_CONSUMER_MAX_ACK_PENDING=512
       - RADAR_FRAMES_DURABLE=radar_frames_pull
       - RADAR_TRACKS_DURABLE=radar_tracks_pull
+      - EVENTS_ENABLED=1
+      - EVENTS_STREAM=QIKI_EVENTS_V1
+      - EVENTS_SUBJECTS=qiki.events.v1.>
+      - EVENTS_DUPLICATE_WINDOW_SEC=120
+      - EVENTS_MAX_BYTES=10485760
+      - EVENTS_MAX_AGE_SEC=3600
+      - EVENTS_CONSUMER_ACK_WAIT_SEC=45
+      - EVENTS_CONSUMER_MAX_DELIVER=7
+      - EVENTS_CONSUMER_MAX_ACK_PENDING=512
+      - EVENTS_AUDIT_SUBJECT=qiki.events.v1.audit
+      - EVENTS_AUDIT_DURABLE=events_audit_pull
     command: python tools/js_init.py
     restart: "no"
 

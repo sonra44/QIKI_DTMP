@@ -119,6 +119,9 @@ class TickOrchestrator:
             # Обрабатываем FSM переходы через новый метод
             updated_dto = await self.agent.fsm_handler.process_fsm_dto(current_dto)
 
+            # Сохраняем обновленное состояние в StateStore
+            await self.state_store.set(updated_dto)
+
             logger.debug(
                 f"FSM processed: v={updated_dto.version}, state={updated_dto.state.name}"
             )

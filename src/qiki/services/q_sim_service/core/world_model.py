@@ -15,8 +15,26 @@ class WorldModel:
     def __init__(self):
         self.position = Vector3(x=0.0, y=0.0, z=0.0)  # meters
         self.heading = 0.0  # degrees, 0 is +Y, 90 is +X
+        self.roll_rad = 0.0
+        self.pitch_rad = 0.0
+        self.yaw_rad = math.radians(self.heading)
         self.battery_level = 100.0  # percent
         self.speed = 0.0  # meters/second
+        # Additional avionics-friendly fields (simulation truth, not UI mocks).
+        self.hull_integrity = 100.0  # percent
+        self.radiation_usvh = 0.0  # microSievert per hour
+        self.temp_external_c = -60.0  # deg C
+        self.temp_core_c = 25.0  # deg C
+        # Power/EPS model (simple, deterministic).
+        self.power_bus_v = 28.0  # volts
+        self.power_in_w = 30.0  # watts (e.g., solar)
+        self.power_out_w = 60.0  # watts baseline load
+        self.power_bus_a = self.power_out_w / self.power_bus_v
+        self._battery_capacity_wh = 200.0
+        self._base_power_in_w = 30.0
+        self._base_power_out_w = 60.0
+        self._motion_power_w_per_mps = 40.0
+        self._sim_time_s = 0.0
         logger.info("WorldModel initialized.")
 
     def update(self, command: ActuatorCommand):
@@ -46,6 +64,7 @@ class WorldModel:
         """
         Advances the simulation by a given delta_time.
         """
+        self._sim_time_s += delta_time
         # Update position based on current speed and heading
         if self.speed > 0:
             # Convert heading to radians for trigonometric functions
@@ -67,13 +86,38 @@ class WorldModel:
                 f"WorldModel moved to ({self.position.x:.2f}, {self.position.y:.2f})"
             )
 
-        # Simple battery drain
-        self.battery_level = max(0.0, self.battery_level - (0.1 * delta_time))
+        # Simple attitude model (6DOF): small oscillations + yaw follows heading.
+        roll_amp = math.radians(2.0)
+        pitch_amp = math.radians(1.5)
+        self.roll_rad = roll_amp * math.sin(self._sim_time_s * 0.6)
+        self.pitch_rad = pitch_amp * math.cos(self._sim_time_s * 0.4)
+        self.yaw_rad = math.radians(self.heading)
+
+        # Power/EPS: derive loads and update SoC from net power.
+        self.power_in_w = self._base_power_in_w
+        self.power_out_w = self._base_power_out_w + abs(self.speed) * self._motion_power_w_per_mps
+        self.power_bus_a = 0.0 if self.power_bus_v <= 0 else self.power_out_w / self.power_bus_v
+        net_w = self.power_in_w - self.power_out_w
+        delta_wh = net_w * delta_time / 3600.0
+        delta_pct = (delta_wh / self._battery_capacity_wh) * 100.0
+        self.battery_level = max(0.0, min(100.0, self.battery_level + delta_pct))
+
+        # Simple thermal model: core warms up with movement and relaxes to external temperature.
+        # Keep bounded to reasonable values for display.
+        heat_in = abs(self.speed) * 0.8  # arbitrary units
+        self.temp_core_c += (0.15 * heat_in - 0.02 * (self.temp_core_c - self.temp_external_c)) * delta_time
+        self.temp_core_c = max(-120.0, min(160.0, self.temp_core_c))
 
     def get_state(self) -> Dict[str, Any]:
         """
         Returns the current state of the world model.
         """
+        thermal_nodes = [
+            {"id": "core", "temp_c": self.temp_core_c},
+            {"id": "bus", "temp_c": self.temp_core_c - 5.0},
+            {"id": "battery", "temp_c": self.temp_core_c - 10.0},
+            {"id": "radiator", "temp_c": self.temp_external_c + (self.temp_core_c - self.temp_external_c) * 0.2},
+        ]
         return {
             "position": {
                 "x": self.position.x,
@@ -81,6 +125,25 @@ class WorldModel:
                 "z": self.position.z,
             },
             "heading": self.heading,
+            "attitude": {
+                "roll_rad": self.roll_rad,
+                "pitch_rad": self.pitch_rad,
+                "yaw_rad": self.yaw_rad,
+            },
             "battery_level": self.battery_level,
             "speed": self.speed,
+            "hull_integrity": self.hull_integrity,
+            "radiation_usvh": self.radiation_usvh,
+            "temp_external_c": self.temp_external_c,
+            "temp_core_c": self.temp_core_c,
+            "thermal": {
+                "nodes": thermal_nodes,
+            },
+            "power": {
+                "soc_pct": self.battery_level,
+                "power_in_w": self.power_in_w,
+                "power_out_w": self.power_out_w,
+                "bus_v": self.power_bus_v,
+                "bus_a": self.power_bus_a,
+            },
         }

@@ -38,7 +38,7 @@
 
 **Проблема**: Git Bash основан на MSYS2, который автоматически конвертирует Windows пути в Unix-подобные:
 ```bash
-C:\Users\FuturaIT\QIKI_DTMP_LOCAL → /c/Users/FuturaIT/QIKI_DTMP_LOCAL
+C:\Users\FuturaIT\QKDTMPLOC → /c/Users/FuturaIT/QKDTMPLOC  (пример: подставьте свой путь)
 ```
 
 **Последствия для QIKI_DTMP**:
@@ -142,10 +142,10 @@ Git Bash построен на MSYS2 runtime, который:
 **Пример проблемы**:
 ```bash
 # В Git Bash:
-export PYTHONPATH="/c/Users/FuturaIT/QIKI_DTMP_LOCAL"
+export PYTHONPATH="/c/Users/FuturaIT/QKDTMPLOC"  # пример: подставьте свой путь
 
 # Python может интерпретировать как:
-# C:\c\Users\FuturaIT\QIKI_DTMP_LOCAL  ← НЕВЕРНО!
+# C:\c\Users\FuturaIT\QKDTMPLOC  ← НЕВЕРНО! (пример с путём)
 ```
 
 ### 3. **Performance Overhead**
@@ -230,7 +230,7 @@ MSYS2 runtime добавляет overhead:
 3. **Добавьте необходимые переменные**:
    ```powershell
    # В PowerShell Profile:
-   $env:QIKI_DTMP_HOME = "C:\Users\FuturaIT\QIKI_DTMP_LOCAL"
+$env:QIKI_DTMP_HOME = "C:\Users\FuturaIT\QKDTMPLOC"  # пример: подставьте свой путь
    $env:PATH += ";C:\Program Files\nodejs"
    ```
 

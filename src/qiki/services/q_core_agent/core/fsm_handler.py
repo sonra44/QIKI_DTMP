@@ -15,13 +15,10 @@ from qiki.services.q_core_agent.state.types import (
     TransitionStatus,
     create_transition,
     next_snapshot,
+    FsmSnapshotDTO,
 )
 from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot
 
-from qiki.shared.converters.protobuf_pydantic import (
-    proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto,
-    pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot,
-)
 from qiki.shared.models.core import (
     FsmStateSnapshot as PydanticFsmStateSnapshot,
     FsmTransition as PydanticFsmTransition,
@@ -38,12 +35,11 @@ class FSMHandler(IFSMHandler):
         logger.info("FSMHandler initialized.")
 
     async def process_fsm_dto(
-        self, proto_fsm_state: "ProtoFsmStateSnapshot"
-    ) -> "ProtoFsmStateSnapshot":
-        current_fsm_state_dto = proto_fsm_state_snapshot_to_pydantic_fsm_snapshot_dto(
-            proto_fsm_state
-        )
-
+        self, current_fsm_state_dto: FsmSnapshotDTO
+    ) -> FsmSnapshotDTO:
+        """
+        Обработка FSM перехода напрямую с использованием DTO.
+        """
         logger.debug(
             "FSMHandler: Processing FSM state: %s",
             current_fsm_state_dto.state.name,
@@ -71,12 +67,13 @@ class FSMHandler(IFSMHandler):
         )
 
         logger.debug(
-            "FSM transitioned from %s to %s",
+            "FSM transitioned from %s to %s (Trigger: %s)",
             current_fsm_state_dto.state.name,
             new_snapshot_dto.state.name,
+            trigger_event
         )
 
-        return pydantic_fsm_snapshot_dto_to_proto_fsm_state_snapshot(new_snapshot_dto)
+        return new_snapshot_dto
 
     def process_fsm_state(
         self, current_fsm_state: PydanticFsmStateSnapshot

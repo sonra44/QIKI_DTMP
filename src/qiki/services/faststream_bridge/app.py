@@ -8,6 +8,15 @@ from faststream.nats import NatsBroker
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
 from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 from qiki.shared.models.radar import RadarFrameModel
+from qiki.shared.nats_subjects import (
+    COMMANDS_CONTROL,
+    RADAR_FRAMES,
+    RADAR_FRAMES_DURABLE as RADAR_FRAMES_DURABLE_DEFAULT,
+    RADAR_STREAM_NAME,
+    RADAR_TRACKS,
+    RADAR_TRACKS_DURABLE as RADAR_TRACKS_DURABLE_DEFAULT,
+    RESPONSES_CONTROL,
+)
 from qiki.services.faststream_bridge.radar_handlers import frame_to_track
 from qiki.services.faststream_bridge.track_publisher import RadarTrackPublisher
 from qiki.services.faststream_bridge.lag_monitor import (
@@ -21,11 +30,12 @@ logger = logging.getLogger(__name__)
 
 # Инициализация NATS брокера
 NATS_URL = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
-RADAR_FRAMES_SUBJECT = os.getenv("RADAR_FRAMES_SUBJECT", "qiki.radar.v1.frames")
-RADAR_TRACKS_SUBJECT = os.getenv("RADAR_TRACKS_SUBJECT", "qiki.radar.v1.tracks")
-RADAR_FRAMES_DURABLE = os.getenv("RADAR_FRAMES_DURABLE", "radar_frames_pull")
-RADAR_TRACKS_DURABLE = os.getenv("RADAR_TRACKS_DURABLE", "radar_tracks_pull")
+RADAR_FRAMES_SUBJECT = os.getenv("RADAR_FRAMES_SUBJECT", RADAR_FRAMES)
+RADAR_TRACKS_SUBJECT = os.getenv("RADAR_TRACKS_SUBJECT", RADAR_TRACKS)
+RADAR_FRAMES_DURABLE = os.getenv("RADAR_FRAMES_DURABLE", RADAR_FRAMES_DURABLE_DEFAULT)
+RADAR_TRACKS_DURABLE = os.getenv("RADAR_TRACKS_DURABLE", RADAR_TRACKS_DURABLE_DEFAULT)
 LAG_MONITOR_INTERVAL = float(os.getenv("RADAR_LAG_MONITOR_INTERVAL_SEC", "5"))
+RADAR_STREAM = os.getenv("RADAR_STREAM", RADAR_STREAM_NAME)
 
 broker = NatsBroker(NATS_URL)
 app = FastStream(broker)
@@ -33,7 +43,7 @@ app = FastStream(broker)
 _track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
 _lag_monitor = JetStreamLagMonitor(
     nats_url=NATS_URL,
-    stream=os.getenv("RADAR_STREAM", "QIKI_RADAR_V1"),
+    stream=RADAR_STREAM,
     consumers=[
         ConsumerTarget(durable=RADAR_FRAMES_DURABLE, label="radar_frames_pull"),
         ConsumerTarget(durable=RADAR_TRACKS_DURABLE, label="radar_tracks_pull"),
@@ -42,8 +52,8 @@ _lag_monitor = JetStreamLagMonitor(
 )
 
 
-@broker.subscriber("qiki.commands.control")
-@broker.publisher("qiki.responses.control")
+@broker.subscriber(COMMANDS_CONTROL)
+@broker.publisher(RESPONSES_CONTROL)
 async def handle_control_command(
     msg: CommandMessage, logger: Logger
 ) -> ResponseMessage:
@@ -86,7 +96,12 @@ async def on_shutdown():
 
 
 # ------------------------ Radar frames handling ------------------------
-@broker.subscriber(RADAR_FRAMES_SUBJECT)
+@broker.subscriber(
+    RADAR_FRAMES_SUBJECT,
+    durable=RADAR_FRAMES_DURABLE,
+    stream=RADAR_STREAM,
+    pull_sub=True,
+)
 async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
     """
     Минимальный потребитель кадров радара.

@@ -109,3 +109,15 @@ class RegistrarService:
             severity="INFO"
         )
         self.register_event(event)
+
+    def register_system_event(self, source: str, severity: str, details: Dict[str, Any]) -> None:
+        """Register a generic system event."""
+        event = RegistrarEvent(
+            event_id=f"sys-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')}",
+            event_type="SYSTEM_EVENT",
+            source=source,
+            timestamp=datetime.now(timezone.utc),
+            payload=details,
+            severity=severity
+        )
+        self.register_event(event)

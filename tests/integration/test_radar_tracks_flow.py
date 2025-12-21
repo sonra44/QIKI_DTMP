@@ -9,6 +9,8 @@ try:
     import nats  # type: ignore
 except Exception:
     pytest.skip("nats not installed; skip", allow_module_level=True)
+else:
+    from nats.errors import NoServersError, TimeoutError  # type: ignore
 
 try:
     from qiki.shared.models.radar import (
@@ -28,7 +30,10 @@ TRACKS_TOPIC = "qiki.radar.v1.tracks"
 
 @pytest.mark.asyncio
 async def test_receive_radar_track_from_nats():
-    nc = await nats.connect(NATS_URL)
+    try:
+        nc = await nats.connect(NATS_URL, connect_timeout=1)
+    except (NoServersError, TimeoutError, OSError) as exc:
+        pytest.skip(f"NATS is not available at {NATS_URL}: {exc}")
     try:
         sub = await nc.subscribe(TRACKS_TOPIC)
 

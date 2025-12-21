@@ -162,7 +162,7 @@ docker compose exec qiki-dev python -m qiki.services.q_core_agent.main --grpc
 ### Шаг 1: Подготовка среды
 ```powershell
 # В PowerShell (минимально):
-cd C:\Users\FuturaIT\QIKI_DTMP_LOCAL
+cd <PATH_TO_QIKI_DTMP>  # пример: C:\Users\FuturaIT\QKDTMPLOC
 docker compose -f docker-compose.phase1.yml build
 ```
 

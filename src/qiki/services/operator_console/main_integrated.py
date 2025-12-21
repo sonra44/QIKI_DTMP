@@ -8,7 +8,7 @@ Terminal UI with real NATS data streams integration.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, Deque, List
 
 from rich.table import Table
 from rich.live import Live
@@ -34,13 +34,13 @@ class QIKIOperatorConsole:
         self.running = False
         
         # Data buffers
-        self.telemetry_buffer = {}
-        self.radar_frames_buffer = deque(maxlen=50)
-        self.events_buffer = deque(maxlen=20)
-        self.tracks_buffer = []
+        self.telemetry_buffer: Dict[str, Any] = {}
+        self.radar_frames_buffer: Deque[Dict[str, Any]] = deque(maxlen=50)
+        self.events_buffer: Deque[Dict[str, Any]] = deque(maxlen=20)
+        self.tracks_buffer: List[Any] = []
         
         # Statistics
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "frames_received": 0,
             "events_received": 0,
             "uptime_start": datetime.now(),
@@ -109,8 +109,12 @@ class QIKIOperatorConsole:
         table.add_row("Frames Received", str(self.stats["frames_received"]), "📡")
         table.add_row("Events", str(self.stats["events_received"]), "⚡")
         
-        uptime = datetime.now() - self.stats["uptime_start"]
-        table.add_row("Uptime", f"{uptime.seconds // 60}m {uptime.seconds % 60}s", "⏱️")
+        start_time = self.stats.get("uptime_start")
+        if isinstance(start_time, datetime):
+            uptime = datetime.now() - start_time
+            table.add_row("Uptime", f"{uptime.seconds // 60}m {uptime.seconds % 60}s", "⏱️")
+        else:
+            table.add_row("Uptime", "N/A", "⏱️")
         
         return table
     
@@ -182,8 +186,9 @@ class QIKIOperatorConsole:
             status_text.append(f"  URL: {self.nats_client.url}\n", style="dim")
             
             # Latest data status
-            if self.stats["last_frame_time"]:
-                time_since = (datetime.now() - self.stats["last_frame_time"]).seconds
+            last_frame = self.stats.get("last_frame_time")
+            if isinstance(last_frame, datetime):
+                time_since = (datetime.now() - last_frame).seconds
                 if time_since < 5:
                     status_text.append("\nData Flow: ", style="bold")
                     status_text.append("🟢 Active\n", style="green bold")
@@ -198,8 +203,9 @@ class QIKIOperatorConsole:
         status_text.append("▶️ Running\n", style="cyan bold")
         
         # Frame Rate
-        if self.stats["frames_received"] > 0 and self.stats["uptime_start"]:
-            uptime_seconds = (datetime.now() - self.stats["uptime_start"]).seconds
+        start_time = self.stats.get("uptime_start")
+        if self.stats["frames_received"] > 0 and isinstance(start_time, datetime):
+            uptime_seconds = (datetime.now() - start_time).seconds
             if uptime_seconds > 0:
                 fps = self.stats["frames_received"] / uptime_seconds
                 status_text.append(f"\nFrame Rate: {fps:.1f} fps\n", style="dim")

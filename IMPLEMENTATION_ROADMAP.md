@@ -81,10 +81,10 @@
 - Все компоненты Stage 0 интегрированы и функционируют корректно.
 
 ## 5. Связанные документы
-- [RADAR.md](../RADAR.md) — полное досье интеграции радара.
+- [RADAR.md](RADAR.md) — полное досье интеграции радара.
 - [README.md](README.md) — обновлённый обзор и запуск Phase 1.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — диаграммы и health.
 - [docs/RESTART_CHECKLIST.md](docs/RESTART_CHECKLIST.md) — пошаговый рестарт.
 - [DOCUMENTATION_UPDATE_PROTOCOL.md](DOCUMENTATION_UPDATE_PROTOCOL.md) — регламент обновления документации.
 - [docs/stage0_actual_plan.md](docs/stage0_actual_plan.md) — план реализации Stage 0.
-- [journal/2025-09-21_Stage0-Implementation/task.md](../journal/2025-09-21_Stage0-Implementation/task.md) — полная документация реализации Stage 0.
+- [journal/2025-09-21_Stage0-Implementation/task.md](journal/2025-09-21_Stage0-Implementation/task.md) — полная документация реализации Stage 0.

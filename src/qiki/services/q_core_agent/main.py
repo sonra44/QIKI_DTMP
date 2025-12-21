@@ -6,13 +6,6 @@ import signal
 import asyncio
 from pathlib import Path
 
-# Добавляем корневую директорию проекта в sys.path
-# Это позволит нам импортировать сгенерированные protobuf файлы
-# и другие модули из нашего проекта.
-# Важно: путь должен быть абсолютным
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.append(ROOT_DIR)
-
 from qiki.services.q_core_agent.core.agent_logger import setup_logging, logger
 from qiki.services.q_core_agent.core.agent import QCoreAgent
 from qiki.services.q_core_agent.core.interfaces import (
@@ -22,10 +15,12 @@ from qiki.services.q_core_agent.core.interfaces import (
 from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
 from qiki.services.q_core_agent.core.tick_orchestrator import TickOrchestrator
 from qiki.services.q_core_agent.state.store import create_initialized_store
+from qiki.services.q_core_agent.state.conv import dto_to_protobuf_json
 from qiki.shared.config_models import QCoreAgentConfig, QSimServiceConfig, load_config
+import json
 
 # Import QSimService for direct interaction in MVP
-from qiki.services.q_sim_service.main import QSimService
+from qiki.services.q_sim_service.service import QSimService
 
 from qiki.shared.models.core import (
     BiosStatus,
@@ -139,7 +134,7 @@ async def run_with_statestore(
 
             logger.info("--- Input Messages (StateStore Mode) ---")
             logger.info(f"BIOS: {data_provider.get_bios_status().model_dump_json()}")
-            logger.info(f"FSM: {current_state.model_dump_json()}")
+            logger.info(f"FSM: {json.dumps(dto_to_protobuf_json(current_state))}")
             logger.info(
                 f"Proposals: {[p.model_dump_json() for p in data_provider.get_proposals()]}"
             )
@@ -243,7 +238,8 @@ def main():
     else:
         logger.info("Running in LEGACY mode (direct Q-Sim Service instance).")
         # Initialize QSimService (for MVP, direct instance)
-        qsim_config_path = Path(ROOT_DIR) / "services" / "q_sim_service" / "config.yaml"
+        project_src = Path(__file__).resolve().parents[3]
+        qsim_config_path = project_src / "qiki" / "services" / "q_sim_service" / "config.yaml"
         qsim_config = load_config(qsim_config_path, QSimServiceConfig)
         qsim_service = QSimService(qsim_config)
 

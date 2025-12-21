@@ -157,43 +157,13 @@ class QSimGrpcClient:
             return {"success": False, "message": "Not connected to gRPC server"}
             
         try:
-            # Update local state based on command
-            if command == SimulationCommand.START:
-                self.sim_state["running"] = True
-                self.sim_state["paused"] = False
-                message = "Simulation started"
-                
-            elif command == SimulationCommand.STOP:
-                self.sim_state["running"] = False
-                self.sim_state["paused"] = False
-                message = "Simulation stopped"
-                
-            elif command == SimulationCommand.PAUSE:
-                self.sim_state["paused"] = True
-                message = "Simulation paused"
-                
-            elif command == SimulationCommand.RESUME:
-                self.sim_state["paused"] = False
-                message = "Simulation resumed"
-                
-            elif command == SimulationCommand.RESET:
-                self.sim_state["running"] = False
-                self.sim_state["paused"] = False
-                self.sim_state["fsm_state"] = "INIT"
-                message = "Simulation reset"
-                
-            else:
-                return {"success": False, "message": f"Unknown command: {command}"}
-                
-            # Log the command
-            logger.info(f"📤 Sent command: {command}")
-            
+            # No-mocks: Operator Console управляет симуляцией через NATS control plane.
+            # Этот gRPC клиент пока используется только для health-check уровня канала.
             return {
-                "success": True,
-                "message": message,
+                "success": False,
+                "message": "Not implemented: use NATS control commands (qiki.commands.control)",
                 "command": command,
                 "timestamp": datetime.now().isoformat(),
-                "sim_state": self.sim_state.copy()
             }
             
         except Exception as e:
@@ -215,17 +185,7 @@ class QSimGrpcClient:
             return {"error": "Not connected"}
             
         try:
-            # Placeholder for actual gRPC call
-            # When proto stubs are generated, this will call GetSensorData
-            
-            # For now, return mock data
-            return {
-                "position": {"x": 0.0, "y": 0.0, "z": 0.0},
-                "velocity": {"x": 0.0, "y": 0.0, "z": 0.0},
-                "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0},
-                "battery": 85.0,
-                "timestamp": datetime.now().isoformat()
-            }
+            return {"error": "Not implemented (no stubs wired for Operator Console)"}
             
         except Exception as e:
             logger.error(f"Failed to get sensor data: {e}")
@@ -242,15 +202,7 @@ class QSimGrpcClient:
             return {"error": "Not connected"}
             
         try:
-            # Placeholder for actual gRPC call
-            # When proto stubs are generated, this will call GetRadarFrame
-            
-            return {
-                "frame_id": "frame_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
-                "sensor_id": "radar_001",
-                "detections": [],
-                "timestamp": datetime.now().isoformat()
-            }
+            return {"error": "Not implemented (no stubs wired for Operator Console)"}
             
         except Exception as e:
             logger.error(f"Failed to get radar frame: {e}")
@@ -271,17 +223,10 @@ class QSimGrpcClient:
             return {"success": False, "message": "Not connected"}
             
         try:
-            # Placeholder for actual gRPC call
-            # When proto stubs are generated, this will call SendActuatorCommand
-            
-            logger.info(f"📤 Actuator command: {command_type} = {value}")
-            
             return {
-                "success": True,
-                "accepted": True,
-                "command_type": command_type,
-                "value": value,
-                "timestamp": datetime.now().isoformat()
+                "success": False,
+                "message": "Not implemented (no stubs wired for Operator Console)",
+                "timestamp": datetime.now().isoformat(),
             }
             
         except Exception as e:
@@ -314,13 +259,9 @@ class QSimGrpcClient:
             return {"success": False, "message": "Not connected"}
             
         try:
-            self.sim_state["speed"] = speed
-            logger.info(f"⚡ Simulation speed set to {speed}x")
-            
             return {
-                "success": True,
-                "speed": speed,
-                "message": f"Speed set to {speed}x"
+                "success": False,
+                "message": "Not implemented: use NATS control commands (qiki.commands.control)",
             }
             
         except Exception as e:
@@ -339,14 +280,23 @@ class QAgentGrpcClient:
         # In Docker, use service names from docker-compose
         self.host = host or os.getenv("AGENT_GRPC_HOST", "q-core-agent")
         self.port = port or int(os.getenv("AGENT_GRPC_PORT", "50052"))
+        self.channel: Optional[aio.Channel] = None
         self.connected = False
         
     async def connect(self) -> bool:
         """Connect to Q-Core Agent."""
-        # Implementation for agent-specific connection
-        logger.info(f"Connecting to Q-Core Agent at {self.host}:{self.port}")
-        self.connected = True
-        return True
+        try:
+            target = f"{self.host}:{self.port}"
+            self.channel = aio.insecure_channel(target)
+            await asyncio.wait_for(self.channel.channel_ready(), timeout=2.0)
+            self.connected = True
+            logger.info(f"✅ Connected to Q-Core Agent channel at {target}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to connect to Q-Core Agent: {e}")
+            self.connected = False
+            self.channel = None
+            return False
         
     async def send_message(self, message: str) -> str:
         """
@@ -360,22 +310,10 @@ class QAgentGrpcClient:
         """
         if not self.connected:
             return "Error: Not connected to agent"
-            
-        # Placeholder for actual agent interaction
-        logger.info(f"💬 Message to agent: {message}")
-        
-        # Mock responses based on message content
-        if "status" in message.lower():
-            return "System operational. All sensors active. Battery at 85%. No threats detected."
-        elif "start" in message.lower():
-            return "Initiating simulation startup sequence..."
-        elif "help" in message.lower():
-            return (
-                "I can help you monitor system status, control simulation, "
-                "and analyze radar data. What would you like to know?"
-            )
-        else:
-            return f"Acknowledged: '{message}'. Processing request..."
+
+        # No-mocks: пока нет зафиксированного gRPC контракта для чат-интерфейса Q-Core Agent.
+        logger.info("Agent chat requested but RPC is not wired: %s", message)
+        return "Error: Agent chat RPC not implemented (no stubs wired)"
             
     async def get_fsm_state(self) -> Dict[str, Any]:
         """
@@ -384,12 +322,7 @@ class QAgentGrpcClient:
         Returns:
             FSM state information
         """
-        return {
-            "current_state": "OPERATIONAL",
-            "previous_state": "INIT",
-            "transitions_count": 5,
-            "last_transition": datetime.now().isoformat()
-        }
+        return {"error": "Not implemented (no stubs wired)"}
         
     async def get_proposals(self) -> list:
         """
@@ -398,20 +331,7 @@ class QAgentGrpcClient:
         Returns:
             List of proposals
         """
-        return [
-            {
-                "id": "prop_001",
-                "action": "increase_thrust",
-                "confidence": 0.85,
-                "reason": "Low velocity detected"
-            },
-            {
-                "id": "prop_002",
-                "action": "scan_radar",
-                "confidence": 0.92,
-                "reason": "Periodic scan interval reached"
-            }
-        ]
+        return []
 
 
 # Test function

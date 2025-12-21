@@ -16,6 +16,7 @@ from qiki.services.q_core_agent.core.guard_table import (
 )
 from qiki.services.q_core_agent.core.rule_engine import RuleEngine
 from qiki.services.q_core_agent.core.world_model import WorldModel
+from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
 from generated.bios_status_pb2 import BiosStatusReport
 from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from qiki.shared.models.core import ProposalTypeEnum, SensorData, SensorTypeEnum
@@ -255,11 +256,16 @@ async def test_fsm_handler_transitions_on_critical_guard():
     context.guard_events = [critical_event]
 
     handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.IDLE)
+    initial_state = FsmSnapshotDTO(
+        version=1,
+        state=FsmState.IDLE,
+        reason="IDLE",
+        history=tuple()
+    )
 
     new_state = await handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.ERROR_STATE
+    assert new_state.state == FsmState.ERROR_STATE
 
 
 @pytest.mark.asyncio
@@ -281,8 +287,13 @@ async def test_fsm_handler_warning_spoof_moves_to_active():
     context.guard_events = [warning_event]
 
     handler = FSMHandler(context)
-    initial_state = FsmStateSnapshot(current_state=FSMStateEnum.IDLE)
+    initial_state = FsmSnapshotDTO(
+        version=1,
+        state=FsmState.IDLE,
+        reason="IDLE",
+        history=tuple()
+    )
 
     new_state = await handler.process_fsm_dto(initial_state)
 
-    assert new_state.current_state == FSMStateEnum.ACTIVE
+    assert new_state.state == FsmState.ACTIVE

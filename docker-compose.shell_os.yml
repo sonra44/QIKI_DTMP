@@ -1,0 +1,32 @@
+#
+# Shell OS overlay for Phase1 stack.
+#
+# Usage:
+#   docker compose -f docker-compose.phase1.yml -f docker-compose.shell_os.yml up -d shell-os
+#
+
+services:
+  shell-os:
+    build:
+      context: ./src/qiki/services/shell_os
+      dockerfile: Dockerfile
+    container_name: qiki-shell-os
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+      - NATS_URL=nats://qiki-nats-phase1:4222
+    volumes:
+      - ./:/workspace:ro
+      - ./src/qiki/services/shell_os:/app
+    networks:
+      - qiki-network
+    stdin_open: true
+    tty: true
+    command: python main.py
+
+networks:
+  qiki-network:
+    external: true
+    name: qiki_dtmp_qiki-network-phase1
+

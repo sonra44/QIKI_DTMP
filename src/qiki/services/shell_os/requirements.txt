@@ -1,0 +1,9 @@
+# Runtime
+textual>=0.60.0
+psutil>=5.9.0
+rich>=13.7.0
+
+# Testing (inside container / service-local)
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+

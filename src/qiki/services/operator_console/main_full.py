@@ -8,7 +8,7 @@ Complete console with NATS data, gRPC commands, and agent chat.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, Deque, List
 import sys
 
 from rich.table import Table
@@ -39,14 +39,14 @@ class QIKIOperatorConsoleFull:
         self.command_mode = False
         
         # Data buffers
-        self.telemetry_buffer = {}
-        self.radar_frames_buffer = deque(maxlen=50)
-        self.events_buffer = deque(maxlen=20)
-        self.chat_history = deque(maxlen=50)
-        self.command_history = deque(maxlen=20)
+        self.telemetry_buffer: Dict[str, Any] = {}
+        self.radar_frames_buffer: Deque[Dict[str, Any]] = deque(maxlen=50)
+        self.events_buffer: Deque[Dict[str, Any]] = deque(maxlen=20)
+        self.chat_history: Deque[Dict[str, Any]] = deque(maxlen=50)
+        self.command_history: Deque[Dict[str, Any]] = deque(maxlen=20)
         
         # Statistics
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "frames_received": 0,
             "events_received": 0,
             "commands_sent": 0,
@@ -76,6 +76,9 @@ class QIKIOperatorConsoleFull:
                 
     async def init_nats(self):
         """Initialize NATS connection."""
+        if not self.nats_client:
+            return
+            
         await self.nats_client.connect()
         
         # Register callbacks
@@ -88,9 +91,11 @@ class QIKIOperatorConsoleFull:
         
     async def init_grpc(self):
         """Initialize gRPC connections."""
-        await self.grpc_sim_client.connect()
-        await self.grpc_agent_client.connect()
-        
+        if self.grpc_sim_client:
+            await self.grpc_sim_client.connect()
+        if self.grpc_agent_client:
+            await self.grpc_agent_client.connect()
+            
     async def on_radar_frame(self, frame: RadarFrame):
         """Handle incoming radar frame."""
         self.stats["frames_received"] += 1
@@ -121,7 +126,7 @@ class QIKIOperatorConsoleFull:
             "timestamp": datetime.now()
         })
         
-        if self.grpc_sim_client is None or self.grpc_agent_client is None:
+        if not self.grpc_sim_client or not self.grpc_agent_client:
             return "gRPC clients are not initialized"
 
         sim_client = self.grpc_sim_client
@@ -285,8 +290,9 @@ class QIKIOperatorConsoleFull:
             status_text.append("❌ Disconnected\n", style="red")
         
         # Data flow
-        if self.stats["last_frame_time"]:
-            time_since = (datetime.now() - self.stats["last_frame_time"]).seconds
+        last_frame = self.stats.get("last_frame_time")
+        if isinstance(last_frame, datetime):
+            time_since = (datetime.now() - last_frame).seconds
             status_text.append("\nData Flow: ", style="bold")
             if time_since < 5:
                 status_text.append("🟢 Active\n", style="green bold")
@@ -381,11 +387,16 @@ class QIKIOperatorConsoleFull:
                     layout["radar"].update(Panel(radar_text, title="🎯 Radar", border_style="cyan"))
                     
                     # Footer
-                    uptime = datetime.now() - self.stats["uptime_start"]
+                    uptime_str = "0m"
+                    start_time = self.stats.get("uptime_start")
+                    if isinstance(start_time, datetime):
+                        uptime = datetime.now() - start_time
+                        uptime_str = f"{uptime.seconds//60}m"
+                        
                     footer_text = Align.center(
                         Text(
                             "QIKI Digital Twin | "
-                            f"Uptime: {uptime.seconds//60}m | "
+                            f"Uptime: {uptime_str} | "
                             f"F: {self.stats['frames_received']} | "
                             f"E: {self.stats['events_received']} | "
                             f"C: {self.stats['commands_sent']}",

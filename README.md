@@ -30,7 +30,19 @@ QIKI_DTMP — это высокопроизводительная, модуль�
 
 ## Быстрый старт
 
-Все команды выполняются из корневой директории проекта `QIKI_DTMP_LOCAL`.
+Все команды выполняются из **корня git-репозитория `QIKI_DTMP`**.
+
+Если есть риск перепутать папку/клон, сначала зафиксируй корень репо:
+
+```bash
+# Bash
+cd "$(git rev-parse --show-toplevel)"
+```
+
+```powershell
+# PowerShell
+Set-Location (git rev-parse --show-toplevel)
+```
 
 **Требования:**
 - Docker Desktop запущен и работает
@@ -48,6 +60,22 @@ docker compose up -d --build
 
 ```bash
 docker compose ps
+```
+
+### 2.1 Operator Console (TUI) поверх Phase1
+
+Operator Console — интерактивная TUI-консоль (работает в терминале внутри контейнера).
+
+```bash
+# Запуск (интерактивно, без -d)
+docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up operator-console
+```
+
+Альтернатива (в фоне) — поднять контейнер и подключиться к TUI:
+
+```bash
+docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d operator-console
+docker attach qiki-operator-console
 ```
 
 ### 3. Проверка работоспособности (Health Checks)
@@ -108,11 +136,8 @@ docker compose down
 Если система не запускается с ошибкой "ModuleNotFoundError: No module named 'generated'":
 
 ```bash
-# Сгенерировать protobuf файлы
-docker run --rm -v ${PWD}:/workspace -w /workspace qiki_dtmp_local-qiki-dev bash -c "
-python -m grpc_tools.protoc -I./protos --python_out=./generated --grpc_python_out=./generated ./protos/*.proto
-python -m grpc_tools.protoc -I./protos --python_out=./generated ./protos/radar/v1/radar.proto
-"
+# Сгенерировать protobuf файлы (внутри dev-контейнера)
+docker compose -f docker-compose.phase1.yml run --rm qiki-dev bash -lc "bash tools/gen_protos.sh"
 ```
 
 ### Просмотр логов
