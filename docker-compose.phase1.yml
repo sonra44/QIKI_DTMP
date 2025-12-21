@@ -196,11 +196,13 @@ services:
     restart: unless-stopped
 
   promtail:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:latest
     container_name: qiki-promtail-phase1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config/promtail-config.yaml:/etc/promtail/config.yaml
+    environment:
+      - DOCKER_API_VERSION=1.44
     command: -config.file=/etc/promtail/config.yaml
     networks:
       - qiki-network-phase1
