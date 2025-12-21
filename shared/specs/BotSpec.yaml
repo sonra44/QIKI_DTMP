@@ -15,6 +15,48 @@ components:
       - energy_status
     consumes:
       - power_budget
+  mainboard:
+    type: mainboard
+    provides:
+      - bus_control
+      - power_distribution
+      - slot_map
+  mcqpu:
+    type: mcqpu
+    provides:
+      - decision_core
+      - sensor_processing
+      - reactive_control
+    consumes:
+      - power_budget
+  power_supervisor:
+    type: power_supervisor
+    provides:
+      - power_supervision
+    consumes:
+      - power_budget
+  pdu:
+    type: power_distribution_unit
+    provides:
+      - power_distribution
+    consumes:
+      - power_budget
+  dock_power_bridge:
+    type: dock_power_bridge
+    provides:
+      - dock_power_bridge
+    consumes:
+      - power_budget
+  nbl_power_budgeter:
+    type: nbl_power_budgeter
+    provides:
+      - nbl_power_budget
+    consumes:
+      - power_budget
+  rlsm:
+    type: rlsm_perception
+    provides:
+      - perception_fusion
   propulsion:
     type: propulsors
     provides:
@@ -37,6 +79,50 @@ components:
     provides:
       - sensor_frame
       - los_masks
+  sensor_imu:
+    type: imu
+    provides:
+      - sensor_element
+  sensor_thermal:
+    type: thermal_sensors
+    provides:
+      - sensor_element
+  sensor_radiation:
+    type: radiation_sensors
+    provides:
+      - sensor_element
+  sensor_docking:
+    type: docking_sensors
+    provides:
+      - sensor_element
+  sensor_proximity:
+    type: proximity_sensors
+    provides:
+      - sensor_element
+  sensor_solar:
+    type: solar_sensor
+    provides:
+      - sensor_element
+  sensor_star_tracker:
+    type: star_tracker
+    provides:
+      - sensor_element
+  radar_360:
+    type: radar
+    provides:
+      - sensor_element
+  lidar:
+    type: lidar
+    provides:
+      - sensor_element
+  spectrometer:
+    type: spectrometer
+    provides:
+      - sensor_element
+  magnetometer:
+    type: magnetometer
+    provides:
+      - sensor_element
   comms:
     type: datalink
     provides:

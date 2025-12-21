@@ -13,7 +13,46 @@
     ],
     "sensors": [
       {"id": "lidar_front", "type": "lidar"},
-      {"id": "imu_main", "type": "imu"}
+      {"id": "imu_main", "type": "imu"},
+      {"id": "sensor_imu", "type": "imu"},
+      {"id": "sensor_thermal", "type": "thermal_sensors"},
+      {"id": "sensor_radiation", "type": "radiation_sensors"},
+      {"id": "sensor_docking", "type": "docking_sensors"},
+      {"id": "sensor_proximity", "type": "proximity_sensors"},
+      {"id": "sensor_solar", "type": "solar_sensor"},
+      {"id": "sensor_star_tracker", "type": "star_tracker"},
+      {"id": "radar_360", "type": "radar"},
+      {"id": "lidar", "type": "lidar"},
+      {"id": "spectrometer", "type": "spectrometer"},
+      {"id": "magnetometer", "type": "magnetometer"}
     ]
+  },
+  "hardware_manifest": {
+    "mainboard": {"id": "mainboard", "type": "mainboard"},
+    "mcqpu": {
+      "id": "mcqpu",
+      "type": "mcqpu",
+      "cores": ["Q-Core", "S-Core", "R-Core"]
+    },
+    "power_plane": [
+      {"id": "power_supervisor", "type": "power_supervisor"},
+      {"id": "pdu", "type": "power_distribution_unit"},
+      {"id": "dock_power_bridge", "type": "dock_power_bridge"},
+      {"id": "nbl_power_budgeter", "type": "nbl_power_budgeter"}
+    ],
+    "sensor_suite": [
+      {"id": "sensor_imu", "type": "imu"},
+      {"id": "sensor_thermal", "type": "thermal_sensors"},
+      {"id": "sensor_radiation", "type": "radiation_sensors"},
+      {"id": "sensor_docking", "type": "docking_sensors"},
+      {"id": "sensor_proximity", "type": "proximity_sensors"},
+      {"id": "sensor_solar", "type": "solar_sensor"},
+      {"id": "sensor_star_tracker", "type": "star_tracker"},
+      {"id": "radar_360", "type": "radar"},
+      {"id": "lidar", "type": "lidar"},
+      {"id": "spectrometer", "type": "spectrometer"},
+      {"id": "magnetometer", "type": "magnetometer"}
+    ],
+    "rlsm": {"id": "rlsm", "type": "rlsm_perception"}
   }
 }

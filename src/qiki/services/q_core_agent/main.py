@@ -52,9 +52,20 @@ def _create_mock_bios_status():
     typical_devices = [
         ("motor_left", "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
         ("motor_right", "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
+        ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
         ("lidar_front", "Front LIDAR", DeviceStatusEnum.OK, "LIDAR sensor operational"),
         ("imu_main", "Main IMU", DeviceStatusEnum.OK, "IMU sensor operational"),
-        ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
+        ("sensor_imu", "IMU Sensor", DeviceStatusEnum.OK, "IMU sensor operational"),
+        ("sensor_thermal", "Thermal Sensors", DeviceStatusEnum.OK, "Thermal sensors operational"),
+        ("sensor_radiation", "Radiation Sensors", DeviceStatusEnum.OK, "Radiation sensors operational"),
+        ("sensor_docking", "Docking Sensors", DeviceStatusEnum.OK, "Docking sensors operational"),
+        ("sensor_proximity", "Proximity Sensors", DeviceStatusEnum.OK, "Proximity sensors operational"),
+        ("sensor_solar", "Solar Sensor", DeviceStatusEnum.OK, "Solar sensor operational"),
+        ("sensor_star_tracker", "Star Tracker", DeviceStatusEnum.OK, "Star tracker operational"),
+        ("radar_360", "Radar 360", DeviceStatusEnum.OK, "Radar operational"),
+        ("lidar", "Lidar", DeviceStatusEnum.OK, "Lidar operational"),
+        ("spectrometer", "Spectrometer", DeviceStatusEnum.OK, "Spectrometer operational"),
+        ("magnetometer", "Magnetometer", DeviceStatusEnum.OK, "Magnetometer operational"),
     ]
 
     for device_id, device_name, status, message in typical_devices:
