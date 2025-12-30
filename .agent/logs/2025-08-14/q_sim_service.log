@@ -1,8 +1,0 @@
-2025-08-14 19:28:45,386 - q_core_agent - INFO - WorldModel initialized.
-2025-08-14 19:28:45,386 - q_core_agent - INFO - QSimService initialized.
-2025-08-14 19:28:45,386 - q_core_agent - INFO - QSimService started.
-2025-08-14 19:28:45,387 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-14T19:28:45.386805Z', 'scalarData': 0.0}
-2025-08-14 19:28:46,387 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-14T19:28:46.387456Z', 'scalarData': 0.0}
-2025-08-14 19:28:47,388 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-14T19:28:47.388102Z', 'scalarData': 0.0}
-2025-08-14 19:28:48,388 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-14T19:28:48.388645Z', 'scalarData': 0.0}
-2025-08-14 19:28:49,389 - q_core_agent - DEBUG - Generated sensor data: {'sensorId': {'value': 'sim_lidar_front'}, 'sensorType': 'LIDAR', 'timestamp': '2025-08-14T19:28:49.389278Z', 'scalarData': 0.0}

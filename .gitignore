@@ -81,6 +81,12 @@ Thumbs.db
 logs/
 .agent/logs/
 
+# Local history / journals / scratch (do not publish)
+HISTORY_COPY/
+journal/
+tmp/
+test_output.txt
+
 # Temporary files
 *.tmp
 *.temp
