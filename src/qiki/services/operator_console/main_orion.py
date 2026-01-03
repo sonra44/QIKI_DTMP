@@ -1889,32 +1889,37 @@ class OrionApp(App):
             return
 
     def _console_log(self, msg: str, *, level: str = "info") -> None:
+        # Operator-facing confirmations: calm strip + console history.
+        self._calm_log(msg, level=level)
+        self._console_table_log(msg, level=level)
+
+    def _calm_log(self, msg: str, *, level: str = "info") -> None:
         ts = time.strftime("%H:%M:%S")
         normalized_level = self._normalize_level(level)
         level_label = self._level_label(normalized_level)
-
         try:
             log = self.query_one("#command-output-log", RichLog)
         except Exception:
-            log = None
-        if log is not None:
-            try:
-                log.write(f"{ts} {level_label} {msg}")
-            except Exception:
-                pass
+            return
+        try:
+            log.write(f"{ts} {level_label} {msg}")
+        except Exception:
+            pass
 
+    def _console_table_log(self, msg: str, *, level: str = "info") -> None:
+        ts = time.strftime("%H:%M:%S")
+        normalized_level = self._normalize_level(level)
+        level_label = self._level_label(normalized_level)
         try:
             table = self.query_one("#console-table", DataTable)
         except Exception:
             return
-
         key = f"con-{int(time.time() * 1000)}"
         try:
             if table.row_count == 1:
                 table.clear()
         except Exception:
             pass
-
         try:
             table.add_row(ts, str(level_label), msg, key=key)
             self._console_by_key[key] = {
@@ -1945,13 +1950,12 @@ class OrionApp(App):
                     pass
         except Exception:
             pass
-
         if self.active_screen == "console":
             self._refresh_inspector()
 
     def _log_msg(self, msg: str) -> None:
-        # Backwards-compatible name: shell logs go to Console/Консоль.
-        self._console_log(msg, level="info")
+        # Background/system chatter: console history only (keeps calm strip clean).
+        self._console_table_log(msg, level="info")
 
     def _init_system_panels(self) -> None:
         for panel_id, title in (
@@ -2573,14 +2577,17 @@ class OrionApp(App):
         ctx = self._selection_by_app.get("events")
         key = ctx.key if ctx is not None else ""
         if not key or key == "seed":
-            self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+            self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
             return
         if self._ack_incident(key):
-            self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+            self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
             self._render_events_table()
             self._refresh_inspector()
         else:
-            self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+            self._console_log(
+                f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}",
+                level="info",
+            )
 
     def action_clear_acknowledged_incidents(self) -> None:
         if self.active_screen != "events":
@@ -2588,7 +2595,10 @@ class OrionApp(App):
         if isinstance(self.focused, Input):
             return
         cleared = self._clear_acked_incidents()
-        self._log_msg(f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}")
+        self._console_log(
+            f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}",
+            level="info",
+        )
         self._render_events_table()
         self._refresh_inspector()
 
@@ -2626,14 +2636,14 @@ class OrionApp(App):
         inner_payload = payload.get("payload")
         if isinstance(inner_payload, dict):
             message = inner_payload.get("status") or inner_payload.get("message")
-        self._log_msg(
+        self._console_log(
             f"↩️ {I18N.bidi('Control response', 'Ответ управления')}: "
             f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()
         )
 
     def action_show_screen(self, screen: str) -> None:
         if screen not in {app.screen for app in ORION_APPS}:
-            self._log_msg(f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {screen}")
+            self._console_log(f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {screen}", level="info")
             return
         self.active_screen = screen
         try:
@@ -3129,15 +3139,18 @@ class OrionApp(App):
                 ctx = self._selection_by_app.get("events")
                 key = ctx.key if ctx is not None else ""
             if not key:
-                self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+                self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
                 return
             if self._ack_incident(key):
-                self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+                self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
                     self._refresh_inspector()
             else:
-                self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+                self._console_log(
+                    f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}",
+                    level="info",
+                )
             return
 
         if low == "подтвердить" or low.startswith("подтвердить "):
@@ -3147,20 +3160,23 @@ class OrionApp(App):
                 ctx = self._selection_by_app.get("events")
                 key = ctx.key if ctx is not None else ""
             if not key:
-                self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+                self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
                 return
             if self._ack_incident(key):
-                self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+                self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
                     self._refresh_inspector()
             else:
-                self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+                self._console_log(
+                    f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}",
+                    level="info",
+                )
             return
 
         if low in {"clear", "очистить"} or low.startswith("clear ") or low.startswith("очистить "):
             cleared = self._clear_acked_incidents()
-            self._log_msg(
+            self._console_log(
                 f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}"
             )
             self._render_events_table()
@@ -3269,7 +3285,10 @@ class OrionApp(App):
             token = tail.strip()
             screen = self._normalize_screen_token(token)
             if screen is None:
-                self._log_msg(f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {token or I18N.NA}")
+                self._console_log(
+                    f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {token or I18N.NA}",
+                    level="info",
+                )
                 return
             self.action_show_screen(screen)
             return
@@ -3283,14 +3302,14 @@ class OrionApp(App):
             await self._publish_sim_command(sim_cmd)
             return
 
-        self._log_msg(f"{I18N.bidi('Unknown command', 'Неизвестная команда')}: {cmd}")
+        self._console_log(f"{I18N.bidi('Unknown command', 'Неизвестная команда')}: {cmd}", level="info")
 
     async def _publish_qiki_intent(self, text: str) -> None:
         if not text:
             return
         self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
         if not self.nats_client:
-            self._log_msg(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}")
+            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
         try:
             await self.nats_client.publish_command(
@@ -3301,9 +3320,12 @@ class OrionApp(App):
                     "ts_epoch": time.time(),
                 },
             )
-            self._log_msg(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}")
+            self._console_log(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}", level="info")
         except Exception as e:
-            self._log_msg(f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}")
+            self._console_log(
+                f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
+                level="error",
+            )
 
     def _update_command_placeholder(self) -> None:
         try:
@@ -3381,7 +3403,7 @@ class OrionApp(App):
 
     async def _publish_sim_command(self, cmd_name: str) -> None:
         if not self.nats_client:
-            self._log_msg(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}")
+            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
 
         cmd = CommandMessage(
@@ -3395,9 +3417,12 @@ class OrionApp(App):
         )
         try:
             await self.nats_client.publish_command(COMMANDS_CONTROL, cmd.model_dump(mode="json"))
-            self._log_msg(f"📤 {I18N.bidi('Published', 'Отправлено')}: {cmd_name}")
+            self._console_log(f"📤 {I18N.bidi('Published', 'Отправлено')}: {cmd_name}", level="info")
         except Exception as e:
-            self._log_msg(f"❌ {I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}")
+            self._console_log(
+                f"❌ {I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}",
+                level="error",
+            )
 
 
 if __name__ == "__main__":
