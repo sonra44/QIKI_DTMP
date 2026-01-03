@@ -50,4 +50,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # По умолчанию запускаем консоль, но можно переопределить через CMD
 # Например: docker run image python -m pytest tests/ -v
-CMD ["python", "main.py"]
+CMD ["python", "main_orion.py"]

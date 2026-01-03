@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import json
 import math
@@ -9,17 +10,18 @@ from typing import Any, Optional
 
 from pydantic import ValidationError
 from rich.table import Table
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Input, Static
+from textual.widgets import DataTable, Input, RichLog, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
 
 try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
@@ -165,10 +167,10 @@ class SnapshotStore:
         if f is None:
             return I18N.NA
         if f == "fresh":
-            return I18N.bidi("FRESH", "СВЕЖО")
+            return I18N.bidi("Fresh", "Свежо")
         if f == "stale":
-            return I18N.bidi("STALE", "УСТАРЕЛО")
-        return I18N.bidi("DEAD", "НЕТ")
+            return I18N.bidi("Stale", "Устарело")
+        return I18N.bidi("Dead", "Нет обновлений")
 
 
 ORION_APPS: tuple[OrionAppSpec, ...] = (
@@ -230,12 +232,47 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
     ),
 )
 
+ORION_MENU_LABELS: dict[str, str] = {
+    "system": I18N.bidi("Sys", "Систем"),
+    "radar": I18N.bidi("Radar", "Радар"),
+    "events": I18N.bidi("Events", "Событ"),
+    "console": I18N.bidi("Console", "Консоль"),
+    "summary": I18N.bidi("Summary", "Сводка"),
+    "power": I18N.bidi("Power", "Пит"),
+    "diagnostics": I18N.bidi("Diag", "Диагн"),
+    "mission": I18N.bidi("Mission", "Миссия"),
+}
+
+
+def menu_label(app: OrionAppSpec) -> str:
+    return ORION_MENU_LABELS.get(app.screen, app.title)
+
 
 SCREEN_BY_ALIAS: dict[str, str] = {a: app.screen for app in ORION_APPS for a in app.aliases}
 
 
-class OrionHeader(Static):
-    """Top status bar for ORION (no-mocks)."""
+class OrionHeaderCell(Static):
+    """One compact header field with an optional tooltip (scalable)."""
+
+    can_focus = False
+
+    def __init__(self, *, id: str) -> None:
+        super().__init__(id=id)
+        self._value: str = ""
+
+    def set_value(self, value: str, *, tooltip: str) -> None:
+        self._value = value
+        self.tooltip = tooltip
+        self.refresh()
+
+    def render(self) -> Text:
+        return Text(self._value, no_wrap=True, overflow="ellipsis")
+
+
+class OrionHeader(Container):
+    """Top status bar for ORION (no-mocks, scalable)."""
+
+    can_focus = False
 
     online = reactive(False)
     battery = reactive(I18N.NA)
@@ -246,17 +283,64 @@ class OrionHeader(Static):
     age = reactive(I18N.NA)
     freshness = reactive(I18N.NA)
 
-    def render(self) -> str:
-        online = I18N.online_offline(self.online)
-        return (
-            f"{online}  "
-            f"{I18N.bidi('Battery', 'Батарея')} {self.battery}  "
-            f"{I18N.bidi('Hull', 'Корпус')} {self.hull}  "
-            f"{I18N.bidi('Radiation', 'Радиация')} {self.rad}  "
-            f"{I18N.bidi('External temperature', 'Наружная температура')} {self.t_ext}  "
-            f"{I18N.bidi('Core temperature', 'Температура ядра')} {self.t_core}  "
-            f"{I18N.bidi('Age', 'Возраст')} {self.age}  "
-            f"{I18N.bidi('Freshness', 'Свежесть')} {self.freshness}"
+    def compose(self) -> ComposeResult:
+        with Container(id="orion-header-grid"):
+            yield OrionHeaderCell(id="hdr-online")
+            yield OrionHeaderCell(id="hdr-battery")
+            yield OrionHeaderCell(id="hdr-hull")
+            yield OrionHeaderCell(id="hdr-radiation")
+            yield OrionHeaderCell(id="hdr-t-ext")
+            yield OrionHeaderCell(id="hdr-t-core")
+            yield OrionHeaderCell(id="hdr-age")
+            yield OrionHeaderCell(id="hdr-freshness")
+
+    def _refresh_cells(self) -> None:
+        def set_cell(cell_id: str, value: str, tooltip: str) -> None:
+            try:
+                self.query_one(f"#{cell_id}", OrionHeaderCell).set_value(value, tooltip=tooltip)
+            except Exception:
+                return
+
+        online_value = I18N.online_offline(self.online)
+        set_cell(
+            "hdr-online",
+            f"{I18N.bidi('Link', 'Связь')} {online_value}",
+            tooltip=f"{I18N.bidi('Link status', 'Состояние связи')}: {online_value}",
+        )
+        set_cell(
+            "hdr-battery",
+            f"{I18N.bidi('Bat', 'Бат')} {self.battery}",
+            tooltip=f"{I18N.bidi('Battery level', 'Уровень батареи')}: {self.battery}",
+        )
+        set_cell(
+            "hdr-hull",
+            f"{I18N.bidi('Hull', 'Корпус')} {self.hull}",
+            tooltip=f"{I18N.bidi('Hull integrity', 'Целостность корпуса')}: {self.hull}",
+        )
+        set_cell(
+            "hdr-radiation",
+            f"{I18N.bidi('Rad', 'Рад')} {self.rad}",
+            tooltip=f"{I18N.bidi('Radiation dose rate', 'Мощность дозы радиации')}: {self.rad}",
+        )
+        set_cell(
+            "hdr-t-ext",
+            f"{I18N.bidi('Ext temp', 'Нар темп')} {self.t_ext}",
+            tooltip=f"{I18N.bidi('External temperature', 'Наружная температура')}: {self.t_ext}",
+        )
+        set_cell(
+            "hdr-t-core",
+            f"{I18N.bidi('Core temp', 'Темп ядра')} {self.t_core}",
+            tooltip=f"{I18N.bidi('Core temperature', 'Температура ядра')}: {self.t_core}",
+        )
+        set_cell(
+            "hdr-age",
+            f"{I18N.bidi('Age', 'Возраст')} {self.age}",
+            tooltip=f"{I18N.bidi('Telemetry age', 'Возраст телеметрии')}: {self.age}",
+        )
+        set_cell(
+            "hdr-freshness",
+            f"{I18N.bidi('Fresh', 'Свеж')} {self.freshness}",
+            tooltip=f"{I18N.bidi('Freshness', 'Свежесть')}: {self.freshness}",
         )
 
     def update_from_telemetry(
@@ -266,6 +350,7 @@ class OrionHeader(Static):
         nats_connected: bool,
         telemetry_age_s: Optional[float],
         telemetry_freshness_label: str,
+        telemetry_freshness_kind: Optional[str],
     ) -> None:
         try:
             normalized = TelemetrySnapshotModel.normalize_payload(payload)
@@ -278,17 +363,18 @@ class OrionHeader(Static):
             self.hull = I18N.pct(hull.get("integrity"), digits=1)
         self.rad = I18N.num_unit(
             normalized.get("radiation_usvh"),
-            "microsieverts per hour",
-            "микрозиверты в час",
+            "µSv/h",
+            "мкЗв/ч",
             digits=2,
         )
         self.t_ext = I18N.num_unit(normalized.get("temp_external_c"), "°C", "°C", digits=1)
         self.t_core = I18N.num_unit(normalized.get("temp_core_c"), "°C", "°C", digits=1)
-        self.age = I18N.fmt_age(telemetry_age_s)
+        self.age = I18N.fmt_age_compact(telemetry_age_s)
         self.freshness = telemetry_freshness_label
 
-        # ONLINE is a function of connectivity + freshness (no magic).
-        self.online = bool(nats_connected and telemetry_freshness_label == I18N.bidi("FRESH", "СВЕЖО"))
+        # Online is a function of connectivity + freshness (no magic).
+        self.online = bool(nats_connected and telemetry_freshness_kind == "fresh")
+        self._refresh_cells()
 
 
 class OrionSidebar(Static):
@@ -302,21 +388,48 @@ class OrionSidebar(Static):
     @staticmethod
     def _line(label: str, *, active: bool) -> str:
         mark = "▶" if active else " "
-        return f"{mark} {label}"
+        return f"{mark} [{label}]"
 
     def render(self) -> str:
+        def fit(text: str, max_width: int) -> str:
+            if max_width <= 0:
+                return text
+            if len(text) <= max_width:
+                return text
+            if max_width <= 1:
+                return "…"
+            return f"{text[: max_width - 1]}…"
+
+        def title_with_state(app: OrionAppSpec) -> str:
+            if app.screen != "events":
+                return menu_label(app)
+            orion = getattr(self, "app", None)
+            live = bool(getattr(orion, "_events_live", True))
+            unread = int(getattr(orion, "_events_unread_count", 0) or 0)
+            suffix: list[str] = []
+            if not live:
+                suffix.append(I18N.bidi("Paused", "Пауза"))
+            if unread > 0:
+                # Put the number first so it stays visible even when truncated.
+                suffix.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
+            if not suffix:
+                return menu_label(app)
+            return f"{menu_label(app)} ({', '.join(suffix)})"
+
         items = [
-            (app.screen, self._line(app.title, active=self.active_screen == app.screen))
+            (app.screen, self._line(title_with_state(app), active=self.active_screen == app.screen))
             for app in ORION_APPS
         ]
+        width = int(getattr(self.size, "width", 0) or 0)
+        usable = max(0, width - 1) if width else 0
         lines = [
-            I18N.bidi("ORION SHELL", "ORION ОБОЛОЧКА"),
-            "—" * 18,
-            *(f"{app.hotkey_label} {line}" for (app, (_sid, line)) in zip(ORION_APPS, items, strict=False)),
+            fit(I18N.bidi("ORION SHELL", "ORION ОБОЛОЧКА"), usable),
+            "—" * (usable or 18),
+            *(fit(f"{app.hotkey_label} {line}", usable) for (app, (_sid, line)) in zip(ORION_APPS, items, strict=False)),
             "",
-            f"{I18N.bidi('TAB', 'TAB')} {I18N.bidi('focus cycle', 'цикл фокуса')}",
-            f"{I18N.bidi('Enter', 'Enter')} {I18N.bidi('run command', 'выполнить команду')}",
-            f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('quit', 'выход')}",
+            fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('focus cycle', 'цикл фокуса')}", usable),
+            fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('run command', 'выполнить команду')}", usable),
+            fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('quit', 'выход')}", usable),
         ]
         return "\n".join(lines)
 
@@ -324,18 +437,34 @@ class OrionSidebar(Static):
 class OrionKeybar(Static):
     def render(self) -> str:
         active_screen = getattr(self.app, "active_screen", "system")
-        extra: list[str] = [f"{I18N.bidi('TAB', 'TAB')} {I18N.bidi('Focus', 'Фокус')}"]
+        extra: list[str] = [f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}"]
+        extra.append(f"{I18N.bidi('Ctrl+G', 'Ctrl+G')} {I18N.bidi('Input mode', 'Режим ввода')}")
         if active_screen in {"radar", "events", "console", "summary"}:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
             )
+        if active_screen == "events":
+            extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
+            extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
+            extra.append(f"R {I18N.bidi('Mark read', 'Отметить прочитанным')}")
         extra.extend(
             [
                 f"F9 {I18N.bidi('Help', 'Помощь')}",
                 f"F10 {I18N.bidi('Quit', 'Выход')}",
             ]
         )
-        return "  ".join([*(f"{app.hotkey_label} {app.title}" for app in ORION_APPS), *extra])
+        result = " ".join(
+            [
+                *(f"[{app.hotkey_label} {menu_label(app)}]" for app in ORION_APPS),
+                *(f"[{x}]" for x in extra),
+            ]
+        )
+        width = int(getattr(self.size, "width", 0) or 0)
+        if width and len(result) > width:
+            if width <= 1:
+                return "…"
+            return f"{result[: width - 1]}…"
+        return result
 
 
 class OrionPanel(Static):
@@ -350,8 +479,8 @@ class OrionInspector(Static):
     @staticmethod
     def _table(rows: list[tuple[str, str]]) -> Table:
         table = Table.grid(expand=True, padding=(0, 1))
-        table.add_column(justify="left", ratio=2, no_wrap=False, overflow="fold")
-        table.add_column(justify="left", ratio=3, no_wrap=False, overflow="fold")
+        table.add_column(justify="left", ratio=2, no_wrap=True, overflow="ellipsis")
+        table.add_column(justify="left", ratio=3, no_wrap=True, overflow="ellipsis")
         for label, value in rows:
             table.add_row(label, value)
         return table
@@ -380,13 +509,21 @@ class OrionApp(App):
     CSS = """
     Screen { background: #050505; }
     #orion-root { padding: 1; }
-    #orion-header { dock: top; height: 2; color: #ffb000; background: #050505; }
+    #orion-workspace { height: 1fr; }
+    #orion-header { dock: top; height: 2; overflow: hidden; padding: 0 1; color: #ffb000; background: #050505; }
+    #orion-header-grid { layout: grid; grid-size: 4 2; grid-gutter: 0 2; }
+    #orion-header-grid.header-2x4 { grid-size: 2 4; grid-gutter: 0 2; }
     #orion-sidebar { dock: left; width: 28; border: round #303030; padding: 1; color: #e0e0e0; background: #050505; }
-    #bottom-bar { dock: bottom; height: 4; }
+    #bottom-bar { dock: bottom; height: 12; }
+    #command-output-log { height: 8; padding: 0 1; color: #e0e0e0; background: #050505; border: round #303030; }
     #command-dock { height: 3; padding: 0 1; width: 1fr; color: #e0e0e0; background: #101010; border: round #303030; }
-    #command-dock:focus { border: round #ffb000; }
+    #command-dock:focus { border: round #ffb000; background: #101010; color: #ffffff; }
+    #command-dock { overflow: hidden; }
+    Input { color: #e0e0e0; background: #101010; overflow: hidden; }
+    Input:focus { color: #ffffff; background: #101010; }
     #orion-keybar { height: 1; color: #a0a0a0; background: #050505; }
     #system-dashboard { layout: grid; grid-size: 2 2; grid-gutter: 1 1; }
+    #system-dashboard.dashboard-1x4 { grid-size: 1 4; grid-gutter: 1 1; }
     .mfd-panel { border: round #303030; padding: 0 1; color: #e0e0e0; background: #050505; }
     #radar-layout { height: 1fr; }
     #radar-ppi { width: 47; height: 25; color: #00ff66; background: #050505; }
@@ -402,7 +539,29 @@ class OrionApp(App):
 
     BINDINGS = [
         *(Binding(app.hotkey, f"show_screen('{app.screen}')", app.title) for app in ORION_APPS),
-        Binding("tab", "cycle_focus", "TAB focus/фокус"),
+        Binding("tab", "cycle_focus", I18N.bidi("Tab focus", "Табуляция фокус")),
+        Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
+        Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
+        Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
+        Binding(
+            "a",
+            "acknowledge_selected_incident",
+            I18N.bidi("Acknowledge selected incident", "Подтвердить выбранный инцидент"),
+            show=False,
+        ),
+        Binding(
+            "x",
+            "clear_acknowledged_incidents",
+            I18N.bidi("Clear acknowledged incidents", "Очистить подтвержденные инциденты"),
+            show=False,
+        ),
+        Binding(
+            "r",
+            "mark_events_read",
+            I18N.bidi("Mark events read", "Отметить прочитанным"),
+            show=False,
+        ),
+        Binding("ctrl+g", "toggle_input_mode", "Input mode/Режим ввода"),
         Binding("f9", "help", "Help/Помощь"),
         Binding("f10", "quit", "Quit/Выход"),
         Binding("ctrl+c", "quit", "Quit/Выход"),
@@ -417,7 +576,12 @@ class OrionApp(App):
         self.nats_client: Optional[NATSClient] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
-        self._events_by_key: dict[str, dict[str, Any]] = {}
+        self._events_by_key: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+        self._events_live: bool = True
+        self._events_unread_count: int = 0
+        self._last_unread_refresh_ts: float = 0.0
+        self._max_event_incidents: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS", "500"))
+        self._max_events_table_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS", "200"))
         self._console_by_key: dict[str, dict[str, Any]] = {}
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
@@ -427,10 +591,30 @@ class OrionApp(App):
         self._snapshots = SnapshotStore()
         self._events_filter_type: Optional[str] = None
         self._events_filter_text: Optional[str] = None
+        self._input_mode: str = "shell"
+        self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
+        self._warned_command_trim: bool = False
         # TTL is used only to mark tracks as stale in UI (no-mocks: we show last known + age).
         # Keep it reasonably large by default so operators can actually observe the pipeline.
         self._track_ttl_sec: float = float(os.getenv("OPERATOR_CONSOLE_TRACK_TTL_SEC", "60.0"))
         self._max_track_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_TRACK_ROWS", "25"))
+        self._max_console_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_CONSOLE_ROWS", "200"))
+        self._output_height_override: Optional[int] = None
+        self._bottom_bar_height_override: Optional[int] = None
+        self._inspector_override: Optional[bool] = None
+        self._sidebar_override: Optional[bool] = None
+        try:
+            raw_output_height = os.getenv("OPERATOR_CONSOLE_OUTPUT_HEIGHT")
+            if raw_output_height:
+                self._output_height_override = max(3, int(raw_output_height))
+        except Exception:
+            self._output_height_override = None
+        try:
+            raw_bottom_bar_height = os.getenv("OPERATOR_CONSOLE_BOTTOM_BAR_HEIGHT")
+            if raw_bottom_bar_height:
+                self._bottom_bar_height_override = max(7, int(raw_bottom_bar_height))
+        except Exception:
+            self._bottom_bar_height_override = None
         self._ppi_renderer = (
             None
             if PpiScopeRenderer is None
@@ -482,6 +666,15 @@ class OrionApp(App):
         }.get(k, kind or I18N.UNKNOWN)
 
     @staticmethod
+    def _event_type_label(event_type: str) -> str:
+        """Render event type as a user-facing label (EN/RU) without polluting storage keys."""
+
+        t = (event_type or "").strip().lower()
+        if not t or t in {"unknown", "неизвестно"}:
+            return I18N.UNKNOWN
+        return event_type
+
+    @staticmethod
     def _source_label(source: str) -> str:
         s = (source or "").strip().lower()
         if s in {"shell", "оболочка"}:
@@ -493,7 +686,7 @@ class OrionApp(App):
         if s in {"radar", "радар"}:
             return I18N.bidi("radar", "радар")
         if s in {"nats"}:
-            return "NATS"
+            return I18N.bidi("NATS message bus", "NATS шина сообщений")
         return source or I18N.NA
 
     @staticmethod
@@ -653,12 +846,12 @@ class OrionApp(App):
     @staticmethod
     def _block_status_label(status: str) -> str:
         s = (status or "").strip().lower()
-        if s in {"ok", "good"}:
-            return I18N.bidi("OK", "ОК")
+        if s in {"ok", "good", "normal"}:
+            return I18N.bidi("Normal", "Норма")
         if s in {"warn", "warning"}:
-            return I18N.bidi("WARNING", "ПРЕДУПРЕЖДЕНИЕ")
+            return I18N.bidi("Warning", "Предупреждение")
         if s in {"crit", "critical"}:
-            return I18N.bidi("CRITICAL", "КРИТИЧНО")
+            return I18N.bidi("Critical", "Критично")
         return I18N.NA
 
     def _freshness_to_status(self, freshness: Optional[str]) -> str:
@@ -695,13 +888,13 @@ class OrionApp(App):
                 block_id="telemetry_age",
                 title=I18N.bidi("Telemetry age", "Возраст телеметрии"),
                 status="na" if telemetry_age_s is None else telemetry_status,
-                value=I18N.fmt_age(telemetry_age_s),
+                value=I18N.fmt_age_compact(telemetry_age_s),
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
             )
         )
 
-        # Power is derived from telemetry (no-mocks): if telemetry is missing -> N/A/НД.
+        # Power is derived from telemetry (no-mocks): if telemetry is missing -> Not available/Нет данных.
         power_value = I18N.NA
         if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
             try:
@@ -764,7 +957,7 @@ class OrionApp(App):
                 block_id="last_event_age",
                 title=I18N.bidi("Last event age", "Возраст последнего события"),
                 status="na" if last_event_age_s is None else "ok",
-                value=I18N.fmt_age(last_event_age_s),
+                value=I18N.fmt_age_compact(last_event_age_s),
                 ts_epoch=self._snapshots.last_ts_epoch(),
                 envelope=None,
             )
@@ -796,13 +989,13 @@ class OrionApp(App):
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status_label = self._block_status_label(block.status)
-            table.add_row(block.title, status_label, block.value, I18N.fmt_age(age_s), key=block.block_id)
+            table.add_row(block.title, status_label, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
             self._summary_by_key[block.block_id] = {
                 "block_id": block.block_id,
                 "title": block.title,
                 "status": status_label,
                 "value": block.value,
-                "age": I18N.fmt_age(age_s),
+                "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
 
@@ -872,32 +1065,32 @@ class OrionApp(App):
             ),
             (
                 "state_of_charge",
-                I18N.bidi("State of charge", "Уровень заряда"),
+                I18N.bidi("SoC", "Заряд"),
                 I18N.pct(get("power.soc_pct"), digits=1),
                 get("power.soc_pct"),
             ),
             (
                 "power_input",
-                I18N.bidi("Power input", "Входная мощность"),
-                I18N.num_unit(get("power.power_in_w"), "watts", "ватты", digits=1),
+                I18N.bidi("P in", "Вх мощн"),
+                I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
                 get("power.power_in_w"),
             ),
             (
                 "power_consumption",
-                I18N.bidi("Power consumption", "Потребляемая мощность"),
-                I18N.num_unit(get("power.power_out_w"), "watts", "ватты", digits=1),
+                I18N.bidi("P out", "Вых мощн"),
+                I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
                 get("power.power_out_w"),
             ),
             (
                 "bus_voltage",
-                I18N.bidi("Bus voltage", "Напряжение шины"),
-                I18N.num_unit(get("power.bus_v"), "volts", "вольты", digits=2),
+                I18N.bidi("Bus V", "Шина В"),
+                I18N.num_unit(get("power.bus_v"), "V", "В", digits=2),
                 get("power.bus_v"),
             ),
             (
                 "bus_current",
-                I18N.bidi("Bus current", "Ток шины"),
-                I18N.num_unit(get("power.bus_a"), "amperes", "амперы", digits=2),
+                I18N.bidi("Bus A", "Шина А"),
+                I18N.num_unit(get("power.bus_a"), "A", "А", digits=2),
                 get("power.bus_a"),
             ),
         ]
@@ -910,15 +1103,15 @@ class OrionApp(App):
 
         now = time.time()
         age_s = max(0.0, now - float(telemetry_env.ts_epoch))
-        age = I18N.fmt_age(age_s)
+        age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
 
         def status_label(raw_value: Any, rendered_value: str) -> str:
             if raw_value is None:
                 return I18N.NA
             if rendered_value == I18N.INVALID:
-                return I18N.bidi("ABNORMAL", "НЕ НОРМА")
-            return I18N.bidi("NORMAL", "НОРМА")
+                return I18N.bidi("Abnormal", "Не норма")
+            return I18N.bidi("Normal", "Норма")
 
         for row_key, label, value, raw in rows:
             status = status_label(raw, value)
@@ -965,11 +1158,11 @@ class OrionApp(App):
         def status_label(status: str) -> str:
             s = (status or "").strip().lower()
             if s in {"ok"}:
-                return I18N.bidi("NORMAL", "НОРМА")
+                return I18N.bidi("Normal", "Норма")
             if s in {"warn"}:
-                return I18N.bidi("WARNING", "ПРЕДУПРЕЖДЕНИЕ")
+                return I18N.bidi("Warning", "Предупреждение")
             if s in {"crit"}:
-                return I18N.bidi("ABNORMAL", "НЕ НОРМА")
+                return I18N.bidi("Abnormal", "Не норма")
             return I18N.NA
 
         system_env = self._snapshots.get_last_by_key("system", "system") or self._snapshots.get_last("system")
@@ -1026,7 +1219,7 @@ class OrionApp(App):
                 block_id="telemetry_age",
                 title=I18N.bidi("Telemetry age", "Возраст телеметрии"),
                 status="na" if telemetry_age_s is None else telemetry_status,
-                value=I18N.fmt_age(telemetry_age_s),
+                value=I18N.fmt_age_compact(telemetry_age_s),
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
             ),
@@ -1042,7 +1235,7 @@ class OrionApp(App):
                 block_id="last_event_age",
                 title=I18N.bidi("Last event age", "Возраст последнего события"),
                 status="na" if last_event_age_s is None else "ok",
-                value=I18N.fmt_age(last_event_age_s),
+                value=I18N.fmt_age_compact(last_event_age_s),
                 ts_epoch=None if last_event_env is None else float(last_event_env.ts_epoch),
                 envelope=last_event_env,
             ),
@@ -1089,13 +1282,13 @@ class OrionApp(App):
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status = status_label(block.status)
-            table.add_row(block.title, status, block.value, I18N.fmt_age(age_s), key=block.block_id)
+            table.add_row(block.title, status, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
             self._diagnostics_by_key[block.block_id] = {
                 "block_id": block.block_id,
                 "title": block.title,
                 "status": status,
                 "value": block.value,
-                "age": I18N.fmt_age(age_s),
+                "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
 
@@ -1208,13 +1401,13 @@ class OrionApp(App):
             if isinstance(v, str):
                 s = v.strip().lower()
                 if s in {"done", "completed", "ok"}:
-                    return I18N.bidi("DONE", "ГОТОВО")
+                    return I18N.bidi("Completed", "Завершено")
                 if s in {"in_progress", "progress", "active", "current"}:
-                    return I18N.bidi("IN PROGRESS", "В РАБОТЕ")
+                    return I18N.bidi("In progress", "В работе")
                 if s in {"pending", "todo", "planned", "next"}:
-                    return I18N.bidi("PENDING", "ОЖИДАЕТ")
+                    return I18N.bidi("Pending", "Ожидает")
             if isinstance(v, bool):
-                return I18N.bidi("DONE", "ГОТОВО") if v else I18N.bidi("PENDING", "ОЖИДАЕТ")
+                return I18N.bidi("Completed", "Завершено") if v else I18N.bidi("Pending", "Ожидает")
             return I18N.NA
 
         for idx, step in enumerate(steps[:50]):
@@ -1306,30 +1499,40 @@ class OrionApp(App):
             return needle in payload_str.lower()[:2000]
 
         items = [(k, r) for (k, r) in items if passes(r)]
-        items.sort(key=lambda kv: float(kv[1]["envelope"].ts_epoch))  # oldest → newest
 
         if not items:
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            table.add_row(
+                "—",
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                key="seed",
+            )
             self._selection_by_app.pop("events", None)
             return
 
         now = time.time()
-        for key, rec in items[-200:]:
+        for key, rec in items[-self._max_events_table_rows :]:
             env: EventEnvelope = rec["envelope"]
             age_s = max(0.0, now - float(env.ts_epoch))
-            age_text = I18N.fmt_age(age_s)
+            age_text = I18N.fmt_age_compact(age_s)
             freshness = self._snapshots.freshness_for_age(env.type, age_s)
             if freshness == "stale":
                 age_text = I18N.stale(age_text)
             elif freshness == "dead":
-                age_text = f"{I18N.bidi('DEAD', 'НЕТ')}: {age_text}"
+                age_text = f"{I18N.bidi('Dead', 'Нет обновлений')}: {age_text}"
+            count = rec.get("count")
+            count_text = str(int(count)) if isinstance(count, int) and count > 1 else "—"
+            acked_text = I18N.yes_no(bool(rec.get("acked")))
             table.add_row(
                 time.strftime("%H:%M:%S", time.localtime(env.ts_epoch)),
                 self._level_label(env.level),
-                env.type,
-                self._source_label(env.source),
+                self._event_type_label(env.type),
                 age_text,
-                env.subject or I18N.NA,
+                count_text,
+                acked_text,
                 key=key,
             )
 
@@ -1350,61 +1553,73 @@ class OrionApp(App):
                 )
             )
         try:
-            table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
+            if self._events_live:
+                table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
         except Exception:
             pass
 
     def compose(self) -> ComposeResult:
         with Vertical(id="orion-root"):
-            yield OrionSidebar(id="orion-sidebar")
             yield OrionHeader(id="orion-header")
-            inspector = OrionInspector(id="orion-inspector")
-            inspector.border_title = I18N.bidi("Inspector", "Инспектор")
-            yield inspector
+            with Container(id="orion-workspace"):
+                yield OrionSidebar(id="orion-sidebar")
+                inspector = OrionInspector(id="orion-inspector")
+                inspector.border_title = I18N.bidi("Inspector", "Инспектор")
+                yield inspector
 
-            with Vertical(id="bottom-bar"):
-                yield Input(
-                    placeholder=(
-                        f"{I18N.bidi('command', 'команда')}> "
-                        f"{I18N.bidi('help', 'помощь')} | "
-                        f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
-                        f"simulation.start/симуляция.старт"
-                    ),
-                    id="command-dock",
-                )
-                yield OrionKeybar(id="orion-keybar")
+                with Vertical(id="bottom-bar"):
+                    output = RichLog(
+                        id="command-output-log",
+                        highlight=False,
+                        markup=False,
+                        wrap=True,
+                        max_lines=200,
+                    )
+                    output.can_focus = False
+                    output.border_title = I18N.bidi("Output", "Вывод")
+                    yield output
+                    yield Input(
+                        placeholder=(
+                            f"{I18N.bidi('command', 'команда')}> "
+                            f"{I18N.bidi('help', 'помощь')} | "
+                            f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
+                            f"simulation.start/симуляция.старт"
+                        ),
+                        id="command-dock",
+                    )
+                    yield OrionKeybar(id="orion-keybar")
 
-            with Container(id="screen-system"):
-                with Container(id="system-dashboard"):
-                    yield OrionPanel(id="panel-nav", classes="mfd-panel")
-                    yield OrionPanel(id="panel-power", classes="mfd-panel")
-                    yield OrionPanel(id="panel-thermal", classes="mfd-panel")
-                    yield OrionPanel(id="panel-struct", classes="mfd-panel")
+                with Container(id="screen-system"):
+                    with Container(id="system-dashboard"):
+                        yield OrionPanel(id="panel-nav", classes="mfd-panel")
+                        yield OrionPanel(id="panel-power", classes="mfd-panel")
+                        yield OrionPanel(id="panel-thermal", classes="mfd-panel")
+                        yield OrionPanel(id="panel-struct", classes="mfd-panel")
 
-                with Container(id="screen-radar"):
-                    with Horizontal(id="radar-layout"):
-                        yield Static(id="radar-ppi")
-                        radar_table: DataTable = DataTable(id="radar-table")
-                        radar_table.add_columns(
-                            I18N.bidi("Track", "Трек"),
-                            I18N.bidi("Range (meters)", "Дальность (метры)"),
-                            I18N.bidi("Bearing (degrees)", "Пеленг (градусы)"),
-                            I18N.bidi("Radial velocity (meters per second)", "Радиальная скорость (метры в секунду)"),
-                            I18N.bidi("Type", "Тип"),
-                        )
-                        yield radar_table
+                    with Container(id="screen-radar"):
+                        with Horizontal(id="radar-layout"):
+                            yield Static(id="radar-ppi")
+                            radar_table: DataTable = DataTable(id="radar-table")
+                            radar_table.add_columns(
+                                I18N.bidi("Track", "Трек"),
+                                I18N.bidi("Range", "Дальность"),
+                                I18N.bidi("Bearing", "Пеленг"),
+                                I18N.bidi("Vr", "Скорость"),
+                                I18N.bidi("Object", "Объект"),
+                            )
+                            yield radar_table
 
-            with Container(id="screen-events"):
-                events_table: DataTable = DataTable(id="events-table")
-                events_table.add_columns(
-                    I18N.bidi("Time", "Время"),
-                    I18N.bidi("Severity", "Серьезность"),
-                    I18N.bidi("Type", "Тип"),
-                    I18N.bidi("Source", "Источник"),
-                    I18N.bidi("Age", "Возраст"),
-                    I18N.bidi("Subject", "Тема"),
-                )
-                yield events_table
+                with Container(id="screen-events"):
+                    events_table: DataTable = DataTable(id="events-table")
+                    events_table.add_columns(
+                        I18N.bidi("Time", "Время"),
+                        I18N.bidi("Level", "Уровень"),
+                        I18N.bidi("Type", "Тип"),
+                        I18N.bidi("Age", "Возраст"),
+                        I18N.bidi("Count", "Счётчик"),
+                        I18N.bidi("Ack", "Подтв"),
+                    )
+                    yield events_table
 
             with Container(id="screen-console"):
                 console_table: DataTable = DataTable(id="console-table")
@@ -1460,6 +1675,7 @@ class OrionApp(App):
         self._seed_diagnostics_table()
         self._seed_mission_table()
         self._update_system_snapshot()
+        self._update_command_placeholder()
         self._refresh_inspector()
         self._apply_responsive_chrome()
         await self._init_nats()
@@ -1476,43 +1692,197 @@ class OrionApp(App):
     def on_resize(self) -> None:
         self._apply_responsive_chrome()
 
+    def action_toggle_inspector(self) -> None:
+        # None -> auto (depending on density), otherwise hard override.
+        if self._inspector_override is None:
+            self._inspector_override = False
+        elif self._inspector_override is False:
+            self._inspector_override = True
+        else:
+            self._inspector_override = None
+        self._apply_responsive_chrome()
+
+    def action_toggle_sidebar(self) -> None:
+        if self._sidebar_override is None:
+            self._sidebar_override = False
+        elif self._sidebar_override is False:
+            self._sidebar_override = True
+        else:
+            self._sidebar_override = None
+        self._apply_responsive_chrome()
+
     def _apply_responsive_chrome(self) -> None:
         width = int(getattr(self.size, "width", 0) or 0)
-        if width and width < 140:
-            sidebar_width = 20
-            inspector_width = 32
+        height = int(getattr(self.size, "height", 0) or 0)
+
+        # Density breakpoints (aimed at tmux splits).
+        if width and width < 90:
+            density = "tiny"
+        elif width and width < 120:
+            density = "narrow"
         elif width and width < 170:
+            density = "normal"
+        else:
+            density = "wide"
+
+        if density == "tiny":
+            sidebar_width = 0
+            inspector_width = 0
+        elif density == "narrow":
+            sidebar_width = 18
+            inspector_width = 26
+        elif density == "normal":
             sidebar_width = 22
-            inspector_width = 36
+            inspector_width = 34
         else:
             sidebar_width = 28
             inspector_width = 44
 
+        # Header grid: 4x2 normally, 2x4 in tiny/narrow.
         try:
-            self.query_one("#orion-sidebar", OrionSidebar).styles.width = sidebar_width
-        except Exception:
-            pass
-        try:
-            self.query_one("#orion-inspector", OrionInspector).styles.width = inspector_width
+            header_grid = self.query_one("#orion-header-grid")
+            header_grid.set_class(density in {"tiny", "narrow"}, "header-2x4")
         except Exception:
             pass
 
+        # System dashboard reflow: 2x2 -> 1x4 on narrow/tiny.
+        try:
+            dashboard = self.query_one("#system-dashboard")
+            dashboard.set_class(density in {"tiny", "narrow"}, "dashboard-1x4")
+        except Exception:
+            pass
+
+        # Sidebar / Inspector visibility: reduce chrome first, keep content stable.
+        sidebar_visible = density != "tiny"
+        if self._sidebar_override is not None:
+            sidebar_visible = bool(self._sidebar_override)
+
+        inspector_visible = density in {"wide", "normal"}
+        if self._inspector_override is not None:
+            inspector_visible = bool(self._inspector_override)
+
+        try:
+            sidebar = self.query_one("#orion-sidebar", OrionSidebar)
+            sidebar.styles.display = "block" if sidebar_visible else "none"
+            if sidebar_visible:
+                sidebar.styles.width = sidebar_width
+        except Exception:
+            pass
+
+        try:
+            inspector = self.query_one("#orion-inspector", OrionInspector)
+            inspector.styles.display = "block" if inspector_visible else "none"
+            if inspector_visible:
+                inspector.styles.width = inspector_width
+        except Exception:
+            pass
+
+        # Compact tables on narrow panes by reducing fixed column widths.
+        try:
+            self._apply_table_column_widths(density=density, total_width=width)
+        except Exception:
+            pass
+
+        # Calm output strip should be visible, but must not crush content on short terminals.
+        try:
+            if self._output_height_override is not None:
+                output_height = self._output_height_override
+            elif height and height < 30:
+                output_height = 5
+            elif height and height < 36:
+                output_height = 6
+            else:
+                output_height = 8
+
+            if self._bottom_bar_height_override is not None:
+                bottom_bar_height = self._bottom_bar_height_override
+            elif self._output_height_override is not None:
+                # bottom-bar contains: output log + command input + keybar
+                bottom_bar_height = output_height + 4
+            elif height and height < 30:
+                bottom_bar_height = 9
+            elif height and height < 36:
+                bottom_bar_height = 10
+            else:
+                bottom_bar_height = 12
+
+            self.query_one("#command-output-log", RichLog).styles.height = output_height
+            self.query_one("#bottom-bar").styles.height = bottom_bar_height
+        except Exception:
+            pass
+
+    def _apply_table_column_widths(self, *, density: str, total_width: int) -> None:
+        """Best-effort DataTable column resizing for tmux splits."""
+
+        if total_width <= 0:
+            return
+
+        def set_widths(table_id: str, widths: list[int]) -> None:
+            try:
+                table = self.query_one(f"#{table_id}", DataTable)
+            except Exception:
+                return
+            try:
+                cols = list(getattr(table, "columns", []) or [])
+            except Exception:
+                cols = []
+            if not cols:
+                return
+            for idx, w in enumerate(widths):
+                if idx >= len(cols):
+                    break
+                if w <= 0:
+                    continue
+                try:
+                    cols[idx].width = int(w)
+                except Exception:
+                    pass
+            try:
+                table.refresh()
+            except Exception:
+                pass
+
+        # These tables were created with fixed widths; narrow terminals need smaller presets.
+        if density in {"tiny", "narrow"}:
+            set_widths("summary-table", [28, 10, 20, 12])
+            set_widths("power-table", [26, 10, 16, 12, 12])
+            set_widths("diagnostics-table", [28, 10, 20, 12])
+            set_widths("mission-table", [22, 10, 34])
+        elif density == "normal":
+            set_widths("summary-table", [36, 14, 26, 18])
+            set_widths("power-table", [32, 14, 20, 18, 16])
+            set_widths("diagnostics-table", [36, 14, 24, 18])
+            set_widths("mission-table", [28, 14, 52])
+        else:
+            # Keep the original compose-time widths on wide screens.
+            return
+
     def _console_log(self, msg: str, *, level: str = "info") -> None:
+        ts = time.strftime("%H:%M:%S")
+        normalized_level = self._normalize_level(level)
+        level_label = self._level_label(normalized_level)
+
+        try:
+            log = self.query_one("#command-output-log", RichLog)
+        except Exception:
+            log = None
+        if log is not None:
+            try:
+                log.write(f"{ts} {level_label} {msg}")
+            except Exception:
+                pass
+
         try:
             table = self.query_one("#console-table", DataTable)
         except Exception:
             return
 
-        ts = time.strftime("%H:%M:%S")
         key = f"con-{int(time.time() * 1000)}"
         try:
             if table.row_count == 1:
                 table.clear()
         except Exception:
             pass
-
-        normalized_level = self._normalize_level(level)
-        level_label = self._level_label(normalized_level)
 
         try:
             table.add_row(ts, str(level_label), msg, key=key)
@@ -1536,6 +1906,12 @@ class OrionApp(App):
                     )
                 )
             table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
+            if self._max_console_rows > 0:
+                try:
+                    while table.row_count > self._max_console_rows:
+                        table.remove_row(0)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1566,8 +1942,8 @@ class OrionApp(App):
     @staticmethod
     def _system_table(rows: list[tuple[str, str]]) -> Table:
         table = Table.grid(expand=True, padding=(0, 1))
-        table.add_column(justify="left", ratio=2, no_wrap=False, overflow="fold")
-        table.add_column(justify="left", ratio=3, no_wrap=False, overflow="fold")
+        table.add_column(justify="left", ratio=2, no_wrap=True, overflow="ellipsis")
+        table.add_column(justify="left", ratio=3, no_wrap=True, overflow="ellipsis")
         for label, value in rows:
             table.add_row(label, value)
         return table
@@ -1587,42 +1963,40 @@ class OrionApp(App):
             z = get("position.z")
             if not all(isinstance(v, (int, float)) for v in (x, y, z)):
                 return I18N.NA
-            return (
-                f"{round(float(x), 2)},{round(float(y), 2)},{round(float(z), 2)}"
-                f"{I18N.bidi('m', 'м')}"
-            )
+            return f"{round(float(x), 2)},{round(float(y), 2)},{round(float(z), 2)}"
 
         def fmt_att_deg(key: str) -> str:
             value = get(f"attitude.{key}")
             if not isinstance(value, (int, float)):
                 return I18N.NA
-            return I18N.num_unit(math.degrees(float(value)), "degrees", "градусы", digits=1)
+            return I18N.num_unit(math.degrees(float(value)), "°", "°", digits=1)
 
         online = bool(self.nats_connected and self._snapshots.freshness("telemetry") == "fresh")
-        age_value = I18N.fmt_age(self._snapshots.age_s("telemetry"))
+        age_value = I18N.fmt_age_compact(self._snapshots.age_s("telemetry"))
 
         nav_rows = [
             (I18N.bidi("Link", "Связь"), I18N.online_offline(online)),
-            (I18N.bidi("Updated", "Обновлено"), updated),
+            (I18N.bidi("Upd", "Обн"), updated),
             (I18N.bidi("Age", "Возраст"), age_value),
-            (I18N.bidi("Position", "Позиция"), fmt_pos()),
+            (I18N.bidi("Pos", "Поз"), fmt_pos()),
             (
                 I18N.bidi("Velocity", "Скорость"),
-                I18N.num_unit(get("velocity"), "meters per second", "метры в секунду", digits=2),
+                I18N.num_unit(get("velocity"), "m/s", "м/с", digits=2),
             ),
-            (I18N.bidi("Heading", "Курс"), I18N.num_unit(get("heading"), "degrees", "градусы", digits=1)),
+            (I18N.bidi("Heading", "Курс"), I18N.num_unit(get("heading"), "°", "°", digits=1)),
             (I18N.bidi("Roll", "Крен"), fmt_att_deg("roll_rad")),
             (I18N.bidi("Pitch", "Тангаж"), fmt_att_deg("pitch_rad")),
             (I18N.bidi("Yaw", "Рыскание"), fmt_att_deg("yaw_rad")),
         ]
 
+        # Power panel height may be small in tmux; keep the first rows as the most important.
         power_rows = [
-            (I18N.bidi("Battery", "Батарея"), I18N.pct(get("battery"), digits=2)),
-            (I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
-            (I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "watts", "ватты", digits=1)),
-            (I18N.bidi("Power output", "Выходная мощность"), I18N.num_unit(get("power.power_out_w"), "watts", "ватты", digits=1)),
-            (I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "volts", "вольты", digits=2)),
-            (I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "amperes", "амперы", digits=2)),
+            (I18N.bidi("SoC", "Заряд"), I18N.pct(get("power.soc_pct"), digits=2)),
+            (I18N.bidi("P in", "Вх мощн"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
+            (I18N.bidi("P out", "Вых мощн"), I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1)),
+            (I18N.bidi("Bus V", "Шина В"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
+            (I18N.bidi("Bus A", "Шина А"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
+            (I18N.bidi("Bat", "Бат"), I18N.pct(get("battery"), digits=2)),
         ]
 
         def thermal_node(node_id: str) -> Any:
@@ -1639,18 +2013,18 @@ class OrionApp(App):
             (I18N.bidi("Bus", "Шина"), I18N.num_unit(thermal_node("bus"), "°C", "°C", digits=1)),
             (I18N.bidi("Battery", "Батарея"), I18N.num_unit(thermal_node("battery"), "°C", "°C", digits=1)),
             (I18N.bidi("Radiator", "Радиатор"), I18N.num_unit(thermal_node("radiator"), "°C", "°C", digits=1)),
-            (I18N.bidi("External temperature", "Наружная температура"), I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1)),
-            (I18N.bidi("Core temperature", "Температура ядра"), I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1)),
+            (I18N.bidi("Ext temp", "Нар темп"), I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1)),
+            (I18N.bidi("Core temp", "Темп ядра"), I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1)),
         ]
 
         struct_rows = [
-            (I18N.bidi("Hull integrity", "Целостность корпуса"), I18N.pct(get("hull.integrity"), digits=1)),
+            (I18N.bidi("Hull", "Корпус"), I18N.pct(get("hull.integrity"), digits=1)),
             (
                 I18N.bidi("Radiation", "Радиация"),
-                I18N.num_unit(get("radiation_usvh"), "microsieverts per hour", "микрозиверты в час", digits=2),
+                I18N.num_unit(get("radiation_usvh"), "µSv/h", "мкЗв/ч", digits=2),
             ),
-            (I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"), I18N.pct(get("cpu_usage"), digits=1)),
-            (I18N.bidi("Memory usage", "Загрузка памяти"), I18N.pct(get("memory_usage"), digits=1)),
+            (I18N.bidi("CPU", "ЦП"), I18N.pct(get("cpu_usage"), digits=1)),
+            (I18N.bidi("Mem", "Пам"), I18N.pct(get("memory_usage"), digits=1)),
         ]
 
         for panel_id, rows in (
@@ -1689,12 +2063,21 @@ class OrionApp(App):
             table = self.query_one("#events-table", DataTable)
         except Exception:
             return
-        self._events_by_key = {}
+        self._events_by_key = OrderedDict()
+        self._events_live = True
+        self._events_unread_count = 0
         self._selection_by_app.pop("events", None)
         self._events_filter_type = None
         self._events_filter_text = None
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row(
+            "—",
+            I18N.NA,
+            I18N.NA,
+            I18N.NA,
+            I18N.NA,
+            key="seed",
+        )
 
     def _seed_console_table(self) -> None:
         try:
@@ -1705,6 +2088,17 @@ class OrionApp(App):
         self._selection_by_app.pop("console", None)
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, key="seed")
+
+        try:
+            log = self.query_one("#command-output-log", RichLog)
+        except Exception:
+            log = None
+        if log is not None:
+            try:
+                log.clear()
+                log.write(f"— {I18N.bidi('Console ready', 'Консоль готова')} —")
+            except Exception:
+                pass
 
     def _seed_summary_table(self) -> None:
         try:
@@ -1798,6 +2192,7 @@ class OrionApp(App):
                 nats_connected=self.nats_connected,
                 telemetry_age_s=self._snapshots.age_s("telemetry"),
                 telemetry_freshness_label=self._snapshots.freshness_label("telemetry"),
+                telemetry_freshness_kind=self._snapshots.freshness("telemetry"),
             )
         except Exception:
             return
@@ -1816,20 +2211,26 @@ class OrionApp(App):
                     return app.title
             return screen
 
-        rows: list[tuple[str, str]] = [
-            (I18N.bidi("Active", "Актив"), app_title(self.active_screen)),
-            (I18N.bidi("NATS", "NATS"), I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA),
+        summary_rows: list[tuple[str, str]] = [
+            (I18N.bidi("Active screen", "Активный экран"), app_title(self.active_screen)),
+            (
+                I18N.bidi("NATS connectivity", "Связь с NATS"),
+                I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA,
+            ),
         ]
 
         telemetry_age_s = self._snapshots.age_s("telemetry")
         if telemetry_age_s is None:
-            rows.append((I18N.bidi("Telemetry", "Телеметрия"), I18N.NA))
+            summary_rows.append((I18N.bidi("Telemetry", "Телеметрия"), I18N.NA))
         else:
-            rows.append((I18N.bidi("Telemetry age", "Возраст телеметрии"), I18N.fmt_age(telemetry_age_s)))
+            summary_rows.append((I18N.bidi("Telemetry age", "Возраст телеметрии"), I18N.fmt_age_compact(telemetry_age_s)))
 
         ctx = self._selection_by_app.get(self.active_screen)
+        fields_rows: list[tuple[str, str]] = []
+        raw_preview = I18N.NA
+        actions: list[str] = []
         if ctx is None:
-            rows.append((I18N.bidi("Selection", "Выбор"), I18N.bidi("No selection", "Выбора нет")))
+            fields_rows.append((I18N.bidi("Selection", "Выбор"), I18N.bidi("No selection", "Выбора нет")))
         else:
             age_s = time.time() - ctx.created_at_epoch
             freshness = self._fmt_age_s(age_s)
@@ -1837,6 +2238,7 @@ class OrionApp(App):
                 ttl = self._track_ttl_sec
                 if ttl > 0 and isinstance(age_s, (int, float)) and age_s > ttl:
                     freshness = I18N.stale(freshness)
+
             mission_context = None
             if ctx.app_id == "mission":
                 env = None
@@ -1853,30 +2255,102 @@ class OrionApp(App):
                 priority = I18N.fmt_na(mission.get("priority") or mission.get("prio"))
                 mission_context = f"{designator} — {objective} ({I18N.bidi('Priority', 'Приоритет')}: {priority})"
 
-            detail_rows: list[tuple[str, str]] = [
-                (I18N.bidi("Type", "Тип"), self._kind_label(ctx.kind)),
-                (I18N.bidi("Source", "Источник"), self._source_label(ctx.source)),
-                (I18N.bidi("Freshness", "Возраст"), freshness),
-                (I18N.bidi("Key", "Ключ"), ctx.key or I18N.NA),
-                (I18N.bidi("Identifier", "Идентификатор"), ", ".join(ctx.ids) if ctx.ids else I18N.NA),
-                (
-                    I18N.bidi("Timestamp", "Время"),
-                    time.strftime("%H:%M:%S", time.localtime(ctx.created_at_epoch))
-                    if isinstance(ctx.created_at_epoch, (int, float))
-                    else I18N.NA,
-                ),
-            ]
+            fields_rows.extend(
+                [
+                    (I18N.bidi("Type", "Тип"), self._kind_label(ctx.kind)),
+                    (I18N.bidi("Source", "Источник"), self._source_label(ctx.source)),
+                    (I18N.bidi("Age", "Возраст"), freshness),
+                    (I18N.bidi("Key", "Ключ"), ctx.key or I18N.NA),
+                    (I18N.bidi("Identifiers", "Идентификаторы"), ", ".join(ctx.ids) if ctx.ids else I18N.NA),
+                    (
+                        I18N.bidi("Timestamp", "Время"),
+                        time.strftime("%H:%M:%S", time.localtime(ctx.created_at_epoch))
+                        if isinstance(ctx.created_at_epoch, (int, float))
+                        else I18N.NA,
+                    ),
+                ]
+            )
+            if ctx.app_id == "events":
+                rec = self._events_by_key.get(ctx.key)
+                if isinstance(rec, dict) and isinstance(rec.get("envelope"), EventEnvelope):
+                    env: EventEnvelope = rec["envelope"]
+                    count = rec.get("count")
+                    count_text = str(int(count)) if isinstance(count, int) else I18N.NA
+                    fields_rows.extend(
+                        [
+                            (I18N.bidi("Severity", "Серьезность"), self._level_label(env.level)),
+                            (I18N.bidi("Event type", "Тип события"), self._event_type_label(env.type)),
+                            (I18N.bidi("Subject", "Тема"), env.subject or I18N.NA),
+                            (I18N.bidi("Count", "Счётчик"), count_text),
+                            (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(rec.get("acked")))),
+                        ]
+                    )
+            if ctx.app_id == "radar" and isinstance(ctx.payload, dict):
+                payload = ctx.payload
+                range_m = payload.get("range_m", payload.get("range"))
+                bearing_deg = payload.get("bearing_deg", payload.get("bearing"))
+                vr_mps = payload.get("vr_mps", payload.get("velocity"))
+                object_type = payload.get("object_type", payload.get("type"))
+                fields_rows.extend(
+                    [
+                        (I18N.bidi("Range", "Дальность"), I18N.num_unit(range_m, "meters", "метры", digits=1)),
+                        (I18N.bidi("Bearing", "Пеленг"), I18N.num_unit(bearing_deg, "°", "°", digits=1)),
+                        (
+                            I18N.bidi("Radial velocity", "Радиальная скорость"),
+                            I18N.num_unit(vr_mps, "meters per second", "метры в секунду", digits=2),
+                        ),
+                        (I18N.bidi("Object type", "Тип объекта"), I18N.fmt_na(object_type)),
+                    ]
+                )
+            if ctx.app_id == "console" and isinstance(ctx.payload, dict):
+                payload = ctx.payload
+                fields_rows.extend(
+                    [
+                        (I18N.bidi("Level", "Уровень"), I18N.fmt_na(payload.get("level"))),
+                        (I18N.bidi("Message", "Сообщение"), I18N.fmt_na(payload.get("message"))),
+                    ]
+                )
             if ctx.app_id == "mission":
-                detail_rows.append(
+                fields_rows.append(
                     (
                         I18N.bidi("Mission context", "Контекст миссии"),
                         mission_context if mission_context is not None else I18N.NA,
                     )
                 )
-            detail_rows.append((I18N.bidi("Preview", "Превью"), OrionInspector.safe_preview(ctx.payload)))
-            rows.extend(detail_rows)
 
-        inspector.update(OrionInspector._table(rows))
+            raw_preview = OrionInspector.safe_preview(ctx.payload)
+
+        if self.active_screen == "events":
+            state = I18N.bidi("Live", "Живое") if self._events_live else I18N.bidi("Paused", "Пауза")
+            unread = int(self._events_unread_count) if not self._events_live else 0
+            actions.append(f"Ctrl+Y — {I18N.bidi('toggle events mode', 'переключить режим событий')} ({state})")
+            if ctx is not None and ctx.app_id == "events":
+                actions.append(
+                    f"{I18N.bidi('Acknowledge', 'Подтвердить')}: acknowledge <key/ключ> | подтвердить <ключ>"
+                )
+                actions.append(f"A — {I18N.bidi('Acknowledge selected incident', 'Подтвердить выбранный инцидент')}")
+            actions.append(f"{I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}: clear/очистить")
+            actions.append(f"X — {I18N.bidi('Clear acknowledged incidents', 'Очистить подтвержденные инциденты')}")
+            if not self._events_live:
+                actions.append(f"R — {I18N.bidi('Mark events read', 'Отметить события прочитанными')}")
+            if unread > 0:
+                # Put the number first so it stays visible even when truncated.
+                actions.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
+
+        outer = Table.grid(expand=True)
+        outer.add_column(ratio=1)
+        outer.add_row(Text(I18N.bidi("Summary", "Сводка"), style="bold"))
+        outer.add_row(OrionInspector._table(summary_rows))
+        outer.add_row(Text(I18N.bidi("Fields", "Поля"), style="bold"))
+        outer.add_row(OrionInspector._table(fields_rows))
+        outer.add_row(Text(I18N.bidi("Raw data (JSON)", "Сырые данные (JSON)"), style="bold"))
+        outer.add_row(Text(raw_preview, style="dim"))
+        if actions:
+            outer.add_row(Text(I18N.bidi("Actions", "Действия"), style="bold"))
+            for line in actions:
+                outer.add_row(Text(f"- {line}", no_wrap=True, overflow="ellipsis"))
+
+        inspector.update(outer)
 
     async def handle_telemetry_data(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
@@ -1955,9 +2429,9 @@ class OrionApp(App):
             severity = payload.get("severity")
 
         normalized_level = self._normalize_level(severity)
-        key = f"evt-{int(time.time() * 1000)}"
         ts_epoch = time.time()
         etype = self._derive_event_type(subject, payload)
+        key = self._incident_key(subject, payload, etype)
         env = EventEnvelope(
             event_id=key,
             type=etype,
@@ -1967,19 +2441,150 @@ class OrionApp(App):
             payload=payload,
             subject=str(subject or ""),
         )
-        self._events_by_key[key] = {"envelope": env}
+        existing = self._events_by_key.get(key)
+        if isinstance(existing, dict) and isinstance(existing.get("envelope"), EventEnvelope):
+            first_ts = existing.get("first_ts_epoch")
+            count = existing.get("count")
+            acked = bool(existing.get("acked"))
+            existing.update(
+                {
+                    "envelope": env,
+                    "first_ts_epoch": float(first_ts) if isinstance(first_ts, (int, float)) else env.ts_epoch,
+                    "count": int(count) + 1 if isinstance(count, int) else 2,
+                    "acked": False if acked else existing.get("acked", False),
+                }
+            )
+            self._events_by_key[key] = existing
+        else:
+            self._events_by_key[key] = {"envelope": env, "first_ts_epoch": env.ts_epoch, "count": 1, "acked": False}
+        self._events_by_key.move_to_end(key, last=True)
+        while len(self._events_by_key) > self._max_event_incidents:
+            self._events_by_key.popitem(last=False)
         self._snapshots.put(env)
 
-        # Re-render under active filter and keep selection consistent.
-        self._render_events_table()
+        if self._events_live:
+            # Re-render under active filter and keep selection consistent.
+            self._render_events_table()
+        else:
+            self._events_unread_count += 1
+            try:
+                self.query_one("#orion-sidebar", OrionSidebar).refresh()
+            except Exception:
+                pass
+            # While paused, the table stays stable, but the operator still needs a live unread counter.
+            # Refresh the inspector with a small throttle to avoid repaint storms under high event rates.
+            if self.active_screen == "events":
+                now = time.time()
+                if now - float(self._last_unread_refresh_ts) >= 0.5:
+                    self._last_unread_refresh_ts = now
+                    self._refresh_inspector()
 
         if self.active_screen == "events":
-            self._refresh_inspector()
+            if self._events_live:
+                self._refresh_inspector()
         if self.active_screen == "mission" and env.type in {"mission", "task"}:
             self._render_mission_table()
             self._refresh_inspector()
         if self.active_screen == "summary":
             self._render_summary_table()
+
+    def _incident_key(self, subject: Any, payload: Any, etype: str) -> str:
+        s = str(subject or "").strip()
+        t = (etype or "").strip().lower() or I18N.UNKNOWN
+        ident: Optional[str] = None
+        if isinstance(payload, dict):
+            for field in ("id", "event_id", "track_id", "mission_id", "task_id", "designator", "name"):
+                value = payload.get(field)
+                if isinstance(value, (str, int)) and str(value).strip():
+                    ident = str(value).strip()
+                    break
+        parts = [t, "nats", s]
+        if ident:
+            parts.append(ident)
+        return "|".join(p for p in parts if p)
+
+    def _ack_incident(self, key: str) -> bool:
+        k = (key or "").strip()
+        if not k:
+            return False
+        rec = self._events_by_key.get(k)
+        if not isinstance(rec, dict) or not isinstance(rec.get("envelope"), EventEnvelope):
+            return False
+        rec["acked"] = True
+        self._events_by_key[k] = rec
+        return True
+
+    def _clear_acked_incidents(self) -> int:
+        cleared = 0
+        for k in list(self._events_by_key.keys()):
+            rec = self._events_by_key.get(k)
+            if not isinstance(rec, dict) or not isinstance(rec.get("envelope"), EventEnvelope):
+                continue
+            if bool(rec.get("acked")):
+                try:
+                    del self._events_by_key[k]
+                    cleared += 1
+                except Exception:
+                    continue
+        return cleared
+
+    def action_toggle_events_live(self) -> None:
+        self._events_live = not self._events_live
+        if self._events_live:
+            self._events_unread_count = 0
+            self._render_events_table()
+            if self.active_screen == "events":
+                self._refresh_inspector()
+            self._console_log(f"{I18N.bidi('Events live', 'События живое')}", level="info")
+        else:
+            self._console_log(f"{I18N.bidi('Events paused', 'События пауза')}", level="info")
+        try:
+            self.query_one("#orion-sidebar", OrionSidebar).refresh()
+        except Exception:
+            pass
+
+    def action_acknowledge_selected_incident(self) -> None:
+        if self.active_screen != "events":
+            return
+        if isinstance(self.focused, Input):
+            return
+        ctx = self._selection_by_app.get("events")
+        key = ctx.key if ctx is not None else ""
+        if not key or key == "seed":
+            self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+            return
+        if self._ack_incident(key):
+            self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+            self._render_events_table()
+            self._refresh_inspector()
+        else:
+            self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+
+    def action_clear_acknowledged_incidents(self) -> None:
+        if self.active_screen != "events":
+            return
+        if isinstance(self.focused, Input):
+            return
+        cleared = self._clear_acked_incidents()
+        self._log_msg(f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}")
+        self._render_events_table()
+        self._refresh_inspector()
+
+    def action_mark_events_read(self) -> None:
+        if self.active_screen != "events":
+            return
+        if isinstance(self.focused, Input):
+            return
+        if self._events_live:
+            return
+        self._events_unread_count = 0
+        try:
+            self.query_one("#orion-sidebar", OrionSidebar).refresh()
+        except Exception:
+            pass
+        if self.active_screen == "events":
+            self._refresh_inspector()
+        self._console_log(f"{I18N.bidi('Unread cleared', 'Непрочитано очищено')}", level="info")
 
     async def handle_control_response(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
@@ -2073,6 +2678,26 @@ class OrionApp(App):
         target = order[(idx + 1) % len(order)]
         try:
             self.set_focus(target)
+        except Exception:
+            pass
+
+    def action_focus_command(self) -> None:
+        try:
+            self.set_focus(self.query_one("#command-dock", Input))
+        except Exception:
+            pass
+
+    def action_toggle_input_mode(self) -> None:
+        self._input_mode = "qiki" if self._input_mode == "shell" else "shell"
+        mode = (
+            I18N.bidi("operator shell", "оболочка оператора")
+            if self._input_mode == "shell"
+            else I18N.bidi("QIKI input", "ввод QIKI")
+        )
+        self._console_log(f"{I18N.bidi('Input mode', 'Режим ввода')}: {mode}", level="info")
+        self._update_command_placeholder()
+        try:
+            self.set_focus(self.query_one("#command-dock", Input))
         except Exception:
             pass
 
@@ -2290,7 +2915,127 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
-            f"{I18N.bidi('Filters', 'Фильтры')}: type <name> | type off | filter <text> | filter off",
+            f"{I18N.bidi('Filters', 'Фильтры')}: "
+            f"type/тип <name/имя> | type off/тип отключить | filter/фильтр <text/текст> | filter off/фильтр отключить",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Events mode', 'Режим событий')}: "
+            f"{I18N.bidi('live', 'живое')} | {I18N.bidi('pause', 'пауза')} | Ctrl+Y",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Incidents', 'Инциденты')}: "
+            f"{I18N.bidi('Acknowledge', 'Подтвердить')} acknowledge <key/ключ> | подтвердить <ключ> | "
+            f"{I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')} clear/очистить",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Incidents quick actions', 'Быстрые действия по инцидентам')}: "
+            f"A — {I18N.bidi('acknowledge selected incident', 'подтвердить выбранный инцидент')} | "
+            f"X — {I18N.bidi('clear acknowledged incidents', 'очистить подтвержденные инциденты')} | "
+            f"R — {I18N.bidi('mark events read (paused)', 'отметить прочитанным (пауза)')}",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Input mode', 'Режим ввода')}: "
+            f"{I18N.bidi('operator shell', 'оболочка оператора')} | {I18N.bidi('QIKI input', 'ввод QIKI')} | Ctrl+G",
+            level="info",
+        )
+        self._console_log(f"{I18N.bidi('Menu glossary', 'Глоссарий меню')}: ", level="info")
+        self._console_log(f"- Sys/Систем: {I18N.bidi('System', 'Система')}", level="info")
+        self._console_log(f"- Events/Событ: {I18N.bidi('Events', 'События')}", level="info")
+        self._console_log(f"- Power/Пит: {I18N.bidi('Power systems', 'Система питания')}", level="info")
+        self._console_log(f"- Diag/Диагн: {I18N.bidi('Diagnostics', 'Диагностика')}", level="info")
+        self._console_log(f"- Mission/Миссия: {I18N.bidi('Mission control', 'Управление миссией')}", level="info")
+        self._console_log(f"{I18N.bidi('Panels glossary', 'Глоссарий панелей')}: ", level="info")
+        self._console_log(f"- Upd/Обн: {I18N.bidi('Updated', 'Обновлено')}", level="info")
+        self._console_log(f"- SoC/Заряд: {I18N.bidi('State of charge', 'Уровень заряда')}", level="info")
+        self._console_log(f"- P in/Вх мощн: {I18N.bidi('Power input', 'Входная мощность')}", level="info")
+        self._console_log(f"- P out/Вых мощн: {I18N.bidi('Power output/consumption', 'Выходная/потребляемая мощность')}", level="info")
+        self._console_log(f"- Bus V/Шина В: {I18N.bidi('Bus voltage', 'Напряжение шины')}", level="info")
+        self._console_log(f"- Bus A/Шина А: {I18N.bidi('Bus current', 'Ток шины')}", level="info")
+        self._console_log(f"- Ext temp/Нар темп: {I18N.bidi('External temperature', 'Наружная температура')}", level="info")
+        self._console_log(f"- Core temp/Темп ядра: {I18N.bidi('Core temperature', 'Температура ядра')}", level="info")
+        self._console_log(f"- CPU/ЦП: {I18N.bidi('CPU usage', 'Загрузка процессора')}", level="info")
+        self._console_log(f"- Mem/Пам: {I18N.bidi('Memory usage', 'Загрузка памяти')}", level="info")
+        self._console_log(f"{I18N.bidi('Header glossary', 'Глоссарий хедера')}: ", level="info")
+        self._console_log(
+            f"- {I18N.bidi('Link', 'Связь')}: {I18N.bidi('Link status', 'Состояние связи')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Bat', 'Бат')}: {I18N.bidi('Battery level', 'Уровень батареи')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Hull', 'Корпус')}: {I18N.bidi('Hull integrity', 'Целостность корпуса')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Rad', 'Рад')}: {I18N.bidi('Radiation dose rate', 'Мощность дозы радиации')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Ext temp', 'Нар темп')}: {I18N.bidi('External temperature', 'Наружная температура')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Core temp', 'Темп ядра')}: {I18N.bidi('Core temperature', 'Температура ядра')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Age', 'Возраст')}: {I18N.bidi('Telemetry age', 'Возраст телеметрии')} ({I18N.bidi('compact units', 'краткие единицы')}: sec/с, min/мин, h/ч)",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Fresh', 'Свеж')}: {I18N.bidi('Telemetry freshness', 'Свежесть телеметрии')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Pos', 'Поз')}: {I18N.bidi('Position', 'Позиция')} ({I18N.bidi('meters', 'метры')}: m/м)",
+            level="info",
+        )
+        self._console_log(f"{I18N.bidi('Tables glossary', 'Глоссарий таблиц')}: ", level="info")
+        self._console_log(
+            f"- Ack/Подтв: {I18N.bidi('Acknowledged', 'Подтверждено')}",
+            level="info",
+        )
+        self._console_log(
+            f"- Vr/Скорость: {I18N.bidi('Radial velocity', 'Радиальная скорость')}",
+            level="info",
+        )
+        self._console_log(f"{I18N.bidi('Units glossary', 'Глоссарий единиц')}: ", level="info")
+        self._console_log(
+            f"- m/s/м/с: {I18N.bidi('meters per second', 'метры в секунду')}",
+            level="info",
+        )
+        self._console_log(
+            f"- °: {I18N.bidi('degrees', 'градусы')}",
+            level="info",
+        )
+        self._console_log(
+            f"- m/м: {I18N.bidi('meters', 'метры')}",
+            level="info",
+        )
+        self._console_log(
+            f"- sec/с: {I18N.bidi('seconds', 'секунды')}",
+            level="info",
+        )
+        self._console_log(
+            f"- min/мин: {I18N.bidi('minutes', 'минуты')}",
+            level="info",
+        )
+        self._console_log(
+            f"- W/Вт: {I18N.bidi('watts', 'ватты')}",
+            level="info",
+        )
+        self._console_log(
+            f"- V/В: {I18N.bidi('volts', 'вольты')}",
+            level="info",
+        )
+        self._console_log(
+            f"- A/А: {I18N.bidi('amperes', 'амперы')}",
             level="info",
         )
 
@@ -2299,9 +3044,102 @@ class OrionApp(App):
         if not cmd:
             return
 
+        if self._input_mode == "qiki":
+            await self._publish_qiki_intent(cmd)
+            return
+
+        self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
+
         low = cmd.lower()
         if low in {"help", "помощь", "?", "h"}:
             self._show_help()
+            return
+
+        if low in {"events", "события"}:
+            state = I18N.bidi("Live", "Живое") if self._events_live else I18N.bidi("Paused", "Пауза")
+            unread = self._events_unread_count if not self._events_live else 0
+            self._console_log(
+                f"{I18N.bidi('Events mode', 'Режим событий')}: {state} "
+                f"({I18N.bidi('Unread', 'Непрочитано')}: {unread})",
+                level="info",
+            )
+            return
+
+        if low in {
+            "events live",
+            "events.live",
+            "events on",
+            "события живое",
+            "события.живое",
+            "события вживую",
+            "события включить",
+        }:
+            if not self._events_live:
+                self.action_toggle_events_live()
+            else:
+                self._console_log(f"{I18N.bidi('Events live', 'События живое')}", level="info")
+            return
+
+        if low in {
+            "events pause",
+            "events.pause",
+            "events paused",
+            "events.paused",
+            "events off",
+            "события пауза",
+            "события.пауза",
+            "события выключить",
+        }:
+            if self._events_live:
+                self.action_toggle_events_live()
+            else:
+                self._console_log(f"{I18N.bidi('Events paused', 'События пауза')}", level="info")
+            return
+
+        if low == "ack" or low.startswith("ack ") or low == "acknowledge" or low.startswith("acknowledge "):
+            _, _, tail = cmd.partition(" ")
+            key = tail.strip()
+            if not key:
+                ctx = self._selection_by_app.get("events")
+                key = ctx.key if ctx is not None else ""
+            if not key:
+                self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+                return
+            if self._ack_incident(key):
+                self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+                self._render_events_table()
+                if self.active_screen == "events":
+                    self._refresh_inspector()
+            else:
+                self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+            return
+
+        if low == "подтвердить" or low.startswith("подтвердить "):
+            _, _, tail = cmd.partition(" ")
+            key = tail.strip()
+            if not key:
+                ctx = self._selection_by_app.get("events")
+                key = ctx.key if ctx is not None else ""
+            if not key:
+                self._log_msg(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}")
+                return
+            if self._ack_incident(key):
+                self._log_msg(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}")
+                self._render_events_table()
+                if self.active_screen == "events":
+                    self._refresh_inspector()
+            else:
+                self._log_msg(f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}")
+            return
+
+        if low in {"clear", "очистить"} or low.startswith("clear ") or low.startswith("очистить "):
+            cleared = self._clear_acked_incidents()
+            self._log_msg(
+                f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}"
+            )
+            self._render_events_table()
+            if self.active_screen == "events":
+                self._refresh_inspector()
             return
 
         # type <name> | type off
@@ -2417,6 +3255,47 @@ class OrionApp(App):
 
         self._log_msg(f"{I18N.bidi('Unknown command', 'Неизвестная команда')}: {cmd}")
 
+    async def _publish_qiki_intent(self, text: str) -> None:
+        if not text:
+            return
+        self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
+        if not self.nats_client:
+            self._log_msg(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}")
+            return
+        try:
+            await self.nats_client.publish_command(
+                QIKI_INTENTS,
+                {
+                    "text": text,
+                    "source": "operator-console",
+                    "ts_epoch": time.time(),
+                },
+            )
+            self._log_msg(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}")
+        except Exception as e:
+            self._log_msg(f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}")
+
+    def _update_command_placeholder(self) -> None:
+        try:
+            dock = self.query_one("#command-dock", Input)
+        except Exception:
+            return
+
+        if self._input_mode == "qiki":
+            dock.placeholder = (
+                f"{I18N.bidi('QIKI input', 'Ввод QIKI')}> "
+                f"{I18N.bidi('free text intent', 'свободный текст намерения')} | "
+                f"{I18N.bidi('Ctrl+G', 'Ctrl+G')} {I18N.bidi('back to operator shell', 'назад в оболочку')}"
+            )
+            return
+
+        dock.placeholder = (
+            f"{I18N.bidi('command', 'команда')}> "
+            f"{I18N.bidi('help', 'помощь')} | "
+            f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
+            f"simulation.start/симуляция.старт"
+        )
+
     @staticmethod
     def _canonicalize_sim_command(cmd: str) -> Optional[str]:
         key = (cmd or "").strip().lower()
@@ -2442,10 +3321,33 @@ class OrionApp(App):
 
         raw = (event.value or "").strip()
         event.input.value = ""
+        self._warned_command_trim = False
         if not raw:
             return
 
         await self._run_command(raw)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "command-dock":
+            return
+        if self._command_max_chars <= 0:
+            return
+        value = event.value or ""
+        if len(value) <= self._command_max_chars:
+            return
+        trimmed = value[: self._command_max_chars]
+        try:
+            event.input.value = trimmed
+            event.input.cursor_position = len(trimmed)
+        except Exception:
+            pass
+        if not self._warned_command_trim:
+            self._warned_command_trim = True
+            self._console_log(
+                f"{I18N.bidi('Input trimmed', 'Ввод обрезан')}: "
+                f"{self._command_max_chars} {I18N.bidi('characters', 'символов')}",
+                level="warn",
+            )
 
     async def _publish_sim_command(self, cmd_name: str) -> None:
         if not self.nats_client:

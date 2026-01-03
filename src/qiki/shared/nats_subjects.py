@@ -29,6 +29,9 @@ SYSTEM_TELEMETRY = "qiki.telemetry"
 COMMANDS_CONTROL = "qiki.commands.control"
 RESPONSES_CONTROL = "qiki.responses.control"
 
+# QIKI interaction subjects (operator intents, agent replies)
+QIKI_INTENTS = "qiki.intents"
+
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"
 EVENTS_AUDIT = "qiki.events.v1.audit"

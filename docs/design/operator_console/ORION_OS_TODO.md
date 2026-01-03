@@ -1,6 +1,6 @@
 # ORION Shell OS — Что осталось доделать (зафиксировано)
 
-**Цель:** ORION как “Shell OS” (Textual TUI) со стабильным chrome, предсказуемым вводом/выводом и двуязычным интерфейсом `EN/RU` без сокращений.
+**Цель:** ORION как “Shell OS” (Textual TUI) со стабильным chrome, предсказуемым вводом/выводом и двуязычным интерфейсом `EN/RU`.
 
 **Не трогаем:** Radar/Радар (стабильность — да, развитие — нет).
 
@@ -9,8 +9,8 @@
 ## 1) Инварианты UI (держим всегда)
 
 - Все user-facing лейблы/значения: `EN/RU` (без пробелов вокруг `/`).
-- Никаких UI-сокращений (ни в заголовках, ни в help, ни в placeholder).
-- Если данных нет: `N/A/НД` (не “0”, не “mock”).
+- Сокращения по умолчанию запрещены; допускаются **только** по политике: `docs/design/operator_console/ABBREVIATIONS_POLICY.md`.
+- Если данных нет: `Not available/Нет данных` (не “0”, не “mock”).
 - Chrome стабилен: меняется контент, не структура.
 
 ---
@@ -54,6 +54,7 @@
 **Сделать (UI-часть):**
 - Режим `OPERATOR SHELL/ОБОЛОЧКА` (минимум локальных команд UI).
 - Режим `QIKI INPUT/ВВОД QIKI` (свободный ввод, уходит как Intent).
+- Визуальный индикатор режима в поле ввода (placeholder) и в keybar (hotkey для переключения).
 
 ---
 
@@ -62,4 +63,3 @@
 - ORION app: `src/qiki/services/operator_console/main_orion.py`
 - NATS subjects: `src/qiki/shared/nats_subjects.py`
 - ORION system reference: `docs/design/operator_console/ORION_OS_SYSTEM.md`
-

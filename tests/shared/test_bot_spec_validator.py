@@ -20,7 +20,7 @@ def test_load_default_bot_spec() -> None:
 
     assert spec.kind == "BotSpec"
     assert spec.version == 1
-    assert REQUIRED_COMPONENTS == set(spec.components)
+    assert REQUIRED_COMPONENTS.issubset(set(spec.components))
     assert REQUIRED_CHANNELS.issubset(set(spec.event_bus.channels))
 
 

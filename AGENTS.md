@@ -2,37 +2,48 @@
 
 ## Project Structure & Module Organization
 
-- `src/qiki/` — main Python codebase (shared models, services, infrastructure).
-- `src/qiki/services/operator_console/` — ORION (Textual TUI “Shell OS”) entrypoints and UI code.
-- `docs/` — design docs and system references (e.g. `docs/design/operator_console/`).
-- `proto/`, `protos/` — protobuf sources; `generated/` may contain generated stubs (often ignored in git).
-- `docker-compose*.yml`, `Dockerfile*` — runtime stacks and local/dev orchestration.
-- `tests/` and service-local `*/tests/` — automated tests.
+- `src/qiki/` — primary Python package (shared models, converters, services).
+- `src/qiki/services/operator_console/` — ORION Operator Console (“Shell OS” TUI on Textual).
+- `generated/` — generated protobuf stubs (`*_pb2.py`), required by runtime and tests.
+- `protos/`, `proto/`, `proto_extensions/` — protobuf sources and extensions.
+- `docs/design/operator_console/` — ORION UX + runbook + validation checklist.
+- `docs/design/hardware_and_physics/` — bot “physics” / form-factor source of truth.
+- `docker-compose*.yml`, `Dockerfile*` — Docker-first orchestration.
+- `scripts/`, `tools/` — smoke tests, proto generation, helper utilities.
+- `tests/` — unit/integration/UI tests.
 
 ## Build, Test, and Development Commands
 
-- Start Phase1 + operator console: `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build operator-console`
-- Start Shell OS overlay: `docker compose -f docker-compose.phase1.yml -f docker-compose.shell_os.yml up -d --build shell-os`
-- Run operator console tests: `pytest -q src/qiki/services/operator_console/tests`
-- Regenerate protobuf stubs (when needed): `bash tools/gen_protos.sh`
+- Generate protobuf stubs (preferred, inside container): `docker compose -f docker-compose.phase1.yml run --rm qiki-dev bash -lc "bash tools/gen_protos.sh"`
+- Start the default stack: `docker compose up -d --build`
+- Start Phase1 + ORION Operator Console: `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build operator-console`
+- Run ORION interactively (foreground TUI): `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up operator-console`
+- Attach to ORION TUI (if started with `-d`): `docker attach qiki-operator-console` (detach: `Ctrl+P` then `Ctrl+Q`)
+- Run tests (preferred): `docker compose exec qiki-dev pytest -q tests`
+- Smoke test: `docker compose exec qiki-dev bash /workspace/scripts/smoke_test.sh`
 
 ## Coding Style & Naming Conventions
 
-- Python: 4-space indentation, type hints where practical.
-- Prefer clear, descriptive identifiers; avoid UI abbreviations in user-facing strings.
-- Tools: `ruff.toml` is present; run `ruff`/`mypy` when applicable to the area you touch.
+- Python: 4-space indentation; use type hints where practical.
+- Prefer clear, descriptive names.
+- ORION UI strings: always bilingual `EN/RU` (no spaces around `/`) and avoid abbreviations in user-facing labels/values.
+- Linting/typing: Ruff config in `ruff.toml` (`ruff check .`), plus `mypy.ini` where applicable.
 
 ## Testing Guidelines
 
-- Add tests close to the code under `src/qiki/services/<service>/tests/` when changing service behavior.
-- Prefer small deterministic tests over long integration suites.
+- Frameworks: `pytest`, plus `pytest-asyncio` and `pytest-textual` where needed.
+- Add unit tests under `tests/unit/`, integration tests under `tests/integration/`, and UI tests under `tests/ui/`.
+- Keep tests deterministic; prefer small tests over long end-to-end suites.
 
 ## Commit & Pull Request Guidelines
 
-- Commits follow a pragmatic style seen in history (e.g. `Fix ...`, `Align ...`, `feat: ...`).
-- Keep commits focused; include a short rationale in the message if the change is non-obvious.
+- Commit history is mixed (Conventional Commits + free-form). For new work, prefer `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:` when practical.
+- Keep PRs focused; include “what/why” + “how to run” steps.
+- For TUI changes, attach a terminal capture (tmux screenshot/recording) and note the terminal size if layout-sensitive.
+- If behavior changes, add/update tests and update relevant docs in `docs/`.
 
 ## Agent-Specific Instructions
 
 - “ПРОЧТИ ЭТО” bootstrap: follow `~/MEMORI/ПРОЧТИ_ЭТО_QIKI_DTMP.md` (sovereign-memory workflow).
-- Save durable decisions as `core` memory; session state / next steps as `episodic`.
+- Prefer Docker-first validation before claiming something works.
+- ORION hotkeys: Events live/pause toggle is `Ctrl+Y` (avoid `Ctrl+P` conflicts with tmux / `docker attach` escape).

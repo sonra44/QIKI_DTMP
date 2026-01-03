@@ -7,8 +7,8 @@ def bidi(en: str, ru: str) -> str:
     return f"{en}/{ru}"
 
 
-NA = bidi("N/A", "НД")
-INVALID = bidi("INVALID", "НЕКОРР")
+NA = bidi("Not available", "Нет данных")
+INVALID = bidi("Invalid", "Некорректно")
 YES = bidi("yes", "да")
 NO = bidi("no", "нет")
 
@@ -18,11 +18,11 @@ def yes_no(value: bool) -> str:
 
 
 def online_offline(value: bool) -> str:
-    return bidi("ONLINE", "В СЕТИ") if value else bidi("OFFLINE", "НЕТ СВЯЗИ")
+    return bidi("Online", "В сети") if value else bidi("Offline", "Нет связи")
 
 
 def stale(value: str) -> str:
-    return f"{bidi('STALE', 'УСТАР')}: {value}"
+    return f"{bidi('Stale', 'Устарело')}: {value}"
 
 
 NO_TRACKS_YET = bidi("no tracks yet", "треков нет")
@@ -53,7 +53,7 @@ def num_unit(value: Any, en_unit: str, ru_unit: str, *, digits: int = 2) -> str:
 def pct(value: Any, *, digits: int = 2, min_value: float = 0.0, max_value: float = 100.0) -> str:
     """Format a percent value with basic sanity bounds.
 
-    Returns `INVALID/НЕКОРР` when the value is numeric but outside [min_value, max_value].
+    Returns `Invalid/Некорректно` when the value is numeric but outside [min_value, max_value].
     """
 
     if not _is_num(value):
@@ -75,7 +75,7 @@ def fmt_na(value: Any) -> str:
 def fmt_age(seconds: Any) -> str:
     """Format a time duration for UI in strict EN/RU, no-mocks.
 
-    - None/invalid -> N/A/НД
+    - None/invalid -> Not available/Нет данных
     - <60s -> "12.3 seconds/12.3 секунды"
     - <60m -> "5.2 minutes/5.2 минуты"
     - else -> "1.0 hours/1.0 часы"
@@ -91,3 +91,27 @@ def fmt_age(seconds: Any) -> str:
         return num_unit(m, "minutes", "минуты", digits=1)
     h = m / 60.0
     return num_unit(h, "hours", "часы", digits=1)
+
+
+def fmt_age_compact(seconds: Any) -> str:
+    """Compact duration for tight UI areas (header/table), still strict EN/RU.
+
+    - None/invalid -> Not available/Нет данных
+    - <60s -> "12.3sec/12.3с"
+    - <60m -> "5.2min/5.2мин"
+    - else -> "1.0h/1.0ч"
+    """
+
+    if not _is_num(seconds):
+        return NA
+    s = max(0.0, float(seconds))
+    if s < 60.0:
+        n = num(s, digits=1)
+        return NA if n is None else f"{n}sec/{n}с"
+    m = s / 60.0
+    if m < 60.0:
+        n = num(m, digits=1)
+        return NA if n is None else f"{n}min/{n}мин"
+    h = m / 60.0
+    n = num(h, digits=1)
+    return NA if n is None else f"{n}h/{n}ч"
