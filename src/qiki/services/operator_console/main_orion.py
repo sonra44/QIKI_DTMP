@@ -18,6 +18,7 @@ from textual.reactive import reactive
 from textual.widgets import DataTable, Input, RichLog, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
+from qiki.services.operator_console.core.incident_rules import FileRulesRepository
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
@@ -594,6 +595,11 @@ class OrionApp(App):
         self._input_mode: str = "shell"
         self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
         self._warned_command_trim: bool = False
+        self._rules_repo = FileRulesRepository(
+            os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES", "config/incident_rules.yaml"),
+            os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES_HISTORY", "config/incident_rules.history.jsonl"),
+        )
+        self._incident_rules = None
         # TTL is used only to mark tracks as stale in UI (no-mocks: we show last known + age).
         # Keep it reasonably large by default so operators can actually observe the pipeline.
         self._track_ttl_sec: float = float(os.getenv("OPERATOR_CONSOLE_TRACK_TTL_SEC", "60.0"))
@@ -625,6 +631,7 @@ class OrionApp(App):
             )
         )
         self._update_system_snapshot()
+        self._load_incident_rules(initial=True)
 
     def _update_system_snapshot(self) -> None:
         now = time.time()
@@ -1744,6 +1751,31 @@ class OrionApp(App):
             header_grid.set_class(density in {"tiny", "narrow"}, "header-2x4")
         except Exception:
             pass
+
+    def _load_incident_rules(self, *, initial: bool = False) -> None:
+        try:
+            if initial:
+                config = self._rules_repo.load()
+                self._incident_rules = config
+                self._console_log(
+                    f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
+                    f"{len(config.rules)}",
+                    level="info",
+                )
+                return
+            result = self._rules_repo.reload(source="file/reload")
+            self._incident_rules = result.config
+            self._console_log(
+                f"{I18N.bidi('Incident rules reloaded', 'Правила инцидентов перезагружены')}: "
+                f"{len(result.config.rules)} "
+                f"({I18N.bidi('hash', 'хэш')}: {result.new_hash[:8]})",
+                level="info",
+            )
+        except Exception as exc:
+            self._console_log(
+                f"{I18N.bidi('Failed to load incident rules', 'Ошибка загрузки правил инцидентов')}: {exc}",
+                level="error",
+            )
 
         # System dashboard reflow: 2x2 -> 1x4 on narrow/tiny.
         try:
@@ -2910,6 +2942,11 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
+            f"{I18N.bidi('Rules', 'Правила')}: "
+            f"{I18N.bidi('reload rules', 'перезагрузить правила')}",
+            level="info",
+        )
+        self._console_log(
             f"{I18N.bidi('Simulation', 'Симуляция')}: "
             f"simulation.start/симуляция.старт | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | simulation.reset/симуляция.сброс",
             level="info",
@@ -3231,6 +3268,10 @@ class OrionApp(App):
                 self._render_summary_table()
             if self.active_screen == "diagnostics":
                 self._render_diagnostics_table()
+            return
+
+        if low in {"reload rules", "rules reload", "rules refresh", "перезагрузить правила", "правила перезагрузить"}:
+            self._load_incident_rules(initial=False)
             return
 
         # screen/экран <name>

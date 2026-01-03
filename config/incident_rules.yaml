@@ -1,0 +1,54 @@
+version: 1
+rules:
+  - id: TEMP_CORE_SPIKE
+    enabled: true
+    title: "Core temp spike"
+    description: "Core temperature above threshold"
+    match:
+      type: "sensor"
+      source: "thermal"
+      subject: "core"
+      field: "temp"
+    threshold:
+      op: ">"
+      value: 70
+      min_duration_s: 3
+      cooldown_s: 30
+    severity: "C"
+    require_ack: true
+    auto_clear: true
+
+  - id: RADAR_SIGNAL_LOSS
+    enabled: true
+    title: "Radar signal loss"
+    description: "Radar signal dropped or lost"
+    match:
+      type: "radar"
+      source: "sensor"
+      subject: "ppi"
+    threshold:
+      op: "="
+      value: 0
+      min_duration_s: 2
+      cooldown_s: 10
+    severity: "W"
+    require_ack: true
+    auto_clear: true
+
+  - id: POWER_BUS_OVERLOAD
+    enabled: true
+    title: "Power bus overload"
+    description: "Bus current above safe threshold"
+    match:
+      type: "power"
+      source: "bus"
+      subject: "main"
+      field: "current"
+    threshold:
+      op: ">"
+      value: 35
+      min_duration_s: 5
+      cooldown_s: 60
+    severity: "A"
+    require_ack: true
+    auto_clear: false
