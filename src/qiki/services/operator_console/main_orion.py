@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 import json
 import math
@@ -19,6 +18,7 @@ from textual.widgets import DataTable, Input, RichLog, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
 from qiki.services.operator_console.core.incident_rules import FileRulesRepository
+from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
@@ -577,7 +577,6 @@ class OrionApp(App):
         self.nats_client: Optional[NATSClient] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
-        self._events_by_key: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
         self._events_live: bool = True
         self._events_unread_count: int = 0
         self._last_unread_refresh_ts: float = 0.0
@@ -600,6 +599,7 @@ class OrionApp(App):
             os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES_HISTORY", "config/incident_rules.history.jsonl"),
         )
         self._incident_rules = None
+        self._incident_store: Optional[IncidentStore] = None
         # TTL is used only to mark tracks as stale in UI (no-mocks: we show last known + age).
         # Keep it reasonably large by default so operators can actually observe the pipeline.
         self._track_ttl_sec: float = float(os.getenv("OPERATOR_CONSOLE_TRACK_TTL_SEC", "60.0"))
@@ -1471,45 +1471,10 @@ class OrionApp(App):
             return
 
         table.clear()
-        items = [
-            (key, rec)
-            for key, rec in self._events_by_key.items()
-            if isinstance(rec, dict) and isinstance(rec.get("envelope"), EventEnvelope)
-        ]
-
-        def passes(rec: dict[str, Any]) -> bool:
-            if not self._events_filter_type:
-                type_ok = True
-            else:
-                env: EventEnvelope = rec["envelope"]
-                type_ok = env.type == self._events_filter_type
-            if not type_ok:
-                return False
-            if not self._events_filter_text:
-                return True
-            env = rec["envelope"]
-            needle = self._events_filter_text.lower()
-            hay = " ".join(
-                [
-                    str(env.type or ""),
-                    str(env.source or ""),
-                    str(env.subject or ""),
-                ]
-            ).lower()
-            if needle in hay:
-                return True
-            payload = env.payload
-            try:
-                payload_str = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-            except TypeError:
-                payload_str = str(payload)
-            return needle in payload_str.lower()[:2000]
-
-        items = [(k, r) for (k, r) in items if passes(r)]
-
-        if not items:
+        if self._incident_store is None:
             table.add_row(
                 "—",
+                I18N.NA,
                 I18N.NA,
                 I18N.NA,
                 I18N.NA,
@@ -1520,48 +1485,79 @@ class OrionApp(App):
             self._selection_by_app.pop("events", None)
             return
 
-        now = time.time()
-        for key, rec in items[-self._max_events_table_rows :]:
-            env: EventEnvelope = rec["envelope"]
-            age_s = max(0.0, now - float(env.ts_epoch))
-            age_text = I18N.fmt_age_compact(age_s)
-            freshness = self._snapshots.freshness_for_age(env.type, age_s)
-            if freshness == "stale":
-                age_text = I18N.stale(age_text)
-            elif freshness == "dead":
-                age_text = f"{I18N.bidi('Dead', 'Нет обновлений')}: {age_text}"
-            count = rec.get("count")
-            count_text = str(int(count)) if isinstance(count, int) and count > 1 else "—"
-            acked_text = I18N.yes_no(bool(rec.get("acked")))
+        def severity_rank(sev: str) -> int:
+            return {"A": 0, "C": 1, "W": 2, "I": 3}.get((sev or "").upper(), 4)
+
+        def passes(inc: Any) -> bool:
+            if self._events_filter_type and (inc.type or "") != self._events_filter_type:
+                return False
+            if not self._events_filter_text:
+                return True
+            needle = self._events_filter_text.lower()
+            hay = " ".join(
+                [
+                    str(inc.type or ""),
+                    str(inc.source or ""),
+                    str(inc.subject or ""),
+                    str(inc.title or ""),
+                    str(inc.description or ""),
+                ]
+            ).lower()
+            return needle in hay
+
+        self._incident_store.refresh()
+        incidents = [inc for inc in self._incident_store.list_incidents() if passes(inc)]
+        if not incidents:
             table.add_row(
-                time.strftime("%H:%M:%S", time.localtime(env.ts_epoch)),
-                self._level_label(env.level),
-                self._event_type_label(env.type),
+                "—",
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                key="seed",
+            )
+            self._selection_by_app.pop("events", None)
+            return
+
+        incidents_sorted = sorted(
+            incidents,
+            key=lambda inc: (bool(inc.acked), severity_rank(inc.severity), -float(inc.last_seen)),
+        )
+        now = time.time()
+        for inc in incidents_sorted[: self._max_events_table_rows]:
+            age_s = max(0.0, now - float(inc.last_seen))
+            age_text = I18N.fmt_age_compact(age_s)
+            acked_text = I18N.yes_no(bool(inc.acked))
+            table.add_row(
+                inc.severity,
+                self._event_type_label(inc.type),
+                I18N.fmt_na(inc.source),
+                I18N.fmt_na(inc.subject),
                 age_text,
-                count_text,
+                str(int(inc.count)) if isinstance(inc.count, int) else I18N.NA,
                 acked_text,
-                key=key,
+                key=inc.incident_id,
             )
 
-        # Ensure selection is visible under filter.
         current = self._selection_by_app.get("events")
-        if current is None or current.key not in {k for (k, _r) in items}:
-            key, rec = items[-1]
-            env = rec["envelope"]
+        if current is None or current.key not in {inc.incident_id for inc in incidents_sorted}:
+            selected = incidents_sorted[0]
             self._set_selection(
                 SelectionContext(
                     app_id="events",
-                    key=key,
-                    kind="event",
-                    source=env.source,
-                    created_at_epoch=env.ts_epoch,
-                    payload=env.payload,
-                    ids=(env.subject or I18N.NA, env.type),
+                    key=selected.incident_id,
+                    kind="incident",
+                    source=selected.source,
+                    created_at_epoch=selected.first_seen,
+                    payload=selected,
+                    ids=(selected.rule_id, selected.type, selected.subject),
                 )
             )
         try:
             if self._events_live:
-                table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
+                table.move_cursor(row=0, column=0, animate=False, scroll=False)
         except Exception:
             pass
 
@@ -1619,9 +1615,10 @@ class OrionApp(App):
                 with Container(id="screen-events"):
                     events_table: DataTable = DataTable(id="events-table")
                     events_table.add_columns(
-                        I18N.bidi("Time", "Время"),
-                        I18N.bidi("Level", "Уровень"),
+                        I18N.bidi("Severity", "Серьёзн"),
                         I18N.bidi("Type", "Тип"),
+                        I18N.bidi("Source", "Источник"),
+                        I18N.bidi("Subject", "Тема"),
                         I18N.bidi("Age", "Возраст"),
                         I18N.bidi("Count", "Счётчик"),
                         I18N.bidi("Ack", "Подтв"),
@@ -1757,6 +1754,7 @@ class OrionApp(App):
             if initial:
                 config = self._rules_repo.load()
                 self._incident_rules = config
+                self._incident_store = IncidentStore(config)
                 self._console_log(
                     f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
                     f"{len(config.rules)}",
@@ -1765,6 +1763,7 @@ class OrionApp(App):
                 return
             result = self._rules_repo.reload(source="file/reload")
             self._incident_rules = result.config
+            self._incident_store = IncidentStore(result.config)
             self._console_log(
                 f"{I18N.bidi('Incident rules reloaded', 'Правила инцидентов перезагружены')}: "
                 f"{len(result.config.rules)} "
@@ -2095,7 +2094,8 @@ class OrionApp(App):
             table = self.query_one("#events-table", DataTable)
         except Exception:
             return
-        self._events_by_key = OrderedDict()
+        if self._incident_rules is not None:
+            self._incident_store = IncidentStore(self._incident_rules)
         self._events_live = True
         self._events_unread_count = 0
         self._selection_by_app.pop("events", None)
@@ -2104,6 +2104,8 @@ class OrionApp(App):
         table.clear()
         table.add_row(
             "—",
+            I18N.NA,
+            I18N.NA,
             I18N.NA,
             I18N.NA,
             I18N.NA,
@@ -2303,20 +2305,23 @@ class OrionApp(App):
                 ]
             )
             if ctx.app_id == "events":
-                rec = self._events_by_key.get(ctx.key)
-                if isinstance(rec, dict) and isinstance(rec.get("envelope"), EventEnvelope):
-                    env: EventEnvelope = rec["envelope"]
-                    count = rec.get("count")
-                    count_text = str(int(count)) if isinstance(count, int) else I18N.NA
+                incident = self._incident_store.get(ctx.key) if self._incident_store is not None else None
+                if incident is not None:
                     fields_rows.extend(
                         [
-                            (I18N.bidi("Severity", "Серьезность"), self._level_label(env.level)),
-                            (I18N.bidi("Event type", "Тип события"), self._event_type_label(env.type)),
-                            (I18N.bidi("Subject", "Тема"), env.subject or I18N.NA),
-                            (I18N.bidi("Count", "Счётчик"), count_text),
-                            (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(rec.get("acked")))),
+                            (I18N.bidi("Severity", "Серьезность"), incident.severity),
+                            (I18N.bidi("Type", "Тип"), self._event_type_label(incident.type)),
+                            (I18N.bidi("Source", "Источник"), I18N.fmt_na(incident.source)),
+                            (I18N.bidi("Subject", "Тема"), I18N.fmt_na(incident.subject)),
+                            (I18N.bidi("Count", "Счётчик"), str(incident.count)),
+                            (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(incident.acked))),
+                            (I18N.bidi("State", "Состояние"), I18N.bidi(incident.state, incident.state)),
                         ]
                     )
+                    if incident.peak_value is not None:
+                        fields_rows.append(
+                            (I18N.bidi("Peak value", "Пиковое значение"), self._fmt_num(incident.peak_value))
+                        )
             if ctx.app_id == "radar" and isinstance(ctx.payload, dict):
                 payload = ctx.payload
                 range_m = payload.get("range_m", payload.get("range"))
@@ -2463,9 +2468,8 @@ class OrionApp(App):
         normalized_level = self._normalize_level(severity)
         ts_epoch = time.time()
         etype = self._derive_event_type(subject, payload)
-        key = self._incident_key(subject, payload, etype)
         env = EventEnvelope(
-            event_id=key,
+            event_id=str(subject or ""),
             type=etype,
             source="nats",
             ts_epoch=ts_epoch,
@@ -2473,26 +2477,17 @@ class OrionApp(App):
             payload=payload,
             subject=str(subject or ""),
         )
-        existing = self._events_by_key.get(key)
-        if isinstance(existing, dict) and isinstance(existing.get("envelope"), EventEnvelope):
-            first_ts = existing.get("first_ts_epoch")
-            count = existing.get("count")
-            acked = bool(existing.get("acked"))
-            existing.update(
-                {
-                    "envelope": env,
-                    "first_ts_epoch": float(first_ts) if isinstance(first_ts, (int, float)) else env.ts_epoch,
-                    "count": int(count) + 1 if isinstance(count, int) else 2,
-                    "acked": False if acked else existing.get("acked", False),
-                }
-            )
-            self._events_by_key[key] = existing
-        else:
-            self._events_by_key[key] = {"envelope": env, "first_ts_epoch": env.ts_epoch, "count": 1, "acked": False}
-        self._events_by_key.move_to_end(key, last=True)
-        while len(self._events_by_key) > self._max_event_incidents:
-            self._events_by_key.popitem(last=False)
         self._snapshots.put(env)
+
+        if self._incident_store is not None:
+            incident_event = {
+                "type": etype,
+                "source": self._derive_event_source(payload, subject),
+                "subject": self._derive_event_subject(payload, subject),
+                "ts_epoch": ts_epoch,
+                "payload": payload if isinstance(payload, dict) else {},
+            }
+            self._incident_store.ingest(incident_event)
 
         if self._events_live:
             # Re-render under active filter and keep selection consistent.
@@ -2520,45 +2515,40 @@ class OrionApp(App):
         if self.active_screen == "summary":
             self._render_summary_table()
 
-    def _incident_key(self, subject: Any, payload: Any, etype: str) -> str:
-        s = str(subject or "").strip()
-        t = (etype or "").strip().lower() or I18N.UNKNOWN
-        ident: Optional[str] = None
+    @staticmethod
+    def _derive_event_source(payload: Any, subject: Any) -> str:
         if isinstance(payload, dict):
-            for field in ("id", "event_id", "track_id", "mission_id", "task_id", "designator", "name"):
+            for field in ("source", "system", "subsystem", "module"):
                 value = payload.get(field)
                 if isinstance(value, (str, int)) and str(value).strip():
-                    ident = str(value).strip()
-                    break
-        parts = [t, "nats", s]
-        if ident:
-            parts.append(ident)
-        return "|".join(p for p in parts if p)
+                    return str(value).strip()
+        if subject:
+            return str(subject).strip()
+        return "nats"
+
+    @staticmethod
+    def _derive_event_subject(payload: Any, subject: Any) -> str:
+        if isinstance(payload, dict):
+            for field in ("subject", "name", "id", "event_id", "track_id", "mission_id", "task_id"):
+                value = payload.get(field)
+                if isinstance(value, (str, int)) and str(value).strip():
+                    return str(value).strip()
+        if subject:
+            return str(subject).strip()
+        return I18N.UNKNOWN
 
     def _ack_incident(self, key: str) -> bool:
         k = (key or "").strip()
         if not k:
             return False
-        rec = self._events_by_key.get(k)
-        if not isinstance(rec, dict) or not isinstance(rec.get("envelope"), EventEnvelope):
+        if self._incident_store is None:
             return False
-        rec["acked"] = True
-        self._events_by_key[k] = rec
-        return True
+        return self._incident_store.ack(k)
 
     def _clear_acked_incidents(self) -> int:
-        cleared = 0
-        for k in list(self._events_by_key.keys()):
-            rec = self._events_by_key.get(k)
-            if not isinstance(rec, dict) or not isinstance(rec.get("envelope"), EventEnvelope):
-                continue
-            if bool(rec.get("acked")):
-                try:
-                    del self._events_by_key[k]
-                    cleared += 1
-                except Exception:
-                    continue
-        return cleared
+        if self._incident_store is None:
+            return 0
+        return self._incident_store.clear_acked_cleared()
 
     def action_toggle_events_live(self) -> None:
         self._events_live = not self._events_live
@@ -2744,18 +2734,17 @@ class OrionApp(App):
                 return
             if row_key == "seed":
                 return
-            selected = self._events_by_key.get(row_key)
-            if isinstance(selected, dict) and isinstance(selected.get("envelope"), EventEnvelope):
-                env: EventEnvelope = selected["envelope"]
+            incident = self._incident_store.get(row_key) if self._incident_store is not None else None
+            if incident is not None:
                 self._set_selection(
                     SelectionContext(
                         app_id="events",
                         key=row_key,
-                        kind="event",
-                        source=env.source,
-                        created_at_epoch=env.ts_epoch,
-                        payload=env.payload,
-                        ids=(env.subject or I18N.NA, env.type),
+                        kind="incident",
+                        source=incident.source or I18N.NA,
+                        created_at_epoch=incident.first_seen,
+                        payload=incident,
+                        ids=(incident.rule_id, incident.type or I18N.NA, incident.subject or I18N.NA),
                     )
                 )
             return

@@ -14,6 +14,9 @@ class Incident:
     title: str
     description: Optional[str]
     key: str
+    type: Optional[str]
+    source: Optional[str]
+    subject: Optional[str]
     severity: str
     state: str
     first_seen: float
@@ -55,6 +58,9 @@ class IncidentStore:
             return False
         inc.acked = True
         return True
+
+    def get(self, incident_id: str) -> Optional[Incident]:
+        return self._incidents.get(incident_id)
 
     def clear(self, incident_id: str) -> bool:
         inc = self._incidents.get(incident_id)
@@ -124,6 +130,9 @@ class IncidentStore:
                 title=rule.title,
                 description=rule.description,
                 key=key,
+                type=event.get("type"),
+                source=event.get("source"),
+                subject=event.get("subject"),
                 severity=rule.severity,
                 state="active",
                 first_seen=first_seen,
