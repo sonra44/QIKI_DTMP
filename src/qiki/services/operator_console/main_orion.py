@@ -439,7 +439,9 @@ class OrionKeybar(Static):
     def render(self) -> str:
         active_screen = getattr(self.app, "active_screen", "system")
         extra: list[str] = [f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}"]
-        extra.append(f"{I18N.bidi('Ctrl+G', 'Ctrl+G')} {I18N.bidi('Input mode', 'Режим ввода')}")
+        extra.append(
+            f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
+        )
         if active_screen in {"radar", "events", "console", "summary"}:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
@@ -562,7 +564,6 @@ class OrionApp(App):
             I18N.bidi("Mark events read", "Отметить прочитанным"),
             show=False,
         ),
-        Binding("ctrl+g", "toggle_input_mode", "Input mode/Режим ввода"),
         Binding("f9", "help", "Help/Помощь"),
         Binding("f10", "quit", "Quit/Выход"),
         Binding("ctrl+c", "quit", "Quit/Выход"),
@@ -591,7 +592,6 @@ class OrionApp(App):
         self._snapshots = SnapshotStore()
         self._events_filter_type: Optional[str] = None
         self._events_filter_text: Optional[str] = None
-        self._input_mode: str = "shell"
         self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
         self._warned_command_trim: bool = False
         self._rules_repo = FileRulesRepository(
@@ -1749,33 +1749,6 @@ class OrionApp(App):
         except Exception:
             pass
 
-    def _load_incident_rules(self, *, initial: bool = False) -> None:
-        try:
-            if initial:
-                config = self._rules_repo.load()
-                self._incident_rules = config
-                self._incident_store = IncidentStore(config)
-                self._console_log(
-                    f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
-                    f"{len(config.rules)}",
-                    level="info",
-                )
-                return
-            result = self._rules_repo.reload(source="file/reload")
-            self._incident_rules = result.config
-            self._incident_store = IncidentStore(result.config)
-            self._console_log(
-                f"{I18N.bidi('Incident rules reloaded', 'Правила инцидентов перезагружены')}: "
-                f"{len(result.config.rules)} "
-                f"({I18N.bidi('hash', 'хэш')}: {result.new_hash[:8]})",
-                level="info",
-            )
-        except Exception as exc:
-            self._console_log(
-                f"{I18N.bidi('Failed to load incident rules', 'Ошибка загрузки правил инцидентов')}: {exc}",
-                level="error",
-            )
-
         # System dashboard reflow: 2x2 -> 1x4 on narrow/tiny.
         try:
             dashboard = self.query_one("#system-dashboard")
@@ -1841,6 +1814,33 @@ class OrionApp(App):
             self.query_one("#bottom-bar").styles.height = bottom_bar_height
         except Exception:
             pass
+
+    def _load_incident_rules(self, *, initial: bool = False) -> None:
+        try:
+            if initial:
+                config = self._rules_repo.load()
+                self._incident_rules = config
+                self._incident_store = IncidentStore(config)
+                self._console_log(
+                    f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
+                    f"{len(config.rules)}",
+                    level="info",
+                )
+                return
+            result = self._rules_repo.reload(source="file/reload")
+            self._incident_rules = result.config
+            self._incident_store = IncidentStore(result.config)
+            self._console_log(
+                f"{I18N.bidi('Incident rules reloaded', 'Правила инцидентов перезагружены')}: "
+                f"{len(result.config.rules)} "
+                f"({I18N.bidi('hash', 'хэш')}: {result.new_hash[:8]})",
+                level="info",
+            )
+        except Exception as exc:
+            self._console_log(
+                f"{I18N.bidi('Failed to load incident rules', 'Ошибка загрузки правил инцидентов')}: {exc}",
+                level="error",
+            )
 
     def _apply_table_column_widths(self, *, density: str, total_width: int) -> None:
         """Best-effort DataTable column resizing for tmux splits."""
@@ -2719,20 +2719,6 @@ class OrionApp(App):
         except Exception:
             pass
 
-    def action_toggle_input_mode(self) -> None:
-        self._input_mode = "qiki" if self._input_mode == "shell" else "shell"
-        mode = (
-            I18N.bidi("operator shell", "оболочка оператора")
-            if self._input_mode == "shell"
-            else I18N.bidi("QIKI input", "ввод QIKI")
-        )
-        self._console_log(f"{I18N.bidi('Input mode', 'Режим ввода')}: {mode}", level="info")
-        self._update_command_placeholder()
-        try:
-            self.set_focus(self.query_one("#command-dock", Input))
-        except Exception:
-            pass
-
     def action_help(self) -> None:
         self._show_help()
 
@@ -2974,8 +2960,7 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
-            f"{I18N.bidi('Input mode', 'Режим ввода')}: "
-            f"{I18N.bidi('operator shell', 'оболочка оператора')} | {I18N.bidi('QIKI input', 'ввод QIKI')} | Ctrl+G",
+            f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}: q: <text> | // <text>",
             level="info",
         )
         self._console_log(f"{I18N.bidi('Menu glossary', 'Глоссарий меню')}: ", level="info")
@@ -3080,8 +3065,15 @@ class OrionApp(App):
         if not cmd:
             return
 
-        if self._input_mode == "qiki":
-            await self._publish_qiki_intent(cmd)
+        is_qiki, qiki_text = self._parse_qiki_intent(cmd)
+        if is_qiki:
+            if not qiki_text:
+                self._console_log(
+                    f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}: {I18N.bidi('empty', 'пусто')}",
+                    level="info",
+                )
+                return
+            await self._publish_qiki_intent(qiki_text)
             return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
@@ -3333,20 +3325,26 @@ class OrionApp(App):
         except Exception:
             return
 
-        if self._input_mode == "qiki":
-            dock.placeholder = (
-                f"{I18N.bidi('QIKI input', 'Ввод QIKI')}> "
-                f"{I18N.bidi('free text intent', 'свободный текст намерения')} | "
-                f"{I18N.bidi('Ctrl+G', 'Ctrl+G')} {I18N.bidi('back to operator shell', 'назад в оболочку')}"
-            )
-            return
-
         dock.placeholder = (
             f"{I18N.bidi('command', 'команда')}> "
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
-            f"simulation.start/симуляция.старт"
+            f"simulation.start/симуляция.старт | "
+            f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
+
+    @staticmethod
+    def _parse_qiki_intent(raw: str) -> tuple[bool, Optional[str]]:
+        trimmed = (raw or "").strip()
+        if not trimmed:
+            return False, None
+        if trimmed.lower().startswith("q:"):
+            text = trimmed[2:].strip()
+            return True, text or None
+        if trimmed.startswith("//"):
+            text = trimmed[2:].strip()
+            return True, text or None
+        return False, None
 
     @staticmethod
     def _canonicalize_sim_command(cmd: str) -> Optional[str]:
