@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import asdict
 import json
 import math
 import os
@@ -483,7 +484,7 @@ class OrionInspector(Static):
     def _table(rows: list[tuple[str, str]]) -> Table:
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column(justify="left", ratio=2, no_wrap=True, overflow="ellipsis")
-        table.add_column(justify="left", ratio=3, no_wrap=True, overflow="ellipsis")
+        table.add_column(justify="left", ratio=3, no_wrap=False, overflow="fold")
         for label, value in rows:
             table.add_row(label, value)
         return table
@@ -2249,26 +2250,15 @@ class OrionApp(App):
                     return app.title
             return screen
 
+        ctx = self._selection_by_app.get(self.active_screen)
         summary_rows: list[tuple[str, str]] = [
             (I18N.bidi("Active screen", "Активный экран"), app_title(self.active_screen)),
-            (
-                I18N.bidi("NATS connectivity", "Связь с NATS"),
-                I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA,
-            ),
         ]
-
-        telemetry_age_s = self._snapshots.age_s("telemetry")
-        if telemetry_age_s is None:
-            summary_rows.append((I18N.bidi("Telemetry", "Телеметрия"), I18N.NA))
-        else:
-            summary_rows.append((I18N.bidi("Telemetry age", "Возраст телеметрии"), I18N.fmt_age_compact(telemetry_age_s)))
-
-        ctx = self._selection_by_app.get(self.active_screen)
         fields_rows: list[tuple[str, str]] = []
         raw_preview = I18N.NA
         actions: list[str] = []
         if ctx is None:
-            fields_rows.append((I18N.bidi("Selection", "Выбор"), I18N.bidi("No selection", "Выбора нет")))
+            summary_rows.append((I18N.bidi("Selection", "Выбор"), I18N.bidi("No selection", "Выбора нет")))
         else:
             age_s = time.time() - ctx.created_at_epoch
             freshness = self._fmt_age_s(age_s)
@@ -2276,6 +2266,14 @@ class OrionApp(App):
                 ttl = self._track_ttl_sec
                 if ttl > 0 and isinstance(age_s, (int, float)) and age_s > ttl:
                     freshness = I18N.stale(freshness)
+
+            summary_rows.extend(
+                [
+                    (I18N.bidi("Selection", "Выбор"), self._kind_label(ctx.kind)),
+                    (I18N.bidi("Key", "Ключ"), ctx.key or I18N.NA),
+                    (I18N.bidi("Age", "Возраст"), freshness),
+                ]
+            )
 
             mission_context = None
             if ctx.app_id == "mission":
@@ -2311,8 +2309,18 @@ class OrionApp(App):
             if ctx.app_id == "events":
                 incident = self._incident_store.get(ctx.key) if self._incident_store is not None else None
                 if incident is not None:
+                    summary_rows.extend(
+                        [
+                            (I18N.bidi("Severity", "Серьезность"), incident.severity),
+                            (I18N.bidi("State", "Состояние"), I18N.bidi(incident.state, incident.state)),
+                            (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(incident.acked))),
+                        ]
+                    )
                     fields_rows.extend(
                         [
+                            (I18N.bidi("Rule", "Правило"), I18N.fmt_na(incident.rule_id)),
+                            (I18N.bidi("Title", "Название"), I18N.fmt_na(incident.title)),
+                            (I18N.bidi("Description", "Описание"), I18N.fmt_na(incident.description)),
                             (I18N.bidi("Severity", "Серьезность"), incident.severity),
                             (I18N.bidi("Type", "Тип"), self._event_type_label(incident.type)),
                             (I18N.bidi("Source", "Источник"), I18N.fmt_na(incident.source)),
@@ -2320,11 +2328,26 @@ class OrionApp(App):
                             (I18N.bidi("Count", "Счётчик"), str(incident.count)),
                             (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(incident.acked))),
                             (I18N.bidi("State", "Состояние"), I18N.bidi(incident.state, incident.state)),
+                            (
+                                I18N.bidi("First seen", "Первое появление"),
+                                I18N.fmt_age_compact(max(0.0, time.time() - float(incident.first_seen))),
+                            ),
+                            (
+                                I18N.bidi("Last seen", "Последнее появление"),
+                                I18N.fmt_age_compact(max(0.0, time.time() - float(incident.last_seen))),
+                            ),
                         ]
                     )
                     if incident.peak_value is not None:
                         fields_rows.append(
                             (I18N.bidi("Peak value", "Пиковое значение"), self._fmt_num(incident.peak_value))
+                        )
+                    if incident.cleared_at is not None:
+                        fields_rows.append(
+                            (
+                                I18N.bidi("Cleared", "Очищено"),
+                                I18N.fmt_age_compact(max(0.0, time.time() - float(incident.cleared_at))),
+                            )
                         )
             if ctx.app_id == "radar" and isinstance(ctx.payload, dict):
                 payload = ctx.payload
@@ -2332,6 +2355,12 @@ class OrionApp(App):
                 bearing_deg = payload.get("bearing_deg", payload.get("bearing"))
                 vr_mps = payload.get("vr_mps", payload.get("velocity"))
                 object_type = payload.get("object_type", payload.get("type"))
+                summary_rows.extend(
+                    [
+                        (I18N.bidi("Range", "Дальность"), I18N.num_unit(range_m, "m", "м", digits=1)),
+                        (I18N.bidi("Bearing", "Пеленг"), I18N.num_unit(bearing_deg, "°", "°", digits=1)),
+                    ]
+                )
                 fields_rows.extend(
                     [
                         (I18N.bidi("Range", "Дальность"), I18N.num_unit(range_m, "meters", "метры", digits=1)),
@@ -2345,6 +2374,7 @@ class OrionApp(App):
                 )
             if ctx.app_id == "console" and isinstance(ctx.payload, dict):
                 payload = ctx.payload
+                summary_rows.append((I18N.bidi("Level", "Уровень"), I18N.fmt_na(payload.get("level"))))
                 fields_rows.extend(
                     [
                         (I18N.bidi("Level", "Уровень"), I18N.fmt_na(payload.get("level"))),
@@ -2359,7 +2389,12 @@ class OrionApp(App):
                     )
                 )
 
-            raw_preview = OrionInspector.safe_preview(ctx.payload)
+            if hasattr(ctx.payload, "model_dump"):
+                raw_preview = OrionInspector.safe_preview(ctx.payload.model_dump())
+            elif ctx.app_id == "events" and hasattr(ctx.payload, "__dataclass_fields__"):
+                raw_preview = OrionInspector.safe_preview(asdict(ctx.payload))
+            else:
+                raw_preview = OrionInspector.safe_preview(ctx.payload)
 
         if self.active_screen == "events":
             state = I18N.bidi("Live", "Живое") if self._events_live else I18N.bidi("Paused", "Пауза")
@@ -2377,6 +2412,16 @@ class OrionApp(App):
             if unread > 0:
                 # Put the number first so it stays visible even when truncated.
                 actions.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
+
+        nats = I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA
+        summary_rows.append((I18N.bidi("NATS connectivity", "Связь с NATS"), nats))
+        telemetry_age_s = self._snapshots.age_s("telemetry")
+        summary_rows.append(
+            (
+                I18N.bidi("Telemetry age", "Возраст телеметрии"),
+                I18N.fmt_age_compact(telemetry_age_s) if telemetry_age_s is not None else I18N.NA,
+            )
+        )
 
         outer = Table.grid(expand=True)
         outer.add_column(ratio=1)
