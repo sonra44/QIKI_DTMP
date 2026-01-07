@@ -30,9 +30,10 @@
 - [ ] Focus works:
   - `Ctrl+E` focuses input.
   - `Tab` cycles focus without “getting lost”.
-- [ ] Mode toggle:
-  - `Ctrl+G` toggles Shell ↔ QIKI mode.
-  - Placeholder clearly indicates current mode.
+- [ ] Input routing (no mode toggle):
+  - Shell commands are the default (`help`, `screen events`, `reload rules`, etc.).
+  - QIKI intents require a prefix: `q:` or `//`.
+  - Placeholder hints prefixes and never suggests a “mode toggle”.
 
 ---
 
@@ -44,7 +45,7 @@
   - `Ctrl+Y` toggles live/pause (tmux-safe).
   - Commands also work: `events pause`, `events live`.
 - [ ] While paused:
-  - `Unread/Непрочитано` increases on new events.
+  - `Unread/Непрочитано` increases on new incidents (new/updated incident keys).
   - `R` marks read and clears unread counter.
 - [ ] Incident actions:
   - Select a row (mouse or `↑/↓`).
@@ -83,3 +84,15 @@
 - [ ] `F2` does not crash the app.
 - [ ] No radar UX redesign is performed as part of validation.
 
+---
+
+## 7) Rules/Правила — quick enable/disable + reload
+
+**Enter:** `F8` or `Ctrl+R` (or command `screen rules`)
+
+- [ ] Table shows rules from `config/incident_rules.yaml` (ID/Enabled/Severity/Match).
+- [ ] `Reload rules/Перезагрузить правила` button refreshes rules without restart.
+- [ ] Toggle enabled state:
+  - Select a rule row (`↑/↓`).
+  - Press `T` and confirm `Yes/Да` or `No/Нет`.
+  - After saving, rules reload automatically and UI updates.

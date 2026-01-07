@@ -98,6 +98,39 @@ class FileRulesRepository(RulesRepository):
         self._current_config = config
         return RulesReloadResult(config=config, old_hash=old_hash, new_hash=content_hash)
 
+    def set_rule_enabled(self, rule_id: str, enabled: bool, *, source: str = "ui/toggle") -> RulesReloadResult:
+        rid = (rule_id or "").strip()
+        if not rid:
+            raise ValueError("rule_id is required")
+
+        config, old_hash = self._read_and_validate()
+        updated_rules: list[IncidentRule] = []
+        found = False
+        for rule in config.rules:
+            if rule.id == rid:
+                updated_rules.append(rule.model_copy(update={"enabled": bool(enabled)}))
+                found = True
+            else:
+                updated_rules.append(rule)
+        if not found:
+            raise KeyError(f"Unknown rule_id: {rid}")
+
+        updated_config = IncidentRulesConfig(version=config.version, rules=updated_rules)
+        payload = updated_config.model_dump()
+        raw = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+
+        os.makedirs(os.path.dirname(self._rules_path) or ".", exist_ok=True)
+        tmp_path = f"{self._rules_path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            handle.write(raw)
+        os.replace(tmp_path, self._rules_path)
+
+        new_hash = sha256(raw.encode("utf-8")).hexdigest()
+        self._append_history(old_hash, new_hash, source)
+        self._current_hash = new_hash
+        self._current_config = updated_config
+        return RulesReloadResult(config=updated_config, old_hash=old_hash, new_hash=new_hash)
+
     def _read_and_validate(self) -> tuple[IncidentRulesConfig, str]:
         if not os.path.exists(self._rules_path):
             raise FileNotFoundError(self._rules_path)

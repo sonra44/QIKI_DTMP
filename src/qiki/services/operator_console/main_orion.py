@@ -15,6 +15,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, RichLog, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
@@ -77,6 +78,62 @@ class SystemStateBlock:
 class FreshnessThresholds:
     fresh_max_s: float
     stale_max_s: float
+
+
+class ConfirmDialog(ModalScreen[bool]):
+    DEFAULT_CSS = """
+    ConfirmDialog {
+        align: center middle;
+    }
+    #confirm-dialog {
+        width: 72;
+        padding: 1 2;
+        border: round #ffb000;
+        background: #050505;
+    }
+    #confirm-prompt {
+        padding: 0 0 1 0;
+        color: #ffffff;
+    }
+    #confirm-actions {
+        height: 3;
+        align: center middle;
+    }
+    #confirm-actions Button {
+        margin: 0 1;
+        width: 16;
+    }
+    """
+
+    BINDINGS = [
+        Binding("y", "confirm_yes", "Yes/Да", show=False),
+        Binding("n", "confirm_no", "No/Нет", show=False),
+        Binding("enter", "confirm_yes", "Yes/Да", show=False),
+        Binding("escape", "confirm_no", "No/Нет", show=False),
+    ]
+
+    def __init__(self, prompt: str) -> None:
+        super().__init__()
+        self._prompt = prompt
+
+    def compose(self) -> ComposeResult:
+        with Container(id="confirm-dialog"):
+            yield Static(self._prompt, id="confirm-prompt")
+            with Horizontal(id="confirm-actions"):
+                yield Button(I18N.bidi("Yes", "Да"), id="confirm-yes")
+                yield Button(I18N.bidi("No", "Нет"), id="confirm-no")
+
+    def action_confirm_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_confirm_no(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-yes":
+            self.dismiss(True)
+        elif event.button.id == "confirm-no":
+            self.dismiss(False)
 
 
 class SnapshotStore:
@@ -451,7 +508,7 @@ class OrionKeybar(Static):
         extra.append(
             f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
         )
-        if active_screen in {"radar", "events", "console", "summary"}:
+        if active_screen in {"radar", "events", "console", "summary", "rules"}:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
             )
@@ -459,6 +516,8 @@ class OrionKeybar(Static):
             extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
             extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
             extra.append(f"R {I18N.bidi('Mark read', 'Отметить прочитанным')}")
+        if active_screen == "rules":
+            extra.append(f"T {I18N.bidi('Toggle enabled', 'Переключить включено')}")
         extra.extend(
             [
                 f"F9 {I18N.bidi('Help', 'Помощь')}",
@@ -549,6 +608,7 @@ class OrionApp(App):
     #mission-table { height: 1fr; }
     #rules-toolbar { height: 3; padding: 0 1; border: round #303030; background: #050505; }
     #rules-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
+    #rules-toggle-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
     #rules-reload { width: 22; }
     #rules-table { height: 1fr; }
     """
@@ -559,6 +619,12 @@ class OrionApp(App):
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
         Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
         Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
+        Binding(
+            "t",
+            "toggle_selected_rule_enabled",
+            I18N.bidi("Toggle rule enabled", "Переключить правило"),
+            show=False,
+        ),
         Binding(
             "a",
             "acknowledge_selected_incident",
@@ -593,6 +659,7 @@ class OrionApp(App):
         self._last_event: Optional[dict[str, Any]] = None
         self._events_live: bool = True
         self._events_unread_count: int = 0
+        self._events_unread_incident_ids: set[str] = set()
         self._last_unread_refresh_ts: float = 0.0
         self._max_event_incidents: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS", "500"))
         self._max_events_table_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS", "200"))
@@ -1689,6 +1756,10 @@ class OrionApp(App):
                         ),
                         id="rules-hint",
                     )
+                    yield Static(
+                        I18N.bidi("T — toggle enabled", "T — переключить включено"),
+                        id="rules-toggle-hint",
+                    )
                 rules_table: DataTable = DataTable(id="rules-table")
                 rules_table.add_columns(
                     I18N.bidi("ID", "ID"),
@@ -2548,6 +2619,9 @@ class OrionApp(App):
                 f"{I18N.bidi('Reload rules', 'Перезагрузить правила')}: "
                 f"{I18N.bidi('button', 'кнопка')} | {I18N.bidi('reload rules', 'перезагрузить правила')}"
             )
+            actions.append(
+                f"T — {I18N.bidi('Toggle enabled (with confirmation)', 'Переключить включено (с подтверждением)')}"
+            )
 
         nats = I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA
         summary_rows.append((I18N.bidi("NATS connectivity", "Связь с NATS"), nats))
@@ -2672,13 +2746,20 @@ class OrionApp(App):
                 "ts_epoch": ts_epoch,
                 "payload": payload if isinstance(payload, dict) else {},
             }
-            self._incident_store.ingest(incident_event)
+            matched_incidents = self._incident_store.ingest(incident_event)
+        else:
+            matched_incidents = []
 
         if self._events_live:
             # Re-render under active filter and keep selection consistent.
             self._render_events_table()
         else:
-            self._events_unread_count += 1
+            for inc in matched_incidents:
+                try:
+                    self._events_unread_incident_ids.add(str(getattr(inc, "incident_id", "")) or str(getattr(inc, "key", "")))
+                except Exception:
+                    continue
+            self._events_unread_count = len(self._events_unread_incident_ids)
             try:
                 self.query_one("#orion-sidebar", OrionSidebar).refresh()
             except Exception:
@@ -2739,11 +2820,14 @@ class OrionApp(App):
         self._events_live = not self._events_live
         if self._events_live:
             self._events_unread_count = 0
+            self._events_unread_incident_ids.clear()
             self._render_events_table()
             if self.active_screen == "events":
                 self._refresh_inspector()
             self._console_log(f"{I18N.bidi('Events live', 'События живое')}", level="info")
         else:
+            self._events_unread_count = 0
+            self._events_unread_incident_ids.clear()
             self._console_log(f"{I18N.bidi('Events paused', 'События пауза')}", level="info")
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
@@ -2791,6 +2875,7 @@ class OrionApp(App):
         if self._events_live:
             return
         self._events_unread_count = 0
+        self._events_unread_incident_ids.clear()
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
         except Exception:
@@ -2798,6 +2883,83 @@ class OrionApp(App):
         if self.active_screen == "events":
             self._refresh_inspector()
         self._console_log(f"{I18N.bidi('Unread cleared', 'Непрочитано очищено')}", level="info")
+
+    def _apply_rule_enabled_change(self, rule_id: str, enabled: bool) -> None:
+        rid = (rule_id or "").strip()
+        if not rid:
+            return
+        try:
+            result = self._rules_repo.set_rule_enabled(rid, bool(enabled), source="ui/toggle")
+            self._incident_rules = result.config
+            self._incident_store = IncidentStore(result.config)
+            ctx = self._selection_by_app.get("rules")
+            if ctx is not None and ctx.key == rid:
+                refreshed_rule = None
+                for rule in result.config.rules:
+                    if str(getattr(rule, "id", "")) == rid:
+                        refreshed_rule = rule
+                        break
+                if refreshed_rule is not None:
+                    self._selection_by_app["rules"] = SelectionContext(
+                        app_id="rules",
+                        key=rid,
+                        kind="rule",
+                        source="rules",
+                        created_at_epoch=time.time(),
+                        payload=refreshed_rule,
+                        ids=(rid,),
+                    )
+            self._render_rules_table()
+            if self.active_screen == "rules":
+                self._refresh_inspector()
+            self._console_log(
+                f"{I18N.bidi('Rule updated', 'Правило обновлено')}: {rid} "
+                f"{I18N.bidi('enabled', 'включено')}={I18N.yes_no(bool(enabled))} "
+                f"({I18N.bidi('hash', 'хэш')}: {result.new_hash[:8]})",
+                level="info",
+            )
+        except Exception as exc:
+            self._console_log(
+                f"{I18N.bidi('Failed to update rule', 'Ошибка обновления правила')}: {rid} — {exc}",
+                level="error",
+            )
+
+    def action_toggle_selected_rule_enabled(self) -> None:
+        if self.active_screen != "rules":
+            return
+        if isinstance(self.focused, Input):
+            return
+        if self._incident_rules is None:
+            return
+        ctx = self._selection_by_app.get("rules")
+        rid = (ctx.key if ctx is not None else "").strip()
+        if not rid or rid == "seed":
+            self._console_log(f"{I18N.bidi('No rule selected', 'Правило не выбрано')}", level="info")
+            return
+        selected_rule = None
+        for rule in self._incident_rules.rules:
+            if str(getattr(rule, "id", "")) == rid:
+                selected_rule = rule
+                break
+        if selected_rule is None:
+            self._console_log(f"{I18N.bidi('Unknown rule', 'Неизвестное правило')}: {rid}", level="info")
+            return
+        current_enabled = bool(getattr(selected_rule, "enabled", True))
+        target_enabled = not current_enabled
+        prompt = (
+            f"{I18N.bidi('Save changes?', 'Сохранить изменения?')} "
+            f"{I18N.bidi('Toggle rule', 'Переключить правило')} {rid} → "
+            f"{I18N.bidi('enabled', 'включено')}={I18N.yes_no(target_enabled)} "
+            f"({I18N.bidi('Y/N', 'Да/Нет')})"
+        )
+
+        def after(decision: bool) -> None:
+            if decision:
+                self._apply_rule_enabled_change(rid, target_enabled)
+            else:
+                self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+
+        self.push_screen(ConfirmDialog(prompt), after)
 
     async def handle_control_response(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}

@@ -89,3 +89,44 @@ def test_rules_reload_writes_history(tmp_path: Path) -> None:
     assert payload["old_hash"] == result.old_hash
     assert payload["new_hash"] == result.new_hash
     assert payload["source"] == "file/reload"
+
+
+def test_set_rule_enabled_updates_yaml_and_history(tmp_path: Path) -> None:
+    rules_path = tmp_path / "incident_rules.yaml"
+    history_path = tmp_path / "incident_rules.history.jsonl"
+
+    content = (
+        "version: 1\n"
+        "rules:\n"
+        "  - id: A\n"
+        "    enabled: true\n"
+        "    title: \"A\"\n"
+        "    match:\n"
+        "      type: \"sensor\"\n"
+        "  - id: B\n"
+        "    enabled: false\n"
+        "    title: \"B\"\n"
+        "    match:\n"
+        "      type: \"sensor\"\n"
+    )
+    write_rules(rules_path, content)
+
+    repo = FileRulesRepository(str(rules_path), str(history_path))
+    repo.load()
+    result = repo.set_rule_enabled("B", True, source="ui/toggle")
+
+    text = rules_path.read_text(encoding="utf-8")
+    assert "id: B" in text
+    assert "enabled: true" in text
+
+    config = repo.load()
+    by_id = {r.id: r for r in config.rules}
+    assert by_id["A"].enabled is True
+    assert by_id["B"].enabled is True
+
+    history_lines = history_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(history_lines) == 1
+    payload = json.loads(history_lines[0])
+    assert payload["old_hash"] == result.old_hash
+    assert payload["new_hash"] == result.new_hash
+    assert payload["source"] == "ui/toggle"
