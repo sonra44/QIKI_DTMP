@@ -15,7 +15,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Input, RichLog, Static
+from textual.widgets import Button, DataTable, Input, RichLog, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
 from qiki.services.operator_console.core.incident_rules import FileRulesRepository
@@ -232,6 +232,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         hotkey_label="F8",
         aliases=("mission", "миссия", "tasks", "задачи", "task", "задача"),
     ),
+    OrionAppSpec(
+        screen="rules",
+        title=I18N.bidi("Rules", "Правила"),
+        hotkey="ctrl+r",
+        hotkey_label="Ctrl+R",
+        aliases=("rules", "правила", "rule", "правило"),
+    ),
 )
 
 ORION_MENU_LABELS: dict[str, str] = {
@@ -243,6 +250,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "power": I18N.bidi("Power", "Пит"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
     "mission": I18N.bidi("Mission", "Миссия"),
+    "rules": I18N.bidi("Rules", "Прав"),
 }
 
 
@@ -539,6 +547,10 @@ class OrionApp(App):
     #power-table { height: 1fr; }
     #diagnostics-table { height: 1fr; }
     #mission-table { height: 1fr; }
+    #rules-toolbar { height: 3; padding: 0 1; border: round #303030; background: #050505; }
+    #rules-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
+    #rules-reload { width: 22; }
+    #rules-table { height: 1fr; }
     """
 
     BINDINGS = [
@@ -1667,6 +1679,25 @@ class OrionApp(App):
                 mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
                 yield mission_table
 
+            with Container(id="screen-rules"):
+                with Horizontal(id="rules-toolbar"):
+                    yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
+                    yield Static(
+                        I18N.bidi(
+                            "Rules are loaded from config/incident_rules.yaml",
+                            "Правила загружаются из config/incident_rules.yaml",
+                        ),
+                        id="rules-hint",
+                    )
+                rules_table: DataTable = DataTable(id="rules-table")
+                rules_table.add_columns(
+                    I18N.bidi("ID", "ID"),
+                    I18N.bidi("Enabled", "Вкл"),
+                    I18N.bidi("Severity", "Серьезность"),
+                    I18N.bidi("Match", "Совпадение"),
+                )
+                yield rules_table
+
     async def on_mount(self) -> None:
         self.action_show_screen("system")
         self._init_system_panels()
@@ -1679,6 +1710,7 @@ class OrionApp(App):
         self._seed_power_table()
         self._seed_diagnostics_table()
         self._seed_mission_table()
+        self._seed_rules_table()
         self._update_system_snapshot()
         self._update_command_placeholder()
         self._refresh_inspector()
@@ -2178,6 +2210,59 @@ class OrionApp(App):
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, key="seed")
 
+    def _seed_rules_table(self) -> None:
+        try:
+            table = self.query_one("#rules-table", DataTable)
+        except Exception:
+            return
+        self._selection_by_app.pop("rules", None)
+        table.clear()
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+    def _render_rules_table(self) -> None:
+        try:
+            table = self.query_one("#rules-table", DataTable)
+        except Exception:
+            return
+        table.clear()
+        if self._incident_rules is None:
+            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+            return
+
+        def match_summary(rule: Any) -> str:
+            try:
+                m = rule.match
+            except Exception:
+                return I18N.NA
+            parts: list[str] = []
+            for label, value in (
+                (I18N.bidi("type", "тип"), getattr(m, "type", None)),
+                (I18N.bidi("source", "источник"), getattr(m, "source", None)),
+                (I18N.bidi("subject", "тема"), getattr(m, "subject", None)),
+                (I18N.bidi("field", "поле"), getattr(m, "field", None)),
+            ):
+                if value:
+                    parts.append(f"{label}={value}")
+            try:
+                th = rule.threshold
+            except Exception:
+                th = None
+            if th is not None and getattr(th, "op", None) and getattr(th, "value", None) is not None:
+                parts.append(f"{th.op}{th.value}")
+            return " ".join(parts) if parts else I18N.NA
+
+        rules = list(self._incident_rules.rules or [])
+        rules.sort(key=lambda r: (not bool(getattr(r, "enabled", True)), str(getattr(r, "id", ""))))
+        for rule in rules:
+            rule_id = str(getattr(rule, "id", "")) or I18N.NA
+            table.add_row(
+                rule_id,
+                I18N.yes_no(bool(getattr(rule, "enabled", True))),
+                str(getattr(rule, "severity", "")) or I18N.NA,
+                match_summary(rule),
+                key=rule_id,
+            )
+
     async def _init_nats(self) -> None:
         self.nats_client = NATSClient()
         try:
@@ -2349,6 +2434,51 @@ class OrionApp(App):
                                 I18N.fmt_age_compact(max(0.0, time.time() - float(incident.cleared_at))),
                             )
                         )
+
+            if ctx.app_id == "rules" and hasattr(ctx.payload, "id"):
+                rule = ctx.payload
+                summary_rows.extend(
+                    [
+                        (I18N.bidi("Enabled", "Включено"), I18N.yes_no(bool(getattr(rule, "enabled", True)))),
+                        (I18N.bidi("Severity", "Серьезность"), I18N.fmt_na(getattr(rule, "severity", None))),
+                    ]
+                )
+                fields_rows.extend(
+                    [
+                        (I18N.bidi("Title", "Название"), I18N.fmt_na(getattr(rule, "title", None))),
+                        (I18N.bidi("Description", "Описание"), I18N.fmt_na(getattr(rule, "description", None))),
+                        (
+                            I18N.bidi("Require ack", "Требует подтверждения"),
+                            I18N.yes_no(bool(getattr(rule, "require_ack", False))),
+                        ),
+                        (I18N.bidi("Auto clear", "Авто очистка"), I18N.yes_no(bool(getattr(rule, "auto_clear", True)))),
+                    ]
+                )
+                try:
+                    m = rule.match
+                    fields_rows.extend(
+                        [
+                            (I18N.bidi("Match type", "Тип совпадения"), I18N.fmt_na(getattr(m, "type", None))),
+                            (I18N.bidi("Match source", "Источник совпадения"), I18N.fmt_na(getattr(m, "source", None))),
+                            (I18N.bidi("Match subject", "Тема совпадения"), I18N.fmt_na(getattr(m, "subject", None))),
+                            (I18N.bidi("Match field", "Поле совпадения"), I18N.fmt_na(getattr(m, "field", None))),
+                        ]
+                    )
+                except Exception:
+                    pass
+                try:
+                    th = rule.threshold
+                except Exception:
+                    th = None
+                if th is not None:
+                    fields_rows.extend(
+                        [
+                            (I18N.bidi("Op", "Операция"), I18N.fmt_na(getattr(th, "op", None))),
+                            (I18N.bidi("Value", "Значение"), I18N.fmt_na(getattr(th, "value", None))),
+                            (I18N.bidi("Min duration", "Мин длительность"), I18N.fmt_na(getattr(th, "min_duration_s", None))),
+                            (I18N.bidi("Cooldown", "Кулдаун"), I18N.fmt_na(getattr(th, "cooldown_s", None))),
+                        ]
+                    )
             if ctx.app_id == "radar" and isinstance(ctx.payload, dict):
                 payload = ctx.payload
                 range_m = payload.get("range_m", payload.get("range"))
@@ -2412,6 +2542,12 @@ class OrionApp(App):
             if unread > 0:
                 # Put the number first so it stays visible even when truncated.
                 actions.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
+
+        if self.active_screen == "rules":
+            actions.append(
+                f"{I18N.bidi('Reload rules', 'Перезагрузить правила')}: "
+                f"{I18N.bidi('button', 'кнопка')} | {I18N.bidi('reload rules', 'перезагрузить правила')}"
+            )
 
         nats = I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA
         summary_rows.append((I18N.bidi("NATS connectivity", "Связь с NATS"), nats))
@@ -2695,7 +2831,7 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "diagnostics", "mission"):
+        for sid in ("system", "radar", "events", "console", "summary", "power", "diagnostics", "mission", "rules"):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
@@ -2710,7 +2846,15 @@ class OrionApp(App):
             self._render_diagnostics_table()
         if screen == "mission":
             self._render_mission_table()
+        if screen == "rules":
+            self._render_rules_table()
         self._refresh_inspector()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id != "rules-reload":
+            return
+        self._load_incident_rules(initial=False)
+        self._render_rules_table()
 
     def action_cycle_focus(self) -> None:
         """Cycle focus: Sidebar → Workspace → Inspector → Command."""
@@ -2768,6 +2912,35 @@ class OrionApp(App):
         self._show_help()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "rules-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            if self._incident_rules is None:
+                return
+            selected_rule = None
+            for rule in self._incident_rules.rules:
+                if str(getattr(rule, "id", "")) == row_key:
+                    selected_rule = rule
+                    break
+            if selected_rule is None:
+                return
+            self._set_selection(
+                SelectionContext(
+                    app_id="rules",
+                    key=row_key,
+                    kind="rule",
+                    source="rules",
+                    created_at_epoch=time.time(),
+                    payload=selected_rule,
+                    ids=(row_key,),
+                )
+            )
+            return
+
         if event.data_table.id == "events-table":
             try:
                 row_key = str(event.row_key)
