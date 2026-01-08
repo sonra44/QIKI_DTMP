@@ -91,18 +91,18 @@ def build_invalid_intent_proposals(error: Exception) -> ProposalsBatchV1:
     )
 
 
-async def serve_intents(nats_url: str, *, install_signal_handlers: bool = False) -> None:
+async def serve_intents(servers: list[str], *, install_signal_handlers: bool = False) -> None:
     """Subscribe to intent subject and publish stub proposals back."""
 
     try:
         nc = await nats.connect(
-            servers=[nats_url],
+            servers=servers,
             connect_timeout=5,
             reconnect_time_wait=1,
             max_reconnect_attempts=-1,
         )
     except (NoServersError, TimeoutError) as exc:
-        raise RuntimeError(f"Failed to connect to NATS at {nats_url}: {exc}") from exc
+        raise RuntimeError(f"Failed to connect to NATS ({servers}): {exc}") from exc
 
     async def on_msg(msg) -> None:
         try:
@@ -143,15 +143,15 @@ async def serve_intents(nats_url: str, *, install_signal_handlers: bool = False)
 
 
 def start_intent_bridge_in_thread(nats_url: Optional[str] = None) -> threading.Thread:
-    url = nats_url or os.getenv("NATS_URL", "nats://localhost:4222") or "nats://localhost:4222"
+    url = (nats_url or os.getenv("NATS_URL") or "").strip()
+    servers = [url] if url else ["nats://qiki-nats-phase1:4222", "nats://localhost:4222"]
 
     def _runner() -> None:
         try:
-            asyncio.run(serve_intents(url, install_signal_handlers=False))
+            asyncio.run(serve_intents(servers, install_signal_handlers=False))
         except Exception as exc:
             logger.error("Intent bridge crashed: %s", exc)
 
     t = threading.Thread(target=_runner, name="qcore-intent-bridge", daemon=True)
     t.start()
     return t
-
