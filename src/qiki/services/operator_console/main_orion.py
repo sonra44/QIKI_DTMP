@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import asdict
+import asyncio
 import json
 import math
 import os
 import time
+from hashlib import sha256
 from typing import Any, Optional
 
 from pydantic import ValidationError
@@ -23,8 +25,16 @@ from qiki.services.operator_console.core.incident_rules import FileRulesReposito
 from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.models.orion_qiki_protocol import (
+    EnvironmentMode,
+    IntentV1,
+    LangHint,
+    SelectionV1,
+    ProposalV1,
+    ProposalsBatchV1,
+)
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENT_V1
 
 try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
@@ -290,6 +300,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("mission", "миссия", "tasks", "задачи", "task", "задача"),
     ),
     OrionAppSpec(
+        screen="proposals",
+        title=I18N.bidi("Proposals", "Предложения"),
+        hotkey="ctrl+o",
+        hotkey_label="Ctrl+O",
+        aliases=("proposals", "предложения", "proposal", "предложение"),
+    ),
+    OrionAppSpec(
         screen="rules",
         title=I18N.bidi("Rules", "Правила"),
         hotkey="ctrl+r",
@@ -307,6 +324,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "power": I18N.bidi("Power", "Пит"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
     "mission": I18N.bidi("Mission", "Миссия"),
+    "proposals": I18N.bidi("Props", "Предл"),
     "rules": I18N.bidi("Rules", "Прав"),
 }
 
@@ -508,7 +526,7 @@ class OrionKeybar(Static):
         extra.append(
             f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
         )
-        if active_screen in {"radar", "events", "console", "summary", "rules"}:
+        if active_screen in {"radar", "events", "console", "summary", "rules", "proposals"}:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
             )
@@ -516,6 +534,8 @@ class OrionKeybar(Static):
             extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
             extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
             extra.append(f"R {I18N.bidi('Mark read', 'Отметить прочитанным')}")
+        if active_screen == "proposals":
+            extra.append(f"{I18N.bidi('Inspector', 'Инспектор')}: {I18N.bidi('select proposal', 'выбрать предложение')}")
         if active_screen == "rules":
             extra.append(f"T {I18N.bidi('Toggle enabled', 'Переключить включено')}")
         extra.extend(
@@ -606,6 +626,7 @@ class OrionApp(App):
     #power-table { height: 1fr; }
     #diagnostics-table { height: 1fr; }
     #mission-table { height: 1fr; }
+    #proposals-table { height: 1fr; }
     #rules-toolbar { height: 3; padding: 0 1; border: round #303030; background: #050505; }
     #rules-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
     #rules-toggle-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
@@ -668,6 +689,9 @@ class OrionApp(App):
         self._power_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
         self._mission_by_key: dict[str, dict[str, Any]] = {}
+        self._proposals_by_key: dict[str, dict[str, Any]] = {}
+        self._proposals_batches: list[dict[str, Any]] = []
+        self._max_proposals_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_PROPOSALS_ROWS", "200"))
         self._selection_by_app: dict[str, SelectionContext] = {}
         self._snapshots = SnapshotStore()
         self._events_filter_type: Optional[str] = None
@@ -858,7 +882,7 @@ class OrionApp(App):
         table.clear()
         items = self._active_tracks_sorted()
         if not items:
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
+            table.add_row("—", "—", "—", "—", I18N.NO_TRACKS)
             return
 
         selected_row: Optional[int] = None
@@ -1074,6 +1098,13 @@ class OrionApp(App):
 
         self._summary_by_key = {}
         for block in blocks:
+            env_meta = None
+            if isinstance(block.envelope, EventEnvelope):
+                env_meta = {
+                    "type": block.envelope.type,
+                    "subject": block.envelope.subject,
+                    "ts_epoch": float(block.envelope.ts_epoch),
+                }
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status_label = self._block_status_label(block.status)
             table.add_row(block.title, status_label, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
@@ -1083,7 +1114,8 @@ class OrionApp(App):
                 "status": status_label,
                 "value": block.value,
                 "age": I18N.fmt_age_compact(age_s),
-                "envelope": block.envelope,
+                "envelope": env_meta,
+                "raw": None if block.status == "na" else block.value,
             }
 
         # Keep an always-valid selection on Summary.
@@ -1122,7 +1154,7 @@ class OrionApp(App):
                 table.clear()
             except Exception:
                 return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            table.add_row(I18N.NO_TELEMETRY, "—", "—", "—", "—", key="seed")
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -1211,7 +1243,11 @@ class OrionApp(App):
                 "age": age,
                 "source": source,
                 "raw": raw,
-                "envelope": telemetry_env,
+                "envelope": {
+                    "type": telemetry_env.type,
+                    "subject": telemetry_env.subject,
+                    "ts_epoch": float(telemetry_env.ts_epoch),
+                },
             }
 
         current = self._selection_by_app.get("power")
@@ -1225,7 +1261,7 @@ class OrionApp(App):
                     kind="metric",
                     source="telemetry",
                     created_at_epoch=created_at_epoch,
-                    payload=telemetry_env.payload,
+                    payload=self._power_by_key.get(first_key, {}),
                     ids=(first_key,),
                 )
             )
@@ -1367,6 +1403,13 @@ class OrionApp(App):
             return
 
         for block in blocks:
+            env_meta = None
+            if isinstance(block.envelope, EventEnvelope):
+                env_meta = {
+                    "type": block.envelope.type,
+                    "subject": block.envelope.subject,
+                    "ts_epoch": float(block.envelope.ts_epoch),
+                }
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status = status_label(block.status)
             table.add_row(block.title, status, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
@@ -1376,7 +1419,8 @@ class OrionApp(App):
                 "status": status,
                 "value": block.value,
                 "age": I18N.fmt_age_compact(age_s),
-                "envelope": block.envelope,
+                "envelope": env_meta,
+                "raw": None if block.status == "na" else block.value,
             }
 
         first_key = blocks[0].block_id if blocks else "seed"
@@ -1384,8 +1428,8 @@ class OrionApp(App):
         if current is None or current.key not in self._diagnostics_by_key:
             created_at_epoch = time.time()
             env = self._diagnostics_by_key.get(first_key, {}).get("envelope")
-            if isinstance(env, EventEnvelope):
-                created_at_epoch = float(env.ts_epoch)
+            if isinstance(env, dict) and isinstance(env.get("ts_epoch"), (int, float)):
+                created_at_epoch = float(env["ts_epoch"])
             self._set_selection(
                 SelectionContext(
                     app_id="diagnostics",
@@ -1393,7 +1437,7 @@ class OrionApp(App):
                     kind="metric",
                     source="diagnostics",
                     created_at_epoch=created_at_epoch,
-                    payload=env.payload if isinstance(env, EventEnvelope) else self._diagnostics_by_key.get(first_key, {}),
+                    payload=self._diagnostics_by_key.get(first_key, {}),
                     ids=(first_key,),
                 )
             )
@@ -1415,7 +1459,7 @@ class OrionApp(App):
                 table.clear()
             except Exception:
                 return
-            table.add_row("—", I18N.NA, I18N.NA, key="seed")
+            table.add_row(I18N.bidi("No mission", "Миссии нет"), "—", "—", key="seed")
 
         def mission_env() -> Optional[EventEnvelope]:
             for t in ("mission", "task"):
@@ -1455,33 +1499,35 @@ class OrionApp(App):
             table.add_row(item, status, value, key=key)
             self._mission_by_key[key] = record
 
+        env_meta = {"type": env.type, "subject": env.subject, "ts_epoch": float(env.ts_epoch)}
+
         row(
             "mission-designator",
             I18N.bidi("Designator", "Обозначение"),
-            I18N.NA,
+            "—",
             str(designator) if designator is not None else I18N.NA,
-            record={"kind": "mission", "field": "designator", "value": designator, "envelope": env},
+            record={"kind": "mission", "field": "designator", "value": designator, "raw": designator, "envelope": env_meta},
         )
         row(
             "mission-objective",
             I18N.bidi("Objective", "Цель"),
-            I18N.NA,
+            "—",
             str(objective) if objective is not None else I18N.NA,
-            record={"kind": "mission", "field": "objective", "value": objective, "envelope": env},
+            record={"kind": "mission", "field": "objective", "value": objective, "raw": objective, "envelope": env_meta},
         )
         row(
             "mission-priority",
             I18N.bidi("Priority", "Приоритет"),
-            I18N.NA,
+            "—",
             str(priority) if priority is not None else I18N.NA,
-            record={"kind": "mission", "field": "priority", "value": priority, "envelope": env},
+            record={"kind": "mission", "field": "priority", "value": priority, "raw": priority, "envelope": env_meta},
         )
         row(
             "mission-progress",
             I18N.bidi("Progress", "Прогресс"),
-            I18N.NA,
+            "—",
             I18N.pct(progress, digits=0) if progress is not None else I18N.NA,
-            record={"kind": "mission", "field": "progress", "value": progress, "envelope": env},
+            record={"kind": "mission", "field": "progress", "value": progress, "raw": progress, "envelope": env_meta},
         )
 
         def step_status(v: Any) -> str:
@@ -1523,7 +1569,7 @@ class OrionApp(App):
                 title_str,
                 status_str,
                 detail_str,
-                record={"kind": "mission_step", "index": idx, "step": step, "envelope": env},
+                record={"kind": "mission_step", "index": idx, "step": step, "envelope": env_meta},
             )
 
         current = self._selection_by_app.get("mission")
@@ -1554,12 +1600,12 @@ class OrionApp(App):
         if self._incident_store is None:
             table.add_row(
                 "—",
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
+                I18N.NO_INCIDENTS,
+                "—",
+                "—",
+                "—",
+                "—",
+                "—",
                 key="seed",
             )
             self._selection_by_app.pop("events", None)
@@ -1590,12 +1636,12 @@ class OrionApp(App):
         if not incidents:
             table.add_row(
                 "—",
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
+                I18N.NO_INCIDENTS,
+                "—",
+                "—",
+                "—",
+                "—",
+                "—",
                 key="seed",
             )
             self._selection_by_app.pop("events", None)
@@ -1746,6 +1792,15 @@ class OrionApp(App):
                 mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
                 yield mission_table
 
+            with Container(id="screen-proposals"):
+                proposals_table: DataTable = DataTable(id="proposals-table")
+                proposals_table.add_columns(
+                    I18N.bidi("Priority", "Приоритет"),
+                    I18N.bidi("Confidence", "Уверенность"),
+                    I18N.bidi("Title", "Заголовок"),
+                )
+                yield proposals_table
+
             with Container(id="screen-rules"):
                 with Horizontal(id="rules-toolbar"):
                     yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
@@ -1781,6 +1836,7 @@ class OrionApp(App):
         self._seed_power_table()
         self._seed_diagnostics_table()
         self._seed_mission_table()
+        self._seed_proposals_table()
         self._seed_rules_table()
         self._update_system_snapshot()
         self._update_command_placeholder()
@@ -2185,7 +2241,7 @@ class OrionApp(App):
             return
         self._selection_by_app.pop("radar", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
+        table.add_row("—", "—", "—", "—", I18N.NO_TRACKS)
 
     def _seed_radar_ppi(self) -> None:
         try:
@@ -2212,12 +2268,12 @@ class OrionApp(App):
         table.clear()
         table.add_row(
             "—",
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
+            I18N.NO_INCIDENTS,
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
             key="seed",
         )
 
@@ -2229,7 +2285,7 @@ class OrionApp(App):
         self._console_by_key = {}
         self._selection_by_app.pop("console", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.bidi("No output yet", "Пока нет вывода"), "—", "—", key="seed")
 
         try:
             log = self.query_one("#command-output-log", RichLog)
@@ -2249,7 +2305,7 @@ class OrionApp(App):
             return
         self._selection_by_app.pop("summary", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.bidi("No data", "Нет данных"), "—", "—", "—", key="seed")
 
     def _seed_power_table(self) -> None:
         try:
@@ -2259,7 +2315,7 @@ class OrionApp(App):
         self._power_by_key = {}
         self._selection_by_app.pop("power", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.NO_TELEMETRY, "—", "—", "—", "—", key="seed")
 
     def _seed_diagnostics_table(self) -> None:
         try:
@@ -2269,7 +2325,7 @@ class OrionApp(App):
         self._diagnostics_by_key = {}
         self._selection_by_app.pop("diagnostics", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.bidi("No diagnostics", "Диагностики нет"), "—", "—", "—", key="seed")
 
     def _seed_mission_table(self) -> None:
         try:
@@ -2279,7 +2335,52 @@ class OrionApp(App):
         self._mission_by_key = {}
         self._selection_by_app.pop("mission", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.bidi("No mission", "Миссии нет"), "—", "—", key="seed")
+
+    def _seed_proposals_table(self) -> None:
+        try:
+            table = self.query_one("#proposals-table", DataTable)
+        except Exception:
+            return
+        self._proposals_by_key = {}
+        self._selection_by_app.pop("proposals", None)
+        table.clear()
+        table.add_row(I18N.NO_PROPOSALS, "—", "—", key="seed")
+
+    def _render_proposals_table(self) -> None:
+        try:
+            table = self.query_one("#proposals-table", DataTable)
+        except Exception:
+            return
+        table.clear()
+        rows = list(self._proposals_by_key.items())
+        if not rows:
+            table.add_row(I18N.NO_PROPOSALS, "—", "—", key="seed")
+            return
+
+        def sort_key(item: tuple[str, dict[str, Any]]) -> tuple[int, float]:
+            payload = item[1]
+            try:
+                pr = int(payload.get("priority") or 0)
+            except Exception:
+                pr = 0
+            try:
+                conf = float(payload.get("confidence") or 0.0)
+            except Exception:
+                conf = 0.0
+            return (-pr, -conf)
+
+        rows.sort(key=sort_key)
+        for proposal_id, payload in rows:
+            pr = payload.get("priority")
+            conf = payload.get("confidence")
+            title = payload.get("title")
+            table.add_row(
+                str(pr if pr is not None else I18N.NA),
+                (f"{float(conf):.2f}" if isinstance(conf, (int, float)) else I18N.NA),
+                str(title or I18N.NA),
+                key=proposal_id,
+            )
 
     def _seed_rules_table(self) -> None:
         try:
@@ -2288,7 +2389,7 @@ class OrionApp(App):
             return
         self._selection_by_app.pop("rules", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row(I18N.bidi("Rules not loaded", "Правила не загружены"), "—", "—", "—", key="seed")
 
     def _render_rules_table(self) -> None:
         try:
@@ -2297,7 +2398,7 @@ class OrionApp(App):
             return
         table.clear()
         if self._incident_rules is None:
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+            table.add_row(I18N.bidi("Rules not loaded", "Правила не загружены"), "—", "—", "—", key="seed")
             return
 
         def match_summary(rule: Any) -> str:
@@ -2374,6 +2475,14 @@ class OrionApp(App):
         except Exception as e:
             self._log_msg(
                 f"⚠️ {I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
+            )
+
+        try:
+            await self.nats_client.subscribe_qiki_proposals(self.handle_proposals_data)
+            self._log_msg(f"💡 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('QIKI proposals', 'предложения QIKI')}")
+        except Exception as e:
+            self._log_msg(
+                f"⚠️ {I18N.bidi('QIKI proposals subscribe failed', 'Подписка предложений QIKI не удалась')}: {e}"
             )
 
     def _refresh_header(self) -> None:
@@ -2462,6 +2571,34 @@ class OrionApp(App):
                     ),
                 ]
             )
+
+            # Explain N/A/НД when we can (metrics/snapshots).
+            if ctx.kind == "metric" and isinstance(ctx.payload, dict):
+                payload = ctx.payload
+                env = payload.get("envelope")
+                unsupported = bool(payload.get("unsupported", False))
+                raw_value = payload.get("raw") if "raw" in payload else None
+
+                reason: str | None = None
+                if unsupported:
+                    reason = I18N.REASON_UNSUPPORTED
+                elif isinstance(env, EventEnvelope):
+                    freshness = self._snapshots.freshness(env.type)
+                    if freshness in {"stale", "dead"}:
+                        reason = I18N.REASON_STALE
+                    elif raw_value is None and "raw" in payload:
+                        reason = I18N.REASON_NOT_WIRED
+                elif isinstance(env, dict):
+                    freshness = self._snapshots.freshness(str(env.get("type") or ""))
+                    if freshness in {"stale", "dead"}:
+                        reason = I18N.REASON_STALE
+                    elif raw_value is None and "raw" in payload:
+                        reason = I18N.REASON_NOT_WIRED
+                elif "raw" in payload and raw_value is None:
+                    reason = I18N.REASON_NOT_WIRED
+
+                if reason is not None:
+                    fields_rows.append((I18N.bidi("N/A reason", "Причина НД"), reason))
             if ctx.app_id == "events":
                 incident = self._incident_store.get(ctx.key) if self._incident_store is not None else None
                 if incident is not None:
@@ -2582,6 +2719,21 @@ class OrionApp(App):
                         (I18N.bidi("Message", "Сообщение"), I18N.fmt_na(payload.get("message"))),
                     ]
                 )
+            if ctx.app_id == "proposals" and isinstance(ctx.payload, dict):
+                payload = ctx.payload
+                summary_rows.extend(
+                    [
+                        (I18N.bidi("Proposal ID", "ID предложения"), I18N.fmt_na(payload.get("proposal_id"))),
+                        (I18N.bidi("Priority", "Приоритет"), I18N.fmt_na(payload.get("priority"))),
+                        (I18N.bidi("Confidence", "Уверенность"), I18N.fmt_na(payload.get("confidence"))),
+                    ]
+                )
+                fields_rows.extend(
+                    [
+                        (I18N.bidi("Title", "Заголовок"), I18N.fmt_na(payload.get("title"))),
+                        (I18N.bidi("Justification", "Обоснование"), I18N.fmt_na(payload.get("justification"))),
+                    ]
+                )
             if ctx.app_id == "mission":
                 fields_rows.append(
                     (
@@ -2622,6 +2774,9 @@ class OrionApp(App):
             actions.append(
                 f"T — {I18N.bidi('Toggle enabled (with confirmation)', 'Переключить включено (с подтверждением)')}"
             )
+
+        if self.active_screen == "proposals":
+            actions.append(f"{I18N.bidi('Proposals', 'Предложения')}: {I18N.bidi('separate from incidents', 'отдельно от инцидентов')}")
 
         nats = I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA
         summary_rows.append((I18N.bidi("NATS connectivity", "Связь с NATS"), nats))
@@ -2961,6 +3116,42 @@ class OrionApp(App):
 
         self.push_screen(ConfirmDialog(prompt), after)
 
+    def _ingest_proposals_batch(self, batch: ProposalsBatchV1) -> None:
+        self._proposals_batches.append(batch.model_dump())
+        if len(self._proposals_batches) > 30:
+            self._proposals_batches = self._proposals_batches[-30:]
+
+        for proposal in batch.proposals:
+            pid = str(getattr(proposal, "proposal_id", "") or "").strip()
+            if not pid:
+                continue
+            self._proposals_by_key[pid] = proposal.model_dump()
+
+        if self._max_proposals_rows > 0 and len(self._proposals_by_key) > self._max_proposals_rows:
+            for k in list(self._proposals_by_key.keys())[: len(self._proposals_by_key) - self._max_proposals_rows]:
+                self._proposals_by_key.pop(k, None)
+
+        self._render_proposals_table()
+
+    async def handle_proposals_data(self, data: dict) -> None:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        try:
+            batch = ProposalsBatchV1.model_validate(payload)
+        except Exception as exc:
+            self._calm_log(
+                f"⚠️ {I18N.bidi('Bad proposals payload', 'Плохие предложения')}: {exc}",
+                level="warn",
+            )
+            return
+
+        self._ingest_proposals_batch(batch)
+        for proposal in batch.proposals:
+            title = str(getattr(proposal, "title", "") or I18N.NA)
+            self._calm_log(f"💡 QIKI: {title}", level="info")
+
+        if self.active_screen == "proposals":
+            self._refresh_inspector()
+
     async def handle_control_response(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
@@ -2993,7 +3184,18 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "diagnostics", "mission", "rules"):
+        for sid in (
+            "system",
+            "radar",
+            "events",
+            "console",
+            "summary",
+            "power",
+            "diagnostics",
+            "mission",
+            "proposals",
+            "rules",
+        ):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
@@ -3046,6 +3248,8 @@ class OrionApp(App):
             workspace = safe_query("#diagnostics-table")
         elif self.active_screen == "mission":
             workspace = safe_query("#mission-table")
+        elif self.active_screen == "proposals":
+            workspace = safe_query("#proposals-table")
         else:
             workspace = safe_query("#panel-nav")
 
@@ -3074,6 +3278,29 @@ class OrionApp(App):
         self._show_help()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "proposals-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            payload = self._proposals_by_key.get(row_key)
+            if not isinstance(payload, dict):
+                return
+            self._set_selection(
+                SelectionContext(
+                    app_id="proposals",
+                    key=row_key,
+                    kind="proposal",
+                    source="qiki",
+                    created_at_epoch=time.time(),
+                    payload=payload,
+                    ids=(row_key,),
+                )
+            )
+            return
+
         if event.data_table.id == "rules-table":
             try:
                 row_key = str(event.row_key)
@@ -3157,8 +3384,8 @@ class OrionApp(App):
             selected = self._summary_by_key.get(row_key, {})
             created_at_epoch = time.time()
             env = selected.get("envelope")
-            if isinstance(env, EventEnvelope):
-                created_at_epoch = float(env.ts_epoch)
+            if isinstance(env, dict) and isinstance(env.get("ts_epoch"), (int, float)):
+                created_at_epoch = float(env["ts_epoch"])
             self._set_selection(
                 SelectionContext(
                     app_id="summary",
@@ -3183,8 +3410,8 @@ class OrionApp(App):
             if isinstance(selected, dict):
                 created_at_epoch = time.time()
                 env = selected.get("envelope")
-                if isinstance(env, EventEnvelope):
-                    created_at_epoch = float(env.ts_epoch)
+                if isinstance(env, dict) and isinstance(env.get("ts_epoch"), (int, float)):
+                    created_at_epoch = float(env["ts_epoch"])
                 self._set_selection(
                     SelectionContext(
                         app_id="power",
@@ -3192,7 +3419,7 @@ class OrionApp(App):
                         kind="metric",
                         source="telemetry",
                         created_at_epoch=created_at_epoch,
-                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        payload=selected,
                         ids=(row_key,),
                     )
                 )
@@ -3209,8 +3436,8 @@ class OrionApp(App):
             if isinstance(selected, dict):
                 created_at_epoch = time.time()
                 env = selected.get("envelope")
-                if isinstance(env, EventEnvelope):
-                    created_at_epoch = float(env.ts_epoch)
+                if isinstance(env, dict) and isinstance(env.get("ts_epoch"), (int, float)):
+                    created_at_epoch = float(env["ts_epoch"])
                 self._set_selection(
                     SelectionContext(
                         app_id="diagnostics",
@@ -3218,7 +3445,7 @@ class OrionApp(App):
                         kind="metric",
                         source="diagnostics",
                         created_at_epoch=created_at_epoch,
-                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        payload=selected,
                         ids=(row_key,),
                     )
                 )
@@ -3235,8 +3462,8 @@ class OrionApp(App):
             if isinstance(selected, dict):
                 created_at_epoch = time.time()
                 env = selected.get("envelope")
-                if isinstance(env, EventEnvelope):
-                    created_at_epoch = float(env.ts_epoch)
+                if isinstance(env, dict) and isinstance(env.get("ts_epoch"), (int, float)):
+                    created_at_epoch = float(env["ts_epoch"])
                 self._set_selection(
                     SelectionContext(
                         app_id="mission",
@@ -3244,7 +3471,7 @@ class OrionApp(App):
                         kind="metric",
                         source="nats",
                         created_at_epoch=created_at_epoch,
-                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        payload=selected,
                         ids=(row_key,),
                     )
                 )
@@ -3453,7 +3680,9 @@ class OrionApp(App):
                     level="info",
                 )
                 return
-            await self._publish_qiki_intent(qiki_text)
+            # Fire-and-forget: ORION must never block the operator loop on agent I/O.
+            task = asyncio.create_task(self._publish_qiki_intent(qiki_text))
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
@@ -3679,23 +3908,145 @@ class OrionApp(App):
     async def _publish_qiki_intent(self, text: str) -> None:
         if not text:
             return
-        self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
         if not self.nats_client:
-            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            self._console_log(
+                f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}: "
+                f"{I18N.bidi('intent not sent', 'намерение не отправлено')}",
+                level="error",
+            )
             return
+
+        def nested_get(d: Any, path: str) -> Any:
+            node = d
+            for part in (path or "").split("."):
+                if not part:
+                    continue
+                if not isinstance(node, dict):
+                    return None
+                node = node.get(part)
+            return node
+
+        # Minimal snapshot: vitals + screen + selection + top incidents.
+        #
+        # IMPORTANT: never stringify missing values as "N/A". Keep missingness structured for QIKI.
+        def field_status(value: Any, *, base_reason: str | None = None) -> dict[str, Any]:
+            if base_reason is not None:
+                return {"status": "na", "reason": base_reason}
+            if value is None:
+                return {"status": "na", "reason": "not_wired"}
+            return {"status": "ok", "value": value}
+
+        telemetry_env = self._snapshots.get_last("telemetry")
+        telemetry_freshness = self._snapshots.freshness("telemetry")
+        telemetry_age_s = self._snapshots.age_s("telemetry")
+
+        base_reason: str | None = None
+        if telemetry_env is None:
+            base_reason = "not_wired"
+        elif telemetry_freshness in {"stale", "dead"}:
+            base_reason = "stale"
+
+        normalized: dict[str, Any] = {}
+        if telemetry_env is not None and isinstance(telemetry_env.payload, dict) and base_reason is None:
+            try:
+                normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+            except Exception:
+                normalized = {}
+
+        vitals: dict[str, Any] = {
+            "battery_pct": field_status(normalized.get("battery") if normalized else None, base_reason=base_reason),
+            "soc_pct": field_status(nested_get(normalized, "power.soc_pct") if normalized else None, base_reason=base_reason),
+            "hull_integrity": field_status(
+                nested_get(normalized, "hull.integrity") if normalized else None, base_reason=base_reason
+            ),
+            "radiation_usvh": field_status(
+                normalized.get("radiation_usvh") if normalized else None, base_reason=base_reason
+            ),
+            "temp_external_c": field_status(
+                normalized.get("temp_external_c") if normalized else None, base_reason=base_reason
+            ),
+            "temp_core_c": field_status(normalized.get("temp_core_c") if normalized else None, base_reason=base_reason),
+            "online": field_status(nested_get(normalized, "link.online") if normalized else None, base_reason=base_reason),
+        }
+
+        ctx = self._selection_by_app.get(self.active_screen)
+        sel_kind = "none"
+        sel_id: Optional[str] = None
+        if ctx is not None:
+            k = (ctx.kind or "").strip().lower()
+            if k in {"event", "incident", "track", "snapshot"}:
+                sel_kind = k
+                sel_id = (ctx.key or "").strip() or None
+
+        incidents_top: list[dict[str, Any]] = []
+        if self._incident_store is not None:
+            self._incident_store.refresh()
+            incidents = list(self._incident_store.list_incidents())
+            severity_rank = {"A": 0, "C": 1, "W": 2, "I": 3}
+            incidents.sort(
+                key=lambda inc: (
+                    bool(getattr(inc, "acked", False)),
+                    severity_rank.get(str(getattr(inc, "severity", "W")), 9),
+                    -float(getattr(inc, "last_seen", 0.0) or 0.0),
+                )
+            )
+            limit = int(os.getenv("OPERATOR_CONSOLE_INTENT_TOP_INCIDENTS", "10") or 10)
+            now = time.time()
+            for inc in incidents[: max(0, limit)]:
+                incidents_top.append(
+                    {
+                        "incident_id": getattr(inc, "incident_id", None),
+                        "rule_id": getattr(inc, "rule_id", None),
+                        "title": getattr(inc, "title", None),
+                        "severity": getattr(inc, "severity", None),
+                        "state": getattr(inc, "state", None),
+                        "acked": bool(getattr(inc, "acked", False)),
+                        "count": int(getattr(inc, "count", 0) or 0),
+                        "age_s": max(0.0, now - float(getattr(inc, "last_seen", now) or now)),
+                        "source": getattr(inc, "source", None),
+                        "subject": getattr(inc, "subject", None),
+                    }
+                )
+
+        env_raw = (os.getenv("OPERATOR_CONSOLE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
+        env_mode = EnvironmentMode.FACTORY if env_raw != "MISSION" else EnvironmentMode.MISSION
+
+        app_spec = next((a for a in ORION_APPS if a.screen == self.active_screen), ORION_APPS[0])
+        intent = IntentV1(
+            text=text,
+            lang_hint=LangHint.AUTO,
+            screen=menu_label(app_spec),
+            selection=SelectionV1(kind=sel_kind, id=sel_id),
+            ts=int(time.time() * 1000),
+            environment_mode=env_mode,
+            snapshot_min={
+                "vitals": vitals,
+                "telemetry": {
+                    "freshness": telemetry_freshness,
+                    "age_s": telemetry_age_s,
+                },
+                "active_screen": self.active_screen,
+                "selection": {"kind": sel_kind, "id": sel_id},
+                "incidents_top": incidents_top,
+            },
+        )
+
+        intent_payload = intent.model_dump()
+        canonical = json.dumps(intent_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        digest = sha256(canonical).hexdigest()[:8]
         try:
             await self.nats_client.publish_command(
-                QIKI_INTENTS,
-                {
-                    "text": text,
-                    "source": "operator-console",
-                    "ts_epoch": time.time(),
-                },
+                QIKI_INTENT_V1,
+                intent_payload,
             )
-            self._console_log(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}", level="info")
+            self._console_log(
+                f"📤 {I18N.bidi('Intent sent', 'Намерение отправлено')}: "
+                f"{I18N.bidi('hash', 'хэш')}={digest} {I18N.bidi('ts', 'время')}={intent.ts}",
+                level="info",
+            )
         except Exception as e:
             self._console_log(
-                f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
+                f"❌ {I18N.bidi('Failed to send intent', 'Не удалось отправить намерение')}: {e}",
                 level="error",
             )
 
@@ -3710,7 +4061,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
+            f"{I18N.bidi('QIKI', 'QIKI')} q: <text> | // <text>"
         )
 
     @staticmethod
