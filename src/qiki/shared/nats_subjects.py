@@ -30,7 +30,11 @@ COMMANDS_CONTROL = "qiki.commands.control"
 RESPONSES_CONTROL = "qiki.responses.control"
 
 # QIKI interaction subjects (operator intents, agent replies)
-QIKI_INTENTS = "qiki.intents"
+QIKI_INTENT_V1 = "qiki.intent.v1"
+QIKI_PROPOSALS_V1 = "qiki.proposals.v1"
+
+# Backward-compat alias: prefer QIKI_INTENT_V1.
+QIKI_INTENTS = QIKI_INTENT_V1
 
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"

@@ -412,12 +412,102 @@ def test_neural_engine_generates_mock_proposal_when_enabled():
 
 
 def test_neural_engine_generates_no_proposal_when_disabled():
+    # Deterministic: ensure no API key is present so we stay in stub mode.
+    os.environ.pop("OPENAI_API_KEY", None)
     context = AgentContext()
     config = create_test_config(mock_neural_proposals_enabled=False)
     neural_engine = NeuralEngine(context, config)
     proposals = neural_engine.generate_proposals(context)
 
-    assert len(proposals) == 0
+    assert len(proposals) == 1
+    assert proposals[0].source_module_id == "neural_engine_openai"
+    assert proposals[0].confidence == pytest.approx(0.0)
+    assert proposals[0].proposed_actions == []
+
+
+def test_neural_engine_openai_success_returns_proposals(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "test-model")
+
+    from qiki.services.q_core_agent.core import neural_engine as neural_engine_module
+
+    def fake_create_response_json_schema(*args, **kwargs):
+        _ = args, kwargs
+        return {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": json.dumps(
+                                {
+                                    "proposals": [
+                                        {
+                                            "title": "Review incidents",
+                                            "justification": "Operator should acknowledge unacked incidents.",
+                                            "priority": 0.6,
+                                            "confidence": 0.8,
+                                            "type": "DIAGNOSTICS",
+                                        },
+                                        {
+                                            "title": "Clarify goal",
+                                            "justification": "Ask operator for mission objective.",
+                                            "priority": 0.4,
+                                            "confidence": 0.7,
+                                            "type": "PLANNING",
+                                        },
+                                    ]
+                                }
+                            ),
+                        }
+                    ],
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        neural_engine_module.OpenAIResponsesClient,
+        "create_response_json_schema",
+        fake_create_response_json_schema,
+    )
+
+    context = AgentContext()
+    config = create_test_config(mock_neural_proposals_enabled=False)
+    neural_engine = NeuralEngine(context, config)
+    proposals = neural_engine.generate_proposals(context)
+
+    assert len(proposals) == 2
+    assert all(p.source_module_id == "neural_engine_openai" for p in proposals)
+    assert all(p.proposed_actions == [] for p in proposals)
+    assert proposals[0].type == Proposal.ProposalType.DIAGNOSTICS
+    assert proposals[1].type == Proposal.ProposalType.PLANNING
+
+
+def test_neural_engine_openai_error_returns_stub(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    from qiki.services.q_core_agent.core import neural_engine as neural_engine_module
+
+    def fake_create_response_json_schema(*args, **kwargs):
+        _ = args, kwargs
+        raise neural_engine_module.OpenAIResponsesError("rate limited")
+
+    monkeypatch.setattr(
+        neural_engine_module.OpenAIResponsesClient,
+        "create_response_json_schema",
+        fake_create_response_json_schema,
+    )
+
+    context = AgentContext()
+    config = create_test_config(mock_neural_proposals_enabled=False)
+    neural_engine = NeuralEngine(context, config)
+    proposals = neural_engine.generate_proposals(context)
+
+    assert len(proposals) == 1
+    assert proposals[0].source_module_id == "neural_engine_openai"
+    assert proposals[0].proposed_actions == []
+    assert proposals[0].confidence == pytest.approx(0.0)
 
 
 # Tests for TickOrchestrator
