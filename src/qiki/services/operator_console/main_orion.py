@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import asdict
+import asyncio
 import json
 import math
 import os
 import time
+from hashlib import sha256
 from typing import Any, Optional
 
 from pydantic import ValidationError
@@ -23,8 +25,9 @@ from qiki.services.operator_console.core.incident_rules import FileRulesReposito
 from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.models.orion_qiki_protocol import EnvironmentMode, IntentV1, LangHint, SelectionV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENT_V1
 
 try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
@@ -3453,7 +3456,9 @@ class OrionApp(App):
                     level="info",
                 )
                 return
-            await self._publish_qiki_intent(qiki_text)
+            # Fire-and-forget: ORION must never block the operator loop on agent I/O.
+            task = asyncio.create_task(self._publish_qiki_intent(qiki_text))
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
@@ -3679,23 +3684,115 @@ class OrionApp(App):
     async def _publish_qiki_intent(self, text: str) -> None:
         if not text:
             return
-        self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
         if not self.nats_client:
-            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            self._console_log(
+                f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}: "
+                f"{I18N.bidi('intent not sent', 'намерение не отправлено')}",
+                level="error",
+            )
             return
+
+        def nested_get(d: Any, path: str) -> Any:
+            node = d
+            for part in (path or "").split("."):
+                if not part:
+                    continue
+                if not isinstance(node, dict):
+                    return None
+                node = node.get(part)
+            return node
+
+        # Minimal snapshot: vitals + screen + selection + top incidents.
+        vitals: dict[str, Any] = {}
+        try:
+            normalized = TelemetrySnapshotModel.normalize_payload(self.latest_telemetry or {})
+        except Exception:
+            normalized = {}
+        if isinstance(normalized, dict) and normalized:
+            vitals = {
+                "battery_pct": normalized.get("battery"),
+                "soc_pct": nested_get(normalized, "power.soc_pct"),
+                "hull_integrity": nested_get(normalized, "hull.integrity"),
+                "radiation_usvh": normalized.get("radiation_usvh"),
+                "temp_external_c": normalized.get("temp_external_c"),
+                "temp_core_c": normalized.get("temp_core_c"),
+                "online": nested_get(normalized, "link.online"),
+            }
+
+        ctx = self._selection_by_app.get(self.active_screen)
+        sel_kind = "none"
+        sel_id: Optional[str] = None
+        if ctx is not None:
+            k = (ctx.kind or "").strip().lower()
+            if k in {"event", "incident", "track", "snapshot"}:
+                sel_kind = k
+                sel_id = (ctx.key or "").strip() or None
+
+        incidents_top: list[dict[str, Any]] = []
+        if self._incident_store is not None:
+            self._incident_store.refresh()
+            incidents = list(self._incident_store.list_incidents())
+            severity_rank = {"A": 0, "C": 1, "W": 2, "I": 3}
+            incidents.sort(
+                key=lambda inc: (
+                    bool(getattr(inc, "acked", False)),
+                    severity_rank.get(str(getattr(inc, "severity", "W")), 9),
+                    -float(getattr(inc, "last_seen", 0.0) or 0.0),
+                )
+            )
+            limit = int(os.getenv("OPERATOR_CONSOLE_INTENT_TOP_INCIDENTS", "10") or 10)
+            now = time.time()
+            for inc in incidents[: max(0, limit)]:
+                incidents_top.append(
+                    {
+                        "incident_id": getattr(inc, "incident_id", None),
+                        "rule_id": getattr(inc, "rule_id", None),
+                        "title": getattr(inc, "title", None),
+                        "severity": getattr(inc, "severity", None),
+                        "state": getattr(inc, "state", None),
+                        "acked": bool(getattr(inc, "acked", False)),
+                        "count": int(getattr(inc, "count", 0) or 0),
+                        "age_s": max(0.0, now - float(getattr(inc, "last_seen", now) or now)),
+                        "source": getattr(inc, "source", None),
+                        "subject": getattr(inc, "subject", None),
+                    }
+                )
+
+        env_raw = (os.getenv("OPERATOR_CONSOLE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
+        env_mode = EnvironmentMode.FACTORY if env_raw != "MISSION" else EnvironmentMode.MISSION
+
+        app_spec = next((a for a in ORION_APPS if a.screen == self.active_screen), ORION_APPS[0])
+        intent = IntentV1(
+            text=text,
+            lang_hint=LangHint.AUTO,
+            screen=menu_label(app_spec),
+            selection=SelectionV1(kind=sel_kind, id=sel_id),
+            ts=int(time.time() * 1000),
+            environment_mode=env_mode,
+            snapshot_min={
+                "vitals": vitals,
+                "active_screen": self.active_screen,
+                "selection": {"kind": sel_kind, "id": sel_id},
+                "incidents_top": incidents_top,
+            },
+        )
+
+        intent_payload = intent.model_dump()
+        canonical = json.dumps(intent_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        digest = sha256(canonical).hexdigest()[:8]
         try:
             await self.nats_client.publish_command(
-                QIKI_INTENTS,
-                {
-                    "text": text,
-                    "source": "operator-console",
-                    "ts_epoch": time.time(),
-                },
+                QIKI_INTENT_V1,
+                intent_payload,
             )
-            self._console_log(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}", level="info")
+            self._console_log(
+                f"📤 {I18N.bidi('Intent sent', 'Намерение отправлено')}: "
+                f"{I18N.bidi('hash', 'хэш')}={digest} {I18N.bidi('ts', 'время')}={intent.ts}",
+                level="info",
+            )
         except Exception as e:
             self._console_log(
-                f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
+                f"❌ {I18N.bidi('Failed to send intent', 'Не удалось отправить намерение')}: {e}",
                 level="error",
             )
 
@@ -3710,7 +3807,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
+            f"{I18N.bidi('QIKI', 'QIKI')} q: <text> | // <text>"
         )
 
     @staticmethod
