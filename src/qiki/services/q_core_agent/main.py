@@ -7,6 +7,7 @@ import asyncio
 from pathlib import Path
 
 from qiki.services.q_core_agent.core.agent_logger import setup_logging, logger
+from qiki.services.q_core_agent.intent_bridge import start_intent_bridge_in_thread
 from qiki.services.q_core_agent.core.agent import QCoreAgent
 from qiki.services.q_core_agent.core.interfaces import (
     MockDataProvider,
@@ -180,6 +181,13 @@ def main():
     config_path = Path(__file__).parent / "config.yaml"
     config = load_config(config_path, QCoreAgentConfig)
     logger.info(f"Loaded config: {config.model_dump_json(indent=2)}")
+
+    if (os.getenv("QCORE_ENABLE_INTENT_BRIDGE", "true") or "true").strip().lower() in {"1", "true", "yes", "y"}:
+        try:
+            start_intent_bridge_in_thread(os.getenv("NATS_URL"))
+            logger.info("Intent bridge enabled (Stage C, no OpenAI).")
+        except Exception as exc:
+            logger.error("Failed to start intent bridge: %s", exc)
 
     # Проверка StateStore флага
     use_statestore = os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true"
