@@ -30,7 +30,15 @@ COMMANDS_CONTROL = "qiki.commands.control"
 RESPONSES_CONTROL = "qiki.responses.control"
 
 # QIKI interaction subjects (operator intents, agent replies)
-QIKI_INTENTS = "qiki.intents"
+QIKI_INTENT_V1 = "qiki.intent.v1"
+QIKI_PROPOSALS_V1 = "qiki.proposals.v1"
+
+# QIKI environment mode (QCore is the source of truth)
+QIKI_ENVIRONMENT_V1 = "qiki.environment.v1"
+QIKI_ENVIRONMENT_SET_V1 = "qiki.environment.v1.set"
+
+# Backward-compat alias: prefer QIKI_INTENT_V1.
+QIKI_INTENTS = QIKI_INTENT_V1
 
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"

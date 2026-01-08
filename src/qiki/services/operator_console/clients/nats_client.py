@@ -24,6 +24,9 @@ from qiki.shared.nats_subjects import (
     RADAR_TRACKS_SR,
     SYSTEM_TELEMETRY,
     RESPONSES_CONTROL,
+    QIKI_PROPOSALS_V1,
+    QIKI_ENVIRONMENT_V1,
+    QIKI_ENVIRONMENT_SET_V1,
 )
 
 
@@ -297,6 +300,72 @@ class NATSClient:
         except Exception as e:
             print(f"❌ Failed to subscribe to CONTROL_RESPONSES: {e}")
             raise
+
+    async def subscribe_qiki_proposals(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to QIKI proposals batches (core NATS)."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "QIKI_PROPOSALS",
+                        "timestamp": datetime.now().isoformat(),
+                        "subject": getattr(msg, "subject", None),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing QIKI_PROPOSALS message: {e}")
+
+        subject = os.getenv("QIKI_PROPOSALS_SUBJECT", QIKI_PROPOSALS_V1)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["QIKI_PROPOSALS"] = sub
+            print(f"✅ Subscribed to QIKI_PROPOSALS: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to QIKI_PROPOSALS: {e}")
+            raise
+
+    async def subscribe_qiki_environment(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to QCore environment snapshot (core NATS)."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "QIKI_ENVIRONMENT",
+                        "timestamp": datetime.now().isoformat(),
+                        "subject": getattr(msg, "subject", None),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing QIKI_ENVIRONMENT message: {e}")
+
+        subject = os.getenv("QIKI_ENVIRONMENT_SUBJECT", QIKI_ENVIRONMENT_V1)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["QIKI_ENVIRONMENT"] = sub
+            print(f"✅ Subscribed to QIKI_ENVIRONMENT: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to QIKI_ENVIRONMENT: {e}")
+            raise
+
+    async def publish_environment_set(self, mode_payload: Dict[str, Any]) -> None:
+        """Request QCore environment mode change."""
+        await self.publish_command(QIKI_ENVIRONMENT_SET_V1, mode_payload)
             
     async def get_jetstream_info(self) -> Dict[str, Any]:
         """Get JetStream account info."""

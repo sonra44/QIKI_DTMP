@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import asdict
+import asyncio
 import json
 import math
 import os
 import time
+from hashlib import sha256
 from typing import Any, Optional
 
 from pydantic import ValidationError
@@ -23,8 +25,18 @@ from qiki.services.operator_console.core.incident_rules import FileRulesReposito
 from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.models.orion_qiki_protocol import (
+    EnvironmentMode,
+    EnvironmentSetV1,
+    EnvironmentSnapshotV1,
+    IntentV1,
+    LangHint,
+    SelectionV1,
+    ProposalV1,
+    ProposalsBatchV1,
+)
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_ENVIRONMENT_SET_V1, QIKI_INTENT_V1
 
 try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
@@ -290,6 +302,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("mission", "миссия", "tasks", "задачи", "task", "задача"),
     ),
     OrionAppSpec(
+        screen="proposals",
+        title=I18N.bidi("Proposals", "Предложения"),
+        hotkey="ctrl+o",
+        hotkey_label="Ctrl+O",
+        aliases=("proposals", "предложения", "proposal", "предложение"),
+    ),
+    OrionAppSpec(
         screen="rules",
         title=I18N.bidi("Rules", "Правила"),
         hotkey="ctrl+r",
@@ -307,6 +326,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "power": I18N.bidi("Power", "Пит"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
     "mission": I18N.bidi("Mission", "Миссия"),
+    "proposals": I18N.bidi("Props", "Предл"),
     "rules": I18N.bidi("Rules", "Прав"),
 }
 
@@ -342,6 +362,7 @@ class OrionHeader(Container):
     can_focus = False
 
     online = reactive(False)
+    mode = reactive(I18N.NA)
     battery = reactive(I18N.NA)
     hull = reactive(I18N.NA)
     rad = reactive(I18N.NA)
@@ -369,10 +390,14 @@ class OrionHeader(Container):
                 return
 
         online_value = I18N.online_offline(self.online)
+        mode_value = self.mode
         set_cell(
             "hdr-online",
-            f"{I18N.bidi('Link', 'Связь')} {online_value}",
-            tooltip=f"{I18N.bidi('Link status', 'Состояние связи')}: {online_value}",
+            f"{I18N.bidi('Mode', 'Режим')} {mode_value} | {I18N.bidi('Link', 'Связь')} {online_value}",
+            tooltip=(
+                f"{I18N.bidi('Environment mode', 'Режим среды')}: {mode_value}\n"
+                f"{I18N.bidi('Link status', 'Состояние связи')}: {online_value}"
+            ),
         )
         set_cell(
             "hdr-battery",
@@ -443,6 +468,10 @@ class OrionHeader(Container):
         self.online = bool(nats_connected and telemetry_freshness_kind == "fresh")
         self._refresh_cells()
 
+    def update_mode(self, mode: str) -> None:
+        self.mode = mode
+        self._refresh_cells()
+
 
 class OrionSidebar(Static):
     can_focus = True
@@ -508,7 +537,7 @@ class OrionKeybar(Static):
         extra.append(
             f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
         )
-        if active_screen in {"radar", "events", "console", "summary", "rules"}:
+        if active_screen in {"radar", "events", "console", "summary", "rules", "proposals"}:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
             )
@@ -516,6 +545,8 @@ class OrionKeybar(Static):
             extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
             extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
             extra.append(f"R {I18N.bidi('Mark read', 'Отметить прочитанным')}")
+        if active_screen == "proposals":
+            extra.append(f"{I18N.bidi('Inspector', 'Инспектор')}: {I18N.bidi('select proposal', 'выбрать предложение')}")
         if active_screen == "rules":
             extra.append(f"T {I18N.bidi('Toggle enabled', 'Переключить включено')}")
         extra.extend(
@@ -606,6 +637,7 @@ class OrionApp(App):
     #power-table { height: 1fr; }
     #diagnostics-table { height: 1fr; }
     #mission-table { height: 1fr; }
+    #proposals-table { height: 1fr; }
     #rules-toolbar { height: 3; padding: 0 1; border: round #303030; background: #050505; }
     #rules-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
     #rules-toggle-hint { padding: 0 1; color: #a0a0a0; background: #050505; }
@@ -655,6 +687,7 @@ class OrionApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.nats_client: Optional[NATSClient] = None
+        self._qcore_environment_mode: Optional[EnvironmentMode] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
         self._events_live: bool = True
@@ -668,6 +701,9 @@ class OrionApp(App):
         self._power_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
         self._mission_by_key: dict[str, dict[str, Any]] = {}
+        self._proposals_by_key: dict[str, dict[str, Any]] = {}
+        self._proposals_batches: list[dict[str, Any]] = []
+        self._max_proposals_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_PROPOSALS_ROWS", "200"))
         self._selection_by_app: dict[str, SelectionContext] = {}
         self._snapshots = SnapshotStore()
         self._events_filter_type: Optional[str] = None
@@ -726,10 +762,21 @@ class OrionApp(App):
                     "nats_connected": bool(self.nats_connected),
                     "events_filter_type": self._events_filter_type,
                     "events_filter_text": self._events_filter_text,
+                    "environment_mode": (
+                        self._qcore_environment_mode.value if self._qcore_environment_mode is not None else None
+                    ),
                 },
             ),
             key="system",
         )
+
+    @staticmethod
+    def _environment_label(mode: Optional[EnvironmentMode]) -> str:
+        if mode == EnvironmentMode.MISSION:
+            return I18N.bidi("Mission", "Миссия")
+        if mode == EnvironmentMode.FACTORY:
+            return I18N.bidi("Factory", "Завод")
+        return I18N.NA
 
     @staticmethod
     def _fmt_num(value: Any, *, digits: int = 2) -> str:
@@ -1746,6 +1793,15 @@ class OrionApp(App):
                 mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
                 yield mission_table
 
+            with Container(id="screen-proposals"):
+                proposals_table: DataTable = DataTable(id="proposals-table")
+                proposals_table.add_columns(
+                    I18N.bidi("Priority", "Приоритет"),
+                    I18N.bidi("Confidence", "Уверенность"),
+                    I18N.bidi("Title", "Заголовок"),
+                )
+                yield proposals_table
+
             with Container(id="screen-rules"):
                 with Horizontal(id="rules-toolbar"):
                     yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
@@ -1781,6 +1837,7 @@ class OrionApp(App):
         self._seed_power_table()
         self._seed_diagnostics_table()
         self._seed_mission_table()
+        self._seed_proposals_table()
         self._seed_rules_table()
         self._update_system_snapshot()
         self._update_command_placeholder()
@@ -2281,6 +2338,51 @@ class OrionApp(App):
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, key="seed")
 
+    def _seed_proposals_table(self) -> None:
+        try:
+            table = self.query_one("#proposals-table", DataTable)
+        except Exception:
+            return
+        self._proposals_by_key = {}
+        self._selection_by_app.pop("proposals", None)
+        table.clear()
+        table.add_row(I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+    def _render_proposals_table(self) -> None:
+        try:
+            table = self.query_one("#proposals-table", DataTable)
+        except Exception:
+            return
+        table.clear()
+        rows = list(self._proposals_by_key.items())
+        if not rows:
+            table.add_row(I18N.NA, I18N.NA, I18N.NA, key="seed")
+            return
+
+        def sort_key(item: tuple[str, dict[str, Any]]) -> tuple[int, float]:
+            payload = item[1]
+            try:
+                pr = int(payload.get("priority") or 0)
+            except Exception:
+                pr = 0
+            try:
+                conf = float(payload.get("confidence") or 0.0)
+            except Exception:
+                conf = 0.0
+            return (-pr, -conf)
+
+        rows.sort(key=sort_key)
+        for proposal_id, payload in rows:
+            pr = payload.get("priority")
+            conf = payload.get("confidence")
+            title = payload.get("title")
+            table.add_row(
+                str(pr if pr is not None else I18N.NA),
+                (f"{float(conf):.2f}" if isinstance(conf, (int, float)) else I18N.NA),
+                str(title or I18N.NA),
+                key=proposal_id,
+            )
+
     def _seed_rules_table(self) -> None:
         try:
             table = self.query_one("#rules-table", DataTable)
@@ -2349,6 +2451,16 @@ class OrionApp(App):
 
         # Subscriptions are best-effort; missing streams shouldn't crash UI.
         try:
+            await self.nats_client.subscribe_qiki_environment(self.handle_environment_data)
+            self._log_msg(
+                f"🧭 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('environment mode', 'режим среды')}"
+            )
+        except Exception as e:
+            self._log_msg(
+                f"⚠️ {I18N.bidi('Environment subscribe failed', 'Подписка режима среды не удалась')}: {e}"
+            )
+
+        try:
             await self.nats_client.subscribe_system_telemetry(self.handle_telemetry_data)
             self._log_msg(f"📈 {I18N.bidi('Subscribed', 'Подписка')}: qiki.telemetry")
         except Exception as e:
@@ -2376,12 +2488,25 @@ class OrionApp(App):
                 f"⚠️ {I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
             )
 
+        try:
+            await self.nats_client.subscribe_qiki_proposals(self.handle_proposals_data)
+            self._log_msg(f"💡 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('QIKI proposals', 'предложения QIKI')}")
+        except Exception as e:
+            self._log_msg(
+                f"⚠️ {I18N.bidi('QIKI proposals subscribe failed', 'Подписка предложений QIKI не удалась')}: {e}"
+            )
+
     def _refresh_header(self) -> None:
+        try:
+            header = self.query_one("#orion-header", OrionHeader)
+            header.update_mode(self._environment_label(self._qcore_environment_mode))
+        except Exception:
+            return
+
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
             return
         try:
-            header = self.query_one("#orion-header", OrionHeader)
             header.update_from_telemetry(
                 telemetry_env.payload,
                 nats_connected=self.nats_connected,
@@ -2582,6 +2707,21 @@ class OrionApp(App):
                         (I18N.bidi("Message", "Сообщение"), I18N.fmt_na(payload.get("message"))),
                     ]
                 )
+            if ctx.app_id == "proposals" and isinstance(ctx.payload, dict):
+                payload = ctx.payload
+                summary_rows.extend(
+                    [
+                        (I18N.bidi("Proposal ID", "ID предложения"), I18N.fmt_na(payload.get("proposal_id"))),
+                        (I18N.bidi("Priority", "Приоритет"), I18N.fmt_na(payload.get("priority"))),
+                        (I18N.bidi("Confidence", "Уверенность"), I18N.fmt_na(payload.get("confidence"))),
+                    ]
+                )
+                fields_rows.extend(
+                    [
+                        (I18N.bidi("Title", "Заголовок"), I18N.fmt_na(payload.get("title"))),
+                        (I18N.bidi("Justification", "Обоснование"), I18N.fmt_na(payload.get("justification"))),
+                    ]
+                )
             if ctx.app_id == "mission":
                 fields_rows.append(
                     (
@@ -2622,6 +2762,9 @@ class OrionApp(App):
             actions.append(
                 f"T — {I18N.bidi('Toggle enabled (with confirmation)', 'Переключить включено (с подтверждением)')}"
             )
+
+        if self.active_screen == "proposals":
+            actions.append(f"{I18N.bidi('Proposals', 'Предложения')}: {I18N.bidi('separate from incidents', 'отдельно от инцидентов')}")
 
         nats = I18N.yes_no(self.nats_connected) if isinstance(self.nats_connected, bool) else I18N.NA
         summary_rows.append((I18N.bidi("NATS connectivity", "Связь с NATS"), nats))
@@ -2961,6 +3104,62 @@ class OrionApp(App):
 
         self.push_screen(ConfirmDialog(prompt), after)
 
+    def _ingest_proposals_batch(self, batch: ProposalsBatchV1) -> None:
+        self._proposals_batches.append(batch.model_dump())
+        if len(self._proposals_batches) > 30:
+            self._proposals_batches = self._proposals_batches[-30:]
+
+        for proposal in batch.proposals:
+            pid = str(getattr(proposal, "proposal_id", "") or "").strip()
+            if not pid:
+                continue
+            self._proposals_by_key[pid] = proposal.model_dump()
+
+        if self._max_proposals_rows > 0 and len(self._proposals_by_key) > self._max_proposals_rows:
+            for k in list(self._proposals_by_key.keys())[: len(self._proposals_by_key) - self._max_proposals_rows]:
+                self._proposals_by_key.pop(k, None)
+
+        self._render_proposals_table()
+
+    async def handle_proposals_data(self, data: dict) -> None:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        try:
+            batch = ProposalsBatchV1.model_validate(payload)
+        except Exception as exc:
+            self._calm_log(
+                f"⚠️ {I18N.bidi('Bad proposals payload', 'Плохие предложения')}: {exc}",
+                level="warn",
+            )
+            return
+
+        self._ingest_proposals_batch(batch)
+        for proposal in batch.proposals:
+            title = str(getattr(proposal, "title", "") or I18N.NA)
+            self._calm_log(f"💡 QIKI: {title}", level="info")
+
+        if self.active_screen == "proposals":
+            self._refresh_inspector()
+
+    async def handle_environment_data(self, data: dict) -> None:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        if not isinstance(payload, dict):
+            return
+        try:
+            snap = EnvironmentSnapshotV1.model_validate(payload)
+        except Exception:
+            return
+
+        if snap.environment_mode == self._qcore_environment_mode:
+            return
+
+        self._qcore_environment_mode = snap.environment_mode
+        self._update_system_snapshot()
+        self._refresh_header()
+        self._calm_log(
+            f"🧭 {I18N.bidi('Environment mode', 'Режим среды')}: {self._environment_label(self._qcore_environment_mode)}",
+            level="info",
+        )
+
     async def handle_control_response(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
@@ -2993,7 +3192,18 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "diagnostics", "mission", "rules"):
+        for sid in (
+            "system",
+            "radar",
+            "events",
+            "console",
+            "summary",
+            "power",
+            "diagnostics",
+            "mission",
+            "proposals",
+            "rules",
+        ):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
@@ -3046,6 +3256,8 @@ class OrionApp(App):
             workspace = safe_query("#diagnostics-table")
         elif self.active_screen == "mission":
             workspace = safe_query("#mission-table")
+        elif self.active_screen == "proposals":
+            workspace = safe_query("#proposals-table")
         else:
             workspace = safe_query("#panel-nav")
 
@@ -3074,6 +3286,29 @@ class OrionApp(App):
         self._show_help()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "proposals-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            payload = self._proposals_by_key.get(row_key)
+            if not isinstance(payload, dict):
+                return
+            self._set_selection(
+                SelectionContext(
+                    app_id="proposals",
+                    key=row_key,
+                    kind="proposal",
+                    source="qiki",
+                    created_at_epoch=time.time(),
+                    payload=payload,
+                    ids=(row_key,),
+                )
+            )
+            return
+
         if event.data_table.id == "rules-table":
             try:
                 row_key = str(event.row_key)
@@ -3343,6 +3578,11 @@ class OrionApp(App):
             f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}: q: <text> | // <text>",
             level="info",
         )
+        self._console_log(
+            f"{I18N.bidi('Environment mode', 'Режим среды')}: "
+            f"mode/режим | mode factory/режим завод | mode mission/режим миссия",
+            level="info",
+        )
         self._console_log(f"{I18N.bidi('Menu glossary', 'Глоссарий меню')}: ", level="info")
         self._console_log(f"- Sys/Систем: {I18N.bidi('System', 'Система')}", level="info")
         self._console_log(f"- Events/Событ: {I18N.bidi('Events', 'События')}", level="info")
@@ -3453,7 +3693,9 @@ class OrionApp(App):
                     level="info",
                 )
                 return
-            await self._publish_qiki_intent(qiki_text)
+            # Fire-and-forget: ORION must never block the operator loop on agent I/O.
+            task = asyncio.create_task(self._publish_qiki_intent(qiki_text))
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
@@ -3461,6 +3703,21 @@ class OrionApp(App):
         low = cmd.lower()
         if low in {"help", "помощь", "?", "h"}:
             self._show_help()
+            return
+
+        if low in {"mode", "режим"}:
+            self._console_log(
+                f"{I18N.bidi('Environment mode', 'Режим среды')}: {self._environment_label(self._qcore_environment_mode)}",
+                level="info",
+            )
+            return
+
+        if low in {"mode factory", "mode.factory", "режим завод", "режим.завод", "режим factory", "режим.factory"}:
+            await self._request_environment_mode(EnvironmentMode.FACTORY)
+            return
+
+        if low in {"mode mission", "mode.mission", "режим миссия", "режим.миссия", "режим mission", "режим.mission"}:
+            await self._request_environment_mode(EnvironmentMode.MISSION)
             return
 
         if low in {"events", "события"}:
@@ -3679,23 +3936,143 @@ class OrionApp(App):
     async def _publish_qiki_intent(self, text: str) -> None:
         if not text:
             return
-        self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
         if not self.nats_client:
-            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            self._console_log(
+                f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}: "
+                f"{I18N.bidi('intent not sent', 'намерение не отправлено')}",
+                level="error",
+            )
             return
+
+        def nested_get(d: Any, path: str) -> Any:
+            node = d
+            for part in (path or "").split("."):
+                if not part:
+                    continue
+                if not isinstance(node, dict):
+                    return None
+                node = node.get(part)
+            return node
+
+        # Minimal snapshot: vitals + screen + selection + top incidents.
+        vitals: dict[str, Any] = {}
+        try:
+            normalized = TelemetrySnapshotModel.normalize_payload(self.latest_telemetry or {})
+        except Exception:
+            normalized = {}
+        if isinstance(normalized, dict) and normalized:
+            vitals = {
+                "battery_pct": normalized.get("battery"),
+                "soc_pct": nested_get(normalized, "power.soc_pct"),
+                "hull_integrity": nested_get(normalized, "hull.integrity"),
+                "radiation_usvh": normalized.get("radiation_usvh"),
+                "temp_external_c": normalized.get("temp_external_c"),
+                "temp_core_c": normalized.get("temp_core_c"),
+                "online": nested_get(normalized, "link.online"),
+            }
+
+        ctx = self._selection_by_app.get(self.active_screen)
+        sel_kind = "none"
+        sel_id: Optional[str] = None
+        if ctx is not None:
+            k = (ctx.kind or "").strip().lower()
+            if k in {"event", "incident", "track", "snapshot"}:
+                sel_kind = k
+                sel_id = (ctx.key or "").strip() or None
+
+        incidents_top: list[dict[str, Any]] = []
+        if self._incident_store is not None:
+            self._incident_store.refresh()
+            incidents = list(self._incident_store.list_incidents())
+            severity_rank = {"A": 0, "C": 1, "W": 2, "I": 3}
+            incidents.sort(
+                key=lambda inc: (
+                    bool(getattr(inc, "acked", False)),
+                    severity_rank.get(str(getattr(inc, "severity", "W")), 9),
+                    -float(getattr(inc, "last_seen", 0.0) or 0.0),
+                )
+            )
+            limit = int(os.getenv("OPERATOR_CONSOLE_INTENT_TOP_INCIDENTS", "10") or 10)
+            now = time.time()
+            for inc in incidents[: max(0, limit)]:
+                incidents_top.append(
+                    {
+                        "incident_id": getattr(inc, "incident_id", None),
+                        "rule_id": getattr(inc, "rule_id", None),
+                        "title": getattr(inc, "title", None),
+                        "severity": getattr(inc, "severity", None),
+                        "state": getattr(inc, "state", None),
+                        "acked": bool(getattr(inc, "acked", False)),
+                        "count": int(getattr(inc, "count", 0) or 0),
+                        "age_s": max(0.0, now - float(getattr(inc, "last_seen", now) or now)),
+                        "source": getattr(inc, "source", None),
+                        "subject": getattr(inc, "subject", None),
+                    }
+                )
+
+        # Environment mode is sourced from QCore when available; env var is only a fallback hint.
+        env_mode = self._qcore_environment_mode
+        if env_mode is None:
+            env_raw = (os.getenv("OPERATOR_CONSOLE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
+            env_mode = EnvironmentMode.MISSION if env_raw == "MISSION" else EnvironmentMode.FACTORY
+
+        app_spec = next((a for a in ORION_APPS if a.screen == self.active_screen), ORION_APPS[0])
+        intent = IntentV1(
+            text=text,
+            lang_hint=LangHint.AUTO,
+            screen=menu_label(app_spec),
+            selection=SelectionV1(kind=sel_kind, id=sel_id),
+            ts=int(time.time() * 1000),
+            environment_mode=env_mode,
+            snapshot_min={
+                "vitals": vitals,
+                "active_screen": self.active_screen,
+                "selection": {"kind": sel_kind, "id": sel_id},
+                "incidents_top": incidents_top,
+            },
+        )
+
+        intent_payload = intent.model_dump()
+        canonical = json.dumps(intent_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        digest = sha256(canonical).hexdigest()[:8]
         try:
             await self.nats_client.publish_command(
-                QIKI_INTENTS,
-                {
-                    "text": text,
-                    "source": "operator-console",
-                    "ts_epoch": time.time(),
-                },
+                QIKI_INTENT_V1,
+                intent_payload,
             )
-            self._console_log(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}", level="info")
+            self._console_log(
+                f"📤 {I18N.bidi('Intent sent', 'Намерение отправлено')}: "
+                f"{I18N.bidi('hash', 'хэш')}={digest} {I18N.bidi('ts', 'время')}={intent.ts}",
+                level="info",
+            )
         except Exception as e:
             self._console_log(
-                f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
+                f"❌ {I18N.bidi('Failed to send intent', 'Не удалось отправить намерение')}: {e}",
+                level="error",
+            )
+
+    async def _request_environment_mode(self, mode: EnvironmentMode) -> None:
+        if not self.nats_client:
+            self._console_log(
+                f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}: "
+                f"{I18N.bidi('mode not sent', 'режим не отправлен')}",
+                level="error",
+            )
+            return
+        req = EnvironmentSetV1(
+            ts=int(time.time() * 1000),
+            environment_mode=mode,
+            requested_by="orion",
+        )
+        try:
+            await self.nats_client.publish_command(QIKI_ENVIRONMENT_SET_V1, req.model_dump())
+            self._console_log(
+                f"🧭 {I18N.bidi('Mode request sent', 'Запрос режима отправлен')}: {self._environment_label(mode)}",
+                level="info",
+            )
+        except Exception as exc:
+            self._console_log(
+                f"❌ {I18N.bidi('Failed to request mode', 'Не удалось запросить режим')}: {exc}",
                 level="error",
             )
 
@@ -3710,7 +4087,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
+            f"{I18N.bidi('QIKI', 'QIKI')} q: <text> | // <text>"
         )
 
     @staticmethod
