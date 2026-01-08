@@ -7,10 +7,19 @@ def bidi(en: str, ru: str) -> str:
     return f"{en}/{ru}"
 
 
-NA = bidi("Not available", "Нет данных")
+NA = bidi("N/A", "НД")
 INVALID = bidi("Invalid", "Некорректно")
 YES = bidi("yes", "да")
 NO = bidi("no", "нет")
+
+NO_INCIDENTS = bidi("No incidents", "Инцидентов нет")
+NO_TRACKS = bidi("No tracks", "Треков нет")
+NO_TELEMETRY = bidi("No telemetry", "Телеметрии нет")
+NO_PROPOSALS = bidi("No proposals", "Предложений нет")
+
+REASON_NOT_WIRED = bidi("Not wired", "Не подключено")
+REASON_STALE = bidi("Stale", "Устарело")
+REASON_UNSUPPORTED = bidi("Unsupported", "Не поддерживается")
 
 
 def yes_no(value: bool) -> str:
