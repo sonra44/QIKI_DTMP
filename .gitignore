@@ -80,6 +80,7 @@ Thumbs.db
 *.log
 logs/
 .agent/logs/
+config/*.history.jsonl
 
 # Local history / journals / scratch (do not publish)
 HISTORY_COPY/

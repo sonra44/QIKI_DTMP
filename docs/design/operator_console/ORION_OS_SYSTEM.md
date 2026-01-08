@@ -15,8 +15,9 @@ ORION is the **Operator Console TUI** (“Shell OS”) built on **Textual**. It 
 ### Core UX invariants (non-negotiable)
 
 - **Bilingual everywhere:** `EN/RU` on every label/value (no spaces around `/`).
-- **No UI abbreviations:** do not shorten words in the UI to “sys/diag/etc”.
-- **No-mocks:** if data is missing, show `N/A/НД` (never invent zeros).
+- **Abbreviations policy:** avoid abbreviations by default; if an abbreviation is necessary (tables/header), follow `docs/design/operator_console/ABBREVIATIONS_POLICY.md` (tooltip + Help glossary).
+- **Units:** in dense status panels, prefer compact units (`°`, `m/s/м/с`, `µSv/h/мкЗв/ч`) with a Help glossary entry.
+- **No-mocks:** if data is missing, show `Not available/Нет данных` (never invent zeros).
 - **Stable chrome:** switching screens changes content, not layout.
 
 ---
@@ -38,6 +39,11 @@ Key services involved:
 - `NATS_URL=nats://qiki-nats-phase1:4222`
 - `GRPC_HOST=q-sim-service`, `GRPC_PORT=50051` (control/bridge path)
 - `PYTHONPATH=/workspace/src:/workspace/generated:/app`
+
+Optional UI tuning (environment variables):
+
+- `OPERATOR_CONSOLE_OUTPUT_HEIGHT` — fixed height (rows) for `Output/Вывод` calm log strip.
+- `OPERATOR_CONSOLE_BOTTOM_BAR_HEIGHT` — fixed height (rows) for the whole bottom bar (output + input + keybar).
 
 ---
 
@@ -89,7 +95,7 @@ Inside ORION, incoming messages are normalized into an `EventEnvelope`:
 - **type** (e.g. latest `telemetry`)
 - optional **type + key** (e.g. latest event per `subject`/id)
 
-It also derives **freshness** (`FRESH/СВЕЖО`, `STALE/УСТАРЕЛО`, `DEAD/НЕТ`) by thresholds:
+It also derives **freshness** (`Fresh/Свежо`, `Stale/Устарело`, `Dead/Нет обновлений`) by thresholds:
 
 - telemetry: fresh `< 30s`, stale `< 300s`, else dead
 - mission/task: fresh `< 300s`, stale `< 3600s`, else dead
@@ -160,6 +166,8 @@ Target UX (design intent):
 - grouping/dedup into “incidents”
 - pause/freeze + unread counters
 
+Note: `Ctrl+P` is reserved by tmux as prefix. In ORION the Events live/pause toggle is `Ctrl+Y` (commands `events pause` / `events live` remain available).
+
 ### Console/Консоль
 
 Console is the **operator dialogue**:
@@ -177,7 +185,7 @@ Console must feel “calm” and always predictable.
 Inspector is **selection-driven**:
 
 - If you highlight a row, inspector shows details for that row.
-- If there is no selection, inspector shows `N/A/НД`.
+- If there is no selection, inspector shows `Not available/Нет данных`.
 
 Target structure inside inspector:
 
@@ -216,7 +224,7 @@ Header values are derived from telemetry payload normalized by `TelemetrySnapsho
 - `temp_core_c` → `Core temperature/Температура ядра`
 - freshness/age comes from `SnapshotStore` thresholds
 
-**ONLINE/В СЕТИ** is not “magic”: it requires NATS connectivity and `FRESH/СВЕЖО` telemetry.
+**ONLINE/В СЕТИ** is not “magic”: it requires NATS connectivity and `Fresh/Свежо` telemetry.
 
 ---
 
@@ -270,7 +278,7 @@ Goal: inspector becomes the main “details pane”, not random JSON.
 
 - Define per-kind renderers (`event`, `incident`, `track`, `console`, `summary_block`, …).
 - Normalize all field labels to bilingual `EN/RU`.
-- Ensure long values fold (never forced abbreviations).
+- Ensure long values fold and stay explicit (no abbreviations in Inspector values).
 
 Acceptance:
 
@@ -292,4 +300,3 @@ Acceptance:
 - Canonical subjects: `src/qiki/shared/nats_subjects.py`
 - TDE design spec: `docs/design/operator_console/TDE_DESIGN_ORION.md`
 - Physical source-of-truth: `docs/design/hardware_and_physics/bot_source_of_truth.md`
-
