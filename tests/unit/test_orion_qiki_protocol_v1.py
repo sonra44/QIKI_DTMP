@@ -7,6 +7,8 @@ from pydantic import ValidationError
 
 from qiki.shared.models.orion_qiki_protocol import (
     EnvironmentMode,
+    EnvironmentSetV1,
+    EnvironmentSnapshotV1,
     IntentV1,
     LangHint,
     ProposalV1,
@@ -112,3 +114,24 @@ def test_strict_extra_fields_rejected() -> None:
                 "extra": "nope",
             }
         )
+
+
+def test_environment_snapshot_v1_roundtrip() -> None:
+    snap = EnvironmentSnapshotV1(
+        ts=1700000000000,
+        environment_mode=EnvironmentMode.MISSION,
+        source="q_core_agent",
+    )
+    raw = snap.model_dump_json()
+    parsed = EnvironmentSnapshotV1.model_validate_json(raw)
+    assert parsed.version == 1
+    assert parsed.environment_mode == EnvironmentMode.MISSION
+
+
+def test_environment_set_v1_requires_mode() -> None:
+    payload = {"version": 1, "ts": 1700000000000, "environment_mode": "FACTORY"}
+    parsed = EnvironmentSetV1.model_validate(payload)
+    assert parsed.environment_mode == EnvironmentMode.FACTORY
+
+    with pytest.raises(ValidationError):
+        EnvironmentSetV1.model_validate({"version": 1, "ts": 1})

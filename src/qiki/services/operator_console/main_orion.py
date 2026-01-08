@@ -27,6 +27,8 @@ from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.orion_qiki_protocol import (
     EnvironmentMode,
+    EnvironmentSetV1,
+    EnvironmentSnapshotV1,
     IntentV1,
     LangHint,
     SelectionV1,
@@ -34,7 +36,7 @@ from qiki.shared.models.orion_qiki_protocol import (
     ProposalsBatchV1,
 )
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENT_V1
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_ENVIRONMENT_SET_V1, QIKI_INTENT_V1
 
 try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
@@ -360,6 +362,7 @@ class OrionHeader(Container):
     can_focus = False
 
     online = reactive(False)
+    mode = reactive(I18N.NA)
     battery = reactive(I18N.NA)
     hull = reactive(I18N.NA)
     rad = reactive(I18N.NA)
@@ -387,10 +390,14 @@ class OrionHeader(Container):
                 return
 
         online_value = I18N.online_offline(self.online)
+        mode_value = self.mode
         set_cell(
             "hdr-online",
-            f"{I18N.bidi('Link', 'Связь')} {online_value}",
-            tooltip=f"{I18N.bidi('Link status', 'Состояние связи')}: {online_value}",
+            f"{I18N.bidi('Mode', 'Режим')} {mode_value} | {I18N.bidi('Link', 'Связь')} {online_value}",
+            tooltip=(
+                f"{I18N.bidi('Environment mode', 'Режим среды')}: {mode_value}\n"
+                f"{I18N.bidi('Link status', 'Состояние связи')}: {online_value}"
+            ),
         )
         set_cell(
             "hdr-battery",
@@ -459,6 +466,10 @@ class OrionHeader(Container):
 
         # Online is a function of connectivity + freshness (no magic).
         self.online = bool(nats_connected and telemetry_freshness_kind == "fresh")
+        self._refresh_cells()
+
+    def update_mode(self, mode: str) -> None:
+        self.mode = mode
         self._refresh_cells()
 
 
@@ -676,6 +687,7 @@ class OrionApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.nats_client: Optional[NATSClient] = None
+        self._qcore_environment_mode: Optional[EnvironmentMode] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
         self._events_live: bool = True
@@ -750,10 +762,21 @@ class OrionApp(App):
                     "nats_connected": bool(self.nats_connected),
                     "events_filter_type": self._events_filter_type,
                     "events_filter_text": self._events_filter_text,
+                    "environment_mode": (
+                        self._qcore_environment_mode.value if self._qcore_environment_mode is not None else None
+                    ),
                 },
             ),
             key="system",
         )
+
+    @staticmethod
+    def _environment_label(mode: Optional[EnvironmentMode]) -> str:
+        if mode == EnvironmentMode.MISSION:
+            return I18N.bidi("Mission", "Миссия")
+        if mode == EnvironmentMode.FACTORY:
+            return I18N.bidi("Factory", "Завод")
+        return I18N.NA
 
     @staticmethod
     def _fmt_num(value: Any, *, digits: int = 2) -> str:
@@ -2428,6 +2451,16 @@ class OrionApp(App):
 
         # Subscriptions are best-effort; missing streams shouldn't crash UI.
         try:
+            await self.nats_client.subscribe_qiki_environment(self.handle_environment_data)
+            self._log_msg(
+                f"🧭 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('environment mode', 'режим среды')}"
+            )
+        except Exception as e:
+            self._log_msg(
+                f"⚠️ {I18N.bidi('Environment subscribe failed', 'Подписка режима среды не удалась')}: {e}"
+            )
+
+        try:
             await self.nats_client.subscribe_system_telemetry(self.handle_telemetry_data)
             self._log_msg(f"📈 {I18N.bidi('Subscribed', 'Подписка')}: qiki.telemetry")
         except Exception as e:
@@ -2464,11 +2497,16 @@ class OrionApp(App):
             )
 
     def _refresh_header(self) -> None:
+        try:
+            header = self.query_one("#orion-header", OrionHeader)
+            header.update_mode(self._environment_label(self._qcore_environment_mode))
+        except Exception:
+            return
+
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
             return
         try:
-            header = self.query_one("#orion-header", OrionHeader)
             header.update_from_telemetry(
                 telemetry_env.payload,
                 nats_connected=self.nats_connected,
@@ -3102,6 +3140,26 @@ class OrionApp(App):
         if self.active_screen == "proposals":
             self._refresh_inspector()
 
+    async def handle_environment_data(self, data: dict) -> None:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        if not isinstance(payload, dict):
+            return
+        try:
+            snap = EnvironmentSnapshotV1.model_validate(payload)
+        except Exception:
+            return
+
+        if snap.environment_mode == self._qcore_environment_mode:
+            return
+
+        self._qcore_environment_mode = snap.environment_mode
+        self._update_system_snapshot()
+        self._refresh_header()
+        self._calm_log(
+            f"🧭 {I18N.bidi('Environment mode', 'Режим среды')}: {self._environment_label(self._qcore_environment_mode)}",
+            level="info",
+        )
+
     async def handle_control_response(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
@@ -3520,6 +3578,11 @@ class OrionApp(App):
             f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}: q: <text> | // <text>",
             level="info",
         )
+        self._console_log(
+            f"{I18N.bidi('Environment mode', 'Режим среды')}: "
+            f"mode/режим | mode factory/режим завод | mode mission/режим миссия",
+            level="info",
+        )
         self._console_log(f"{I18N.bidi('Menu glossary', 'Глоссарий меню')}: ", level="info")
         self._console_log(f"- Sys/Систем: {I18N.bidi('System', 'Система')}", level="info")
         self._console_log(f"- Events/Событ: {I18N.bidi('Events', 'События')}", level="info")
@@ -3640,6 +3703,21 @@ class OrionApp(App):
         low = cmd.lower()
         if low in {"help", "помощь", "?", "h"}:
             self._show_help()
+            return
+
+        if low in {"mode", "режим"}:
+            self._console_log(
+                f"{I18N.bidi('Environment mode', 'Режим среды')}: {self._environment_label(self._qcore_environment_mode)}",
+                level="info",
+            )
+            return
+
+        if low in {"mode factory", "mode.factory", "режим завод", "режим.завод", "режим factory", "режим.factory"}:
+            await self._request_environment_mode(EnvironmentMode.FACTORY)
+            return
+
+        if low in {"mode mission", "mode.mission", "режим миссия", "режим.миссия", "режим mission", "режим.mission"}:
+            await self._request_environment_mode(EnvironmentMode.MISSION)
             return
 
         if low in {"events", "события"}:
@@ -3932,8 +4010,11 @@ class OrionApp(App):
                     }
                 )
 
-        env_raw = (os.getenv("OPERATOR_CONSOLE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
-        env_mode = EnvironmentMode.FACTORY if env_raw != "MISSION" else EnvironmentMode.MISSION
+        # Environment mode is sourced from QCore when available; env var is only a fallback hint.
+        env_mode = self._qcore_environment_mode
+        if env_mode is None:
+            env_raw = (os.getenv("OPERATOR_CONSOLE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
+            env_mode = EnvironmentMode.MISSION if env_raw == "MISSION" else EnvironmentMode.FACTORY
 
         app_spec = next((a for a in ORION_APPS if a.screen == self.active_screen), ORION_APPS[0])
         intent = IntentV1(
@@ -3967,6 +4048,31 @@ class OrionApp(App):
         except Exception as e:
             self._console_log(
                 f"❌ {I18N.bidi('Failed to send intent', 'Не удалось отправить намерение')}: {e}",
+                level="error",
+            )
+
+    async def _request_environment_mode(self, mode: EnvironmentMode) -> None:
+        if not self.nats_client:
+            self._console_log(
+                f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}: "
+                f"{I18N.bidi('mode not sent', 'режим не отправлен')}",
+                level="error",
+            )
+            return
+        req = EnvironmentSetV1(
+            ts=int(time.time() * 1000),
+            environment_mode=mode,
+            requested_by="orion",
+        )
+        try:
+            await self.nats_client.publish_command(QIKI_ENVIRONMENT_SET_V1, req.model_dump())
+            self._console_log(
+                f"🧭 {I18N.bidi('Mode request sent', 'Запрос режима отправлен')}: {self._environment_label(mode)}",
+                level="info",
+            )
+        except Exception as exc:
+            self._console_log(
+                f"❌ {I18N.bidi('Failed to request mode', 'Не удалось запросить режим')}: {exc}",
                 level="error",
             )
 

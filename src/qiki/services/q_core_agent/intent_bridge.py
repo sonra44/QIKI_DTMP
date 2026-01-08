@@ -13,11 +13,23 @@ from nats.errors import NoServersError, TimeoutError
 from pydantic import ValidationError
 
 from qiki.services.q_core_agent.core.agent_logger import logger
-from qiki.shared.models.orion_qiki_protocol import ProposalsBatchV1, ProposalV1, IntentV1
-from qiki.shared.nats_subjects import QIKI_INTENT_V1, QIKI_PROPOSALS_V1
+from qiki.shared.models.orion_qiki_protocol import (
+    EnvironmentMode,
+    EnvironmentSetV1,
+    EnvironmentSnapshotV1,
+    IntentV1,
+    ProposalV1,
+    ProposalsBatchV1,
+)
+from qiki.shared.nats_subjects import (
+    QIKI_ENVIRONMENT_SET_V1,
+    QIKI_ENVIRONMENT_V1,
+    QIKI_INTENT_V1,
+    QIKI_PROPOSALS_V1,
+)
 
 
-def build_stub_proposals(intent: IntentV1) -> ProposalsBatchV1:
+def build_stub_proposals(intent: IntentV1, *, environment_mode: EnvironmentMode) -> ProposalsBatchV1:
     """Deterministic proposals without OpenAI (Stage C)."""
 
     snapshot = intent.snapshot_min if isinstance(intent.snapshot_min, dict) else {}
@@ -29,24 +41,34 @@ def build_stub_proposals(intent: IntentV1) -> ProposalsBatchV1:
         proposals.append(
             ProposalV1(
                 proposal_id="review-incidents",
-                title="Review top incidents",
-                justification="Incidents were detected in the snapshot; review severity and acknowledge/clear as needed.",
-                priority=85,
-                confidence=0.7,
+                title="Review top incidents" if environment_mode == EnvironmentMode.FACTORY else "Review incidents",
+                justification=(
+                    "Incidents were detected in the snapshot; review severity and acknowledge/clear as needed."
+                    if environment_mode == EnvironmentMode.FACTORY
+                    else "Incidents detected; review and acknowledge/clear as needed."
+                ),
+                priority=85 if environment_mode == EnvironmentMode.FACTORY else 90,
+                confidence=0.7 if environment_mode == EnvironmentMode.FACTORY else 0.75,
             )
         )
 
-    proposals.append(
-        ProposalV1(
-            proposal_id="clarify-goal",
-            title="Clarify desired outcome",
-            justification=f"Intent received for screen={intent.screen}. Provide target and constraints for the next step.",
-            priority=60,
-            confidence=0.6,
+    # In Mission mode, reduce "meta chatter" unless needed.
+    if environment_mode == EnvironmentMode.FACTORY or not has_incidents:
+        proposals.append(
+            ProposalV1(
+                proposal_id="clarify-goal",
+                title="Clarify desired outcome",
+                justification=(
+                    f"Intent received for screen={intent.screen}. Provide target and constraints for the next step."
+                    if environment_mode == EnvironmentMode.FACTORY
+                    else "Provide the target and constraints for the next step."
+                ),
+                priority=60 if environment_mode == EnvironmentMode.FACTORY else 55,
+                confidence=0.6 if environment_mode == EnvironmentMode.FACTORY else 0.65,
+            )
         )
-    )
 
-    if len(proposals) < 3:
+    if environment_mode == EnvironmentMode.FACTORY and len(proposals) < 3:
         proposals.append(
             ProposalV1(
                 proposal_id="status-summary",
@@ -59,12 +81,13 @@ def build_stub_proposals(intent: IntentV1) -> ProposalsBatchV1:
 
     return ProposalsBatchV1(
         ts=int(time.time() * 1000),
-        proposals=proposals[:3],
+        proposals=proposals[: (2 if environment_mode == EnvironmentMode.MISSION else 3)],
         metadata={
             "source": "q_core_agent",
             "intent_ts": intent.ts,
             "screen": intent.screen,
-            "environment_mode": str(intent.environment_mode),
+            "environment_mode": environment_mode.value,
+            "verbosity": "high" if environment_mode == EnvironmentMode.FACTORY else "low",
         },
     )
 
@@ -104,11 +127,44 @@ async def serve_intents(servers: list[str], *, install_signal_handlers: bool = F
     except (NoServersError, TimeoutError) as exc:
         raise RuntimeError(f"Failed to connect to NATS ({servers}): {exc}") from exc
 
-    async def on_msg(msg) -> None:
+    env_raw = (os.getenv("QCORE_ENVIRONMENT_MODE") or "FACTORY").strip().upper()
+    current_mode = EnvironmentMode.MISSION if env_raw == "MISSION" else EnvironmentMode.FACTORY
+
+    async def publish_environment_mode(mode: EnvironmentMode, *, reason: str) -> None:
+        snapshot = EnvironmentSnapshotV1(
+            ts=int(time.time() * 1000),
+            environment_mode=mode,
+            source="q_core_agent",
+        )
+        payload = snapshot.model_dump()
+        try:
+            await nc.publish(QIKI_ENVIRONMENT_V1, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            logger.info("Environment published: %s=%s (%s)", QIKI_ENVIRONMENT_V1, mode.value, reason)
+        except Exception as exc:
+            logger.error("Failed to publish environment snapshot: %s", exc)
+
+    async def on_env_set(msg) -> None:
+        nonlocal current_mode
+        try:
+            payload = json.loads(msg.data.decode("utf-8"))
+            req = EnvironmentSetV1.model_validate(payload)
+        except (json.JSONDecodeError, ValidationError, Exception) as exc:
+            logger.warning("Invalid environment set request ignored: %s", exc)
+            return
+
+        if req.environment_mode != current_mode:
+            current_mode = req.environment_mode
+            await publish_environment_mode(current_mode, reason="set_request")
+
+    async def on_intent(msg) -> None:
+        nonlocal current_mode
         try:
             payload = json.loads(msg.data.decode("utf-8"))
             intent = IntentV1.model_validate(payload)
-            batch = build_stub_proposals(intent)
+            if intent.environment_mode != current_mode:
+                current_mode = intent.environment_mode
+                await publish_environment_mode(current_mode, reason="intent_hint")
+            batch = build_stub_proposals(intent, environment_mode=current_mode)
         except (json.JSONDecodeError, ValidationError, Exception) as exc:
             batch = build_invalid_intent_proposals(exc)
             intent = None  # type: ignore[assignment]
@@ -130,7 +186,9 @@ async def serve_intents(servers: list[str], *, install_signal_handlers: bool = F
         except Exception as exc:
             logger.error("Failed to publish proposals: %s", exc)
 
-    await nc.subscribe(QIKI_INTENT_V1, cb=on_msg)
+    await nc.subscribe(QIKI_ENVIRONMENT_SET_V1, cb=on_env_set)
+    await nc.subscribe(QIKI_INTENT_V1, cb=on_intent)
+    await publish_environment_mode(current_mode, reason="startup")
     logger.info("Intent bridge online: subscribe=%s publish=%s", QIKI_INTENT_V1, QIKI_PROPOSALS_V1)
 
     if not install_signal_handlers:

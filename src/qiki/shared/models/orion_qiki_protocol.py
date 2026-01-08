@@ -59,3 +59,20 @@ class ProposalsBatchV1(_StrictModel):
     proposals: list[ProposalV1] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+
+class EnvironmentSnapshotV1(_StrictModel):
+    """QCore-published environment mode snapshot (QCore is the source of truth)."""
+
+    version: Literal[1] = 1
+    ts: int
+    environment_mode: EnvironmentMode
+    source: str = "q_core_agent"
+
+
+class EnvironmentSetV1(_StrictModel):
+    """Operator request to change environment mode."""
+
+    version: Literal[1] = 1
+    ts: int
+    environment_mode: EnvironmentMode
+    requested_by: Optional[str] = None
