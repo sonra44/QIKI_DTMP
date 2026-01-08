@@ -38,6 +38,20 @@ class _LLMProposalsResponseV1(BaseModel):
     proposals: List[_LLMProposalV1] = Field(min_length=1, max_length=3)
 
 
+def _strip_actions_for_proposals_only(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Defensive hardening: some models may try to add "actions"/"proposed_actions" even if we
+    instruct "proposals-only". We always drop them before schema validation.
+    """
+    proposals = payload.get("proposals")
+    if isinstance(proposals, list):
+        for item in proposals:
+            if isinstance(item, dict):
+                item.pop("actions", None)
+                item.pop("proposed_actions", None)
+    return payload
+
+
 class NeuralEngine(INeuralEngine):
     """
     Neural Engine responsible for generating proposals based on ML models.
@@ -163,6 +177,7 @@ class NeuralEngine(INeuralEngine):
             json_schema=json_schema,
         )
         parsed = parse_response_json(response=raw)
+        parsed = _strip_actions_for_proposals_only(parsed)
         return _LLMProposalsResponseV1.model_validate(parsed)
 
     def _build_min_context(self, context: "AgentContext") -> Dict[str, Any]:
