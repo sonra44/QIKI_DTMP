@@ -432,6 +432,14 @@ def test_neural_engine_openai_success_returns_proposals(monkeypatch):
     from qiki.services.q_core_agent.core import neural_engine as neural_engine_module
 
     def fake_create_response_json_schema(*args, **kwargs):
+        """
+        Return a deterministic mock OpenAI Responses payload containing two proposal entries.
+        
+        The returned structure mimics the JSON schema produced by OpenAIResponsesClient.create_response_json_schema: an outer dict with an "output" list containing a single message whose "content" includes an "output_text" entry. The output_text is a JSON string whose parsed object has a "proposals" list with two proposal objects (one DIAGNOSTICS and one PLANNING) including keys: title, justification, priority, confidence, and type.
+        
+        Returns:
+            dict: A mock response payload with the described "output" structure and embedded JSON-stringified proposals.
+        """
         _ = args, kwargs
         return {
             "output": [
@@ -490,6 +498,12 @@ def test_neural_engine_openai_error_returns_stub(monkeypatch):
     from qiki.services.q_core_agent.core import neural_engine as neural_engine_module
 
     def fake_create_response_json_schema(*args, **kwargs):
+        """
+        Simulates an OpenAI responses client raising a rate-limit error for testing.
+        
+        Raises:
+            neural_engine_module.OpenAIResponsesError: Always raised with message "rate limited".
+        """
         _ = args, kwargs
         raise neural_engine_module.OpenAIResponsesError("rate limited")
 

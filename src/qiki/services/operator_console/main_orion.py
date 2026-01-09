@@ -521,6 +521,11 @@ class OrionSidebar(Static):
 
 class OrionKeybar(Static):
     def render(self) -> str:
+        """
+        Builds the keybar string showing per-app hotkeys and context-sensitive command hints.
+        
+        The returned string contains formatted, bracketed tokens for each registered app (hotkey label and menu label) followed by contextual hints (e.g., navigation, event controls, proposals/rules actions) adapted to the current active screen. If the computed string is longer than the available width, it is truncated and ends with a trailing ellipsis (`…`).
+        """
         active_screen = getattr(self.app, "active_screen", "system")
         extra: list[str] = [f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}"]
         extra.append(
@@ -674,6 +679,11 @@ class OrionApp(App):
     active_screen = reactive("system")
 
     def __init__(self) -> None:
+        """
+        Initialize the OrionApp instance and prepare internal state, stores, configuration limits, and auxiliary services.
+        
+        Sets up in-memory stores for tracks, events, console, summary, power, diagnostics, mission, and proposals; selection tracking per app; a SnapshotStore; environment-driven limits and overrides (max rows, TTLs, command length, output/bottom-bar sizing); the file-backed rules repository and placeholders for incident rules and store; optional PPI scope renderer when available; and then loads incident rules and updates the initial system snapshot.
+        """
         super().__init__()
         self.nats_client: Optional[NATSClient] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
@@ -1666,6 +1676,21 @@ class OrionApp(App):
             pass
 
     def compose(self) -> ComposeResult:
+        """
+        Builds the application's widget hierarchy and screen layout for the ORION operator console.
+        
+        Constructs and yields the top-level UI: a header, workspace (sidebar, inspector, bottom command/output bar), and individual screens with their panels and DataTable widgets. Included screens and components:
+        - Header (OrionHeader)
+        - Workspace containing OrionSidebar and OrionInspector
+        - Bottom bar with output log, command input, and keybar
+        - System dashboard panels and radar PPI + radar table
+        - Events, Console, Summary, Power, Diagnostics, and Mission screens with their tables
+        - Proposals screen with a proposals table
+        - Rules screen with a toolbar (reload button and hints) and rules table
+        
+        Returns:
+            ComposeResult: an iterable yielding the constructed widgets for composition.
+        """
         with Vertical(id="orion-root"):
             yield OrionHeader(id="orion-header")
             with Container(id="orion-workspace"):
@@ -1803,6 +1828,11 @@ class OrionApp(App):
                 yield rules_table
 
     async def on_mount(self) -> None:
+        """
+        Initialize the application UI, seed all panels and tables, start background refresh timers, and establish NATS connectivity.
+        
+        Performs initial screen activation and UI setup (system header, radar, events, console, summary, power, diagnostics, mission, proposals, rules), updates the system snapshot and command placeholder, refreshes the inspector and responsive layout, starts the NATS client, and schedules periodic refresh callbacks for header, radar, summary, diagnostics, and mission. Also attempts to focus the command input.
+        """
         self.action_show_screen("system")
         self._init_system_panels()
         self._seed_system_panels()
@@ -2306,6 +2336,11 @@ class OrionApp(App):
         table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
 
     def _seed_mission_table(self) -> None:
+        """
+        Initialize the mission table UI with a default seed row and reset related mission selection state.
+        
+        Clears any existing rows in the mission DataTable, resets the internal mission lookup and selection for the "mission" app, and inserts a single placeholder row indicating no available mission data.
+        """
         try:
             table = self.query_one("#mission-table", DataTable)
         except Exception:
@@ -2316,6 +2351,11 @@ class OrionApp(App):
         table.add_row("—", I18N.NA, I18N.NA, key="seed")
 
     def _seed_proposals_table(self) -> None:
+        """
+        Initialize the proposals data table and reset related in-memory state.
+        
+        Clears the proposals table UI, empties the internal proposals lookup, removes any current proposals selection, and inserts a single placeholder row indicating no available proposals. If the proposals table widget cannot be found, the function returns without side effects.
+        """
         try:
             table = self.query_one("#proposals-table", DataTable)
         except Exception:
@@ -2326,6 +2366,11 @@ class OrionApp(App):
         table.add_row(I18N.NA, I18N.NA, I18N.NA, key="seed")
 
     def _render_proposals_table(self) -> None:
+        """
+        Populate the proposals DataTable (#proposals-table) with the current proposals from internal store.
+        
+        Clears any existing rows, then queries the widget with id "#proposals-table". If the table widget is not found the method returns silently. If there are no proposals, inserts a single seed row with NA placeholders. Otherwise, sorts proposals by priority (descending) then confidence (descending) and adds a row per proposal with columns: Priority, Confidence (formatted to two decimal places when numeric), and Title. Uses localized `I18N.NA` for missing values and uses each proposal's id as the row key.
+        """
         try:
             table = self.query_one("#proposals-table", DataTable)
         except Exception:
@@ -2337,6 +2382,15 @@ class OrionApp(App):
             return
 
         def sort_key(item: tuple[str, dict[str, Any]]) -> tuple[int, float]:
+            """
+            Compute a sort key that orders items by descending `priority` then descending `confidence`.
+            
+            Parameters:
+                item (tuple[str, dict[str, Any]]): A pair of (id, payload) where `payload` may contain numeric `priority` and `confidence` fields.
+            
+            Returns:
+                tuple[int, float]: A tuple (-priority, -confidence) where missing or non-numeric values are treated as 0 so that higher priority/confidence sort before lower ones.
+            """
             payload = item[1]
             try:
                 pr = int(payload.get("priority") or 0)
@@ -2361,6 +2415,11 @@ class OrionApp(App):
             )
 
     def _seed_rules_table(self) -> None:
+        """
+        Seed the rules data table with a placeholder row and clear any existing rules selection.
+        
+        Clears the internal selection for the "rules" app, finds the DataTable with id "#rules-table", removes all rows, and inserts a single placeholder row labeled as not available. If the table cannot be found, the method returns without error.
+        """
         try:
             table = self.query_one("#rules-table", DataTable)
         except Exception:
@@ -2414,6 +2473,11 @@ class OrionApp(App):
             )
 
     async def _init_nats(self) -> None:
+        """
+        Initialize the NATS client, establish connectivity, and subscribe to the application's NATS topics.
+        
+        On successful connection this sets self.nats_client, marks self.nats_connected True, logs the outcome, and updates the system snapshot. If the initial connection attempt fails the method marks self.nats_connected False, logs the failure, updates the system snapshot, and returns early. Topic subscriptions (telemetry, tracks, events, control responses, QIKI proposals) are attempted in a best-effort fashion; subscription failures are logged but do not raise exceptions or abort other subscriptions.
+        """
         self.nats_client = NATSClient()
         try:
             await self.nats_client.connect()
@@ -2464,6 +2528,11 @@ class OrionApp(App):
             )
 
     def _refresh_header(self) -> None:
+        """
+        Update the top header with the most recent telemetry snapshot and refresh the inspector when viewing the system screen.
+        
+        Looks up the latest telemetry EventEnvelope from the snapshot store and, if present and valid, forwards its payload and derived metadata (NATS connectivity, age, and freshness) to the OrionHeader for display. If no telemetry is available or an error occurs, the method does nothing. When the active screen is "system", the inspector view is refreshed after the header update.
+        """
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
             return
@@ -2482,6 +2551,11 @@ class OrionApp(App):
             self._refresh_inspector()
 
     def _refresh_inspector(self) -> None:
+        """
+        Update the inspector pane to reflect the current selection and active screen.
+        
+        Builds the Summary, Fields, Raw data, and Actions sections for the right-hand inspector based on the current selection context and active screen (e.g., events, radar, rules, proposals, mission, console). If no selection exists, shows a "No selection" summary. Adds connectivity and telemetry age information. Safely returns without error if the inspector widget cannot be found.
+        """
         try:
             inspector = self.query_one("#orion-inspector", OrionInspector)
         except Exception:
@@ -3030,6 +3104,11 @@ class OrionApp(App):
             )
 
     def action_toggle_selected_rule_enabled(self) -> None:
+        """
+        Toggle the enabled state of the currently selected incident rule after user confirmation.
+        
+        Looks up the selected rule in the rules screen; if a valid rule is selected, prompts the user to confirm toggling its enabled flag and, on confirmation, applies the change via the internal rule update handler. Logs informational messages for missing selection, unknown rule id, or cancellation.
+        """
         if self.active_screen != "rules":
             return
         if isinstance(self.focused, Input):
@@ -3067,6 +3146,14 @@ class OrionApp(App):
         self.push_screen(ConfirmDialog(prompt), after)
 
     def _ingest_proposals_batch(self, batch: ProposalsBatchV1) -> None:
+        """
+        Ingest a ProposalsBatchV1 into the app's proposal stores and refresh the proposals table.
+        
+        Appends the batch (as a dict) to the rolling batch history (kept to 30 entries), updates the proposals-by-key map using each proposal's `proposal_id` (skipping proposals with no id), enforces the configured maximum visible proposals rows by removing the oldest entries when exceeded, and triggers a UI refresh of the proposals table.
+        
+        Parameters:
+            batch (ProposalsBatchV1): The incoming proposals batch to ingest.
+        """
         self._proposals_batches.append(batch.model_dump())
         if len(self._proposals_batches) > 30:
             self._proposals_batches = self._proposals_batches[-30:]
@@ -3084,6 +3171,14 @@ class OrionApp(App):
         self._render_proposals_table()
 
     async def handle_proposals_data(self, data: dict) -> None:
+        """
+        Process an incoming proposals message: validate, ingest the proposals batch, log each proposal title, and refresh the inspector when the proposals screen is active.
+        
+        If the payload fails validation, logs a warning and returns without mutating state.
+        
+        Parameters:
+            data (dict): Raw message payload expected to contain a "data" key with the proposals batch structure.
+        """
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         try:
             batch = ProposalsBatchV1.model_validate(payload)
@@ -3103,6 +3198,14 @@ class OrionApp(App):
             self._refresh_inspector()
 
     async def handle_control_response(self, data: dict) -> None:
+        """
+        Log a human-readable, localized summary of a control response payload.
+        
+        Parses the incoming message (expected to be a dict with a "data" dict) and extracts a success indicator, request identifier, and an optional status/message from an inner payload. Formats those values using localization helpers and emits a single console log entry summarizing the control response. Handles missing or malformed input gracefully by substituting localized "N/A" or stringified values as appropriate.
+        
+        Parameters:
+            data (dict): Incoming control response envelope or raw payload; typically a dict containing a "data" key with the response body. If not a dict or missing expected fields, the function logs a best-effort summary with placeholders.
+        """
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
             payload = {}
@@ -3126,6 +3229,14 @@ class OrionApp(App):
         )
 
     def action_show_screen(self, screen: str) -> None:
+        """
+        Switch the UI to the specified screen and update visible panels and dependent views.
+        
+        Sets the application's active screen state, marks the corresponding sidebar entry active, shows the chosen screen's panel while hiding other screens, and refreshes any screen-specific tables and the inspector. If the provided screen name is not recognized, logs an "Unknown screen" message and does nothing.
+        
+        Parameters:
+            screen (str): Canonical screen name to activate (e.g., "system", "radar", "events", "console", "summary", "power", "diagnostics", "mission", "proposals", "rules").
+        """
         if screen not in {app.screen for app in ORION_APPS}:
             self._console_log(f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {screen}", level="info")
             return
@@ -3171,7 +3282,11 @@ class OrionApp(App):
         self._render_rules_table()
 
     def action_cycle_focus(self) -> None:
-        """Cycle focus: Sidebar → Workspace → Inspector → Command."""
+        """
+        Cycle keyboard focus through the primary UI regions in this order: sidebar → workspace → inspector → command.
+        
+        Skips any region that is not present and advances to the next available widget. The workspace region targeted depends on the currently active screen (for example, when the active screen is "radar" the radar table is focused; when "proposals" the proposals table is focused).
+        """
 
         def safe_query(selector: str) -> Optional[Static]:
             try:
@@ -3225,9 +3340,27 @@ class OrionApp(App):
             pass
 
     def action_help(self) -> None:
+        """
+        Display the application's help dialog.
+        
+        Shows the comprehensive help overlay with available commands, application screens, quick actions, and glossary entries.
+        """
         self._show_help()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """
+        Update the current selection context when a data table row is highlighted.
+        
+        This handler inspects the highlighted row and, depending on the source table, constructs
+        and sets an appropriate SelectionContext (app_id, key, kind, source, created_at_epoch,
+        payload, ids). It ignores seed rows, rows with invalid keys, and unsupported tables.
+        Supported tables and resulting selection kinds: proposals, rules, events (incidents),
+        console, summary, power, diagnostics, mission, and radar (tracks).
+        
+        Parameters:
+            event (DataTable.RowHighlighted): The row-highlight event containing the data_table
+                reference, the row_key for the highlighted row, and cursor_row for position-based lookup.
+        """
         if event.data_table.id == "proposals-table":
             try:
                 row_key = str(event.row_key)
@@ -3618,6 +3751,14 @@ class OrionApp(App):
         )
 
     async def _run_command(self, raw: str) -> None:
+        """
+        Parse and execute a raw operator-console command string, performing the corresponding UI action or control operation.
+        
+        This method interprets the provided command text and dispatches side-effecting actions such as publishing a QIKI intent, toggling events live/paused, acknowledging or clearing incidents, setting event type/text filters, reloading incident rules, switching screens, sending simulation commands, and other console operations; unrecognized commands are logged as unknown. Commands and localized synonyms (English/Russian) are supported and selection/defaulting behavior is applied when arguments are omitted.
+        
+        Parameters:
+            raw (str): The raw command text entered by the operator; leading/trailing whitespace is ignored.
+        """
         cmd = (raw or "").strip()
         if not cmd:
             return
@@ -3856,6 +3997,14 @@ class OrionApp(App):
         self._console_log(f"{I18N.bidi('Unknown command', 'Неизвестная команда')}: {cmd}", level="info")
 
     async def _publish_qiki_intent(self, text: str) -> None:
+        """
+        Publish a QIKI intent containing a short text and a minimal runtime snapshot to the QIKI intent stream.
+        
+        Constructs an IntentV1 payload that includes the provided text, current active screen and selection, a compact set of telemetry vitals, and a top-N incident summary, then publishes it to the QIKI intent subject and logs the outcome. If `text` is empty or the NATS client is not available, the function returns without publishing.
+        
+        Parameters:
+            text (str): The intent text to send to QIKI.
+        """
         if not text:
             return
         if not self.nats_client:
@@ -3867,6 +4016,16 @@ class OrionApp(App):
             return
 
         def nested_get(d: Any, path: str) -> Any:
+            """
+            Retrieve a value from a nested mapping using a dot-separated key path.
+            
+            Parameters:
+                d (Any): The root mapping to traverse; expected to be a dict-like object.
+                path (str): Dot-separated sequence of keys (e.g. "a.b.c"). Empty or None yields the original mapping.
+            
+            Returns:
+                Any: The value found at the given path, or `None` if any intermediate value is not a dict or a key is missing.
+            """
             node = d
             for part in (path or "").split("."):
                 if not part:
@@ -3971,6 +4130,11 @@ class OrionApp(App):
             )
 
     def _update_command_placeholder(self) -> None:
+        """
+        Set the command input's placeholder to a localized hint string describing available commands.
+        
+        The placeholder includes short examples and localized labels for help, screen switching, simulation start, and QIKI intents (both `q: <text>` and `// <text>`). If the command input widget cannot be found, the method does nothing.
+        """
         try:
             dock = self.query_one("#command-dock", Input)
         except Exception:

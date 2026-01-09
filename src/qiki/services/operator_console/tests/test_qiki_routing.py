@@ -35,9 +35,23 @@ def test_parse_qiki_intent_shell_command() -> None:
 
 class _FakeNats:
     def __init__(self) -> None:
+        """
+        Initialize the fake NATS publisher and prepare an empty list of captured publishes.
+        
+        The `published` attribute records published messages as a list of tuples (subject, payload),
+        where `subject` is a string and `payload` is a dict representing the published command.
+        """
         self.published: list[tuple[str, dict]] = []
 
     async def publish_command(self, subject: str, command: dict) -> None:
+        """
+        Record a published command by appending the (subject, command) tuple to the `published` list.
+        
+        Parameters:
+            subject (str): NATS subject under which the command was published.
+            command (dict): Payload of the published command.
+        
+        """
         self.published.append((subject, command))
 
 
