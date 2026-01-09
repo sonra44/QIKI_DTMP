@@ -40,8 +40,12 @@ class _LLMProposalsResponseV1(BaseModel):
 
 def _strip_actions_for_proposals_only(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Defensive hardening: some models may try to add "actions"/"proposed_actions" even if we
-    instruct "proposals-only". We always drop them before schema validation.
+    Remove any "actions" or "proposed_actions" keys from each proposal in the payload.
+    
+    If the payload contains a "proposals" list of dictionaries, this function removes those keys from each dictionary in-place and returns the (possibly modified) payload.
+    
+    Returns:
+        payload (Dict[str, Any]): The original payload with "actions" and "proposed_actions" removed from proposal items when present.
     """
     proposals = payload.get("proposals")
     if isinstance(proposals, list):
@@ -59,6 +63,20 @@ class NeuralEngine(INeuralEngine):
     """
 
     def __init__(self, context: "AgentContext", config: "QCoreAgentConfig"):
+        """
+        Initialize the NeuralEngine instance and load OpenAI-related configuration from environment variables.
+        
+        Parameters:
+            context (AgentContext): Runtime agent context used by the engine.
+            config (QCoreAgentConfig): Agent configuration providing flags such as mock_neural_proposals_enabled.
+        
+        Details:
+            - Saves provided context and config on the instance.
+            - Reads and stores OpenAI settings from environment variables:
+                OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, OPENAI_TIMEOUT_S,
+                OPENAI_MAX_OUTPUT_TOKENS, OPENAI_MAX_RETRIES, OPENAI_TEMPERATURE.
+            - Sets the mock proposals enabled flag from config and logs initialization.
+        """
         self.context = context
         self.config = config
         self.mock_neural_proposals_enabled = config.mock_neural_proposals_enabled
@@ -80,6 +98,14 @@ class NeuralEngine(INeuralEngine):
         )
 
     def generate_proposals(self, context: "AgentContext") -> List[Proposal]:
+        """
+        Generate a list of Proposal objects using either a mock implementation, a diagnostics fallback, or proposals produced by the OpenAI-backed LLM.
+        
+        When mock proposals are enabled, returns a single predefined mock Proposal. If no OpenAI API key is configured, returns a single diagnostics Proposal indicating LLM unavailability. If an OpenAI call fails, returns a single diagnostics Proposal containing a truncated (first 200 characters) error message and zeroed priority/confidence. On success, converts each LLM proposal into a Proposal where the justification is formed as "title: justification", priority and confidence are taken from the LLM output, and the proposal type is mapped to ProposalTypeEnum (defaults to PLANNING if unknown).
+        
+        Returns:
+            List[Proposal]: A list containing either mock, diagnostics, or translated LLM proposals.
+        """
         logger.debug("Generating proposals from Neural Engine.")
         proposals: List[Proposal] = []
 
@@ -148,6 +174,15 @@ class NeuralEngine(INeuralEngine):
     def _generate_openai_proposals(
         self, context: "AgentContext"
     ) -> _LLMProposalsResponseV1:
+        """
+        Request 1–3 structured proposals from the configured OpenAI Responses API using a minimal agent context and return them validated and sanitized.
+        
+        Parameters:
+            context (AgentContext): Agent state used to build the minimal user context supplied to the LLM.
+        
+        Returns:
+            _LLMProposalsResponseV1: A validated and sanitized response containing 1–3 proposals, each with `title`, `justification`, `priority`, `confidence`, and `type`.
+        """
         client = OpenAIResponsesClient(
             api_key=self._openai_api_key,
             model=self._openai_model,
@@ -181,6 +216,21 @@ class NeuralEngine(INeuralEngine):
         return _LLMProposalsResponseV1.model_validate(parsed)
 
     def _build_min_context(self, context: "AgentContext") -> Dict[str, Any]:
+        """
+        Build a minimal serializable context dictionary extracted from the agent runtime context for use in LLM prompts.
+        
+        The returned dictionary contains the following keys:
+        - bios_status: a serializable representation of context.bios_status or None.
+        - fsm_state: a serializable representation of context.fsm_state or None.
+        - guard_events: a list of up to the first 20 serializable guard event objects (empty list if none).
+        - world_snapshot: a serializable representation of context.world_snapshot or None.
+        
+        Serialization rules applied to each value:
+        - protobuf Message objects are converted to dicts while preserving proto field names.
+        - objects with a `model_dump()` method use that output.
+        - objects with a `dict()` method use that output.
+        - None is preserved; any other value is returned as-is.
+        """
         def _dump(value: Any) -> Any:
             if value is None:
                 return None

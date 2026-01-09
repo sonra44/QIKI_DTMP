@@ -48,6 +48,18 @@ class ProposalV1(_StrictModel):
     @field_validator("proposed_actions")
     @classmethod
     def _must_be_empty_in_stage_a(cls, v: list[Any]) -> list[Any]:
+        """
+        Validate that the `proposed_actions` list is empty for Stage A.
+        
+        Parameters:
+            v (list[Any]): The `proposed_actions` list to validate.
+        
+        Returns:
+            list[Any]: The same list when valid.
+        
+        Raises:
+            ValueError: If `v` is non-empty.
+        """
         if v:
             raise ValueError("proposed_actions must be empty in Stage A")
         return v
@@ -58,4 +70,3 @@ class ProposalsBatchV1(_StrictModel):
     ts: int
     proposals: list[ProposalV1] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-

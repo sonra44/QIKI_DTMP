@@ -18,6 +18,21 @@ def _http_post_json(
     body: Dict[str, Any],
     timeout_s: float,
 ) -> Dict[str, Any]:
+    """
+    Send a JSON POST to the given URL and return the parsed JSON response.
+    
+    Parameters:
+        url (str): Destination URL for the POST request.
+        headers (Dict[str, str]): HTTP headers to include (will be merged with Content-Type).
+        body (Dict[str, Any]): JSON-serializable payload to send as the request body.
+        timeout_s (float): Request timeout in seconds.
+    
+    Returns:
+        Dict[str, Any]: Parsed JSON object from the response body.
+    
+    Raises:
+        OpenAIResponsesError: If the response body is not valid JSON.
+    """
     request = urllib.request.Request(
         url=url,
         data=json.dumps(body).encode("utf-8"),
@@ -33,6 +48,20 @@ def _http_post_json(
 
 
 def _extract_output_text(response: Dict[str, Any]) -> str:
+    """
+    Extracts the first non-empty "output_text" string from an OpenAI-like response.
+    
+    Scans the top-level response's "output" list for the first item of type "message", then the first content chunk of type "output_text" whose "text" field is a non-empty string, and returns that string.
+    
+    Parameters:
+        response (Dict[str, Any]): The parsed response mapping expected to contain an "output" list of message objects with "content" lists of chunks.
+    
+    Returns:
+        str: The first non-empty output text found.
+    
+    Raises:
+        OpenAIResponsesError: If the top-level "output" is missing or not a list, or if no suitable "output_text" chunk with non-empty text is found.
+    """
     output = response.get("output")
     if not isinstance(output, list):
         raise OpenAIResponsesError("OpenAI response missing 'output' array")
@@ -74,6 +103,22 @@ class OpenAIResponsesClient:
         user_json: Dict[str, Any],
         json_schema: Dict[str, Any],
     ) -> Dict[str, Any]:
+        """
+        Create a response from the configured Responses API constrained by a JSON schema.
+        
+        Sends a POST to the client's /responses endpoint with a system prompt, the provided user JSON (sent as a JSON string), and a JSON Schema to enforce on the model's output. The method will retry transient HTTP and network errors up to the client's max_retries using exponential backoff with jitter.
+        
+        Parameters:
+            system_prompt (str): System-role prompt text to include in the request.
+            user_json (dict): JSON-serializable object to include as the user's input; it will be JSON-dumped into the request.
+            json_schema (dict): JSON Schema that the model's output must conform to; sent in strict `json_schema` format.
+        
+        Returns:
+            dict: The parsed JSON response payload returned by the Responses API.
+        
+        Raises:
+            OpenAIResponsesError: If the request fails (HTTP error, network error, or exhausted retries) or the API returns an error detail.
+        """
         url = f"{self.base_url.rstrip('/')}/responses"
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
@@ -132,6 +177,18 @@ class OpenAIResponsesClient:
 
 
 def parse_response_json(*, response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse the model response and return the JSON object produced by the model.
+    
+    Parameters:
+        response (Dict[str, Any]): Raw response structure from the OpenAI-like Responses API.
+    
+    Returns:
+        Dict[str, Any]: The parsed JSON object extracted from the model output.
+    
+    Raises:
+        OpenAIResponsesError: If the model output is not valid JSON or if the parsed JSON is not an object.
+    """
     text = _extract_output_text(response)
     try:
         data = json.loads(text)
@@ -140,4 +197,3 @@ def parse_response_json(*, response: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise OpenAIResponsesError("Model output JSON must be an object")
     return data
-

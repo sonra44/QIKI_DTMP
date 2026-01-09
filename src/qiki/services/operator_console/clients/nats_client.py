@@ -272,7 +272,19 @@ class NATSClient:
         self,
         callback: Callable[[Dict[str, Any]], Awaitable[None]],
     ) -> None:
-        """Subscribe to control responses emitted by FastStream bridge."""
+        """
+        Subscribe to control response messages from the FastStream bridge and forward each message to the provided callback.
+        
+        Parameters:
+            callback (Callable[[Dict[str, Any]], Awaitable[None]]): Async function invoked for every received message. It will be called with a dictionary containing:
+                - stream: `"CONTROL_RESPONSES"`
+                - timestamp: ISO 8601 timestamp string when the message was processed
+                - subject: the NATS subject of the message (or `None` if unavailable)
+                - data: the decoded JSON payload of the message
+        
+        Raises:
+            RuntimeError: If the client is not connected to NATS.
+        """
         if not self.nc:
             raise RuntimeError("Not connected to NATS")
 
@@ -303,11 +315,34 @@ class NATSClient:
         self,
         callback: Callable[[Dict[str, Any]], Awaitable[None]],
     ) -> None:
-        """Subscribe to QIKI proposals batches (core NATS)."""
+        """
+        Subscribe to QIKI proposal batches from core NATS and forward each message to the provided callback.
+        
+        The callback is invoked with a dictionary containing the keys:
+        - `stream`: the string "QIKI_PROPOSALS"
+        - `timestamp`: ISO 8601 timestamp when the message was processed
+        - `subject`: the NATS subject on which the message was received (or None)
+        - `data`: the decoded JSON payload
+        
+        Parameters:
+            callback (Callable[[Dict[str, Any]], Awaitable[None]]): Async function called for each incoming message with the described dictionary payload.
+        
+        Raises:
+            RuntimeError: If the NATS client is not connected.
+        """
         if not self.nc:
             raise RuntimeError("Not connected to NATS")
 
         async def message_handler(msg):
+            """
+            Handle an incoming NATS message for QIKI proposals by decoding JSON and invoking the subscription callback with a structured payload.
+            
+            Parameters:
+                msg: NATS message object whose `data` is a JSON-encoded bytes payload and which may have a `subject` attribute.
+            
+            Notes:
+                On processing failure, an error message is printed.
+            """
             try:
                 data = json.loads(msg.data.decode())
                 await callback(
@@ -331,7 +366,14 @@ class NATSClient:
             raise
             
     async def get_jetstream_info(self) -> Dict[str, Any]:
-        """Get JetStream account info."""
+        """
+        Retrieve high-level JetStream account statistics.
+        
+        Returns a dictionary with keys "memory", "storage", "streams", and "consumers" containing the corresponding account values. If an error occurs while fetching info, an empty dict is returned.
+        
+        Raises:
+            RuntimeError: If the client is not connected to JetStream.
+        """
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
             

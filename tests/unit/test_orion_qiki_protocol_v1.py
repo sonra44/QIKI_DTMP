@@ -34,6 +34,13 @@ def test_intent_v1_roundtrip() -> None:
 
 
 def test_intent_v1_requires_fields() -> None:
+    """
+    Verifies that validating an IntentV1 payload fails when required fields are missing.
+    
+    Attempts to validate a minimal payload containing only `version` and `text` and expects a `ValidationError`.
+    Raises:
+        ValidationError: If the payload is missing required fields.
+    """
     with pytest.raises(ValidationError):
         IntentV1.model_validate({"version": 1, "text": "x"})
 

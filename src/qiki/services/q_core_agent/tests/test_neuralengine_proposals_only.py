@@ -10,6 +10,14 @@ from qiki.shared.config_models import QCoreAgentConfig
 
 
 def _make_engine() -> NeuralEngine:
+    """
+    Create a NeuralEngine preconfigured for local testing.
+    
+    Returns:
+        A NeuralEngine instance configured with tick_interval=1, log_level="INFO",
+        recovery_delay=1, proposal_confidence_threshold=0.8,
+        mock_neural_proposals_enabled=False, and grpc_server_address="localhost:50051".
+    """
     config = QCoreAgentConfig(
         tick_interval=1,
         log_level="INFO",
@@ -63,6 +71,17 @@ def test_neuralengine_strips_actions_from_llm_payload(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     def _fake_create_response_json_schema(self, *, system_prompt, user_json, json_schema):  # noqa: ARG001
+        """
+        Produce a fake OpenAIResponsesClient.create_response_json_schema-style payload whose `output` contains a single message with `output_text` embedding a JSON string of proposals that include both `actions` and `proposed_actions`.
+        
+        Parameters:
+            system_prompt (str): Ignored; present to match the real method signature.
+            user_json (dict): Ignored; present to match the real method signature.
+            json_schema (dict): Ignored; present to match the real method signature.
+        
+        Returns:
+            dict: A simulated response where `output` is a list containing one message whose `content` includes an `output_text` entry. The `text` value is a JSON string with a `proposals` array; each proposal includes `title`, `justification`, `priority`, `confidence`, `type`, and explicit `actions` and `proposed_actions` fields.
+        """
         return {
             "output": [
                 {
