@@ -34,12 +34,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 COPY requirements-faststream.txt .
 COPY requirements-dev.txt .
+COPY tools/qiki_docgen/requirements.txt tools/qiki_docgen/requirements.txt
 
 # Установка Python зависимостей
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r requirements-faststream.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt
+    pip install --no-cache-dir -r requirements-dev.txt && \
+    pip install --no-cache-dir -r tools/qiki_docgen/requirements.txt
 
 # Установка buf CLI для lint/breaking проверок protobuf контрактов
 RUN curl -sSL https://github.com/bufbuild/buf/releases/download/v1.45.0/buf-Linux-x86_64.tar.gz \

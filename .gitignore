@@ -113,3 +113,4 @@ docs/_build/
 # Development tools
 .mypy_cache/
 .ruff_cache/
+.serena/

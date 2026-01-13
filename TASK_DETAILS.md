@@ -44,7 +44,7 @@ python -m pytest services/q_core_agent/tests/ --tb=no -q
 
 **Файлы для обновления:**
 - `CLAUDE_MEMORY.md` - новые показатели готовности (88-93%)
-- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% → 80%+ success rate)
+- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% → 80%+ success rate) **[архив, см. CURRENT_STATE.md]**
 - `IMPLEMENTATION_ROADMAP.md` - актуализация Phase статусов
 - `PROJECT_MAP.md` - отражение текущих изменений
 

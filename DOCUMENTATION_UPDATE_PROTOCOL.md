@@ -3,6 +3,12 @@
 
 ---
 
+**Каноны (Source of Truth):**  
+- docgen шаблоны — `tools/qiki_docgen/templates/*` (файлы в `roadmap/*.template` не редактировать)  
+- аналитика — `docs/analysis/*` (`analysis/*` — заглушки)  
+- текущее состояние — `CURRENT_STATE.md` (в `CONTEXT/` — архив)  
+- радара shim `radar.*` — устаревший, использовать `qiki.radar.*`
+
 **Дата создания:** 2025-08-06  
 **Инициатор:** Суперглубокий анализ системы  
 **Статус:** CRITICAL - немедленное внедрение  
