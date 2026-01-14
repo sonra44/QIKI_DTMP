@@ -45,7 +45,7 @@ done
 echo "🔍 BIOS HTTP endpoints..."
 curl -fsS http://localhost:8080/healthz >/dev/null
 BIOS_STATUS_JSON="$(curl -fsS http://localhost:8080/bios/status)"
-${DC} -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY' <<<"${BIOS_STATUS_JSON}"
+printf '%s' "${BIOS_STATUS_JSON}" | ${DC} -f docker-compose.phase1.yml exec -T qiki-dev python -c '
 import json, sys
 data = json.load(sys.stdin)
 assert isinstance(data, dict)
@@ -54,7 +54,7 @@ assert data.get("subject") == "qiki.events.v1.bios_status"
 assert isinstance(data.get("post_results"), list)
 assert isinstance(data.get("all_systems_go"), bool)
 print("✅ BIOS status OK:", "all_systems_go=", data["all_systems_go"], "post_results=", len(data["post_results"]))
-PY
+'
 
 echo "🔍 NATS: telemetry contains MCQPU cpu_usage/memory_usage (non-null, 0..100)..."
 ${DC} -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'
