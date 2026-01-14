@@ -17,7 +17,7 @@
 ## 1) Global invariants (must always hold)
 
 - [ ] Every visible label/value is bilingual `EN/RU` (no spaces around `/`).
-- [ ] No abbreviations in UI text (avoid “sys/diag/ok/na/etc”).
+- [ ] No abbreviations by default (see allowed exceptions + glossary requirements in `docs/design/operator_console/ABBREVIATIONS_POLICY.md`).
 - [ ] Missing data is shown as `Not available/Нет данных` (no invented zeros).
 - [ ] UI structure (chrome) is stable across screens: header + sidebar + inspector + bottom bar.
 
@@ -88,7 +88,7 @@
 
 ## 7) Rules/Правила — quick enable/disable + reload
 
-**Enter:** `F8` or `Ctrl+R` (or command `screen rules`)
+**Enter:** `Ctrl+R` (or command `screen rules`)
 
 - [ ] Table shows rules from `config/incident_rules.yaml` (ID/Enabled/Severity/Match).
 - [ ] `Reload rules/Перезагрузить правила` button refreshes rules without restart.

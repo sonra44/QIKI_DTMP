@@ -1,5 +1,9 @@
 # ORION OS Worklog — 2025-12-31
 
+> Update (2026-01-14): this worklog contains **historical** keybindings (`Ctrl+G`, `Ctrl+P`) that are no longer current.
+> Current ORION behavior: `Ctrl+E` focuses command input, `Ctrl+Y` toggles Events live/pause, and QIKI intents are entered via prefix `q:` or `//` (no mode toggle).
+> Canonical check: `docs/design/operator_console/ORION_OS_VALIDATION_CHECKLIST.md`.
+
 ## Что сделано
 
 - Восстановлен контекст через протокол `ПРОЧТИ ЭТО` и активирована Serena для проекта `QIKI_DTMP`.
@@ -12,7 +16,7 @@
 - ORION Events/События: вместо бесконечного списка введён “incidents”-подход:
   - ключ события теперь детерминированный (`type+subject+id`), поэтому записи обновляются, а не растут бесконечно;
   - введён ограниченный буфер (`OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS`, по умолчанию 500);
-  - добавлен режим `LIVE/ЖИВОЕ` ↔ `PAUSED/ПАУЗА` (hotkey `ctrl+p`, а также команды `events/события`, `events live/pause`).
+  - добавлен режим `LIVE/ЖИВОЕ` ↔ `PAUSED/ПАУЗА` (current hotkey `ctrl+y`; historical note: earlier drafts used `ctrl+p`).
   - в таблицу событий добавлена колонка `Count/Счётчик` (сколько раз инцидент обновлялся), а в сайдбаре отображается `Unread/Непрочитано` при паузе.
 - ORION Events/События: добавлены действия оператора для работы с инцидентами:
   - колонка `Acknowledged/Подтверждено` (можно быстро видеть обработанные инциденты);
@@ -23,9 +27,7 @@
   - `Fields/Поля` (тип/источник/возраст/ключ/идентификатор/время)
   - `Raw JSON/Сырой JSON` (безопасное превью payload)
   - `Actions/Действия` (минимальные подсказки по действиям в контексте, напр. `Ctrl+Y` для событий)
-- ORION Input mode/Режим ввода: добавлено разделение “оболочки” и “намерения”:
-  - `Ctrl+G` переключает `operator shell/оболочка оператора` ↔ `QIKI input/ввод QIKI` (важно: `Ctrl+M` в терминале = Enter)
-  - в режиме QIKI ввод публикуется в NATS на `qiki.intents` (`QIKI_INTENTS`) как `{text, source, ts_epoch}`
+- ORION Input routing/Маршрутизация ввода (current): shell-команды по умолчанию; QIKI intents через префикс `q:` или `//` (исторически был `Ctrl+G` mode toggle, но он удалён).
 - Прогнаны тесты: `python3 -m pytest -q` и `python3 -m pytest -q src/qiki/services/operator_console/tests`.
 
 ## Итог

@@ -162,3 +162,11 @@ class FileRulesRepository(RulesRepository):
     @property
     def current_config(self) -> Optional[IncidentRulesConfig]:
         return self._current_config
+
+    @property
+    def rules_path(self) -> str:
+        return self._rules_path
+
+    @property
+    def history_path(self) -> Optional[str]:
+        return self._history_path

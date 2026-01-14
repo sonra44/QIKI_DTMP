@@ -674,9 +674,13 @@ class OrionApp(App):
         self._events_filter_text: Optional[str] = None
         self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
         self._warned_command_trim: bool = False
+        repo_root = os.getenv("QIKI_REPO_ROOT", "").strip() or "."
+        default_rules = os.path.join(repo_root, "config", "incident_rules.yaml")
+        # History is optional; keep it disabled by default to avoid creating extra files in the repo.
+        history_path = os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES_HISTORY", "").strip() or None
         self._rules_repo = FileRulesRepository(
-            os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES", "config/incident_rules.yaml"),
-            os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES_HISTORY", "config/incident_rules.history.jsonl"),
+            os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES", default_rules),
+            history_path,
         )
         self._incident_rules = None
         self._incident_store: Optional[IncidentStore] = None
@@ -1813,8 +1817,8 @@ class OrionApp(App):
                     yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
                     yield Static(
                         I18N.bidi(
-                            "Rules are loaded from config/incident_rules.yaml",
-                            "Правила загружаются из config/incident_rules.yaml",
+                            f"Rules are loaded from {self._rules_repo.rules_path}",
+                            f"Правила загружаются из {self._rules_repo.rules_path}",
                         ),
                         id="rules-hint",
                     )
@@ -2395,6 +2399,46 @@ class OrionApp(App):
                 match_summary(rule),
                 key=rule_id,
             )
+
+        # Keep a deterministic selection on Rules so operators can toggle immediately.
+        if not rules:
+            self._selection_by_app.pop("rules", None)
+            return
+        current = self._selection_by_app.get("rules")
+        current_key = (current.key if current is not None else "").strip()
+        desired_id = None
+        desired_rule = None
+        for rule in rules:
+            rid = str(getattr(rule, "id", "")).strip()
+            if not rid:
+                continue
+            if current_key and rid == current_key:
+                desired_id = rid
+                desired_rule = rule
+                break
+        if desired_id is None:
+            desired_rule = rules[0]
+            desired_id = str(getattr(desired_rule, "id", "")).strip() or "seed"
+
+        if desired_id != "seed" and desired_rule is not None:
+            self._selection_by_app["rules"] = SelectionContext(
+                app_id="rules",
+                key=desired_id,
+                kind="rule",
+                source="rules",
+                created_at_epoch=time.time(),
+                payload=desired_rule,
+                ids=(desired_id,),
+            )
+            try:
+                idx = 0
+                for i, rule in enumerate(rules):
+                    if str(getattr(rule, "id", "")).strip() == desired_id:
+                        idx = i
+                        break
+                table.move_cursor(row=idx, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     async def _init_nats(self) -> None:
         self.nats_client = NATSClient()
@@ -3075,6 +3119,14 @@ class OrionApp(App):
             self._render_mission_table()
         if screen == "rules":
             self._render_rules_table()
+            # Rules interactions (toggle with confirmation) must be available without
+            # requiring the operator to manually fight focus first.
+            try:
+                table = self.query_one("#rules-table", DataTable)
+                self.set_focus(table)
+                table.move_cursor(row=0, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
         self._refresh_inspector()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -3111,6 +3163,8 @@ class OrionApp(App):
             workspace = safe_query("#diagnostics-table")
         elif self.active_screen == "mission":
             workspace = safe_query("#mission-table")
+        elif self.active_screen == "rules":
+            workspace = safe_query("#rules-table")
         else:
             workspace = safe_query("#panel-nav")
 

@@ -22,6 +22,8 @@ services:
       - TERM=xterm-256color
     volumes:
       - ./:/workspace:ro
+      # Allow editing incident rules from ORION without making the whole repo writable.
+      - ./config:/workspace/config
       # Монтируем код для разработки (hot reload)
       - ./src/qiki/services/operator_console:/app
       # Монтируем proto файлы
