@@ -36,6 +36,9 @@ class WorldModel:
         self._base_power_in_w = 30.0
         self._base_power_out_w = 60.0
         self._motion_power_w_per_mps = 40.0
+        self._mcqpu_power_w_at_100pct = 35.0
+        self._radar_power_w = 18.0
+        self._transponder_power_w = 6.0
         self._sim_time_s = 0.0
 
         # Virtual MCQPU utilization (simulation-truth).
@@ -117,21 +120,6 @@ class WorldModel:
         self.pitch_rad = pitch_amp * math.cos(self._sim_time_s * 0.4)
         self.yaw_rad = math.radians(self.heading)
 
-        # Power/EPS: derive loads and update SoC from net power.
-        self.power_in_w = self._base_power_in_w
-        self.power_out_w = self._base_power_out_w + abs(self.speed) * self._motion_power_w_per_mps
-        self.power_bus_a = 0.0 if self.power_bus_v <= 0 else self.power_out_w / self.power_bus_v
-        net_w = self.power_in_w - self.power_out_w
-        delta_wh = net_w * delta_time / 3600.0
-        delta_pct = (delta_wh / self._battery_capacity_wh) * 100.0
-        self.battery_level = max(0.0, min(100.0, self.battery_level + delta_pct))
-
-        # Simple thermal model: core warms up with movement and relaxes to external temperature.
-        # Keep bounded to reasonable values for display.
-        heat_in = abs(self.speed) * 0.8  # arbitrary units
-        self.temp_core_c += (0.15 * heat_in - 0.02 * (self.temp_core_c - self.temp_external_c)) * delta_time
-        self.temp_core_c = max(-120.0, min(160.0, self.temp_core_c))
-
         # MCQPU utilization (virtual hardware, simulation-truth; not OS metrics).
         self._mcqpu.update(
             dt=delta_time,
@@ -143,6 +131,27 @@ class WorldModel:
         )
         self.cpu_usage = float(self._mcqpu.state.cpu_usage_pct)
         self.memory_usage = float(self._mcqpu.state.memory_usage_pct)
+
+        # Power/EPS: derive loads and update SoC from net power.
+        self.power_in_w = self._base_power_in_w
+
+        # Motion + avionics loads (still MVP, but deterministic and driven by simulation inputs).
+        motion_out = abs(self.speed) * self._motion_power_w_per_mps
+        mcqpu_out = (float(self.cpu_usage) / 100.0) * self._mcqpu_power_w_at_100pct
+        radar_out = self._radar_power_w if self._radar_enabled else 0.0
+        xpdr_out = self._transponder_power_w if self._transponder_active else 0.0
+        self.power_out_w = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
+        self.power_bus_a = 0.0 if self.power_bus_v <= 0 else self.power_out_w / self.power_bus_v
+        net_w = self.power_in_w - self.power_out_w
+        delta_wh = net_w * delta_time / 3600.0
+        delta_pct = (delta_wh / self._battery_capacity_wh) * 100.0
+        self.battery_level = max(0.0, min(100.0, self.battery_level + delta_pct))
+
+        # Simple thermal model: core warms up with movement and relaxes to external temperature.
+        # Keep bounded to reasonable values for display.
+        heat_in = abs(self.speed) * 0.8  # arbitrary units
+        self.temp_core_c += (0.15 * heat_in - 0.02 * (self.temp_core_c - self.temp_external_c)) * delta_time
+        self.temp_core_c = max(-120.0, min(160.0, self.temp_core_c))
 
     def get_state(self) -> Dict[str, Any]:
         """
