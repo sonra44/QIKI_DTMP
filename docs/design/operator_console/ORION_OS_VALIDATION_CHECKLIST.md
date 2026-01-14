@@ -11,6 +11,7 @@
   - `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build operator-console`
   - `docker attach qiki-operator-console` (detach: `Ctrl+P` then `Ctrl+Q`)
 - [ ] Confirm health: `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml ps` shows `healthy` for `nats`, `q-sim-service`, `operator-console`.
+- [ ] If validating BIOS block: start `q-bios-service` and confirm it becomes `healthy` (otherwise BIOS will be `Not available/Нет данных` by design).
 
 ---
 

@@ -54,3 +54,8 @@
 - ✅ Real values observed in System panels and Summary after increasing tmux pane height.
 - Source of truth for computation: `src/qiki/services/q_sim_service/core/mcqpu_telemetry.py`.
 - Transport: `q-sim-service` publishes snapshots to NATS subject `qiki.telemetry` (enabled in `docker-compose.phase1.yml` via `TELEMETRY_NATS_ENABLED=1`).
+
+## Notes: BIOS block requires `q-bios-service`
+
+- ✅ When `q-bios-service` is started (`docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d q-bios-service`), Summary shows `BIOS/БИОС` as `OK/ОК` (and age updates).
+- ✅ If `q-bios-service` is not running, Summary correctly shows `Not available/Нет данных` (no-mocks).
