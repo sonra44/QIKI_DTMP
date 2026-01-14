@@ -1001,6 +1001,28 @@ class OrionApp(App):
             )
         )
 
+        bios_env = self._snapshots.get_last("bios")
+        bios_status = "na"
+        bios_value = I18N.NA
+        if bios_env is not None and isinstance(bios_env.payload, dict):
+            all_go = bios_env.payload.get("all_systems_go")
+            if isinstance(all_go, bool):
+                bios_status = "ok" if all_go else "crit"
+                bios_value = I18N.bidi("OK", "ОК") if all_go else I18N.bidi("FAIL", "СБОЙ")
+            else:
+                bios_status = "warn"
+                bios_value = I18N.bidi("Unknown", "Неизвестно")
+        blocks.append(
+            SystemStateBlock(
+                block_id="bios",
+                title=I18N.bidi("BIOS", "БИОС"),
+                status=bios_status,
+                value=bios_value,
+                ts_epoch=None if bios_env is None else float(bios_env.ts_epoch),
+                envelope=bios_env,
+            )
+        )
+
         mission_env: Optional[EventEnvelope] = None
         for t in ("mission", "task"):
             mission_env = self._snapshots.get_last(t)
@@ -2726,7 +2748,8 @@ class OrionApp(App):
 
         normalized_level = self._normalize_level(severity)
         ts_epoch = time.time()
-        etype = self._derive_event_type(subject, payload)
+        subj = str(subject or "")
+        etype = "bios" if subj == "qiki.events.v1.bios_status" else self._derive_event_type(subject, payload)
         env = EventEnvelope(
             event_id=str(subject or ""),
             type=etype,
@@ -2780,6 +2803,8 @@ class OrionApp(App):
             self._refresh_inspector()
         if self.active_screen == "summary":
             self._render_summary_table()
+        if etype == "bios":
+            self._refresh_summary()
 
     @staticmethod
     def _derive_event_source(payload: Any, subject: Any) -> str:

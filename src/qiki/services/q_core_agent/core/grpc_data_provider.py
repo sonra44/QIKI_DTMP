@@ -17,6 +17,7 @@ from generated.q_sim_api_pb2 import (
     SendActuatorCommandRequest,
     HealthCheckRequest,
 )
+from qiki.services.q_core_agent.core.bios_http_client import fetch_bios_status
 
 
 class GrpcDataProvider(IDataProvider):
@@ -52,45 +53,9 @@ class GrpcDataProvider(IDataProvider):
     def get_bios_status(self) -> BiosStatus:
         """
         Возвращает статус BIOS.
-        Q-Sim не управляет BIOS, поэтому генерируем реалистичный мок.
+        No-mocks: BIOS берётся из q-bios-service по HTTP (BIOS_URL).
         """
-        bios_report = BiosStatus(
-            bios_version="sim_v1.0",
-            firmware_version="sim_v1.0",
-            post_results=[],
-            timestamp=datetime.now(UTC),
-        )
-
-        # Симулируем результаты POST для типичных устройств бота
-        typical_devices = [
-            ("motor_left", "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
-            ("motor_right", "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
-            ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
-            ("lidar_front", "Front LIDAR", DeviceStatusEnum.OK, "LIDAR sensor operational"),
-            ("imu_main", "Main IMU", DeviceStatusEnum.OK, "IMU sensor operational"),
-            ("sensor_imu", "IMU Sensor", DeviceStatusEnum.OK, "IMU sensor operational"),
-            ("sensor_thermal", "Thermal Sensors", DeviceStatusEnum.OK, "Thermal sensors operational"),
-            ("sensor_radiation", "Radiation Sensors", DeviceStatusEnum.OK, "Radiation sensors operational"),
-            ("sensor_docking", "Docking Sensors", DeviceStatusEnum.OK, "Docking sensors operational"),
-            ("sensor_proximity", "Proximity Sensors", DeviceStatusEnum.OK, "Proximity sensors operational"),
-            ("sensor_solar", "Solar Sensor", DeviceStatusEnum.OK, "Solar sensor operational"),
-            ("sensor_star_tracker", "Star Tracker", DeviceStatusEnum.OK, "Star tracker operational"),
-            ("radar_360", "Radar 360", DeviceStatusEnum.OK, "Radar operational"),
-            ("lidar", "Lidar", DeviceStatusEnum.OK, "Lidar operational"),
-            ("spectrometer", "Spectrometer", DeviceStatusEnum.OK, "Spectrometer operational"),
-            ("magnetometer", "Magnetometer", DeviceStatusEnum.OK, "Magnetometer operational"),
-        ]
-
-        for device_id, device_name, status, message in typical_devices:
-            device_status = DeviceStatus(
-                device_id=device_id,
-                device_name=device_name,
-                status=status,
-                status_message=message,
-            )
-            bios_report.post_results.append(device_status)
-
-        return bios_report
+        return fetch_bios_status()
 
     def get_fsm_state(self) -> PydanticFsmStateSnapshot:
         """Q-Sim не управляет FSM состоянием. При StateStore режиме возвращаем пустышку."""

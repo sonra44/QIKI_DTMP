@@ -55,6 +55,7 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - BIOS_URL=http://q-bios-service:8080
     command: python -m qiki.services.q_core_agent.main --grpc
     restart: on-failure
 
@@ -89,6 +90,49 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+
+  q-bios-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-bios-phase1
+    volumes:
+      - .:/workspace
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    networks:
+      - qiki-network-phase1
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - LOG_LEVEL=INFO
+      - BIOS_LISTEN_HOST=0.0.0.0
+      - BIOS_LISTEN_PORT=8080
+      - BOT_CONFIG_PATH=/workspace/src/qiki/services/q_core_agent/config/bot_config.json
+      - SIM_GRPC_HOST=q-sim-service
+      - SIM_GRPC_PORT=50051
+      - SIM_HEALTH_CHECK_TIMEOUT=2.0
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_EVENT_SUBJECT=qiki.events.v1.bios_status
+      - BIOS_PUBLISH_ENABLED=1
+      - BIOS_PUBLISH_INTERVAL_SEC=5.0
+    command: python -m qiki.services.q_bios_service.main
+    ports:
+      - "8080:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+      nats-js-init:
+        condition: service_completed_successfully
+      q-sim-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   # Отдельный сервис, который крутит симуляцию и публикует кадры радара в NATS
   q-sim-radar:
