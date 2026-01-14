@@ -5,6 +5,8 @@ from qiki.services.q_sim_service.logger import logger
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Vector3
 
+from qiki.services.q_sim_service.core.mcqpu_telemetry import MCQPUTelemetry
+
 
 class WorldModel:
     """
@@ -35,7 +37,29 @@ class WorldModel:
         self._base_power_out_w = 60.0
         self._motion_power_w_per_mps = 40.0
         self._sim_time_s = 0.0
+
+        # Virtual MCQPU utilization (simulation-truth).
+        self._mcqpu = MCQPUTelemetry()
+        self.cpu_usage = float(self._mcqpu.state.cpu_usage_pct)
+        self.memory_usage = float(self._mcqpu.state.memory_usage_pct)
+        self._radar_enabled = False
+        self._sensor_queue_depth = 0
+        self._actuator_queue_depth = 0
+        self._transponder_active = False
         logger.info("WorldModel initialized.")
+
+    def set_runtime_load_inputs(
+        self,
+        *,
+        radar_enabled: bool,
+        sensor_queue_depth: int,
+        actuator_queue_depth: int,
+        transponder_active: bool,
+    ) -> None:
+        self._radar_enabled = bool(radar_enabled)
+        self._sensor_queue_depth = max(0, int(sensor_queue_depth))
+        self._actuator_queue_depth = max(0, int(actuator_queue_depth))
+        self._transponder_active = bool(transponder_active)
 
     def update(self, command: ActuatorCommand):
         """
@@ -108,6 +132,18 @@ class WorldModel:
         self.temp_core_c += (0.15 * heat_in - 0.02 * (self.temp_core_c - self.temp_external_c)) * delta_time
         self.temp_core_c = max(-120.0, min(160.0, self.temp_core_c))
 
+        # MCQPU utilization (virtual hardware, simulation-truth; not OS metrics).
+        self._mcqpu.update(
+            dt=delta_time,
+            speed=float(self.speed),
+            radar_enabled=self._radar_enabled,
+            sensor_queue_depth=self._sensor_queue_depth,
+            actuator_queue_depth=self._actuator_queue_depth,
+            transponder_active=self._transponder_active,
+        )
+        self.cpu_usage = float(self._mcqpu.state.cpu_usage_pct)
+        self.memory_usage = float(self._mcqpu.state.memory_usage_pct)
+
     def get_state(self) -> Dict[str, Any]:
         """
         Returns the current state of the world model.
@@ -136,6 +172,8 @@ class WorldModel:
             "radiation_usvh": self.radiation_usvh,
             "temp_external_c": self.temp_external_c,
             "temp_core_c": self.temp_core_c,
+            "cpu_usage": self.cpu_usage,
+            "memory_usage": self.memory_usage,
             "thermal": {
                 "nodes": thermal_nodes,
             },

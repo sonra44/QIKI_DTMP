@@ -91,3 +91,10 @@ def test_telemetry_payload_includes_3d_position() -> None:
     assert isinstance(position["x"], float)
     assert isinstance(position["y"], float)
     assert isinstance(position["z"], float)
+
+    cpu_usage = payload.get("cpu_usage")
+    memory_usage = payload.get("memory_usage")
+    assert isinstance(cpu_usage, float)
+    assert isinstance(memory_usage, float)
+    assert 0.0 <= cpu_usage <= 100.0
+    assert 0.0 <= memory_usage <= 100.0

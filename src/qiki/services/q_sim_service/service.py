@@ -204,6 +204,12 @@ class QSimService:
 
     def step(self):
         delta_time = self.config.sim_tick_interval
+        self.world_model.set_runtime_load_inputs(
+            radar_enabled=self.radar_enabled,
+            sensor_queue_depth=len(self.sensor_data_queue),
+            actuator_queue_depth=len(self.actuator_command_queue),
+            transponder_active=self._is_transponder_active(),
+        )
         self.world_model.step(delta_time)
 
         self._maybe_publish_telemetry()
@@ -259,6 +265,8 @@ class QSimService:
             heading=float(state.get("heading", 0.0)),
             attitude={"roll_rad": roll, "pitch_rad": pitch, "yaw_rad": yaw},
             battery=float(state.get("battery_level", 0.0)),
+            cpu_usage=None if state.get("cpu_usage") is None else float(state.get("cpu_usage")),
+            memory_usage=None if state.get("memory_usage") is None else float(state.get("memory_usage")),
             hull={"integrity": float(state.get("hull_integrity", 100.0))},
             power=state.get("power", {}),
             thermal=state.get("thermal", {"nodes": []}),
