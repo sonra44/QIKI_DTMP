@@ -45,7 +45,7 @@ done
 echo "🔍 BIOS HTTP endpoints..."
 curl -fsS http://localhost:8080/healthz >/dev/null
 BIOS_STATUS_JSON="$(curl -fsS http://localhost:8080/bios/status)"
-python - <<'PY' <<<"${BIOS_STATUS_JSON}"
+${DC} -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY' <<<"${BIOS_STATUS_JSON}"
 import json, sys
 data = json.load(sys.stdin)
 assert isinstance(data, dict)
