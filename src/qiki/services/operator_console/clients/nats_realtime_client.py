@@ -185,8 +185,9 @@ class RealtimeNATSClient:
                     "velocity": data.get("velocity", 0),
                     "heading": data.get("heading", 0),
                     "battery": data.get("battery", 100),
-                    "cpu_usage": data.get("cpu_usage", 0),
-                    "memory_usage": data.get("memory_usage", 0)
+                    # no-mocks: keep missing values as None, don't invent 0%
+                    "cpu_usage": data.get("cpu_usage"),
+                    "memory_usage": data.get("memory_usage"),
                 })
                 
                 # Call callbacks

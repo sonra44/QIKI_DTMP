@@ -1001,6 +1001,46 @@ class OrionApp(App):
             )
         )
 
+        # MCQPU utilization is telemetry-derived (virtual hardware, no-mocks).
+        cpu_value = I18N.NA
+        cpu_status = "na"
+        mem_value = I18N.NA
+        mem_status = "na"
+        if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
+            try:
+                normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+            except ValidationError:
+                normalized = {}
+            if isinstance(normalized, dict):
+                cpu_usage = normalized.get("cpu_usage")
+                memory_usage = normalized.get("memory_usage")
+                if cpu_usage is not None:
+                    cpu_status = "ok"
+                    cpu_value = I18N.pct(cpu_usage, digits=1)
+                if memory_usage is not None:
+                    mem_status = "ok"
+                    mem_value = I18N.pct(memory_usage, digits=1)
+        blocks.append(
+            SystemStateBlock(
+                block_id="cpu_usage",
+                title=I18N.bidi("CPU", "ЦП"),
+                status=cpu_status,
+                value=cpu_value,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+        blocks.append(
+            SystemStateBlock(
+                block_id="memory_usage",
+                title=I18N.bidi("Memory", "Пам"),
+                status=mem_status,
+                value=mem_value,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+
         bios_env = self._snapshots.get_last("bios")
         bios_status = "na"
         bios_value = I18N.NA
