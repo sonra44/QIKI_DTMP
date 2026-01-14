@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 """
-QIKI Operator Console - Main Application.
+QIKI Operator Console - LEGACY / ARCHIVE ENTRYPOINT.
 
-Terminal User Interface for monitoring and controlling QIKI Digital Twin.
+⚠️  НЕ РАЗВИВАТЬ / НЕ ИСПОЛЬЗОВАТЬ как основную консоль.
+
+Причина:
+  - Каноническая операторская консоль проекта — ORION: `main_orion.py`
+    (см. `docker-compose.operator.yml`, там запускается именно ORION).
+  - Этот файл исторически содержал host/VPS метрики (psutil) и частично
+    дублировал интерфейсы ORION, что создаёт риск "двух линий правды".
+
+Политика:
+  - Оставлен только как архив/референс (и для тестового окружения виджетов).
+  - Для запуска требуется явное подтверждение переменной окружения:
+      ALLOW_LEGACY_OPERATOR_CONSOLE=1
 """
 
 from __future__ import annotations
@@ -581,6 +592,18 @@ class OperatorConsoleApp(App):
 
 def main():
     """Entry point for the application."""
+    if os.getenv("ALLOW_LEGACY_OPERATOR_CONSOLE", "0").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        print(
+            "LEGACY operator_console/main.py is archived. "
+            "Use ORION (main_orion.py). "
+            "To run anyway set ALLOW_LEGACY_OPERATOR_CONSOLE=1.",
+            flush=True,
+        )
+        raise SystemExit(2)
     app = OperatorConsoleApp()
     app.run()
 
