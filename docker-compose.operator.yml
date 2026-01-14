@@ -36,6 +36,7 @@ services:
     depends_on:
       - nats
       - q-sim-service
+      - q-bios-service
     stdin_open: true  # Для интерактивного TUI
     tty: true         # Для работы с терминалом
     command: python main_orion.py
