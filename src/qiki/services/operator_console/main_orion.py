@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from dataclasses import asdict
 import json
@@ -134,6 +135,187 @@ class ConfirmDialog(ModalScreen[bool]):
             self.dismiss(True)
         elif event.button.id == "confirm-no":
             self.dismiss(False)
+
+
+class BootLog(Static):
+    """Boot log with sequential line output (no-mocks: statuses only when proven)."""
+
+    def __init__(self, *, id: str) -> None:
+        super().__init__(id=id)
+        self._text = Text()
+
+    def clear(self) -> None:
+        self._text = Text()
+        self.update(self._text)
+
+    def add_line(self, line: str, *, style: str = "green") -> None:
+        if self._text.plain:
+            self._text.append("\n")
+        self._text.append(str(line), style=style)
+        self.update(self._text)
+
+
+class BootScreen(ModalScreen[bool]):
+    """Cold-boot splash + BIOS POST visualization (no-mocks)."""
+
+    DEFAULT_CSS = """
+    BootScreen {
+        align: center middle;
+        background: #050505;
+    }
+    #boot-container {
+        width: 84;
+        height: auto;
+        border: double #ffb000;
+        padding: 1 2;
+        background: #000000;
+    }
+    #boot-header {
+        text-align: center;
+        color: #ffb000;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #boot-hint {
+        color: #a0a0a0;
+        margin-bottom: 1;
+    }
+    BootLog {
+        height: 18;
+        color: #00ff66;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._task: Optional[asyncio.Task[None]] = None
+
+    def compose(self) -> ComposeResult:
+        with Container(id="boot-container"):
+            yield Static("QIKI ORION OS — Cold Boot [BIOS]", id="boot-header")
+            yield Static(I18N.bidi("Press Ctrl+C to exit", "Ctrl+C — выход"), id="boot-hint")
+            yield BootLog(id="boot-log")
+
+    def on_mount(self) -> None:
+        log = self.query_one("#boot-log", BootLog)
+        log.clear()
+        self._task = asyncio.create_task(self._run())
+
+    def on_unmount(self) -> None:
+        if self._task is not None:
+            try:
+                self._task.cancel()
+            except Exception:
+                pass
+
+    async def _sleep_chunked(self, seconds: float) -> None:
+        # Keep UI responsive.
+        remaining = max(0.0, float(seconds))
+        while remaining > 0:
+            step = min(0.1, remaining)
+            await asyncio.sleep(step)
+            remaining -= step
+
+    async def _run(self) -> None:
+        log = self.query_one("#boot-log", BootLog)
+
+        # Phase 0: cosmetic boot (no statuses, no percentages).
+        cosmetic_sec = float(os.getenv("ORION_BOOT_COSMETIC_SEC", "2.0"))
+        cosmetic_sec = max(0.0, min(30.0, cosmetic_sec))
+        lines = [
+            I18N.bidi("INIT: Allocating terminal buffers...", "INIT: Выделение буферов терминала..."),
+            I18N.bidi("CORE: Loading ORION UI modules...", "CORE: Загрузка модулей ORION UI..."),
+            I18N.bidi("TDE: Rendering console chrome...", "TDE: Отрисовка интерфейса..."),
+        ]
+        per_line = cosmetic_sec / max(1, len(lines))
+        for line in lines:
+            log.add_line(line, style="dim green")
+            await self._sleep_chunked(per_line)
+
+        # Phase 1: NATS (real).
+        log.add_line(I18N.bidi("NET: Connecting to NATS bus...", "NET: Подключение к шине NATS..."), style="yellow")
+        nats_timeout = float(os.getenv("ORION_BOOT_NATS_TIMEOUT_SEC", "8.0"))
+        nats_timeout = max(0.5, min(60.0, nats_timeout))
+
+        start = time.time()
+        app = self.app  # type: ignore[assignment]
+        while time.time() - start < nats_timeout:
+            # _boot_nats_init_done is set by OrionApp._init_nats.
+            done = bool(getattr(app, "_boot_nats_init_done", False))
+            if done:
+                break
+            await self._sleep_chunked(0.1)
+
+        nats_ok = bool(getattr(app, "nats_connected", False))
+        if nats_ok:
+            log.add_line(I18N.bidi("NET: NATS connected [OK]", "NET: NATS подключен [OK]"), style="bold green")
+        else:
+            err = str(getattr(app, "_boot_nats_error", "") or "").strip()
+            tail = f": {err}" if err else ""
+            log.add_line(I18N.bidi(f"NET: NATS connect failed [FAIL]{tail}", f"NET: NATS не подключился [СБОЙ]{tail}"), style="bold red")
+
+        # Phase 2: BIOS event (real, from NATS).
+        log.add_line(
+            I18N.bidi("BIOS: Waiting for POST status event...", "BIOS: Ожидание события статуса POST..."),
+            style="yellow",
+        )
+        bios_timeout = float(os.getenv("ORION_BOOT_BIOS_TIMEOUT_SEC", "12.0"))
+        bios_timeout = max(0.5, min(120.0, bios_timeout))
+        bios_env = None
+        start = time.time()
+        while time.time() - start < bios_timeout:
+            try:
+                bios_env = getattr(app, "_snapshots").get_last("bios")
+            except Exception:
+                bios_env = None
+            if bios_env is not None:
+                break
+            await self._sleep_chunked(0.2)
+
+        payload = getattr(bios_env, "payload", None) if bios_env is not None else None
+        if isinstance(payload, dict):
+            all_go = payload.get("all_systems_go")
+            post = payload.get("post_results") if isinstance(payload.get("post_results"), list) else []
+            if isinstance(all_go, bool):
+                if all_go:
+                    log.add_line(
+                        I18N.bidi(f"BIOS: POST complete [OK] (devices: {len(post)})", f"BIOS: POST завершён [OK] (устройств: {len(post)})"),
+                        style="bold green",
+                    )
+                else:
+                    log.add_line(
+                        I18N.bidi(f"BIOS: POST complete [FAIL] (devices: {len(post)})", f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})"),
+                        style="bold red",
+                    )
+            else:
+                log.add_line(I18N.bidi("BIOS: POST status unknown", "BIOS: Статус POST неизвестен"), style="yellow")
+
+            # Row-by-row visualization (real data).
+            for row in post[:60]:
+                if not isinstance(row, dict):
+                    continue
+                did = str(row.get("device_id") or row.get("deviceId") or "").strip() or I18N.UNKNOWN
+                dname = str(row.get("device_name") or row.get("deviceName") or "").strip() or I18N.UNKNOWN
+                status = row.get("status")
+                msg = str(row.get("status_message") or row.get("statusMessage") or "").strip()
+                label = "N/A"
+                style = "dim"
+                if status == 1:
+                    label, style = "OK", "green"
+                elif status == 2:
+                    label, style = "DEGRADED", "yellow"
+                elif status == 3:
+                    label, style = "ERROR", "red"
+                suffix = f" — {msg}" if msg else ""
+                log.add_line(f"{did} ({dname}): {label}{suffix}", style=style)
+                await self._sleep_chunked(0.03)
+        else:
+            # No-mocks: no fake OK. Show N/A and proceed.
+            log.add_line(I18N.bidi("BIOS: No data (N/A)", "BIOS: Нет данных (N/A)"), style="yellow")
+
+        log.add_line(I18N.bidi("HANDOVER: Switching to operator view...", "ПЕРЕДАЧА: Переход в режим оператора..."), style="dim")
+        await self._sleep_chunked(0.4)
+        self.dismiss(True)
 
 
 class SnapshotStore:
@@ -670,6 +852,9 @@ class OrionApp(App):
         self._mission_by_key: dict[str, dict[str, Any]] = {}
         self._selection_by_app: dict[str, SelectionContext] = {}
         self._snapshots = SnapshotStore()
+        # Boot UI coordination flags (no-mocks).
+        self._boot_nats_init_done: bool = False
+        self._boot_nats_error: str = ""
         self._events_filter_type: Optional[str] = None
         self._events_filter_text: Optional[str] = None
         self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
@@ -1836,6 +2021,8 @@ class OrionApp(App):
                 yield rules_table
 
     async def on_mount(self) -> None:
+        # Cold-boot splash (no-mocks): it will render only proven statuses (NATS, BIOS event).
+        self.push_screen(BootScreen(), callback=self._on_boot_complete)
         self.action_show_screen("system")
         self._init_system_panels()
         self._seed_system_panels()
@@ -1859,9 +2046,21 @@ class OrionApp(App):
         self.set_interval(1.0, self._refresh_diagnostics)
         self.set_interval(1.0, self._refresh_mission)
         try:
+            # Focus is set after boot screen dismisses to avoid stealing input during boot.
+            pass
+        except Exception:
+            pass
+
+    def _on_boot_complete(self, result: bool) -> None:
+        # Boot screen is informational; even on failure we proceed (no-mocks: values will stay N/A).
+        try:
             self.set_focus(self.query_one("#command-dock", Input))
         except Exception:
             pass
+        if result:
+            self._console_log(I18N.bidi("System online", "Система в сети"), level="info")
+        else:
+            self._console_log(I18N.bidi("Boot aborted", "Загрузка прервана"), level="warning")
 
     def on_resize(self) -> None:
         self._apply_responsive_chrome()
@@ -2441,6 +2640,8 @@ class OrionApp(App):
                 pass
 
     async def _init_nats(self) -> None:
+        self._boot_nats_init_done = False
+        self._boot_nats_error = ""
         self.nats_client = NATSClient()
         try:
             await self.nats_client.connect()
@@ -2449,9 +2650,12 @@ class OrionApp(App):
             self._update_system_snapshot()
         except Exception as e:
             self.nats_connected = False
+            self._boot_nats_error = str(e)
             self._log_msg(f"❌ {I18N.bidi('NATS connect failed', 'NATS не подключился')}: {e}")
             self._update_system_snapshot()
             return
+        finally:
+            self._boot_nats_init_done = True
 
         # Subscriptions are best-effort; missing streams shouldn't crash UI.
         try:
