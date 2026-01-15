@@ -15,6 +15,11 @@
   - Auto handover to main UI works.
 - ✅ Virtual CPU/RAM (simulation-truth): `CPU/ЦП` and `Mem/Пам` show real MCQPU virtual telemetry values in the System dashboard (not VPS/container metrics).
 - ✅ Missing-data placeholder is now compact `N/A/—` (still no-mocks; no invented zeros).
+- ✅ Basic operator loop verified via command input:
+  - `help` prints glossary lines into `Output/Вывод`.
+  - `events pause` / `events live` logs `Events paused/События пауза` and `Events live/События живое`.
+  - `screen rules` switches to Rules screen and renders rules table.
+- ✅ tmux low-height smoke: shrinking pane height to ~12 lines keeps bottom bar intact and avoids wrap-chaos; content truncates gracefully.
 - ✅ Tests in Docker: `docker compose ... run --rm --no-deps operator-console pytest -q tests` → `142 passed`.
 
 ## 0) Preflight (runtime)
