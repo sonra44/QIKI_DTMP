@@ -494,6 +494,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("power", "питание", "energy", "энергия"),
     ),
     OrionAppSpec(
+        screen="propulsion",
+        title=I18N.bidi("Propulsion", "Двигатели"),
+        hotkey="ctrl+p",
+        hotkey_label="Ctrl+P",
+        aliases=("propulsion", "двигатели", "rcs", "рдс", "prop", "двиг"),
+    ),
+    OrionAppSpec(
         screen="thermal",
         title=I18N.bidi("Thermal", "Тепло"),
         hotkey="ctrl+t",
@@ -530,6 +537,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "console": I18N.bidi("Console", "Консоль"),
     "summary": I18N.bidi("Summary", "Сводка"),
     "power": I18N.bidi("Power", "Пит"),
+    "propulsion": I18N.bidi("Prop", "Двиг"),
     "thermal": I18N.bidi("Therm", "Тепло"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
     "mission": I18N.bidi("Mission", "Миссия"),
@@ -892,6 +900,7 @@ class OrionApp(App):
         self._console_by_key: dict[str, dict[str, Any]] = {}
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
+        self._propulsion_by_key: dict[str, dict[str, Any]] = {}
         self._thermal_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
         self._mission_by_key: dict[str, dict[str, Any]] = {}
@@ -1726,6 +1735,132 @@ class OrionApp(App):
         except Exception:
             pass
 
+    def _render_propulsion_table(self) -> None:
+        try:
+            table = self.query_one("#propulsion-table", DataTable)
+        except Exception:
+            return
+
+        def seed_empty() -> None:
+            self._propulsion_by_key = {}
+            self._selection_by_app.pop("propulsion", None)
+            try:
+                table.clear()
+            except Exception:
+                return
+            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+        telemetry_env = self._snapshots.get_last("telemetry")
+        if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
+            seed_empty()
+            return
+
+        try:
+            normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+        except ValidationError:
+            seed_empty()
+            return
+
+        propulsion = normalized.get("propulsion") if isinstance(normalized, dict) else None
+        if not isinstance(propulsion, dict):
+            seed_empty()
+            return
+        rcs = propulsion.get("rcs")
+        if not isinstance(rcs, dict):
+            seed_empty()
+            return
+
+        now = time.time()
+        age_s = max(0.0, now - float(telemetry_env.ts_epoch))
+        age = I18N.fmt_age_compact(age_s)
+        source = I18N.bidi("telemetry", "телеметрия")
+
+        def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False) -> str:
+            if raw_value is None:
+                return I18N.NA
+            if warning:
+                return I18N.bidi("Warning", "Предупреждение")
+            if rendered_value == I18N.INVALID:
+                return I18N.bidi("Abnormal", "Не норма")
+            return I18N.bidi("Normal", "Норма")
+
+        rows: list[tuple[str, str, str, Any, bool]] = []
+        enabled = rcs.get("enabled")
+        active = rcs.get("active")
+        throttled = rcs.get("throttled")
+        axis = rcs.get("axis")
+        cmd_pct = rcs.get("command_pct")
+        time_left = rcs.get("time_left_s")
+        propellant = rcs.get("propellant_kg")
+        power_w = rcs.get("power_w")
+
+        rows.extend(
+            [
+                ("rcs_enabled", I18N.bidi("RCS enabled", "РДС включено"), I18N.yes_no(bool(enabled)), enabled, False),
+                ("rcs_active", I18N.bidi("RCS active", "РДС активно"), I18N.yes_no(bool(active)), active, bool(throttled)),
+                ("rcs_axis", I18N.bidi("Axis", "Ось"), I18N.fmt_na(axis), axis, bool(throttled)),
+                ("rcs_command", I18N.bidi("Command", "Команда"), I18N.num_unit(cmd_pct, "%", "%", digits=0), cmd_pct, bool(throttled)),
+                ("rcs_time_left", I18N.bidi("Time left", "Осталось"), I18N.num_unit(time_left, "s", "с", digits=1), time_left, bool(throttled)),
+                ("rcs_propellant", I18N.bidi("Propellant", "Топливо"), I18N.num_unit(propellant, "kg", "кг", digits=2), propellant, bool(throttled)),
+                ("rcs_power", I18N.bidi("RCS power", "РДС мощн"), I18N.num_unit(power_w, "W", "Вт", digits=1), power_w, bool(throttled)),
+            ]
+        )
+
+        thrusters = rcs.get("thrusters")
+        if isinstance(thrusters, list) and thrusters:
+            for t in thrusters[:32]:
+                if not isinstance(t, dict):
+                    continue
+                idx = t.get("index")
+                cluster = t.get("cluster_id")
+                duty = t.get("duty_pct")
+                valve = t.get("valve_open")
+                if not isinstance(idx, int):
+                    continue
+                label = f"{I18N.bidi('Thruster', 'Сопло')} {idx} ({cluster})"
+                valve_txt = I18N.yes_no(bool(valve))
+                value = f"{I18N.num_unit(duty, '%', '%', digits=0)} {I18N.bidi('open', 'откр')}={valve_txt}"
+                rows.append((f"thruster_{idx}", label, value, duty, bool(throttled)))
+
+        self._propulsion_by_key = {}
+        try:
+            table.clear()
+        except Exception:
+            return
+
+        for row_key, label, value, raw, warn in rows:
+            status = status_label(raw, value, warning=warn)
+            table.add_row(label, status, value, age, source, key=row_key)
+            self._propulsion_by_key[row_key] = {
+                "component_id": row_key,
+                "component": label,
+                "status": status,
+                "value": value,
+                "age": age,
+                "source": source,
+                "raw": raw,
+                "envelope": telemetry_env,
+            }
+
+        current = self._selection_by_app.get("propulsion")
+        if current is None or current.key not in self._propulsion_by_key:
+            first_key = rows[0][0] if rows else "seed"
+            self._set_selection(
+                SelectionContext(
+                    app_id="propulsion",
+                    key=first_key,
+                    kind="metric",
+                    source="telemetry",
+                    created_at_epoch=float(telemetry_env.ts_epoch),
+                    payload=telemetry_env.payload,
+                    ids=(first_key,),
+                )
+            )
+        try:
+            table.move_cursor(row=0, column=0, animate=False, scroll=False)
+        except Exception:
+            pass
+
     def _render_diagnostics_table(self) -> None:
         try:
             table = self.query_one("#diagnostics-table", DataTable)
@@ -2249,14 +2384,23 @@ class OrionApp(App):
                 summary_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
                 yield summary_table
 
-            with Container(id="screen-power"):
-                power_table: DataTable = DataTable(id="power-table")
-                power_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
-                power_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                power_table.add_column(I18N.bidi("Value", "Значение"), width=24)
-                power_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                power_table.add_column(I18N.bidi("Source", "Источник"), width=20)
-                yield power_table
+                with Container(id="screen-power"):
+                    power_table: DataTable = DataTable(id="power-table")
+                    power_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
+                    power_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    power_table.add_column(I18N.bidi("Value", "Значение"), width=24)
+                    power_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                    power_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                    yield power_table
+
+            with Container(id="screen-propulsion"):
+                propulsion_table: DataTable = DataTable(id="propulsion-table")
+                propulsion_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
+                propulsion_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                propulsion_table.add_column(I18N.bidi("Value", "Значение"), width=24)
+                propulsion_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                propulsion_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                yield propulsion_table
 
             with Container(id="screen-thermal"):
                 thermal_table: DataTable = DataTable(id="thermal-table")
@@ -2317,6 +2461,7 @@ class OrionApp(App):
         self._seed_console_table()
         self._seed_summary_table()
         self._seed_power_table()
+        self._seed_propulsion_table()
         self._seed_thermal_table()
         self._seed_diagnostics_table()
         self._seed_mission_table()
@@ -2813,6 +2958,16 @@ class OrionApp(App):
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
 
+    def _seed_propulsion_table(self) -> None:
+        try:
+            table = self.query_one("#propulsion-table", DataTable)
+        except Exception:
+            return
+        self._propulsion_by_key = {}
+        self._selection_by_app.pop("propulsion", None)
+        table.clear()
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
     def _seed_thermal_table(self) -> None:
         try:
             table = self.query_one("#thermal-table", DataTable)
@@ -3292,6 +3447,7 @@ class OrionApp(App):
         updated = time.strftime("%H:%M:%S")
         self._render_system_panels(normalized, updated=updated)
         self._render_power_table()
+        self._render_propulsion_table()
         self._render_diagnostics_table()
         self._refresh_summary()
 
@@ -3687,7 +3843,7 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "thermal", "diagnostics", "mission", "rules"):
+        for sid in ("system", "radar", "events", "console", "summary", "power", "propulsion", "thermal", "diagnostics", "mission", "rules"):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
@@ -3698,6 +3854,8 @@ class OrionApp(App):
             self._render_summary_table()
         if screen == "power":
             self._render_power_table()
+        if screen == "propulsion":
+            self._render_propulsion_table()
         if screen == "thermal":
             self._render_thermal_table()
         if screen == "diagnostics":
@@ -3896,6 +4054,32 @@ class OrionApp(App):
                 self._set_selection(
                     SelectionContext(
                         app_id="power",
+                        key=row_key,
+                        kind="metric",
+                        source="telemetry",
+                        created_at_epoch=created_at_epoch,
+                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        ids=(row_key,),
+                    )
+                )
+            return
+
+        if event.data_table.id == "propulsion-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            selected = self._propulsion_by_key.get(row_key)
+            if isinstance(selected, dict):
+                created_at_epoch = time.time()
+                env = selected.get("envelope")
+                if isinstance(env, EventEnvelope):
+                    created_at_epoch = float(env.ts_epoch)
+                self._set_selection(
+                    SelectionContext(
+                        app_id="propulsion",
                         key=row_key,
                         kind="metric",
                         source="telemetry",

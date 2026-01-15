@@ -111,6 +111,16 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                     {"a": "core", "b": "hull", "k_w_per_c": 0.2},
                 ],
             },
+            "propulsion_plane": {
+                "enabled": True,
+                "thrusters_path": "config/propulsion/thrusters.json",
+                "propellant_kg_init": 12.0,
+                "isp_s": 60.0,
+                "rcs_power_w_at_100pct": 80.0,
+                "heat_fraction_to_hull": 0.35,
+                "pulse_window_s": 0.25,
+                "ztt_torque_tol_nm": 25.0,
+            },
             "actuators": [],
             "sensors": []
         },

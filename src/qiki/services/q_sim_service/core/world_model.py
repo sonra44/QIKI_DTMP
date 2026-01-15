@@ -1,4 +1,8 @@
-from typing import Any, Dict
+from __future__ import annotations
+
+from itertools import combinations
+from pathlib import Path
+from typing import Any, Dict, Iterable, Sequence
 
 import math
 
@@ -7,6 +11,7 @@ from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Vector3
 
 from qiki.services.q_sim_service.core.mcqpu_telemetry import MCQPUTelemetry
+from qiki.shared.config.loaders import ThrusterConfig, load_thrusters_config
 
 
 class WorldModel:
@@ -97,6 +102,33 @@ class WorldModel:
         self._nbl_max_power_w = 0.0
         self._nbl_soc_min_pct = 0.0
         self._nbl_core_temp_max_c = 0.0
+
+        # Propulsion Plane (RCS) — virtual thrusters, no-mocks.
+        self._rcs_enabled = False
+        self._rcs_thrusters_path = "config/propulsion/thrusters.json"
+        self._rcs_thrusters: list[ThrusterConfig] = []
+        self._rcs_axis_groups: dict[str, list[int]] = {}
+        self._rcs_axis_group_max_proj_n: dict[str, float] = {}
+
+        self._rcs_propellant_kg = 0.0
+        self._rcs_isp_s = 0.0
+        self._rcs_power_w_at_100pct = 0.0
+        self._rcs_heat_fraction_to_hull = 0.0
+        self._rcs_pulse_window_s = 0.0
+        self._rcs_ztt_torque_tol_nm = 0.0
+
+        self._rcs_cmd_axis: str | None = None
+        self._rcs_cmd_pct: float = 0.0
+        self._rcs_cmd_time_left_s: float = 0.0
+
+        self.rcs_active = False
+        self.rcs_power_w = 0.0
+        self.rcs_propellant_kg = 0.0
+        self.rcs_throttled = False
+        self._rcs_thruster_state: dict[int, dict[str, float | bool | str]] = {}
+        self._rcs_net_force_n: list[float] = [0.0, 0.0, 0.0]
+        self._rcs_net_torque_nm: list[float] = [0.0, 0.0, 0.0]
+        self._rcs_last_axis: str | None = None
 
         # Apply runtime profile from bot_config (single SoT).
         self._apply_bot_config(bot_config)
@@ -275,6 +307,49 @@ class WorldModel:
         if "dock_bridge" in self._thermal_nodes:
             self.dock_temp_c = float(self._thermal_nodes["dock_bridge"]["temp_c"])
 
+        # Propulsion Plane (RCS) params (single SoT).
+        pr = hw.get("propulsion_plane")
+        if isinstance(pr, dict):
+            self._rcs_enabled = bool(pr.get("enabled", False))
+            self._rcs_thrusters_path = str(pr.get("thrusters_path", self._rcs_thrusters_path))
+            try:
+                self._rcs_propellant_kg = max(0.0, float(pr.get("propellant_kg_init", 0.0)))
+            except Exception:
+                self._rcs_propellant_kg = 0.0
+            try:
+                self._rcs_isp_s = max(0.0, float(pr.get("isp_s", 0.0)))
+            except Exception:
+                self._rcs_isp_s = 0.0
+            try:
+                self._rcs_power_w_at_100pct = max(0.0, float(pr.get("rcs_power_w_at_100pct", 0.0)))
+            except Exception:
+                self._rcs_power_w_at_100pct = 0.0
+            try:
+                self._rcs_heat_fraction_to_hull = max(
+                    0.0, min(1.0, float(pr.get("heat_fraction_to_hull", 0.0)))
+                )
+            except Exception:
+                self._rcs_heat_fraction_to_hull = 0.0
+            try:
+                self._rcs_pulse_window_s = max(0.0, float(pr.get("pulse_window_s", 0.0)))
+            except Exception:
+                self._rcs_pulse_window_s = 0.0
+            try:
+                self._rcs_ztt_torque_tol_nm = max(0.0, float(pr.get("ztt_torque_tol_nm", 0.0)))
+            except Exception:
+                self._rcs_ztt_torque_tol_nm = 0.0
+        else:
+            self._rcs_enabled = False
+
+        # Load thrusters and precompute ZTT groups (no-mocks: if missing, leave unavailable).
+        self._rcs_thrusters = []
+        self._rcs_axis_groups = {}
+        self._rcs_axis_group_max_proj_n = {}
+        if self._rcs_enabled:
+            self._rcs_load_thrusters()
+            self._rcs_precompute_axis_groups()
+        self.rcs_propellant_kg = float(self._rcs_propellant_kg)
+
     def _thermal_step(self, delta_time: float) -> None:
         if not self._thermal_enabled:
             return
@@ -302,6 +377,8 @@ class WorldModel:
             q["dock_bridge"] += 0.25 * (abs(float(self.dock_a)) ** 2)
         if "battery" in q:
             q["battery"] += 0.01 * abs(float(self.power_in_w) - float(self.power_out_w))
+        if "hull" in q and self.rcs_power_w > 0.0:
+            q["hull"] += float(self._rcs_heat_fraction_to_hull) * float(self.rcs_power_w)
 
         # Integrate temperatures (explicit Euler) on a thermal network.
         prev_t = {nid: float(self._thermal_nodes[nid]["temp_c"]) for nid in self._thermal_nodes_order}
@@ -395,20 +472,70 @@ class WorldModel:
             f"Applying command to WorldModel: {command.command_type} for {command.actuator_id.value}"
         )
 
-        if (
-            command.actuator_id.value == "motor_left"
-            or command.actuator_id.value == "motor_right"
-        ):
-            if command.command_type == "set_velocity_percent":
-                # Simple model: average speed of motors
-                # In a real model, this would involve differential drive kinematics
-                self.speed = (command.int_value / 100.0) * 1.0  # Max speed 1.0 m/s
+        actuator_id = getattr(getattr(command, "actuator_id", None), "value", "")
+        cmd_type = getattr(command, "command_type", None)
+        which_value = None
+        try:
+            which_value = command.WhichOneof("command_value")
+        except Exception:
+            which_value = None
+
+        def _as_pct() -> float | None:
+            if which_value == "int_value":
+                try:
+                    return float(command.int_value)
+                except Exception:
+                    return None
+            if which_value == "float_value":
+                try:
+                    return float(command.float_value)
+                except Exception:
+                    return None
+            return None
+
+        if actuator_id in ("motor_left", "motor_right"):
+            if cmd_type in (ActuatorCommand.CommandType.SET_VELOCITY, "set_velocity_percent"):
+                pct = _as_pct()
+                if pct is None:
+                    return
+                pct = max(0.0, min(100.0, float(pct)))
+                # Simple model: average speed of motors; max 1.0 m/s.
+                self.speed = (pct / 100.0) * 1.0
                 logger.debug(f"WorldModel speed set to {self.speed} m/s")
-            elif command.command_type == "rotate_degrees_per_sec":
-                # Simple rotation
-                self.heading = (self.heading + command.int_value) % 360
+                return
+            if cmd_type in (ActuatorCommand.CommandType.ROTATE, "rotate_degrees_per_sec"):
+                pct = _as_pct()
+                if pct is None:
+                    return
+                self.heading = (self.heading + float(pct)) % 360.0
                 logger.debug(f"WorldModel heading set to {self.heading} degrees")
-        # Add more command types and their effects on the world model
+                return
+
+        # RCS axis commands (virtual hardware; no-mocks).
+        axis_map = {
+            "rcs_forward": "forward",
+            "rcs_aft": "aft",
+            "rcs_port": "port",
+            "rcs_starboard": "starboard",
+            "rcs_up": "up",
+            "rcs_down": "down",
+        }
+        axis = axis_map.get(str(actuator_id))
+        if axis and cmd_type == ActuatorCommand.CommandType.SET_VELOCITY:
+            pct = _as_pct()
+            if pct is None:
+                return
+            pct = max(0.0, min(100.0, float(pct)))
+            timeout_ms = int(getattr(command, "timeout_ms", 0) or 0)
+            duration_s = max(0.0, float(timeout_ms) / 1000.0) if timeout_ms > 0 else 0.0
+            self._rcs_cmd_axis = axis
+            self._rcs_cmd_pct = pct
+            self._rcs_cmd_time_left_s = duration_s
+            logger.info(f"RCS command: {axis} {pct:.1f}% for {duration_s:.2f}s")
+            return
+
+        # Unknown / unsupported command types are ignored safely.
+        return
 
     def step(self, delta_time: float):
         """
@@ -514,6 +641,8 @@ class WorldModel:
             if (self._transponder_active and self.transponder_allowed)
             else 0.0
         )
+        # RCS (thrusters) electrical load — simulation truth.
+        rcs_out = self._rcs_step(delta_time)
 
         # NBL: non-critical burst link power, constrained by SoC and thermal.
         nbl_allowed = bool(
@@ -534,7 +663,13 @@ class WorldModel:
                 self.power_shed_reasons.append("nbl_budget")
 
         power_out_wo_supercap = (
-            self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out
+            self._base_power_out_w
+            + motion_out
+            + mcqpu_out
+            + radar_out
+            + xpdr_out
+            + nbl_out
+            + rcs_out
         )
         power_in = self._base_power_in_w
 
@@ -584,6 +719,7 @@ class WorldModel:
                 + radar_out
                 + xpdr_out
                 + nbl_out
+                + rcs_out
             )
             if power_out_wo_supercap > pdu_limit_w and motion_out > 0.0:
                 excess = power_out_wo_supercap - pdu_limit_w
@@ -598,7 +734,29 @@ class WorldModel:
                     + radar_out
                     + xpdr_out
                     + nbl_out
+                    + rcs_out
                 )
+
+            # If still overcurrent, throttle RCS (virtual thrusters) before declaring fault.
+            if power_out_wo_supercap > pdu_limit_w and rcs_out > 0.0:
+                excess = power_out_wo_supercap - pdu_limit_w
+                reduced = min(excess, rcs_out)
+                if reduced > 0.0:
+                    before = max(1e-9, float(rcs_out))
+                    rcs_out -= reduced
+                    ratio = max(0.0, min(1.0, float(rcs_out) / before))
+                    self._rcs_apply_throttle_ratio(ratio, reason="pdu_overcurrent")
+                    self.power_pdu_throttled = True
+                    self.power_throttled_loads.append("rcs")
+                    power_out_wo_supercap = (
+                        self._base_power_out_w
+                        + motion_out
+                        + mcqpu_out
+                        + radar_out
+                        + xpdr_out
+                        + nbl_out
+                        + rcs_out
+                    )
 
             if power_out_wo_supercap > pdu_limit_w:
                 self.power_faults.append("PDU_OVERCURRENT")
@@ -658,10 +816,243 @@ class WorldModel:
         self.nbl_power_w = float(nbl_out)
         if self.nbl_power_w <= 0.0:
             self.nbl_allowed = False
+        # Finalize RCS telemetry values.
+        self.rcs_power_w = float(rcs_out)
         # Thermal Plane (no-mocks): temperatures derived from a thermal node network.
         self._thermal_step(delta_time)
         # Thermal plane may append faults; keep stable order.
         self.power_faults = list(dict.fromkeys(self.power_faults))
+
+    def _repo_root(self) -> Path:
+        # /.../src/qiki/services/q_sim_service/core/world_model.py -> repo root is 5 parents up.
+        return Path(__file__).resolve().parents[5]
+
+    @staticmethod
+    def _dot(a: Sequence[float], b: Sequence[float]) -> float:
+        return float(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+
+    @staticmethod
+    def _norm(v: Sequence[float]) -> float:
+        return math.sqrt(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]))
+
+    @staticmethod
+    def _cross(a: Sequence[float], b: Sequence[float]) -> list[float]:
+        return [
+            float(a[1] * b[2] - a[2] * b[1]),
+            float(a[2] * b[0] - a[0] * b[2]),
+            float(a[0] * b[1] - a[1] * b[0]),
+        ]
+
+    def _rcs_load_thrusters(self) -> None:
+        path = Path(self._rcs_thrusters_path)
+        if not path.is_absolute():
+            path = self._repo_root() / path
+        try:
+            thrusters = load_thrusters_config(path)
+        except Exception as exc:
+            logger.warning(f"RCS thrusters config unavailable ({path}): {exc}")
+            self._rcs_thrusters = []
+            return
+        self._rcs_thrusters = list(thrusters)
+
+    def _rcs_precompute_axis_groups(self) -> None:
+        self._rcs_axis_groups = {}
+        self._rcs_axis_group_max_proj_n = {}
+        if not self._rcs_thrusters:
+            return
+
+        axes: dict[str, list[float]] = {
+            "forward": [1.0, 0.0, 0.0],
+            "aft": [-1.0, 0.0, 0.0],
+            "port": [0.0, 1.0, 0.0],
+            "starboard": [0.0, -1.0, 0.0],
+            "up": [0.0, 0.0, 1.0],
+            "down": [0.0, 0.0, -1.0],
+        }
+
+        forces: list[list[float]] = []
+        torques: list[list[float]] = []
+        for t in self._rcs_thrusters:
+            d = t.direction.as_list()
+            pos = t.position_m.as_list()
+            f = [float(d[0]) * float(t.f_max_newton), float(d[1]) * float(t.f_max_newton), float(d[2]) * float(t.f_max_newton)]
+            forces.append(f)
+            torques.append(self._cross(pos, f))
+
+        idxs = list(range(len(self._rcs_thrusters)))
+        torque_tol = float(self._rcs_ztt_torque_tol_nm)
+        # Search 2- and 4-thruster groups; deterministic and fast for N=16.
+        candidates: list[tuple[list[int], list[float], list[float]]] = []
+        for k in (2, 4):
+            for combo in combinations(idxs, k):
+                net_f = [0.0, 0.0, 0.0]
+                net_tau = [0.0, 0.0, 0.0]
+                for i in combo:
+                    f = forces[i]
+                    tau = torques[i]
+                    net_f[0] += f[0]; net_f[1] += f[1]; net_f[2] += f[2]
+                    net_tau[0] += tau[0]; net_tau[1] += tau[1]; net_tau[2] += tau[2]
+                candidates.append((list(combo), net_f, net_tau))
+
+        for axis_name, axis_vec in axes.items():
+            best_combo: list[int] | None = None
+            best_proj = 0.0
+            best_score = -1e18
+            for combo, net_f, net_tau in candidates:
+                proj = self._dot(net_f, axis_vec)
+                if proj <= 0.0:
+                    continue
+                lateral = [net_f[0] - proj * axis_vec[0], net_f[1] - proj * axis_vec[1], net_f[2] - proj * axis_vec[2]]
+                lateral_mag = self._norm(lateral)
+                tau_mag = self._norm(net_tau)
+                # Favor near-zero torque, but keep deterministic best-effort if none meet tol.
+                over = max(0.0, tau_mag - torque_tol)
+                score = float(proj) - 0.05 * float(lateral_mag) - 0.5 * float(over)
+                if score > best_score:
+                    best_score = score
+                    best_combo = combo
+                    best_proj = float(proj)
+            if best_combo is None:
+                continue
+            self._rcs_axis_groups[axis_name] = list(best_combo)
+            self._rcs_axis_group_max_proj_n[axis_name] = float(best_proj)
+
+    def _rcs_step(self, delta_time: float) -> float:
+        # Reset exposed state.
+        self.rcs_active = False
+        self.rcs_throttled = False
+        self._rcs_thruster_state = {}
+        self._rcs_net_force_n = [0.0, 0.0, 0.0]
+        self._rcs_net_torque_nm = [0.0, 0.0, 0.0]
+        self._rcs_last_axis = None
+        self.rcs_propellant_kg = float(self._rcs_propellant_kg)
+
+        if not self._rcs_enabled:
+            return 0.0
+        if not self._rcs_thrusters or not self._rcs_axis_groups:
+            return 0.0
+        if not self._rcs_cmd_axis or self._rcs_cmd_pct <= 0.0:
+            return 0.0
+
+        dt = max(0.0, float(delta_time))
+        if dt <= 0.0:
+            return 0.0
+
+        dt_eff = dt
+        # Respect command duration, but apply up to the remaining time in this tick.
+        if self._rcs_cmd_time_left_s > 0.0:
+            dt_eff = min(dt, float(self._rcs_cmd_time_left_s))
+
+        axis = str(self._rcs_cmd_axis)
+        group = self._rcs_axis_groups.get(axis)
+        max_proj = float(self._rcs_axis_group_max_proj_n.get(axis, 0.0))
+        if not group or max_proj <= 0.0:
+            return 0.0
+
+        # Convert command percent into duty scaling for the chosen ZTT group.
+        cmd_pct = max(0.0, min(100.0, float(self._rcs_cmd_pct)))
+        duty_scale = cmd_pct / 100.0
+
+        # Compute deterministic PWM state.
+        window = max(0.0, float(self._rcs_pulse_window_s))
+        if window <= 1e-6:
+            phase = 0.0
+        else:
+            phase = (float(self._sim_time_s) % window) / window
+
+        # Per-thruster duty within group is uniform in MVP (scaled by duty_scale).
+        duty_by_idx: dict[int, float] = {i: duty_scale for i in group}
+        open_by_idx: dict[int, bool] = {}
+        for idx in group:
+            # Small deterministic per-index phase offset to avoid all valves in sync.
+            phase_i = (phase + (idx * 0.07)) % 1.0
+            open_by_idx[idx] = phase_i < duty_by_idx[idx]
+
+        # Average forces/torques (use duty as average).
+        net_f_avg = [0.0, 0.0, 0.0]
+        net_tau_avg = [0.0, 0.0, 0.0]
+        f_total_mag = 0.0
+        for idx in group:
+            t = self._rcs_thrusters[idx]
+            d = t.direction.as_list()
+            pos = t.position_m.as_list()
+            duty = duty_by_idx[idx]
+            f = [float(d[0]) * float(t.f_max_newton) * duty, float(d[1]) * float(t.f_max_newton) * duty, float(d[2]) * float(t.f_max_newton) * duty]
+            tau = self._cross(pos, f)
+            net_f_avg[0] += f[0]; net_f_avg[1] += f[1]; net_f_avg[2] += f[2]
+            net_tau_avg[0] += tau[0]; net_tau_avg[1] += tau[1]; net_tau_avg[2] += tau[2]
+            f_total_mag += float(self._norm(f))
+
+        # Propellant consumption (MVP): proportional to total thrust magnitude.
+        g0 = 9.80665
+        isp = max(1e-6, float(self._rcs_isp_s))
+        mdot = float(f_total_mag) / (isp * g0)
+        m_used = mdot * dt_eff
+        if m_used > 0.0:
+            if self._rcs_propellant_kg <= 0.0:
+                self._rcs_propellant_kg = 0.0
+                self._rcs_cmd_pct = 0.0
+                return 0.0
+            if m_used >= self._rcs_propellant_kg:
+                # Scale down last tick so we don't go negative.
+                ratio = max(0.0, min(1.0, self._rcs_propellant_kg / m_used))
+                for k in list(duty_by_idx.keys()):
+                    duty_by_idx[k] *= ratio
+                    open_by_idx[k] = open_by_idx[k] and (ratio > 0.0)
+                self._rcs_propellant_kg = 0.0
+                self._rcs_cmd_pct = 0.0
+            else:
+                self._rcs_propellant_kg -= float(m_used)
+
+        # Electrical power draw (pulse-shaped by valve openness).
+        base_w = float(self._rcs_power_w_at_100pct) * (cmd_pct / 100.0)
+        if not group:
+            rcs_w = 0.0
+        else:
+            open_frac = sum(1.0 for idx in group if open_by_idx.get(idx, False)) / float(len(group))
+            rcs_w = base_w * float(open_frac)
+
+        self.rcs_active = True
+        self._rcs_last_axis = axis
+        self._rcs_net_force_n = [float(net_f_avg[0]), float(net_f_avg[1]), float(net_f_avg[2])]
+        self._rcs_net_torque_nm = [float(net_tau_avg[0]), float(net_tau_avg[1]), float(net_tau_avg[2])]
+        self.rcs_propellant_kg = float(self._rcs_propellant_kg)
+
+        for idx in group:
+            t = self._rcs_thrusters[idx]
+            self._rcs_thruster_state[idx] = {
+                "index": int(t.index),
+                "cluster_id": str(t.cluster_id),
+                "duty_pct": float(duty_by_idx[idx] * 100.0),
+                "valve_open": bool(open_by_idx[idx]),
+                "f_max_newton": float(t.f_max_newton),
+            }
+
+        # Decrement remaining duration after applying this tick.
+        if self._rcs_cmd_time_left_s > 0.0:
+            self._rcs_cmd_time_left_s = max(0.0, float(self._rcs_cmd_time_left_s) - dt)
+            if self._rcs_cmd_time_left_s <= 0.0:
+                self._rcs_cmd_pct = 0.0
+
+        return float(max(0.0, rcs_w))
+
+    def _rcs_apply_throttle_ratio(self, ratio: float, *, reason: str) -> None:
+        ratio = max(0.0, min(1.0, float(ratio)))
+        if ratio >= 0.999:
+            return
+        self.rcs_throttled = True
+        # Scale displayed duties to match throttling (no mocks).
+        for idx, state in list(self._rcs_thruster_state.items()):
+            try:
+                duty_pct = float(state.get("duty_pct", 0.0)) * ratio
+            except Exception:
+                duty_pct = 0.0
+            state["duty_pct"] = float(duty_pct)
+            if float(duty_pct) <= 0.0:
+                state["valve_open"] = False
+            state["status"] = "throttled"
+            state["reason"] = str(reason)
+            self._rcs_thruster_state[idx] = state
 
     def get_state(self) -> Dict[str, Any]:
         """
@@ -723,5 +1114,20 @@ class WorldModel:
                 "nbl_allowed": bool(self.nbl_allowed),
                 "nbl_power_w": float(self.nbl_power_w),
                 "nbl_budget_w": float(self.nbl_budget_w),
+            },
+            "propulsion": {
+                "rcs": {
+                    "enabled": bool(self._rcs_enabled),
+                    "active": bool(self.rcs_active),
+                    "throttled": bool(self.rcs_throttled),
+                    "axis": self._rcs_last_axis,
+                    "command_pct": float(self._rcs_cmd_pct),
+                    "time_left_s": float(self._rcs_cmd_time_left_s),
+                    "propellant_kg": float(self._rcs_propellant_kg),
+                    "power_w": float(self.rcs_power_w),
+                    "net_force_n": list(self._rcs_net_force_n),
+                    "net_torque_nm": list(self._rcs_net_torque_nm),
+                    "thrusters": [self._rcs_thruster_state[i] for i in sorted(self._rcs_thruster_state.keys())],
+                }
             },
         }
