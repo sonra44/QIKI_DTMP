@@ -911,7 +911,7 @@ class OrionApp(App):
         self._boot_nats_error: str = ""
         self._events_filter_type: Optional[str] = None
         self._events_filter_text: Optional[str] = None
-        self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "256"))
+        self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "1024"))
         self._warned_command_trim: bool = False
         repo_root = os.getenv("QIKI_REPO_ROOT", "").strip() or "."
         default_rules = os.path.join(repo_root, "config", "incident_rules.yaml")
