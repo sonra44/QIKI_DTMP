@@ -20,8 +20,9 @@ services:
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
       - TERM=xterm-256color
-      # Cosmetic boot delay (no-mocks): keeps BootScreen visible for demos.
-      - ORION_BOOT_COSMETIC_SEC=12
+      # BootScreen tuning (no-mocks): visual delay only (no fake OK/%).
+      # You can override locally for demos (e.g. 10–20s); keep default low for normal work.
+      - ORION_BOOT_COSMETIC_SEC=2
     volumes:
       - ./:/workspace:ro
       # Allow editing incident rules from ORION without making the whole repo writable.

@@ -64,3 +64,24 @@ We treat scaling as *density modes*.
 - [ ] Sidebar reduces safely on narrow, hides on tiny
 - [ ] Tables have a compact mode (no horizontal “…” chaos)
 - [ ] `F9` glossary includes all abbreviations introduced for compact modes
+
+## Boot Screen (no-mocks)
+ORION shows a cold-boot splash before the main UI to improve operator orientation.
+
+**Hard rule:** the boot screen must not invent statuses. If a signal is not proven, show `N/A` / `WAITING`.
+
+### Allowed on Boot Screen
+- Cosmetic “typewriter” lines that are *purely visual* (no `[OK]`, no `%`, no `ETA`).
+- Real connectivity status (e.g. NATS connect succeeded / failed).
+- Real BIOS status once `qiki.events.v1.bios_status` arrives, including row-by-row POST results from the payload.
+
+### Sizing / readability
+- Boot container must fit `tmux` splits: use a max width and allow shrinking.
+- Limit the number of printed POST rows; prioritize non-OK rows first.
+
+### Tuning via env (for demos without fake data)
+- `ORION_BOOT_COSMETIC_SEC` — cosmetic delay (default small; raise to 10–20s if you want the boot to be observable).
+- `ORION_BOOT_NATS_TIMEOUT_SEC` — how long we wait for NATS init result.
+- `ORION_BOOT_BIOS_TIMEOUT_SEC` — how long we wait for the first BIOS event.
+- `ORION_BOOT_POST_MAX_ROWS` — max POST lines to print (non-OK first).
+- `ORION_BOOT_POST_LINE_DELAY_SEC` — per-line delay for readable scrolling.

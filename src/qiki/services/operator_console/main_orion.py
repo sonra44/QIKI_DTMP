@@ -164,7 +164,9 @@ class BootScreen(ModalScreen[bool]):
         background: #050505;
     }
     #boot-container {
-        width: 84;
+        width: 1fr;
+        max-width: 84;
+        min-width: 44;
         height: auto;
         border: double #ffb000;
         padding: 1 2;
@@ -181,7 +183,8 @@ class BootScreen(ModalScreen[bool]):
         margin-bottom: 1;
     }
     BootLog {
-        height: 18;
+        height: 1fr;
+        min-height: 10;
         color: #00ff66;
     }
     """
@@ -291,7 +294,29 @@ class BootScreen(ModalScreen[bool]):
                 log.add_line(I18N.bidi("BIOS: POST status unknown", "BIOS: Статус POST неизвестен"), style="yellow")
 
             # Row-by-row visualization (real data).
-            for row in post[:60]:
+            # Keep it readable: show non-OK first, then a limited number of OK rows.
+            max_rows = int(os.getenv("ORION_BOOT_POST_MAX_ROWS", "30"))
+            max_rows = max(5, min(200, max_rows))
+            line_delay = float(os.getenv("ORION_BOOT_POST_LINE_DELAY_SEC", "0.02"))
+            line_delay = max(0.0, min(0.5, line_delay))
+
+            bad: list[dict[str, Any]] = []
+            ok: list[dict[str, Any]] = []
+            for row in post:
+                if not isinstance(row, dict):
+                    continue
+                status = row.get("status")
+                if status == 1:
+                    ok.append(row)
+                else:
+                    bad.append(row)
+
+            shown: list[dict[str, Any]] = []
+            shown.extend(bad[:max_rows])
+            if len(shown) < max_rows:
+                shown.extend(ok[: max_rows - len(shown)])
+
+            for row in shown:
                 if not isinstance(row, dict):
                     continue
                 did = str(row.get("device_id") or row.get("deviceId") or "").strip() or I18N.UNKNOWN
@@ -308,7 +333,18 @@ class BootScreen(ModalScreen[bool]):
                     label, style = "ERROR", "red"
                 suffix = f" — {msg}" if msg else ""
                 log.add_line(f"{did} ({dname}): {label}{suffix}", style=style)
-                await self._sleep_chunked(0.03)
+                if line_delay:
+                    await self._sleep_chunked(line_delay)
+
+            remaining = len(post) - len(shown)
+            if remaining > 0:
+                log.add_line(
+                    I18N.bidi(
+                        f"… ({remaining} more devices not shown)",
+                        f"… (ещё устройств не показано: {remaining})",
+                    ),
+                    style="dim",
+                )
         else:
             # No-mocks: no fake OK. Show N/A and proceed.
             log.add_line(I18N.bidi("BIOS: No data (N/A)", "BIOS: Нет данных (N/A)"), style="yellow")
