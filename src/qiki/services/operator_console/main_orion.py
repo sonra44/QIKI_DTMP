@@ -494,6 +494,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("power", "питание", "energy", "энергия"),
     ),
     OrionAppSpec(
+        screen="thermal",
+        title=I18N.bidi("Thermal", "Тепло"),
+        hotkey="ctrl+t",
+        hotkey_label="Ctrl+T",
+        aliases=("thermal", "тепло", "temps", "темп", "temperature", "температура"),
+    ),
+    OrionAppSpec(
         screen="diagnostics",
         title=I18N.bidi("Diagnostics", "Диагностика"),
         hotkey="f7",
@@ -523,6 +530,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "console": I18N.bidi("Console", "Консоль"),
     "summary": I18N.bidi("Summary", "Сводка"),
     "power": I18N.bidi("Power", "Пит"),
+    "thermal": I18N.bidi("Therm", "Тепло"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
     "mission": I18N.bidi("Mission", "Миссия"),
     "rules": I18N.bidi("Rules", "Прав"),
@@ -884,6 +892,7 @@ class OrionApp(App):
         self._console_by_key: dict[str, dict[str, Any]] = {}
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
+        self._thermal_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
         self._mission_by_key: dict[str, dict[str, Any]] = {}
         self._selection_by_app: dict[str, SelectionContext] = {}
@@ -1150,6 +1159,10 @@ class OrionApp(App):
     def _refresh_diagnostics(self) -> None:
         if self.active_screen == "diagnostics":
             self._render_diagnostics_table()
+
+    def _refresh_thermal(self) -> None:
+        if self.active_screen == "thermal":
+            self._render_thermal_table()
 
     def _refresh_mission(self) -> None:
         if self.active_screen == "mission":
@@ -1604,6 +1617,106 @@ class OrionApp(App):
                     kind="metric",
                     source="telemetry",
                     created_at_epoch=created_at_epoch,
+                    payload=telemetry_env.payload,
+                    ids=(first_key,),
+                )
+            )
+        try:
+            table.move_cursor(row=0, column=0, animate=False, scroll=False)
+        except Exception:
+            pass
+
+    def _render_thermal_table(self) -> None:
+        try:
+            table = self.query_one("#thermal-table", DataTable)
+        except Exception:
+            return
+
+        def seed_empty() -> None:
+            self._thermal_by_key = {}
+            self._selection_by_app.pop("thermal", None)
+            try:
+                table.clear()
+            except Exception:
+                return
+            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+        telemetry_env = self._snapshots.get_last("telemetry")
+        if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
+            seed_empty()
+            return
+
+        try:
+            normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+        except ValidationError:
+            seed_empty()
+            return
+
+        thermal = normalized.get("thermal") if isinstance(normalized, dict) else None
+        if not isinstance(thermal, dict):
+            seed_empty()
+            return
+        nodes = thermal.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            seed_empty()
+            return
+
+        faults_set: set[str] = set()
+        power = normalized.get("power") if isinstance(normalized, dict) else None
+        if isinstance(power, dict):
+            faults = power.get("faults")
+            if isinstance(faults, list):
+                faults_set = {str(x) for x in faults if isinstance(x, str) and x.startswith("THERMAL_TRIP:")}
+
+        now = time.time()
+        age_s = max(0.0, now - float(telemetry_env.ts_epoch))
+        age = I18N.fmt_age_compact(age_s)
+        source = I18N.bidi("telemetry", "телеметрия")
+
+        self._thermal_by_key = {}
+        try:
+            table.clear()
+        except Exception:
+            return
+
+        def status_label(node_id: str, temp: Any) -> str:
+            if temp is None:
+                return I18N.NA
+            if f"THERMAL_TRIP:{node_id}" in faults_set:
+                return I18N.bidi("Abnormal", "Не норма")
+            return I18N.bidi("Normal", "Норма")
+
+        for raw in nodes[:64]:
+            if not isinstance(raw, dict):
+                continue
+            node_id = raw.get("id")
+            temp = raw.get("temp_c")
+            if not isinstance(node_id, str) or not node_id.strip():
+                continue
+            nid = node_id.strip()
+            value = I18N.num_unit(temp, "C", "°C", digits=1)
+            status = status_label(nid, temp)
+            table.add_row(nid, status, value, age, source, key=nid)
+            self._thermal_by_key[nid] = {
+                "node_id": nid,
+                "status": status,
+                "temp_c": temp,
+                "value": value,
+                "age": age,
+                "source": source,
+                "envelope": telemetry_env,
+            }
+
+        current = self._selection_by_app.get("thermal")
+        if current is None or current.key not in self._thermal_by_key:
+            first_key = next(iter(self._thermal_by_key.keys()), "seed")
+            self._set_selection(
+                SelectionContext(
+                    app_id="thermal",
+                    key=first_key,
+                    kind="thermal_node",
+                    source="telemetry",
+                    created_at_epoch=float(telemetry_env.ts_epoch),
                     payload=telemetry_env.payload,
                     ids=(first_key,),
                 )
@@ -2145,6 +2258,15 @@ class OrionApp(App):
                 power_table.add_column(I18N.bidi("Source", "Источник"), width=20)
                 yield power_table
 
+            with Container(id="screen-thermal"):
+                thermal_table: DataTable = DataTable(id="thermal-table")
+                thermal_table.add_column(I18N.bidi("Node", "Узел"), width=26)
+                thermal_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                thermal_table.add_column(I18N.bidi("Temp", "Темп"), width=18)
+                thermal_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                thermal_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                yield thermal_table
+
             with Container(id="screen-diagnostics"):
                 diagnostics_table: DataTable = DataTable(id="diagnostics-table")
                 diagnostics_table.add_column(I18N.bidi("Block", "Блок"), width=46)
@@ -2195,6 +2317,7 @@ class OrionApp(App):
         self._seed_console_table()
         self._seed_summary_table()
         self._seed_power_table()
+        self._seed_thermal_table()
         self._seed_diagnostics_table()
         self._seed_mission_table()
         self._seed_rules_table()
@@ -2206,6 +2329,7 @@ class OrionApp(App):
         self.set_interval(0.5, self._refresh_header)
         self.set_interval(1.0, self._refresh_radar)
         self.set_interval(1.0, self._refresh_summary)
+        self.set_interval(1.0, self._refresh_thermal)
         self.set_interval(1.0, self._refresh_diagnostics)
         self.set_interval(1.0, self._refresh_mission)
         try:
@@ -2686,6 +2810,16 @@ class OrionApp(App):
             return
         self._power_by_key = {}
         self._selection_by_app.pop("power", None)
+        table.clear()
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+    def _seed_thermal_table(self) -> None:
+        try:
+            table = self.query_one("#thermal-table", DataTable)
+        except Exception:
+            return
+        self._thermal_by_key = {}
+        self._selection_by_app.pop("thermal", None)
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
 
@@ -3553,7 +3687,7 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "diagnostics", "mission", "rules"):
+        for sid in ("system", "radar", "events", "console", "summary", "power", "thermal", "diagnostics", "mission", "rules"):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
@@ -3564,6 +3698,8 @@ class OrionApp(App):
             self._render_summary_table()
         if screen == "power":
             self._render_power_table()
+        if screen == "thermal":
+            self._render_thermal_table()
         if screen == "diagnostics":
             self._render_diagnostics_table()
         if screen == "mission":
@@ -3610,6 +3746,8 @@ class OrionApp(App):
             workspace = safe_query("#summary-table")
         elif self.active_screen == "power":
             workspace = safe_query("#power-table")
+        elif self.active_screen == "thermal":
+            workspace = safe_query("#thermal-table")
         elif self.active_screen == "diagnostics":
             workspace = safe_query("#diagnostics-table")
         elif self.active_screen == "mission":
@@ -3760,6 +3898,32 @@ class OrionApp(App):
                         app_id="power",
                         key=row_key,
                         kind="metric",
+                        source="telemetry",
+                        created_at_epoch=created_at_epoch,
+                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        ids=(row_key,),
+                    )
+                )
+            return
+
+        if event.data_table.id == "thermal-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            selected = self._thermal_by_key.get(row_key)
+            if isinstance(selected, dict):
+                created_at_epoch = time.time()
+                env = selected.get("envelope")
+                if isinstance(env, EventEnvelope):
+                    created_at_epoch = float(env.ts_epoch)
+                self._set_selection(
+                    SelectionContext(
+                        app_id="thermal",
+                        key=row_key,
+                        kind="thermal_node",
                         source="telemetry",
                         created_at_epoch=created_at_epoch,
                         payload=env.payload if isinstance(env, EventEnvelope) else selected,
