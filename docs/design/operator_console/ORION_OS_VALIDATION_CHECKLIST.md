@@ -19,7 +19,7 @@
 
 - [ ] Every visible label/value is bilingual `EN/RU` (no spaces around `/`).
 - [ ] No abbreviations by default (see allowed exceptions + glossary requirements in `docs/design/operator_console/ABBREVIATIONS_POLICY.md`).
-- [ ] Missing data is shown as `Not available/Нет данных` (no invented zeros).
+- [ ] Missing data is shown as `N/A/—` (no invented zeros).
 - [ ] UI structure (chrome) is stable across screens: header + sidebar + inspector + bottom bar.
 
 ---
@@ -67,7 +67,7 @@
   4) `Actions/Действия`
 - [ ] Selection-driven:
   - selecting a row updates inspector deterministically.
-  - no selection shows `Not available/Нет данных`.
+- no selection shows `N/A/—`.
 
 ---
 

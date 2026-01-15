@@ -4,6 +4,19 @@
 **Stack:** `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml`  
 **Console:** `docker attach qiki-operator-console` (tmux pane)
 
+## Addendum: 2026-01-15 (boot + no-mocks UI readability)
+
+- ✅ Stack health confirmed again: `nats`, `q-sim-service`, `q-bios-service`, `operator-console` are `healthy` in `docker compose ... ps`.
+- ✅ BIOS smoke (real): `GET http://localhost:8080/healthz -> {"ok": true}` and `GET /bios/status` returns `post_results` list with device statuses.
+- ✅ BootScreen is present (no-mocks):
+  - Shows a cosmetic “cold boot” phase (no fake `%/ETA`).
+  - Shows real `NET: NATS connected [OK]` once NATS is connected.
+  - Waits for real BIOS event from NATS and can print row-by-row POST lines from payload.
+  - Auto handover to main UI works.
+- ✅ Virtual CPU/RAM (simulation-truth): `CPU/ЦП` and `Mem/Пам` show real MCQPU virtual telemetry values in the System dashboard (not VPS/container metrics).
+- ✅ Missing-data placeholder is now compact `N/A/—` (still no-mocks; no invented zeros).
+- ✅ Tests in Docker: `docker compose ... run --rm --no-deps operator-console pytest -q tests` → `142 passed`.
+
 ## 0) Preflight (runtime)
 
 - ✅ Run via Docker (Phase1 + operator console): `up -d --build operator-console` + `docker attach`.
@@ -13,7 +26,7 @@
 
 - ✅ Bilingual `EN/RU` labels (no spaces around `/`) observed across screens.
 - ⚠️ Abbreviations exist in dense zones (keybar/header/etc). This is **allowed by policy** (`docs/design/operator_console/ABBREVIATIONS_POLICY.md`), but the checklist item “no abbreviations” is not literally true.
-- ✅ Missing data is shown as `Not available/Нет данных` (e.g., `BIOS/БИОС`, `Mission control/Управление миссией` on Summary).
+- ✅ Missing data is shown as `N/A/—` (compact, no-mocks).
 - ✅ Chrome structure stable: header + sidebar + inspector + bottom bar present.
 
 ## 2) Input/Output dock (calm operator loop)
@@ -32,7 +45,7 @@
 ## 4) Inspector/Инспектор contract
 
 - ✅ Inspector shows expected structure: `Summary/Сводка`, `Fields/Поля`, `Raw data (JSON)/Сырые данные (JSON)`, `Actions/Действия`.
-- ✅ No selection → `Not available/Нет данных`.
+- ✅ No selection → `N/A/—`.
 
 ## 5) Chrome stability under tmux resizing
 
