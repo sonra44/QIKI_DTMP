@@ -45,6 +45,10 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                 "dock_current_limit_a": 10.0,
                 "dock_soft_start_s": 2.0,
                 "dock_temp_c_init": -60.0,
+                "nbl_active_init": False,
+                "nbl_max_power_w": 120.0,
+                "nbl_soc_min_pct": 35.0,
+                "nbl_core_temp_max_c": 90.0,
             },
             "actuators": [],
             "sensors": []

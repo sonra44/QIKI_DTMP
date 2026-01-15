@@ -82,6 +82,15 @@ class WorldModel:
         self.dock_a = 0.0
         self.dock_temp_c = self.temp_external_c
 
+        # NBL Power Budgeter (virtual hardware).
+        self.nbl_active = False
+        self.nbl_allowed = False
+        self.nbl_power_w = 0.0
+        self.nbl_budget_w = 0.0
+        self._nbl_max_power_w = 0.0
+        self._nbl_soc_min_pct = 0.0
+        self._nbl_core_temp_max_c = 0.0
+
         # Apply runtime profile from bot_config (single SoT).
         self._apply_bot_config(bot_config)
 
@@ -157,6 +166,15 @@ class WorldModel:
         self.dock_temp_c = f("dock_temp_c_init", float(self.temp_external_c))
         self._dock_since_s = 0.0
         self.dock_soft_start_pct = 0.0
+
+        # NBL budgeter (scenario + limits).
+        self.nbl_active = bool(pp.get("nbl_active_init", False))
+        self._nbl_max_power_w = f("nbl_max_power_w", self._nbl_max_power_w)
+        self._nbl_soc_min_pct = f("nbl_soc_min_pct", self._nbl_soc_min_pct)
+        self._nbl_core_temp_max_c = f("nbl_core_temp_max_c", self._nbl_core_temp_max_c)
+        self.nbl_allowed = False
+        self.nbl_power_w = 0.0
+        self.nbl_budget_w = 0.0
 
     def set_runtime_load_inputs(
         self,
@@ -251,6 +269,9 @@ class WorldModel:
         self.dock_v = 0.0
         self.dock_a = 0.0
         self.dock_soft_start_pct = 0.0
+        self.nbl_allowed = False
+        self.nbl_power_w = 0.0
+        self.nbl_budget_w = 0.0
 
         soc = max(0.0, min(100.0, float(self.battery_level)))
         if self._bus_v_nominal <= 0.0:
@@ -286,7 +307,22 @@ class WorldModel:
             else 0.0
         )
 
-        power_out_wo_supercap = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
+        # NBL: non-critical burst link power, constrained by SoC and thermal.
+        nbl_allowed = bool(
+            self.nbl_active
+            and soc >= float(self._nbl_soc_min_pct)
+            and float(self.temp_core_c) <= float(self._nbl_core_temp_max_c)
+        )
+        self.nbl_allowed = bool(nbl_allowed)
+        self.nbl_budget_w = max(0.0, float(self._nbl_max_power_w)) if self.nbl_allowed else 0.0
+        nbl_out = float(self.nbl_budget_w) if self.nbl_active and self.nbl_allowed else 0.0
+        if self.nbl_active and not self.nbl_allowed:
+            self.power_shed_loads.append("nbl")
+            self.power_shed_reasons.append("nbl_budget")
+
+        power_out_wo_supercap = (
+            self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out
+        )
         power_in = self._base_power_in_w
 
         # Dock Power Bridge: adds external power when connected (soft start + limits).
@@ -318,6 +354,11 @@ class WorldModel:
 
         # PDU: enforce max bus current by shedding non-critical loads, then throttling motion.
         if pdu_limit_w > 0.0 and power_out_wo_supercap > pdu_limit_w:
+            if nbl_out > 0.0:
+                nbl_out = 0.0
+                self.nbl_allowed = False
+                self.power_shed_loads.append("nbl")
+                self.power_shed_reasons.append("pdu_overcurrent")
             if radar_out > 0.0:
                 radar_out = 0.0
                 self.radar_allowed = False
@@ -329,14 +370,28 @@ class WorldModel:
                 self.power_shed_loads.append("transponder")
                 self.power_shed_reasons.append("pdu_overcurrent")
 
-            power_out_wo_supercap = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
+            power_out_wo_supercap = (
+                self._base_power_out_w
+                + motion_out
+                + mcqpu_out
+                + radar_out
+                + xpdr_out
+                + nbl_out
+            )
             if power_out_wo_supercap > pdu_limit_w and motion_out > 0.0:
                 excess = power_out_wo_supercap - pdu_limit_w
                 reduced = min(excess, motion_out)
                 motion_out -= reduced
                 self.power_pdu_throttled = True
                 self.power_throttled_loads.append("motion")
-                power_out_wo_supercap = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
+                power_out_wo_supercap = (
+                    self._base_power_out_w
+                    + motion_out
+                    + mcqpu_out
+                    + radar_out
+                    + xpdr_out
+                    + nbl_out
+                )
 
             if power_out_wo_supercap > pdu_limit_w:
                 self.power_faults.append("PDU_OVERCURRENT")
@@ -391,6 +446,11 @@ class WorldModel:
         self.power_faults = list(dict.fromkeys(self.power_faults))
 
         self.power_load_shedding = bool(self.power_shed_loads)
+
+        # Finalize NBL telemetry values (post-PDU / post-shedding).
+        self.nbl_power_w = float(nbl_out)
+        if self.nbl_power_w <= 0.0:
+            self.nbl_allowed = False
 
         # Simple thermal model: core warms up with movement and relaxes to external temperature.
         # Keep bounded to reasonable values for display.
@@ -453,5 +513,9 @@ class WorldModel:
                 "dock_v": float(self.dock_v),
                 "dock_a": float(self.dock_a),
                 "dock_temp_c": float(self.dock_temp_c),
+                "nbl_active": bool(self.nbl_active),
+                "nbl_allowed": bool(self.nbl_allowed),
+                "nbl_power_w": float(self.nbl_power_w),
+                "nbl_budget_w": float(self.nbl_budget_w),
             },
         }

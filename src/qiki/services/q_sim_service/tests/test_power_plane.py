@@ -31,6 +31,10 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "dock_v" in power
     assert "dock_a" in power
     assert "dock_temp_c" in power
+    assert "nbl_active" in power
+    assert "nbl_allowed" in power
+    assert "nbl_power_w" in power
+    assert "nbl_budget_w" in power
 
 
 def test_soc_load_shedding_hysteresis_blocks_non_critical_loads() -> None:
@@ -186,3 +190,55 @@ def test_dock_power_bridge_soft_start_ramps_input() -> None:
     p2 = float(wm.dock_power_w)
     assert p2 > p1
     assert wm.dock_soft_start_pct >= 99.0
+
+
+def test_nbl_budgeter_blocks_when_soc_low() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "nbl_active_init": True,
+                "nbl_max_power_w": 120.0,
+                "nbl_soc_min_pct": 35.0,
+                "nbl_core_temp_max_c": 90.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.battery_level = 20.0
+    wm.step(1.0)
+    assert wm.nbl_active is True
+    assert wm.nbl_allowed is False
+    assert wm.nbl_power_w == 0.0
+    assert "nbl" in wm.power_shed_loads
+
+
+def test_nbl_budgeter_allows_when_soc_ok() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 200.0,
+                "base_power_out_w": 0.0,
+                "nbl_active_init": True,
+                "nbl_max_power_w": 120.0,
+                "nbl_soc_min_pct": 35.0,
+                "nbl_core_temp_max_c": 90.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.battery_level = 99.0
+    wm.temp_core_c = 25.0
+    wm.step(1.0)
+    assert wm.nbl_active is True
+    assert wm.nbl_allowed is True
+    assert wm.nbl_power_w > 0.0

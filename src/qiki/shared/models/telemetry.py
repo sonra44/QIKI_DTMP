@@ -60,6 +60,12 @@ class PowerTelemetry(BaseModel):
     dock_a: float = Field(default=0.0, ge=0.0)
     dock_temp_c: float = Field(default=0.0)
 
+    # NBL Power Budgeter.
+    nbl_active: bool = Field(default=False)
+    nbl_allowed: bool = Field(default=False)
+    nbl_power_w: float = Field(default=0.0, ge=0.0)
+    nbl_budget_w: float = Field(default=0.0, ge=0.0)
+
 
 class ThermalNodeTelemetry(BaseModel):
     model_config = ConfigDict(extra="forbid")

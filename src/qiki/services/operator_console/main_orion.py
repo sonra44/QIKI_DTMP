@@ -1524,6 +1524,18 @@ class OrionApp(App):
                 get("power.dock_temp_c"),
             ),
             (
+                "nbl_active",
+                I18N.bidi("NBL", "NBL"),
+                I18N.yes_no(bool(get("power.nbl_active"))) if get("power.nbl_active") is not None else I18N.NA,
+                get("power.nbl_active"),
+            ),
+            (
+                "nbl_power",
+                I18N.bidi("NBL P", "NBL P"),
+                I18N.num_unit(get("power.nbl_power_w"), "W", "Вт", digits=1),
+                get("power.nbl_power_w"),
+            ),
+            (
                 "supercap_charge",
                 I18N.bidi("SC charge", "Заряд СК"),
                 I18N.num_unit(get("power.supercap_charge_w"), "W", "Вт", digits=1),
