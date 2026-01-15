@@ -3295,6 +3295,90 @@ class OrionApp(App):
                 level="info",
             )
 
+    def _confirm_acknowledge_selected_incident(self) -> None:
+        if self.active_screen != "events":
+            return
+        if isinstance(self.focused, Input):
+            return
+        ctx = self._selection_by_app.get("events")
+        key = ctx.key if ctx is not None else ""
+        if not key or key == "seed":
+            self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
+            return
+        incident = self._incident_store.get(key) if self._incident_store is not None else None
+        if incident is None:
+            self._console_log(
+                f"{I18N.bidi('Unknown incident key', 'Неизвестный ключ инцидента')}: {key}",
+                level="info",
+            )
+            return
+        if bool(getattr(incident, "acked", False)):
+            self._console_log(f"{I18N.bidi('Already acknowledged', 'Уже подтверждено')}: {key}", level="info")
+            return
+
+        prompt = (
+            f"{I18N.bidi('Acknowledge incident?', 'Подтвердить инцидент?')} {key} "
+            f"({I18N.bidi('Y/N', 'Да/Нет')})"
+        )
+
+        def after(decision: bool) -> None:
+            if decision:
+                self.action_acknowledge_selected_incident()
+            else:
+                self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+
+        self.push_screen(ConfirmDialog(prompt), after)
+
+    def _confirm_power_toggle(self, *, row_key: str, current: object) -> None:
+        if self.active_screen != "power":
+            return
+        if isinstance(self.focused, Input):
+            return
+        key = (row_key or "").strip()
+        if not key or key == "seed":
+            return
+        if key not in {"dock_connected", "nbl_active"}:
+            self._console_log(
+                f"{I18N.bidi('No action for row', 'Нет действия для строки')}: {key}",
+                level="info",
+            )
+            return
+
+        if current is None:
+            self._console_log(
+                f"{I18N.bidi('No telemetry for toggle', 'Нет телеметрии для переключения')}: {key}",
+                level="warn",
+            )
+            return
+
+        is_on = bool(current)
+        if key == "dock_connected":
+            cmd = "power.dock.off" if is_on else "power.dock.on"
+            title = I18N.bidi("Dock", "Стыковка")
+        else:
+            cmd = "power.nbl.off" if is_on else "power.nbl.on"
+            title = I18N.bidi("NBL", "NBL")
+
+        prompt = (
+            f"{I18N.bidi('Send command?', 'Отправить команду?')} "
+            f"{title} → {I18N.yes_no(not is_on)} ({cmd}) "
+            f"({I18N.bidi('Y/N', 'Да/Нет')})"
+        )
+
+        def after(decision: bool) -> None:
+            if not decision:
+                self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+                return
+            try:
+                asyncio.create_task(self._publish_sim_command(cmd))
+            except Exception as exc:
+                self._console_log(
+                    f"{I18N.bidi('Failed to schedule command', 'Не удалось отправить команду')}: {exc}",
+                    level="error",
+                )
+
+        self.push_screen(ConfirmDialog(prompt), after)
+
     def action_clear_acknowledged_incidents(self) -> None:
         if self.active_screen != "events":
             return
@@ -3725,6 +3809,29 @@ class OrionApp(App):
                     ids=(track_id,),
                 )
             )
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        table_id = event.data_table.id
+
+        if table_id == "rules-table":
+            self.action_toggle_selected_rule_enabled()
+            return
+
+        if table_id == "events-table":
+            self._confirm_acknowledge_selected_incident()
+            return
+
+        if table_id == "power-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            selected = self._power_by_key.get(row_key, {})
+            current = selected.get("raw")
+            self._confirm_power_toggle(row_key=row_key, current=current)
+            return
 
     @staticmethod
     def _normalize_screen_token(token: str) -> Optional[str]:
@@ -4161,6 +4268,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
+            f"dock.on/off | nbl.on/off | "
             f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
 
@@ -4193,6 +4301,17 @@ class OrionApp(App):
             "симуляция.пауза": "sim.pause",
             "симуляция.стоп": "sim.stop",
             "симуляция.сброс": "sim.reset",
+            # Power Plane runtime control (no mocks): Dock / NBL.
+            "dock.on": "power.dock.on",
+            "dock.off": "power.dock.off",
+            "док.вкл": "power.dock.on",
+            "док.выкл": "power.dock.off",
+            "стыковка.вкл": "power.dock.on",
+            "стыковка.выкл": "power.dock.off",
+            "nbl.on": "power.nbl.on",
+            "nbl.off": "power.nbl.off",
+            "нбл.вкл": "power.nbl.on",
+            "нбл.выкл": "power.nbl.off",
         }
         return mapping.get(key)
 
@@ -4235,13 +4354,14 @@ class OrionApp(App):
             self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
 
+        destination = "q_sim_service" if cmd_name.startswith(("sim.", "power.")) else "faststream_bridge"
         cmd = CommandMessage(
             command_name=cmd_name,
             parameters={},
             metadata=MessageMetadata(
                 message_type="control_command",
                 source="operator_console.orion",
-                destination="faststream_bridge",
+                destination=destination,
             ),
         )
         try:

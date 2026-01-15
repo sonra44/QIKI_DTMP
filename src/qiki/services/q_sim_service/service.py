@@ -33,6 +33,7 @@ from qiki.shared.models.radar import (
     RadarFrameModel,
     TransponderModeEnum,
 )
+from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
 
@@ -80,6 +81,37 @@ class QSimService:
             cycle.append(int(ProtoSensorType.LIDAR))
         self._sensor_cycle = cycle
         self._sensor_index = 0
+
+    def apply_control_command(self, cmd: CommandMessage) -> bool:
+        """
+        Applies a control command to the simulation state (no mocks).
+
+        This is intentionally limited to runtime toggles that do not require proto changes.
+        """
+        name = (cmd.command_name or "").strip()
+        if not name:
+            return False
+
+        if name == "power.dock.on":
+            self.world_model.set_dock_connected(True)
+            return True
+        if name == "power.dock.off":
+            self.world_model.set_dock_connected(False)
+            return True
+        if name == "power.nbl.on":
+            self.world_model.set_nbl_active(True)
+            return True
+        if name == "power.nbl.off":
+            self.world_model.set_nbl_active(False)
+            return True
+        if name == "power.nbl.set_max":
+            raw = (cmd.parameters or {}).get("max_power_w")
+            if raw is None:
+                return False
+            self.world_model.set_nbl_max_power_w(raw)
+            return True
+
+        return False
 
     def _load_bot_config(self) -> dict | None:
         env_path = os.getenv("QIKI_BOT_CONFIG_PATH", "").strip()

@@ -3,6 +3,7 @@ import pytest
 from qiki.services.q_sim_service.core.world_model import WorldModel
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
+from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
 
@@ -242,3 +243,71 @@ def test_nbl_budgeter_allows_when_soc_ok() -> None:
     assert wm.nbl_active is True
     assert wm.nbl_allowed is True
     assert wm.nbl_power_w > 0.0
+
+
+def test_control_commands_toggle_dock_and_nbl() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "dock_connected_init": True,
+                "dock_station_bus_v": 28.0,
+                "dock_station_max_power_w": 280.0,
+                "dock_current_limit_a": 10.0,
+                "dock_soft_start_s": 2.0,
+                "dock_temp_c_init": -60.0,
+                "nbl_active_init": False,
+                "nbl_max_power_w": 20.0,
+                "nbl_soc_min_pct": 10.0,
+                "nbl_core_temp_max_c": 90.0,
+            },
+        }
+    }
+
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+    qsim.world_model = WorldModel(bot_config=bot_config)
+    qsim.world_model.battery_level = 99.0
+    qsim.world_model.temp_core_c = 25.0
+    qsim.world_model.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+
+    # Dock starts connected and ramps in.
+    qsim.world_model.step(1.0)
+    assert qsim.world_model.dock_connected is True
+    assert qsim.world_model.dock_soft_start_pct > 0.0
+    assert qsim.world_model.dock_power_w > 0.0
+
+    meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
+
+    # Turn dock off: should reset bridge state.
+    dock_off = CommandMessage(command_name="power.dock.off", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(dock_off) is True
+    assert qsim.world_model.dock_connected is False
+    assert qsim.world_model.dock_soft_start_pct == 0.0
+    assert qsim.world_model.dock_power_w == 0.0
+
+    # Turn dock back on: soft start restarts.
+    dock_on = CommandMessage(command_name="power.dock.on", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(dock_on) is True
+    assert qsim.world_model.dock_connected is True
+    qsim.world_model.step(1.0)
+    assert 0.0 < qsim.world_model.dock_soft_start_pct < 100.0
+    assert qsim.world_model.dock_power_w > 0.0
+
+    # Turn NBL on.
+    nbl_on = CommandMessage(command_name="power.nbl.on", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(nbl_on) is True
+    qsim.world_model.step(1.0)
+    assert qsim.world_model.nbl_active is True
+    assert qsim.world_model.nbl_allowed is True
+    assert qsim.world_model.nbl_power_w > 0.0

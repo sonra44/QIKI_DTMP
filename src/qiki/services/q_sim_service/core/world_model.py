@@ -189,6 +189,33 @@ class WorldModel:
         self._actuator_queue_depth = max(0, int(actuator_queue_depth))
         self._transponder_active = bool(transponder_active)
 
+    def set_dock_connected(self, connected: bool) -> None:
+        connected = bool(connected)
+        if connected == bool(getattr(self, "dock_connected", False)):
+            return
+        self.dock_connected = connected
+        if not connected:
+            # Reset soft-start state when disconnecting.
+            self._dock_since_s = 0.0
+            self.dock_soft_start_pct = 0.0
+            self.dock_power_w = 0.0
+            self.dock_v = 0.0
+            self.dock_a = 0.0
+        else:
+            # Restart soft-start ramp on a fresh connect.
+            self._dock_since_s = 0.0
+            self.dock_soft_start_pct = 0.0
+
+    def set_nbl_active(self, active: bool) -> None:
+        self.nbl_active = bool(active)
+
+    def set_nbl_max_power_w(self, max_power_w: float) -> None:
+        try:
+            value = float(max_power_w)
+        except Exception:
+            return
+        self._nbl_max_power_w = max(0.0, value)
+
     def update(self, command: ActuatorCommand):
         """
         Applies an actuator command to the world model, changing its state.

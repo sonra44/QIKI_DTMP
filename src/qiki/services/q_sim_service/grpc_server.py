@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from concurrent import futures
 from pathlib import Path
 
 import grpc
+import nats
 
 from generated.q_sim_api_pb2 import (
     GetSensorDataRequest,
@@ -19,6 +22,8 @@ from generated.q_sim_api_pb2_grpc import (
 )
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig, load_config
+from qiki.shared.models.core import CommandMessage
+from qiki.shared.nats_subjects import COMMANDS_CONTROL
 
 
 class QSimAPIService(QSimAPIServiceServicer):
@@ -49,6 +54,46 @@ async def sim_service_loop(sim_service: QSimService) -> None:
         raise
 
 
+async def control_commands_loop(sim_service: QSimService) -> None:
+    """NATS consumer for operator control commands (no mocks)."""
+    enabled = os.getenv("CONTROL_NATS_ENABLED", "1").strip().lower()
+    if enabled in ("0", "false", ""):
+        logging.info("CONTROL_NATS_ENABLED disabled; skipping COMMANDS_CONTROL consumer.")
+        return
+
+    nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
+    try:
+        nc = await nats.connect(nats_url)
+    except Exception as exc:
+        logging.warning("Failed to connect to NATS %s for control commands: %s", nats_url, exc)
+        return
+
+    logging.info("Subscribed to %s (control) on %s", COMMANDS_CONTROL, nats_url)
+    try:
+        sub = await nc.subscribe(COMMANDS_CONTROL)
+        async for msg in sub.messages:
+            try:
+                payload = json.loads(msg.data.decode("utf-8"))
+                cmd = CommandMessage.model_validate(payload)
+            except Exception as exc:
+                logging.debug("Invalid control command payload: %s", exc)
+                continue
+
+            try:
+                handled = sim_service.apply_control_command(cmd)
+                if handled:
+                    logging.info("Applied control command: %s", cmd.command_name)
+            except Exception as exc:
+                logging.warning("Failed applying control command %s: %s", cmd.command_name, exc)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        try:
+            await nc.close()
+        except Exception:
+            pass
+
+
 async def serve() -> None:
     """Start gRPC server with background simulation loop."""
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -63,12 +108,18 @@ async def serve() -> None:
     logging.info("gRPC server started on port 50051")
 
     sim_task = asyncio.create_task(sim_service_loop(sim_service))
+    control_task = asyncio.create_task(control_commands_loop(sim_service))
 
     async def server_graceful_shutdown() -> None:
         logging.info("Starting graceful shutdown...")
         sim_task.cancel()
+        control_task.cancel()
         try:
             await sim_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await control_task
         except asyncio.CancelledError:
             pass
         await server.stop(5)
@@ -82,4 +133,3 @@ async def serve() -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(serve())
-
