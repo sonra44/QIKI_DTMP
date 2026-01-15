@@ -1655,6 +1655,8 @@ class OrionApp(App):
 
         cpu_usage = None
         memory_usage = None
+        thermal_nodes = None
+        thermal_faults: set[str] = set()
         if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
             try:
                 normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
@@ -1663,6 +1665,16 @@ class OrionApp(App):
             if isinstance(normalized, dict):
                 cpu_usage = normalized.get("cpu_usage")
                 memory_usage = normalized.get("memory_usage")
+                th = normalized.get("thermal")
+                if isinstance(th, dict):
+                    nodes = th.get("nodes")
+                    if isinstance(nodes, list):
+                        thermal_nodes = nodes
+                pw = normalized.get("power")
+                if isinstance(pw, dict):
+                    faults = pw.get("faults")
+                    if isinstance(faults, list):
+                        thermal_faults = {str(x) for x in faults if isinstance(x, str) and x.startswith("THERMAL_TRIP:")}
 
         blocks: list[SystemStateBlock] = [
             SystemStateBlock(
@@ -1738,6 +1750,29 @@ class OrionApp(App):
                 envelope=telemetry_env,
             ),
         ]
+
+        # Thermal nodes (no-mocks): show real node temps from telemetry or nothing.
+        if isinstance(thermal_nodes, list):
+            for node in thermal_nodes[:24]:
+                if not isinstance(node, dict):
+                    continue
+                node_id = node.get("id")
+                temp = node.get("temp_c")
+                if not isinstance(node_id, str) or not node_id.strip():
+                    continue
+                key = f"thermal_{node_id.strip()}"
+                fault_key = f"THERMAL_TRIP:{node_id.strip()}"
+                status = "na" if temp is None else ("crit" if fault_key in thermal_faults else "ok")
+                blocks.append(
+                    SystemStateBlock(
+                        block_id=key,
+                        title=f"{I18N.bidi('Thermal', 'Температура')}: {node_id.strip()}",
+                        status=status,
+                        value=I18N.num_unit(temp, "C", "°C", digits=1),
+                        ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                        envelope=telemetry_env,
+                    )
+                )
 
         self._diagnostics_by_key = {}
         try:

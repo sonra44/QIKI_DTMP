@@ -28,6 +28,13 @@ class WorldModel:
         self.radiation_usvh = 0.0  # microSievert per hour
         self.temp_external_c = -60.0  # deg C
         self.temp_core_c = 25.0  # deg C
+        # Thermal Plane (virtual hardware, no-mocks).
+        self._thermal_enabled = False
+        self._thermal_ambient_exchange_w_per_c = 0.0
+        self._thermal_nodes_order: list[str] = []
+        self._thermal_nodes: dict[str, dict[str, float]] = {}
+        self._thermal_couplings: dict[str, list[tuple[str, float]]] = {}
+        self._thermal_trip_state: dict[str, bool] = {}
         # Power/EPS model (virtual hardware, simulation-truth).
         self.power_in_w = 30.0  # watts (e.g., solar)
         self.power_out_w = 60.0  # watts baseline load
@@ -125,7 +132,7 @@ class WorldModel:
         pp = hw.get("power_plane")
         if not isinstance(pp, dict):
             self.power_faults.append("POWER_PLANE_CONFIG_MISSING")
-            return
+            pp = {}
 
         def f(key: str, default: float) -> float:
             try:
@@ -175,6 +182,170 @@ class WorldModel:
         self.nbl_allowed = False
         self.nbl_power_w = 0.0
         self.nbl_budget_w = 0.0
+
+        # Thermal Plane parameters (single source of truth: bot_config.json).
+        tp = hw.get("thermal_plane")
+        if not isinstance(tp, dict):
+            return
+
+        self._thermal_enabled = bool(tp.get("enabled", False))
+        try:
+            self._thermal_ambient_exchange_w_per_c = float(tp.get("ambient_exchange_w_per_c", 0.0))
+        except Exception:
+            self._thermal_ambient_exchange_w_per_c = 0.0
+
+        nodes = tp.get("nodes")
+        if not isinstance(nodes, list):
+            nodes = []
+
+        self._thermal_nodes_order = []
+        self._thermal_nodes = {}
+        self._thermal_trip_state = {}
+        for raw in nodes:
+            if not isinstance(raw, dict):
+                continue
+            node_id = str(raw.get("id") or "").strip()
+            if not node_id:
+                continue
+            if node_id in self._thermal_nodes:
+                continue
+            try:
+                cap = float(raw.get("heat_capacity_j_per_c", 0.0))
+            except Exception:
+                cap = 0.0
+            try:
+                cool = float(raw.get("cooling_w_per_c", 0.0))
+            except Exception:
+                cool = 0.0
+            try:
+                t_init = float(raw.get("t_init_c", float(self.temp_external_c)))
+            except Exception:
+                t_init = float(self.temp_external_c)
+            try:
+                t_trip = float(raw.get("t_max_c", raw.get("t_trip_c", 0.0)))
+            except Exception:
+                t_trip = 0.0
+            try:
+                t_hys = float(raw.get("t_hysteresis_c", 0.0))
+            except Exception:
+                t_hys = 0.0
+
+            cap = max(1.0, cap)
+            cool = max(0.0, cool)
+            t_init = max(-120.0, min(160.0, t_init))
+            t_trip = float(t_trip)
+            t_hys = max(0.0, t_hys)
+
+            self._thermal_nodes_order.append(node_id)
+            self._thermal_nodes[node_id] = {
+                "temp_c": float(t_init),
+                "cap_j_per_c": float(cap),
+                "cool_w_per_c": float(cool),
+                "trip_c": float(t_trip),
+                "hys_c": float(t_hys),
+            }
+            self._thermal_trip_state[node_id] = False
+
+        couplings = tp.get("couplings")
+        if not isinstance(couplings, list):
+            couplings = []
+        self._thermal_couplings = {nid: [] for nid in self._thermal_nodes_order}
+        for raw in couplings:
+            if not isinstance(raw, dict):
+                continue
+            a = str(raw.get("a") or "").strip()
+            b = str(raw.get("b") or "").strip()
+            if not a or not b:
+                continue
+            if a not in self._thermal_nodes or b not in self._thermal_nodes:
+                continue
+            try:
+                k = float(raw.get("k_w_per_c", 0.0))
+            except Exception:
+                k = 0.0
+            k = max(0.0, k)
+            if k <= 0.0:
+                continue
+            self._thermal_couplings.setdefault(a, []).append((b, k))
+            self._thermal_couplings.setdefault(b, []).append((a, k))
+
+        # Seed derived temps from nodes when available.
+        if "core" in self._thermal_nodes:
+            self.temp_core_c = float(self._thermal_nodes["core"]["temp_c"])
+        if "dock_bridge" in self._thermal_nodes:
+            self.dock_temp_c = float(self._thermal_nodes["dock_bridge"]["temp_c"])
+
+    def _thermal_step(self, delta_time: float) -> None:
+        if not self._thermal_enabled:
+            return
+        if not self._thermal_nodes_order:
+            return
+        dt = max(0.0, float(delta_time))
+        if dt <= 0.0:
+            return
+
+        amb = float(self.temp_external_c)
+
+        # Heat sources (W) derived from simulation state (no mocks).
+        q: dict[str, float] = {nid: 0.0 for nid in self._thermal_nodes_order}
+        cpu_frac = max(0.0, min(1.0, float(self.cpu_usage) / 100.0))
+        mcqpu_w = cpu_frac * float(self._mcqpu_power_w_at_100pct)
+        if "core" in q:
+            q["core"] += 0.8 * mcqpu_w
+            q["core"] += 0.7 * float(self.nbl_power_w)
+        if "pdu" in q:
+            q["pdu"] += 0.02 * float(self.power_out_w)
+            q["pdu"] += 0.4 * (abs(float(self.power_bus_a)) ** 2)
+        if "supercap" in q:
+            q["supercap"] += 0.03 * (float(self.supercap_charge_w) + float(self.supercap_discharge_w))
+        if "dock_bridge" in q:
+            q["dock_bridge"] += 0.25 * (abs(float(self.dock_a)) ** 2)
+        if "battery" in q:
+            q["battery"] += 0.01 * abs(float(self.power_in_w) - float(self.power_out_w))
+
+        # Integrate temperatures (explicit Euler) on a thermal network.
+        prev_t = {nid: float(self._thermal_nodes[nid]["temp_c"]) for nid in self._thermal_nodes_order}
+        next_t: dict[str, float] = {}
+        for nid in self._thermal_nodes_order:
+            node = self._thermal_nodes[nid]
+            t = prev_t[nid]
+            cap = max(1.0, float(node["cap_j_per_c"]))
+            cool = max(0.0, float(node["cool_w_per_c"])) + max(0.0, float(self._thermal_ambient_exchange_w_per_c))
+            net_w = float(q.get(nid, 0.0))
+            net_w -= cool * (t - amb)
+            for other_id, k in self._thermal_couplings.get(nid, []):
+                other_t = prev_t.get(other_id)
+                if other_t is None:
+                    continue
+                net_w -= float(k) * (t - other_t)
+            dT = (net_w / cap) * dt
+            t2 = max(-120.0, min(160.0, t + dT))
+            next_t[nid] = float(t2)
+
+        for nid, t2 in next_t.items():
+            self._thermal_nodes[nid]["temp_c"] = float(t2)
+
+        # Update trip states with hysteresis and surface in faults list (no mocks).
+        for nid in self._thermal_nodes_order:
+            trip = float(self._thermal_nodes[nid].get("trip_c", 0.0))
+            hys = float(self._thermal_nodes[nid].get("hys_c", 0.0))
+            if trip <= 0.0:
+                continue
+            t = float(self._thermal_nodes[nid]["temp_c"])
+            state = bool(self._thermal_trip_state.get(nid, False))
+            if (not state) and t >= trip:
+                state = True
+            if state and t <= (trip - hys):
+                state = False
+            self._thermal_trip_state[nid] = state
+            if state:
+                self.power_faults.append(f"THERMAL_TRIP:{nid}")
+
+        # Keep legacy top-level temps consistent with nodes when present.
+        if "core" in self._thermal_nodes:
+            self.temp_core_c = float(self._thermal_nodes["core"]["temp_c"])
+        if "dock_bridge" in self._thermal_nodes:
+            self.dock_temp_c = float(self._thermal_nodes["dock_bridge"]["temp_c"])
 
     def set_runtime_load_inputs(
         self,
@@ -324,6 +495,16 @@ class WorldModel:
             self.power_shed_loads.extend(["radar", "transponder"])
             self.power_shed_reasons.append("low_soc")
 
+        # Thermal-based shedding (hysteresis state is maintained by thermal plane).
+        if bool(self._thermal_trip_state.get("pdu")):
+            self.radar_allowed = False
+            self.transponder_allowed = False
+            self.power_shed_loads.extend(["radar", "transponder"])
+            self.power_shed_reasons.append("thermal_overheat")
+        if bool(self._thermal_trip_state.get("core")):
+            self.power_shed_loads.append("nbl")
+            self.power_shed_reasons.append("thermal_overheat")
+
         # Motion + avionics loads (virtual hardware; driven by simulation inputs).
         motion_out = abs(self.speed) * self._motion_power_w_per_mps
         mcqpu_out = (float(self.cpu_usage) / 100.0) * self._mcqpu_power_w_at_100pct
@@ -339,13 +520,18 @@ class WorldModel:
             self.nbl_active
             and soc >= float(self._nbl_soc_min_pct)
             and float(self.temp_core_c) <= float(self._nbl_core_temp_max_c)
+            and not bool(self._thermal_trip_state.get("core"))
+            and not bool(self._thermal_trip_state.get("pdu"))
         )
         self.nbl_allowed = bool(nbl_allowed)
         self.nbl_budget_w = max(0.0, float(self._nbl_max_power_w)) if self.nbl_allowed else 0.0
         nbl_out = float(self.nbl_budget_w) if self.nbl_active and self.nbl_allowed else 0.0
         if self.nbl_active and not self.nbl_allowed:
             self.power_shed_loads.append("nbl")
-            self.power_shed_reasons.append("nbl_budget")
+            if bool(self._thermal_trip_state.get("core")) or bool(self._thermal_trip_state.get("pdu")):
+                self.power_shed_reasons.append("thermal_overheat")
+            else:
+                self.power_shed_reasons.append("nbl_budget")
 
         power_out_wo_supercap = (
             self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out
@@ -370,14 +556,8 @@ class WorldModel:
             self.dock_a = 0.0 if station_v <= 0.0 else float(dock_w) / station_v
             power_in += float(dock_w)
 
-            # Deterministic thermal response on dock bridge from current (I^2-like).
-            heat = (abs(self.dock_a) ** 2) * 0.02
-            self.dock_temp_c += (heat - 0.06 * (self.dock_temp_c - self.temp_external_c)) * float(delta_time)
-            self.dock_temp_c = max(-120.0, min(160.0, self.dock_temp_c))
         else:
             self._dock_since_s = 0.0
-            self.dock_temp_c += (-0.06 * (self.dock_temp_c - self.temp_external_c)) * float(delta_time)
-            self.dock_temp_c = max(-120.0, min(160.0, self.dock_temp_c))
 
         # PDU: enforce max bus current by shedding non-critical loads, then throttling motion.
         if pdu_limit_w > 0.0 and power_out_wo_supercap > pdu_limit_w:
@@ -478,23 +658,22 @@ class WorldModel:
         self.nbl_power_w = float(nbl_out)
         if self.nbl_power_w <= 0.0:
             self.nbl_allowed = False
-
-        # Simple thermal model: core warms up with movement and relaxes to external temperature.
-        # Keep bounded to reasonable values for display.
-        heat_in = abs(self.speed) * 0.8  # arbitrary units
-        self.temp_core_c += (0.15 * heat_in - 0.02 * (self.temp_core_c - self.temp_external_c)) * delta_time
-        self.temp_core_c = max(-120.0, min(160.0, self.temp_core_c))
+        # Thermal Plane (no-mocks): temperatures derived from a thermal node network.
+        self._thermal_step(delta_time)
+        # Thermal plane may append faults; keep stable order.
+        self.power_faults = list(dict.fromkeys(self.power_faults))
 
     def get_state(self) -> Dict[str, Any]:
         """
         Returns the current state of the world model.
         """
-        thermal_nodes = [
-            {"id": "core", "temp_c": self.temp_core_c},
-            {"id": "bus", "temp_c": self.temp_core_c - 5.0},
-            {"id": "battery", "temp_c": self.temp_core_c - 10.0},
-            {"id": "radiator", "temp_c": self.temp_external_c + (self.temp_core_c - self.temp_external_c) * 0.2},
-        ]
+        thermal_nodes: list[dict[str, float | str]] = []
+        if self._thermal_enabled and self._thermal_nodes_order:
+            for nid in self._thermal_nodes_order:
+                node = self._thermal_nodes.get(nid)
+                if not isinstance(node, dict):
+                    continue
+                thermal_nodes.append({"id": nid, "temp_c": float(node.get("temp_c", self.temp_external_c))})
         return {
             "position": {
                 "x": self.position.x,
