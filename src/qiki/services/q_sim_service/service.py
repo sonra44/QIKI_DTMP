@@ -88,9 +88,9 @@ class QSimService:
             candidates.append(Path(env_path))
 
         # Works both in repo runs and inside Docker (/workspace/src/...).
+        repo_root = Path(__file__).resolve().parents[4]
         candidates.append(
-            Path(__file__).resolve().parents[4]
-            / "qiki/services/q_core_agent/config/bot_config.json"
+            repo_root / "src/qiki/services/q_core_agent/config/bot_config.json"
         )
 
         for path in candidates:

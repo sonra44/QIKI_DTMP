@@ -1470,6 +1470,18 @@ class OrionApp(App):
                 get("power.load_shedding"),
             ),
             (
+                "nbl_active",
+                I18N.bidi("NBL", "NBL"),
+                I18N.yes_no(bool(get("power.nbl_active"))) if get("power.nbl_active") is not None else I18N.NA,
+                get("power.nbl_active"),
+            ),
+            (
+                "nbl_power",
+                I18N.bidi("NBL P", "NBL P"),
+                I18N.num_unit(get("power.nbl_power_w"), "W", "Вт", digits=1),
+                get("power.nbl_power_w"),
+            ),
+            (
                 "shed_loads",
                 I18N.bidi("Shed loads", "Сброшено"),
                 fmt_list(get("power.shed_loads")),
@@ -1522,18 +1534,6 @@ class OrionApp(App):
                 I18N.bidi("Dock temp", "Темп стыковки"),
                 I18N.num_unit(get("power.dock_temp_c"), "C", "°C", digits=1),
                 get("power.dock_temp_c"),
-            ),
-            (
-                "nbl_active",
-                I18N.bidi("NBL", "NBL"),
-                I18N.yes_no(bool(get("power.nbl_active"))) if get("power.nbl_active") is not None else I18N.NA,
-                get("power.nbl_active"),
-            ),
-            (
-                "nbl_power",
-                I18N.bidi("NBL P", "NBL P"),
-                I18N.num_unit(get("power.nbl_power_w"), "W", "Вт", digits=1),
-                get("power.nbl_power_w"),
             ),
             (
                 "supercap_charge",
