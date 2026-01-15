@@ -87,6 +87,7 @@ HISTORY_COPY/
 journal/
 tmp/
 test_output.txt
+.qiki_bot.id
 
 # Temporary files
 *.tmp
