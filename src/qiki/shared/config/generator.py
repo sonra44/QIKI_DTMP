@@ -39,6 +39,12 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                 "supercap_soc_pct_init": 70.0,
                 "supercap_max_charge_w": 120.0,
                 "supercap_max_discharge_w": 200.0,
+                "dock_connected_init": False,
+                "dock_station_bus_v": 28.0,
+                "dock_station_max_power_w": 250.0,
+                "dock_current_limit_a": 10.0,
+                "dock_soft_start_s": 2.0,
+                "dock_temp_c_init": -60.0,
             },
             "actuators": [],
             "sensors": []

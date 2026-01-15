@@ -1494,6 +1494,18 @@ class OrionApp(App):
                 get("power.supercap_soc_pct"),
             ),
             (
+                "dock_connected",
+                I18N.bidi("Dock", "Стыковка"),
+                I18N.yes_no(bool(get("power.dock_connected"))) if get("power.dock_connected") is not None else I18N.NA,
+                get("power.dock_connected"),
+            ),
+            (
+                "dock_power",
+                I18N.bidi("Dock P", "Стыковка P"),
+                I18N.num_unit(get("power.dock_power_w"), "W", "Вт", digits=1),
+                get("power.dock_power_w"),
+            ),
+            (
                 "power_input",
                 I18N.bidi("P in", "Вх мощн"),
                 I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
@@ -1504,6 +1516,12 @@ class OrionApp(App):
                 I18N.bidi("P out", "Вых мощн"),
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
                 get("power.power_out_w"),
+            ),
+            (
+                "dock_temp",
+                I18N.bidi("Dock temp", "Темп стыковки"),
+                I18N.num_unit(get("power.dock_temp_c"), "C", "°C", digits=1),
+                get("power.dock_temp_c"),
             ),
             (
                 "supercap_charge",

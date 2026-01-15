@@ -69,6 +69,19 @@ class WorldModel:
         self.supercap_charge_w = 0.0
         self.supercap_discharge_w = 0.0
 
+        # Dock Power Bridge (virtual hardware).
+        self.dock_connected = False
+        self._dock_station_bus_v = 28.0
+        self._dock_station_max_power_w = 0.0
+        self._dock_current_limit_a = 0.0
+        self._dock_soft_start_s = 0.0
+        self._dock_since_s = 0.0
+        self.dock_soft_start_pct = 0.0
+        self.dock_power_w = 0.0
+        self.dock_v = 0.0
+        self.dock_a = 0.0
+        self.dock_temp_c = self.temp_external_c
+
         # Apply runtime profile from bot_config (single SoT).
         self._apply_bot_config(bot_config)
 
@@ -134,6 +147,16 @@ class WorldModel:
         init_soc = max(0.0, min(100.0, init_soc))
         self._supercap_energy_wh = (init_soc / 100.0) * max(0.0, self._supercap_capacity_wh)
         self.supercap_soc_pct = init_soc
+
+        # Dock Power Bridge defaults / scenario.
+        self.dock_connected = bool(pp.get("dock_connected_init", False))
+        self._dock_station_bus_v = f("dock_station_bus_v", self._dock_station_bus_v)
+        self._dock_station_max_power_w = f("dock_station_max_power_w", self._dock_station_max_power_w)
+        self._dock_current_limit_a = f("dock_current_limit_a", self._dock_current_limit_a)
+        self._dock_soft_start_s = f("dock_soft_start_s", self._dock_soft_start_s)
+        self.dock_temp_c = f("dock_temp_c_init", float(self.temp_external_c))
+        self._dock_since_s = 0.0
+        self.dock_soft_start_pct = 0.0
 
     def set_runtime_load_inputs(
         self,
@@ -224,6 +247,10 @@ class WorldModel:
         self.power_throttled_loads = []
         self.supercap_charge_w = 0.0
         self.supercap_discharge_w = 0.0
+        self.dock_power_w = 0.0
+        self.dock_v = 0.0
+        self.dock_a = 0.0
+        self.dock_soft_start_pct = 0.0
 
         soc = max(0.0, min(100.0, float(self.battery_level)))
         if self._bus_v_nominal <= 0.0:
@@ -261,6 +288,33 @@ class WorldModel:
 
         power_out_wo_supercap = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
         power_in = self._base_power_in_w
+
+        # Dock Power Bridge: adds external power when connected (soft start + limits).
+        if self.dock_connected:
+            self._dock_since_s += max(0.0, float(delta_time))
+            denom = max(0.001, float(self._dock_soft_start_s))
+            self.dock_soft_start_pct = max(0.0, min(100.0, (self._dock_since_s / denom) * 100.0))
+            ramp = self.dock_soft_start_pct / 100.0
+
+            station_v = max(0.0, float(self._dock_station_bus_v))
+            station_p_limit = max(0.0, float(self._dock_station_max_power_w))
+            current_p_limit = max(0.0, float(self._dock_current_limit_a)) * station_v
+            avail_w = min(station_p_limit, current_p_limit) if station_p_limit > 0.0 else current_p_limit
+            dock_w = max(0.0, avail_w) * ramp
+
+            self.dock_power_w = float(dock_w)
+            self.dock_v = float(station_v)
+            self.dock_a = 0.0 if station_v <= 0.0 else float(dock_w) / station_v
+            power_in += float(dock_w)
+
+            # Deterministic thermal response on dock bridge from current (I^2-like).
+            heat = (abs(self.dock_a) ** 2) * 0.02
+            self.dock_temp_c += (heat - 0.06 * (self.dock_temp_c - self.temp_external_c)) * float(delta_time)
+            self.dock_temp_c = max(-120.0, min(160.0, self.dock_temp_c))
+        else:
+            self._dock_since_s = 0.0
+            self.dock_temp_c += (-0.06 * (self.dock_temp_c - self.temp_external_c)) * float(delta_time)
+            self.dock_temp_c = max(-120.0, min(160.0, self.dock_temp_c))
 
         # PDU: enforce max bus current by shedding non-critical loads, then throttling motion.
         if pdu_limit_w > 0.0 and power_out_wo_supercap > pdu_limit_w:
@@ -393,5 +447,11 @@ class WorldModel:
                 "supercap_soc_pct": float(self.supercap_soc_pct),
                 "supercap_charge_w": float(self.supercap_charge_w),
                 "supercap_discharge_w": float(self.supercap_discharge_w),
+                "dock_connected": bool(self.dock_connected),
+                "dock_soft_start_pct": float(self.dock_soft_start_pct),
+                "dock_power_w": float(self.dock_power_w),
+                "dock_v": float(self.dock_v),
+                "dock_a": float(self.dock_a),
+                "dock_temp_c": float(self.dock_temp_c),
             },
         }

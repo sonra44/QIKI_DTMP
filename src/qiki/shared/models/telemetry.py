@@ -52,6 +52,14 @@ class PowerTelemetry(BaseModel):
     supercap_charge_w: float = Field(default=0.0, ge=0.0)
     supercap_discharge_w: float = Field(default=0.0, ge=0.0)
 
+    # Dock Power Bridge.
+    dock_connected: bool = Field(default=False)
+    dock_soft_start_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    dock_power_w: float = Field(default=0.0, ge=0.0)
+    dock_v: float = Field(default=0.0, ge=0.0)
+    dock_a: float = Field(default=0.0, ge=0.0)
+    dock_temp_c: float = Field(default=0.0)
+
 
 class ThermalNodeTelemetry(BaseModel):
     model_config = ConfigDict(extra="forbid")

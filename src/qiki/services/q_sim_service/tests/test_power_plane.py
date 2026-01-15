@@ -25,6 +25,12 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "supercap_soc_pct" in power
     assert "supercap_charge_w" in power
     assert "supercap_discharge_w" in power
+    assert "dock_connected" in power
+    assert "dock_soft_start_pct" in power
+    assert "dock_power_w" in power
+    assert "dock_v" in power
+    assert "dock_a" in power
+    assert "dock_temp_c" in power
 
 
 def test_soc_load_shedding_hysteresis_blocks_non_critical_loads() -> None:
@@ -142,3 +148,41 @@ def test_supercap_charges_and_discharges(mode: str) -> None:
     else:
         assert wm.supercap_discharge_w > 0.0
         assert wm.supercap_charge_w == 0.0
+
+
+def test_dock_power_bridge_soft_start_ramps_input() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "dock_connected_init": True,
+                "dock_station_bus_v": 28.0,
+                "dock_station_max_power_w": 280.0,
+                "dock_current_limit_a": 10.0,
+                "dock_soft_start_s": 2.0,
+                "dock_temp_c_init": -60.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+
+    wm.step(1.0)
+    p1 = float(wm.dock_power_w)
+    assert 0.0 < p1 < 280.0
+    assert 40.0 <= wm.dock_soft_start_pct <= 60.0
+
+    wm.step(1.0)
+    p2 = float(wm.dock_power_w)
+    assert p2 > p1
+    assert wm.dock_soft_start_pct >= 99.0
