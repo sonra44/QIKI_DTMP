@@ -218,7 +218,7 @@ class QSimService:
         self.sensor_data_queue.append(sensor_data)
         logger.debug(f"Generated sensor data: {MessageToDict(sensor_data)}")
 
-        if self.radar_enabled:
+        if self.radar_enabled and getattr(self.world_model, "radar_allowed", True):
             rf = self.generate_radar_frame()
             self.radar_frames.append(rf)
             if self.radar_nats_enabled and self._radar_publisher is not None:
@@ -286,6 +286,8 @@ class QSimService:
         return mapping.get(raw.upper(), TransponderModeEnum.ON)
 
     def _is_transponder_active(self) -> bool:
+        if not getattr(self.world_model, "transponder_allowed", True):
+            return False
         return self.transponder_mode in (TransponderModeEnum.ON, TransponderModeEnum.SPOOF)
 
     def _resolve_transponder_id(self) -> str | None:

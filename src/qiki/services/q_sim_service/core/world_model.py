@@ -1,4 +1,5 @@
-from typing import Dict, Any
+from typing import Any, Dict
+
 import math
 
 from qiki.services.q_sim_service.logger import logger
@@ -32,6 +33,13 @@ class WorldModel:
         self.power_in_w = 30.0  # watts (e.g., solar)
         self.power_out_w = 60.0  # watts baseline load
         self.power_bus_a = self.power_out_w / self.power_bus_v
+        # Power Supervisor (load shedding) - deterministic, no-mocks.
+        self.power_load_shedding = False
+        self.power_shed_loads: list[str] = []
+        self.radar_allowed = True
+        self.transponder_allowed = True
+        self._eps_soc_shed_low_pct = 20.0
+        self._eps_soc_shed_high_pct = 30.0
         self._battery_capacity_wh = 200.0
         self._base_power_in_w = 30.0
         self._base_power_out_w = 60.0
@@ -135,11 +143,31 @@ class WorldModel:
         # Power/EPS: derive loads and update SoC from net power.
         self.power_in_w = self._base_power_in_w
 
+        # Power Supervisor: load shedding with hysteresis (virtual hardware).
+        # When SoC falls below low threshold -> shed non-critical loads (radar, transponder).
+        # Once SoC recovers above high threshold -> restore loads.
+        if not self.power_load_shedding and self.battery_level <= self._eps_soc_shed_low_pct:
+            self.power_load_shedding = True
+        if self.power_load_shedding and self.battery_level >= self._eps_soc_shed_high_pct:
+            self.power_load_shedding = False
+
+        self.power_shed_loads = []
+        self.radar_allowed = True
+        self.transponder_allowed = True
+        if self.power_load_shedding:
+            self.radar_allowed = False
+            self.transponder_allowed = False
+            self.power_shed_loads.extend(["radar", "transponder"])
+
         # Motion + avionics loads (still MVP, but deterministic and driven by simulation inputs).
         motion_out = abs(self.speed) * self._motion_power_w_per_mps
         mcqpu_out = (float(self.cpu_usage) / 100.0) * self._mcqpu_power_w_at_100pct
-        radar_out = self._radar_power_w if self._radar_enabled else 0.0
-        xpdr_out = self._transponder_power_w if self._transponder_active else 0.0
+        radar_out = self._radar_power_w if (self._radar_enabled and self.radar_allowed) else 0.0
+        xpdr_out = (
+            self._transponder_power_w
+            if (self._transponder_active and self.transponder_allowed)
+            else 0.0
+        )
         self.power_out_w = self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out
         self.power_bus_a = 0.0 if self.power_bus_v <= 0 else self.power_out_w / self.power_bus_v
         net_w = self.power_in_w - self.power_out_w
@@ -192,5 +220,7 @@ class WorldModel:
                 "power_out_w": self.power_out_w,
                 "bus_v": self.power_bus_v,
                 "bus_a": self.power_bus_a,
+                "load_shedding": bool(self.power_load_shedding),
+                "shed_loads": list(self.power_shed_loads),
             },
         }

@@ -36,6 +36,9 @@ class PowerTelemetry(BaseModel):
     power_out_w: float = Field(ge=0.0)
     bus_v: float = Field(ge=0.0)
     bus_a: float = Field(ge=0.0)
+    # Power Supervisor state (virtual hardware, no-mocks).
+    load_shedding: bool = Field(default=False)
+    shed_loads: list[str] = Field(default_factory=list)
 
 
 class ThermalNodeTelemetry(BaseModel):

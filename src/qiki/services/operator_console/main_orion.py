@@ -1444,6 +1444,12 @@ class OrionApp(App):
                 get("power.soc_pct"),
             ),
             (
+                "load_shedding",
+                I18N.bidi("Load shed", "Сброс нагрузки"),
+                I18N.yes_no(bool(get("power.load_shedding"))) if get("power.load_shedding") is not None else I18N.NA,
+                get("power.load_shedding"),
+            ),
+            (
                 "power_input",
                 I18N.bidi("P in", "Вх мощн"),
                 I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
