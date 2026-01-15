@@ -78,6 +78,7 @@ ORION shows a cold-boot splash before the main UI to improve operator orientatio
 ### Sizing / readability
 - Boot container must fit `tmux` splits: use a max width and allow shrinking.
 - Limit the number of printed POST rows; prioritize non-OK rows first.
+- Prefer compact placeholders (`N/A/—`) in tight panes instead of verbose “Not available/Нет данных”.
 
 ### Tuning via env (for demos without fake data)
 - `ORION_BOOT_COSMETIC_SEC` — cosmetic delay (default small; raise to 10–20s if you want the boot to be observable).

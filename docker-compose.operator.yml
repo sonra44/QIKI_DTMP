@@ -21,8 +21,9 @@ services:
       - PYTHONUNBUFFERED=1
       - TERM=xterm-256color
       # BootScreen tuning (no-mocks): visual delay only (no fake OK/%).
-      # You can override locally for demos (e.g. 10–20s); keep default low for normal work.
-      - ORION_BOOT_COSMETIC_SEC=2
+      # Set higher (e.g. 10–20s) when you want the boot sequence to be observable in tmux.
+      # Set lower (e.g. 2s) for faster dev iterations.
+      - ORION_BOOT_COSMETIC_SEC=10
     volumes:
       - ./:/workspace:ro
       # Allow editing incident rules from ORION without making the whole repo writable.

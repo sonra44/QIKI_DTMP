@@ -7,7 +7,9 @@ def bidi(en: str, ru: str) -> str:
     return f"{en}/{ru}"
 
 
-NA = bidi("Not available", "Нет данных")
+NA_LONG = bidi("Not available", "Нет данных")
+# Compact N/A for tight UI (tmux splits). Keep bilingual style and no-mocks semantics.
+NA = bidi("N/A", "—")
 INVALID = bidi("Invalid", "Некорректно")
 YES = bidi("yes", "да")
 NO = bidi("no", "нет")
@@ -75,7 +77,7 @@ def fmt_na(value: Any) -> str:
 def fmt_age(seconds: Any) -> str:
     """Format a time duration for UI in strict EN/RU, no-mocks.
 
-    - None/invalid -> Not available/Нет данных
+    - None/invalid -> N/A/—
     - <60s -> "12.3 seconds/12.3 секунды"
     - <60m -> "5.2 minutes/5.2 минуты"
     - else -> "1.0 hours/1.0 часы"
@@ -96,7 +98,7 @@ def fmt_age(seconds: Any) -> str:
 def fmt_age_compact(seconds: Any) -> str:
     """Compact duration for tight UI areas (header/table), still strict EN/RU.
 
-    - None/invalid -> Not available/Нет данных
+    - None/invalid -> N/A/—
     - <60s -> "12.3sec/12.3с"
     - <60m -> "5.2min/5.2мин"
     - else -> "1.0h/1.0ч"
