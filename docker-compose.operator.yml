@@ -14,7 +14,7 @@ services:
     environment:
       - QIKI_REPO_ROOT=/workspace
       - PYTHONPATH=/workspace/src:/workspace/generated:/app
-      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_URL=nats://nats:4222
       - GRPC_HOST=q-sim-service
       - GRPC_PORT=50051
       - LOG_LEVEL=INFO

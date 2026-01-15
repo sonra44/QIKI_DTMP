@@ -83,7 +83,7 @@ services:
       - RADAR_NATS_ENABLED=1
       - TELEMETRY_NATS_ENABLED=1
       - TELEMETRY_INTERVAL_SEC=1.0
-      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_URL=nats://nats:4222
     command: python -m qiki.services.q_sim_service.grpc_server
     tty: true
     stdin_open: true
@@ -113,7 +113,7 @@ services:
       - SIM_GRPC_HOST=q-sim-service
       - SIM_GRPC_PORT=50051
       - SIM_HEALTH_CHECK_TIMEOUT=2.0
-      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_URL=nats://nats:4222
       - NATS_EVENT_SUBJECT=qiki.events.v1.bios_status
       - BIOS_PUBLISH_ENABLED=1
       - BIOS_PUBLISH_INTERVAL_SEC=5.0
@@ -151,7 +151,7 @@ services:
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
-      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_URL=nats://nats:4222
     command: python -m qiki.services.q_sim_service.main
     depends_on:
       nats:
@@ -201,7 +201,7 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
-      - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_URL=nats://nats:4222
       - RADAR_STREAM=QIKI_RADAR_V1
       - RADAR_SUBJECTS=qiki.radar.v1.*
       - RADAR_DUPLICATE_WINDOW_SEC=120
