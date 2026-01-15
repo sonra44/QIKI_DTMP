@@ -39,6 +39,18 @@ class PowerTelemetry(BaseModel):
     # Power Supervisor state (virtual hardware, no-mocks).
     load_shedding: bool = Field(default=False)
     shed_loads: list[str] = Field(default_factory=list)
+    shed_reasons: list[str] = Field(default_factory=list)
+
+    # PDU (power path constraints) - virtual hardware.
+    pdu_limit_w: float = Field(default=0.0, ge=0.0)
+    pdu_throttled: bool = Field(default=False)
+    throttled_loads: list[str] = Field(default_factory=list)
+
+    # Faults and peak buffer (supercaps).
+    faults: list[str] = Field(default_factory=list)
+    supercap_soc_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    supercap_charge_w: float = Field(default=0.0, ge=0.0)
+    supercap_discharge_w: float = Field(default=0.0, ge=0.0)
 
 
 class ThermalNodeTelemetry(BaseModel):

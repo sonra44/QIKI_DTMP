@@ -1430,6 +1430,26 @@ class OrionApp(App):
                 cur = cur[part]
             return cur
 
+        def fmt_list(value: Any) -> str:
+            if not isinstance(value, list):
+                return I18N.NA
+            items = [str(x).strip() for x in value if str(x).strip()]
+            if not items:
+                return I18N.bidi("none", "нет")
+            s = ", ".join(items)
+            return s if len(s) <= 32 else s[:29] + "..."
+
+        def fmt_faults(value: Any) -> str:
+            if not isinstance(value, list):
+                return I18N.NA
+            items = [str(x).strip() for x in value if str(x).strip()]
+            if not items:
+                return I18N.bidi("none", "нет")
+            if len(items) == 1:
+                return items[0]
+            head = items[0]
+            return f"{head} (+{len(items) - 1})"
+
         rows: list[tuple[str, str, str, Any]] = [
             (
                 "battery_level",
@@ -1450,6 +1470,30 @@ class OrionApp(App):
                 get("power.load_shedding"),
             ),
             (
+                "shed_loads",
+                I18N.bidi("Shed loads", "Сброшено"),
+                fmt_list(get("power.shed_loads")),
+                get("power.shed_loads"),
+            ),
+            (
+                "faults",
+                I18N.bidi("Faults", "Аварии"),
+                fmt_faults(get("power.faults")),
+                get("power.faults"),
+            ),
+            (
+                "pdu_limit",
+                I18N.bidi("PDU limit", "Лимит PDU"),
+                I18N.num_unit(get("power.pdu_limit_w"), "W", "Вт", digits=1),
+                get("power.pdu_limit_w"),
+            ),
+            (
+                "supercap_soc",
+                I18N.bidi("SC SoC", "Суперкап"),
+                I18N.pct(get("power.supercap_soc_pct"), digits=1),
+                get("power.supercap_soc_pct"),
+            ),
+            (
                 "power_input",
                 I18N.bidi("P in", "Вх мощн"),
                 I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
@@ -1460,6 +1504,18 @@ class OrionApp(App):
                 I18N.bidi("P out", "Вых мощн"),
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
                 get("power.power_out_w"),
+            ),
+            (
+                "supercap_charge",
+                I18N.bidi("SC charge", "Заряд СК"),
+                I18N.num_unit(get("power.supercap_charge_w"), "W", "Вт", digits=1),
+                get("power.supercap_charge_w"),
+            ),
+            (
+                "supercap_discharge",
+                I18N.bidi("SC discharge", "Разряд СК"),
+                I18N.num_unit(get("power.supercap_discharge_w"), "W", "Вт", digits=1),
+                get("power.supercap_discharge_w"),
             ),
             (
                 "bus_voltage",

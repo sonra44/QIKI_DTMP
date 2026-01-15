@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from google.protobuf.json_format import MessageToDict
@@ -37,7 +39,8 @@ from qiki.shared.models.telemetry import TelemetrySnapshotModel
 class QSimService:
     def __init__(self, config: QSimServiceConfig):
         self.config = config
-        self.world_model = WorldModel()
+        self._bot_config = self._load_bot_config()
+        self.world_model = WorldModel(bot_config=self._bot_config)
         self.sensor_data_queue: list[SensorReading] = []
         self.actuator_command_queue: list[ActuatorCommand] = []
         env_flag = os.getenv("RADAR_ENABLED", "0").strip().lower()
@@ -77,6 +80,31 @@ class QSimService:
             cycle.append(int(ProtoSensorType.LIDAR))
         self._sensor_cycle = cycle
         self._sensor_index = 0
+
+    def _load_bot_config(self) -> dict | None:
+        env_path = os.getenv("QIKI_BOT_CONFIG_PATH", "").strip()
+        candidates: list[Path] = []
+        if env_path:
+            candidates.append(Path(env_path))
+
+        # Works both in repo runs and inside Docker (/workspace/src/...).
+        candidates.append(
+            Path(__file__).resolve().parents[4]
+            / "qiki/services/q_core_agent/config/bot_config.json"
+        )
+
+        for path in candidates:
+            try:
+                if not path.exists():
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    logger.info(f"Loaded bot_config.json for simulation: {path}")
+                    return data
+            except Exception as e:
+                logger.warning(f"Failed to load bot_config.json from {path}: {e}")
+        logger.warning("bot_config.json not found; simulation will use fallback defaults.")
+        return None
 
     async def get_sensor_data(self) -> SensorReading:
         while not self.sensor_data_queue:

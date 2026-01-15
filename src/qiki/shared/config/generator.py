@@ -23,6 +23,23 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
         "hardware_profile": {
             "max_speed_mps": 1.0,
             "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 22.0,
+                "max_bus_a": 5.0,
+                "base_power_in_w": 30.0,
+                "base_power_out_w": 60.0,
+                "motion_power_w_per_mps": 40.0,
+                "mcqpu_power_w_at_100pct": 35.0,
+                "radar_power_w": 18.0,
+                "transponder_power_w": 6.0,
+                "soc_shed_low_pct": 20.0,
+                "soc_shed_high_pct": 30.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 70.0,
+                "supercap_max_charge_w": 120.0,
+                "supercap_max_discharge_w": 200.0,
+            },
             "actuators": [],
             "sensors": []
         },
