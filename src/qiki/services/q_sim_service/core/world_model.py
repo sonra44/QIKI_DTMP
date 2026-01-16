@@ -218,7 +218,7 @@ class WorldModel:
         # Thermal Plane parameters (single source of truth: bot_config.json).
         tp = hw.get("thermal_plane")
         if not isinstance(tp, dict):
-            return
+            tp = {}
 
         self._thermal_enabled = bool(tp.get("enabled", False))
         try:

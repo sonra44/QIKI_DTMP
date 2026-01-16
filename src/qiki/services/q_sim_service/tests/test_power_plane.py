@@ -1,5 +1,7 @@
 import pytest
 
+from generated.actuator_raw_out_pb2 import ActuatorCommand
+from generated.common_types_pb2 import Unit as ProtoUnit
 from qiki.services.q_sim_service.core.world_model import WorldModel
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
@@ -109,6 +111,49 @@ def test_pdu_overcurrent_throttles_motion_to_limit() -> None:
     assert wm.power_pdu_throttled is True
     assert "motion" in wm.power_throttled_loads
     assert wm.power_bus_a <= 0.5 + 1e-6
+
+
+def test_pdu_overcurrent_throttles_rcs_and_marks_load() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 0.2,  # 5.6 W limit
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+            },
+            "propulsion_plane": {
+                "enabled": True,
+                "thrusters_path": "config/propulsion/thrusters.json",
+                "propellant_kg_init": 1.0,
+                "isp_s": 60.0,
+                "rcs_power_w_at_100pct": 80.0,
+                "heat_fraction_to_hull": 0.0,
+                "pulse_window_s": 0.25,
+                "ztt_torque_tol_nm": 25.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    cmd = ActuatorCommand()
+    cmd.actuator_id.value = "rcs_port"
+    cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+    cmd.float_value = 100.0
+    cmd.unit = ProtoUnit.PERCENT
+    cmd.timeout_ms = 2000
+    wm.update(cmd)
+    wm.step(1.0)
+
+    assert wm.power_pdu_throttled is True
+    assert "rcs" in wm.power_throttled_loads
+    assert wm.rcs_throttled is True
+    assert wm.power_bus_a <= 0.2 + 1e-6
 
 
 @pytest.mark.parametrize("mode", ["charge", "discharge"])

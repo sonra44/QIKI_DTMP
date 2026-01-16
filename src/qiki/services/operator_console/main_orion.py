@@ -1492,10 +1492,28 @@ class OrionApp(App):
                 get("power.load_shedding"),
             ),
             (
+                "shed_reasons",
+                I18N.bidi("Shed reason", "Причины"),
+                fmt_list(get("power.shed_reasons")),
+                get("power.shed_reasons"),
+            ),
+            (
                 "nbl_active",
                 I18N.bidi("NBL", "NBL"),
                 I18N.yes_no(bool(get("power.nbl_active"))) if get("power.nbl_active") is not None else I18N.NA,
                 get("power.nbl_active"),
+            ),
+            (
+                "nbl_allowed",
+                I18N.bidi("NBL ok", "NBL ок"),
+                I18N.yes_no(bool(get("power.nbl_allowed"))) if get("power.nbl_allowed") is not None else I18N.NA,
+                get("power.nbl_allowed"),
+            ),
+            (
+                "nbl_budget",
+                I18N.bidi("NBL budget", "Бюджет NBL"),
+                I18N.num_unit(get("power.nbl_budget_w"), "W", "Вт", digits=1),
+                get("power.nbl_budget_w"),
             ),
             (
                 "nbl_power",
@@ -1522,6 +1540,18 @@ class OrionApp(App):
                 get("power.pdu_limit_w"),
             ),
             (
+                "pdu_throttled",
+                I18N.bidi("PDU throttled", "PDU троттл"),
+                I18N.yes_no(bool(get("power.pdu_throttled"))) if get("power.pdu_throttled") is not None else I18N.NA,
+                get("power.pdu_throttled"),
+            ),
+            (
+                "throttled_loads",
+                I18N.bidi("Throttled", "Троттлено"),
+                fmt_list(get("power.throttled_loads")),
+                get("power.throttled_loads"),
+            ),
+            (
                 "supercap_soc",
                 I18N.bidi("SC SoC", "Суперкап"),
                 I18N.pct(get("power.supercap_soc_pct"), digits=1),
@@ -1534,10 +1564,28 @@ class OrionApp(App):
                 get("power.dock_connected"),
             ),
             (
+                "dock_soft_start",
+                I18N.bidi("Dock ramp", "Разгон дока"),
+                I18N.pct(get("power.dock_soft_start_pct"), digits=0),
+                get("power.dock_soft_start_pct"),
+            ),
+            (
                 "dock_power",
                 I18N.bidi("Dock P", "Стыковка P"),
                 I18N.num_unit(get("power.dock_power_w"), "W", "Вт", digits=1),
                 get("power.dock_power_w"),
+            ),
+            (
+                "dock_v",
+                I18N.bidi("Dock V", "Док В"),
+                I18N.num_unit(get("power.dock_v"), "V", "В", digits=2),
+                get("power.dock_v"),
+            ),
+            (
+                "dock_a",
+                I18N.bidi("Dock A", "Док А"),
+                I18N.num_unit(get("power.dock_a"), "A", "А", digits=2),
+                get("power.dock_a"),
             ),
             (
                 "power_input",
@@ -4611,6 +4659,21 @@ class OrionApp(App):
             self.action_show_screen(screen)
             return
 
+        # nbl.max <W> (Power Plane runtime control; no mocks).
+        if low.startswith(("nbl.max ", "nbl.limit ", "nbl.set ")):
+            _, _, tail = cmd.partition(" ")
+            raw_w = tail.strip()
+            try:
+                max_w = float(raw_w)
+            except Exception:
+                self._console_log(
+                    f"{I18N.bidi('Invalid value', 'Некорректное значение')}: {raw_w or I18N.NA}",
+                    level="warn",
+                )
+                return
+            await self._publish_sim_command("power.nbl.set_max", parameters={"max_power_w": max_w})
+            return
+
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
             await self._publish_sim_command(sim_cmd)
             return
@@ -4651,7 +4714,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"dock.on/off | nbl.on/off | "
+            f"dock.on/off | nbl.on/off | nbl.max <W> | "
             f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
 
@@ -4732,7 +4795,9 @@ class OrionApp(App):
                 level="warn",
             )
 
-    async def _publish_sim_command(self, cmd_name: str) -> None:
+    async def _publish_sim_command(
+        self, cmd_name: str, *, parameters: Optional[dict[str, Any]] = None
+    ) -> None:
         if not self.nats_client:
             self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
@@ -4740,7 +4805,7 @@ class OrionApp(App):
         destination = "q_sim_service" if cmd_name.startswith(("sim.", "power.")) else "faststream_bridge"
         cmd = CommandMessage(
             command_name=cmd_name,
-            parameters={},
+            parameters=parameters or {},
             metadata=MessageMetadata(
                 message_type="control_command",
                 source="operator_console.orion",
