@@ -1433,6 +1433,9 @@ class OrionApp(App):
         blocks = self._build_summary_blocks()
 
         self._summary_by_key = {}
+        current = self._selection_by_app.get("summary")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status_label = self._block_status_label(block.status)
@@ -1445,10 +1448,11 @@ class OrionApp(App):
                 "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
+            if selected_key is not None and block.block_id == selected_key:
+                selected_row = table.row_count - 1
 
         # Keep an always-valid selection on Summary.
         first_key = blocks[0].block_id if blocks else "seed"
-        current = self._selection_by_app.get("summary")
         if current is None or current.key not in self._summary_by_key:
             created_at_epoch = time.time()
             if blocks and blocks[0].ts_epoch is not None:
@@ -1464,10 +1468,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_power_table(self) -> None:
         try:
@@ -1712,6 +1720,9 @@ class OrionApp(App):
                 return I18N.bidi("Abnormal", "Не норма")
             return I18N.bidi("Normal", "Норма")
 
+        current = self._selection_by_app.get("power")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         for row_key, label, value, raw in rows:
             status = status_label(raw, value)
             table.add_row(label, status, value, age, source, key=row_key)
@@ -1725,8 +1736,9 @@ class OrionApp(App):
                 "raw": raw,
                 "envelope": telemetry_env,
             }
+            if selected_key is not None and row_key == selected_key:
+                selected_row = table.row_count - 1
 
-        current = self._selection_by_app.get("power")
         if current is None or current.key not in self._power_by_key:
             first_key = rows[0][0]
             created_at_epoch = float(telemetry_env.ts_epoch)
@@ -1741,10 +1753,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_thermal_table(self) -> None:
         try:
@@ -1799,6 +1815,9 @@ class OrionApp(App):
         except Exception:
             return
 
+        current = self._selection_by_app.get("thermal")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         def status_label(node_id: str, temp: Any) -> str:
             if temp is None:
                 return I18N.NA
@@ -1826,8 +1845,9 @@ class OrionApp(App):
                 "source": source,
                 "envelope": telemetry_env,
             }
+            if selected_key is not None and nid == selected_key:
+                selected_row = table.row_count - 1
 
-        current = self._selection_by_app.get("thermal")
         if current is None or current.key not in self._thermal_by_key:
             first_key = next(iter(self._thermal_by_key.keys()), "seed")
             self._set_selection(
@@ -1841,10 +1861,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_propulsion_table(self) -> None:
         try:
@@ -1939,6 +1963,9 @@ class OrionApp(App):
         except Exception:
             return
 
+        current = self._selection_by_app.get("propulsion")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         for row_key, label, value, raw, warn in rows:
             status = status_label(raw, value, warning=warn)
             table.add_row(label, status, value, age, source, key=row_key)
@@ -1952,8 +1979,9 @@ class OrionApp(App):
                 "raw": raw,
                 "envelope": telemetry_env,
             }
+            if selected_key is not None and row_key == selected_key:
+                selected_row = table.row_count - 1
 
-        current = self._selection_by_app.get("propulsion")
         if current is None or current.key not in self._propulsion_by_key:
             first_key = rows[0][0] if rows else "seed"
             self._set_selection(
@@ -1967,10 +1995,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_sensors_table(self) -> None:
         try:
@@ -1997,7 +2029,7 @@ class OrionApp(App):
                 table.clear()
             except Exception:
                 return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -2020,7 +2052,6 @@ class OrionApp(App):
         age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
         age_display = "" if compact else age
-        source_display = "" if compact else source
 
         def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None) -> str:
             if status_kind is not None:
@@ -2178,21 +2209,25 @@ class OrionApp(App):
         except Exception:
             return
 
+        current = self._selection_by_app.get("sensors")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         for row_key, label, value, raw, warn, status_kind in rows:
             status = status_label(raw, value, warning=warn, status_kind=status_kind)
-            table.add_row(label, style_status(status, status_kind), value, age_display, source_display, key=row_key)
+            table.add_row(label, style_status(status, status_kind), value, age_display, key=row_key)
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
                 "status": status,
                 "value": value,
                 "age": age_display or age,
-                "source": source_display or source,
+                "source": source,
                 "raw": raw,
                 "envelope": telemetry_env,
             }
+            if selected_key is not None and row_key == selected_key:
+                selected_row = table.row_count - 1
 
-        current = self._selection_by_app.get("sensors")
         if current is None or current.key not in self._sensors_by_key:
             first_key = rows[0][0] if rows else "seed"
             self._set_selection(
@@ -2206,10 +2241,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_diagnostics_table(self) -> None:
         try:
@@ -2486,6 +2525,9 @@ class OrionApp(App):
         except Exception:
             return
 
+        current = self._selection_by_app.get("diagnostics")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status = status_label(block.status)
@@ -2498,9 +2540,10 @@ class OrionApp(App):
                 "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
+            if selected_key is not None and block.block_id == selected_key:
+                selected_row = table.row_count - 1
 
         first_key = blocks[0].block_id if blocks else "seed"
-        current = self._selection_by_app.get("diagnostics")
         if current is None or current.key not in self._diagnostics_by_key:
             created_at_epoch = time.time()
             env = self._diagnostics_by_key.get(first_key, {}).get("envelope")
@@ -2517,10 +2560,14 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_mission_table(self) -> None:
         try:
@@ -2571,9 +2618,16 @@ class OrionApp(App):
         except Exception:
             return
 
+        current = self._selection_by_app.get("mission")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
+
         def row(key: str, item: str, status: str, value: str, *, record: dict[str, Any]) -> None:
             table.add_row(item, status, value, key=key)
             self._mission_by_key[key] = record
+            nonlocal selected_row
+            if selected_key is not None and key == selected_key:
+                selected_row = table.row_count - 1
 
         row(
             "mission-designator",
@@ -2646,7 +2700,6 @@ class OrionApp(App):
                 record={"kind": "mission_step", "index": idx, "step": step, "envelope": env},
             )
 
-        current = self._selection_by_app.get("mission")
         if current is None or current.key not in self._mission_by_key:
             self._set_selection(
                 SelectionContext(
@@ -2659,10 +2712,14 @@ class OrionApp(App):
                     ids=("mission-designator", env.type),
                 )
             )
-        try:
-            table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def _render_events_table(self) -> None:
         try:
@@ -2725,6 +2782,9 @@ class OrionApp(App):
             incidents,
             key=lambda inc: (bool(inc.acked), severity_rank(inc.severity), -float(inc.last_seen)),
         )
+        current = self._selection_by_app.get("events")
+        selected_key = current.key if current is not None else None
+        selected_row: Optional[int] = None
         now = time.time()
         for inc in incidents_sorted[: self._max_events_table_rows]:
             age_s = max(0.0, now - float(inc.last_seen))
@@ -2740,8 +2800,9 @@ class OrionApp(App):
                 acked_text,
                 key=inc.incident_id,
             )
+            if selected_key is not None and inc.incident_id == selected_key:
+                selected_row = table.row_count - 1
 
-        current = self._selection_by_app.get("events")
         if current is None or current.key not in {inc.incident_id for inc in incidents_sorted}:
             selected = incidents_sorted[0]
             self._set_selection(
@@ -2755,11 +2816,14 @@ class OrionApp(App):
                     ids=(selected.rule_id, selected.type, selected.subject),
                 )
             )
-        try:
-            if self._events_live:
-                table.move_cursor(row=0, column=0, animate=False, scroll=False)
-        except Exception:
-            pass
+            selected_row = 0
+
+        if selected_row is not None:
+            try:
+                if getattr(table, "cursor_row", None) != selected_row:
+                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
 
     def compose(self) -> ComposeResult:
         with Vertical(id="orion-root"):
@@ -2862,7 +2926,6 @@ class OrionApp(App):
                 sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                 sensors_table.add_column(I18N.bidi("Value", "Значение"), width=24)
                 sensors_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                sensors_table.add_column(I18N.bidi("Source", "Источник"), width=20)
                 yield sensors_table
 
             with Container(id="screen-propulsion"):
@@ -3159,7 +3222,7 @@ class OrionApp(App):
         if density in {"tiny", "narrow"}:
             set_widths("summary-table", [28, 10, 20, 12])
             set_widths("power-table", [26, 10, 16, 12, 12])
-            set_widths("sensors-table", [26, 10, 16, 12, 12])
+            set_widths("sensors-table", [26, 10, 22, 12])
             set_widths("propulsion-table", [26, 10, 16, 12, 12])
             set_widths("thermal-table", [20, 10, 14, 12, 12])
             set_widths("diagnostics-table", [28, 10, 20, 12])
@@ -3170,7 +3233,7 @@ class OrionApp(App):
         elif density == "normal":
             set_widths("summary-table", [36, 14, 26, 18])
             set_widths("power-table", [32, 14, 20, 18, 16])
-            set_widths("sensors-table", [32, 14, 20, 18, 16])
+            set_widths("sensors-table", [32, 14, 26, 18])
             set_widths("propulsion-table", [32, 14, 20, 18, 16])
             set_widths("thermal-table", [24, 14, 16, 18, 16])
             set_widths("diagnostics-table", [36, 14, 24, 18])
@@ -3459,7 +3522,7 @@ class OrionApp(App):
         self._sensors_by_key = {}
         self._selection_by_app.pop("sensors", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
 
     def _seed_propulsion_table(self) -> None:
         try:
@@ -4558,6 +4621,32 @@ class OrionApp(App):
                 self._set_selection(
                     SelectionContext(
                         app_id="power",
+                        key=row_key,
+                        kind="metric",
+                        source="telemetry",
+                        created_at_epoch=created_at_epoch,
+                        payload=env.payload if isinstance(env, EventEnvelope) else selected,
+                        ids=(row_key,),
+                    )
+                )
+            return
+
+        if event.data_table.id == "sensors-table":
+            try:
+                row_key = str(event.row_key)
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            selected = self._sensors_by_key.get(row_key)
+            if isinstance(selected, dict):
+                created_at_epoch = time.time()
+                env = selected.get("envelope")
+                if isinstance(env, EventEnvelope):
+                    created_at_epoch = float(env.ts_epoch)
+                self._set_selection(
+                    SelectionContext(
+                        app_id="sensors",
                         key=row_key,
                         kind="metric",
                         source="telemetry",
