@@ -4408,17 +4408,47 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
-        for sid in ("system", "radar", "events", "console", "summary", "power", "propulsion", "thermal", "diagnostics", "mission", "rules"):
+        for sid in (
+            "system",
+            "radar",
+            "events",
+            "console",
+            "summary",
+            "power",
+            "sensors",
+            "propulsion",
+            "thermal",
+            "diagnostics",
+            "mission",
+            "rules",
+        ):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
                 pass
+
         if screen == "events":
             self._render_events_table()
         if screen == "summary":
             self._render_summary_table()
         if screen == "power":
             self._render_power_table()
+        if screen == "sensors":
+            self._render_sensors_table()
+
+            # Make selection/Inspector discoverable: focus + initial highlight.
+            # Important: do it after layout refresh, иначе фокус может уйти в sidebar.
+            def _focus_sensors() -> None:
+                try:
+                    table = self.query_one("#sensors-table", DataTable)
+                    self.set_focus(table)
+                    cursor_row = getattr(table, "cursor_row", None)
+                    if (cursor_row is None or cursor_row < 0) and table.row_count:
+                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
+                except Exception:
+                    pass
+
+            self.call_after_refresh(_focus_sensors)
         if screen == "propulsion":
             self._render_propulsion_table()
         if screen == "thermal":
@@ -4429,14 +4459,19 @@ class OrionApp(App):
             self._render_mission_table()
         if screen == "rules":
             self._render_rules_table()
+
             # Rules interactions (toggle with confirmation) must be available without
             # requiring the operator to manually fight focus first.
-            try:
-                table = self.query_one("#rules-table", DataTable)
-                self.set_focus(table)
-                table.move_cursor(row=0, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
+            def _focus_rules() -> None:
+                try:
+                    table = self.query_one("#rules-table", DataTable)
+                    self.set_focus(table)
+                    table.move_cursor(row=0, column=0, animate=False, scroll=False)
+                except Exception:
+                    pass
+
+            self.call_after_refresh(_focus_rules)
+
         self._refresh_inspector()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
