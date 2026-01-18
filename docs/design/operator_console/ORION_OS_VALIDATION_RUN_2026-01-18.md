@@ -62,8 +62,16 @@
 - BIOS сервис отвечает по HTTP и публикует `qiki.events.v1.bios_status` (no-mocks).
 - Авто-тесты ORION/BIOS/sim проходят.
 
+## Update (2026-01-18) — Docking + Sensors MVP sanity
+
+- ✅ ORION показывает новые блоки виртуализации без моков:
+  - Docking: команды присутствуют в help-подсказке командной строки (`dock.engage`, `dock.release`) и телеметрия `docking.*` доступна через `qiki.telemetry`.
+  - Sensors: экран `sensors` отрисовывается; поля без источника показываются как `N/A/—` (например, `Min range/Мин. дальн`, `Contacts/Контакты`, `Illumination/Освещённ`).
+- ✅ Прогон тестов в dev-контейнере:
+  - `pytest -q src/qiki/services/operator_console/tests src/qiki/services/q_sim_service/tests/test_sensor_plane.py`
+  - (исправлено: `src/qiki/services/operator_console/tests/test_metrics_client.py` теперь не зависит от запуска async-тестов как async def; использует `asyncio.run(...)`, чтобы не ловить “async def functions are not natively supported”.)
+
 ## Post-run hardening (после прогона)
 
 - Порт BIOS на хосте ограничен до loopback, чтобы не ловить внешние сканеры:
   - `docker-compose.phase1.yml`: `127.0.0.1:8080:8080` (внутри docker-сети доступ по `http://q-bios-service:8080` остаётся прежним).
-
