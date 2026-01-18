@@ -464,6 +464,46 @@ class WorldModel:
             return
         self._nbl_max_power_w = max(0.0, value)
 
+    def set_rcs_command(self, axis: str | None, pct: float, duration_s: float) -> bool:
+        """
+        Set an RCS axis command directly (for NATS COMMANDS_CONTROL path).
+
+        No-mocks: this only mutates simulation state; if RCS is disabled/unavailable,
+        returns False (caller should report failure).
+        """
+        if not self._rcs_enabled:
+            return False
+
+        if axis is None:
+            self._rcs_cmd_axis = None
+            self._rcs_cmd_pct = 0.0
+            self._rcs_cmd_time_left_s = 0.0
+            return True
+
+        axis_norm = (axis or "").strip().lower()
+        if axis_norm not in {"forward", "aft", "port", "starboard", "up", "down"}:
+            return False
+
+        try:
+            pct_f = float(pct)
+            dur_f = float(duration_s)
+        except Exception:
+            return False
+
+        pct_f = max(0.0, min(100.0, pct_f))
+        # Safety: treat non-positive durations as "immediate stop" to avoid indefinite firing.
+        if dur_f <= 0.0 or pct_f <= 0.0:
+            self._rcs_cmd_axis = None
+            self._rcs_cmd_pct = 0.0
+            self._rcs_cmd_time_left_s = 0.0
+            return True
+
+        self._rcs_cmd_axis = axis_norm
+        self._rcs_cmd_pct = pct_f
+        self._rcs_cmd_time_left_s = max(0.0, dur_f)
+        logger.info(f"RCS control command: {axis_norm} {pct_f:.1f}% for {dur_f:.2f}s")
+        return True
+
     def update(self, command: ActuatorCommand):
         """
         Applies an actuator command to the world model, changing its state.

@@ -111,6 +111,22 @@ class QSimService:
             self.world_model.set_nbl_max_power_w(raw)
             return True
 
+        # RCS operator control (no new proto): drive existing RCS simulation via COMMANDS_CONTROL.
+        if name == "sim.rcs.stop":
+            return self.world_model.set_rcs_command(None, 0.0, 0.0)
+        if name == "sim.rcs.fire":
+            params = cmd.parameters or {}
+            axis = params.get("axis")
+            pct = params.get("pct")
+            if pct is None:
+                pct = params.get("percent")
+            duration_s = params.get("duration_s")
+            if duration_s is None:
+                duration_s = params.get("duration")
+            if axis is None or pct is None or duration_s is None:
+                return False
+            return self.world_model.set_rcs_command(str(axis), float(pct), float(duration_s))
+
         return False
 
     def _load_bot_config(self) -> dict | None:

@@ -4674,6 +4674,28 @@ class OrionApp(App):
             await self._publish_sim_command("power.nbl.set_max", parameters={"max_power_w": max_w})
             return
 
+        # rcs.<axis> <pct> [<duration>] | rcs.stop  (Propulsion/RCS operator control; no mocks).
+        if low.startswith("rcs."):
+            parsed = self._parse_rcs_cli_command(cmd)
+            if parsed is None:
+                self._console_log(
+                    f"{I18N.bidi('Invalid RCS command', 'Некорректная команда RCS')}: {cmd}",
+                    level="warn",
+                )
+                return
+            if parsed["kind"] == "stop":
+                await self._publish_sim_command("sim.rcs.stop")
+                return
+            await self._publish_sim_command(
+                "sim.rcs.fire",
+                parameters={
+                    "axis": parsed["axis"],
+                    "pct": parsed["pct"],
+                    "duration_s": parsed["duration_s"],
+                },
+            )
+            return
+
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
             await self._publish_sim_command(sim_cmd)
             return
@@ -4714,7 +4736,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"dock.on/off | nbl.on/off | nbl.max <W> | "
+            f"dock.on/off | nbl.on/off | nbl.max <W> | rcs.<axis> <pct> <dur> | rcs.stop | "
             f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
 
@@ -4760,6 +4782,62 @@ class OrionApp(App):
             "нбл.выкл": "power.nbl.off",
         }
         return mapping.get(key)
+
+    @staticmethod
+    def _parse_duration_s(token: str) -> Optional[float]:
+        raw = (token or "").strip().lower()
+        if not raw:
+            return None
+        try:
+            if raw.endswith("ms"):
+                return float(raw[:-2].strip()) / 1000.0
+            if raw.endswith("s"):
+                return float(raw[:-1].strip())
+            return float(raw)
+        except Exception:
+            return None
+
+    @classmethod
+    def _parse_rcs_cli_command(cls, raw: str) -> Optional[dict[str, Any]]:
+        """
+        Parse operator CLI RCS command.
+
+        Supported:
+        - rcs.<axis> <pct> [<duration>]    duration default is 1.0s (safety; no indefinite fire)
+        - rcs.stop
+        """
+        text = (raw or "").strip()
+        low = text.lower()
+        if low == "rcs.stop":
+            return {"kind": "stop"}
+
+        parts = text.split()
+        if not parts:
+            return None
+        head = parts[0].strip().lower()
+        if not head.startswith("rcs."):
+            return None
+        axis = head.split(".", 1)[1].strip().lower()
+        if axis not in {"forward", "aft", "port", "starboard", "up", "down"}:
+            return None
+        if len(parts) < 2:
+            return None
+        try:
+            pct = float(parts[1])
+        except Exception:
+            return None
+        pct = max(0.0, min(100.0, pct))
+
+        duration_s = 1.0
+        if len(parts) >= 3:
+            parsed = cls._parse_duration_s(parts[2])
+            if parsed is None:
+                return None
+            duration_s = parsed
+        if duration_s <= 0.0:
+            return None
+
+        return {"kind": "fire", "axis": axis, "pct": pct, "duration_s": duration_s}
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-dock":

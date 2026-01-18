@@ -25,7 +25,7 @@
 | Navigation / ADCS | ориентация (roll/pitch/yaw), IMU, режимы | телеметрия (расширить контракт) | частично (roll/pitch/yaw) |
 | Power / EPS | SoC, power-in/out, PDU статусы, supercap, dock, NBL | `qiki.telemetry` | есть |
 | Thermal | узлы температур + аварии перегрева | `qiki.telemetry` | есть |
-| Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) | частично (RCS) |
+| Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) + `qiki.commands.control` (`sim.rcs.*`) | есть (RCS) |
 | Comms / Link | uplink/downlink, качество канала | телеметрия/сервис связи | нет |
 | Radar / Perception | треки/кадры/угрозы | `qiki.radar.v1.*` | частично (tracks) |
 | Docking / Bridge | статусы байонета, питание, мост | телеметрия/события стыковки | нет |
