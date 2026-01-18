@@ -104,6 +104,11 @@
       "pulse_window_s": 0.25,
       "ztt_torque_tol_nm": 25.0
     },
+    "docking_plane": {
+      "enabled": true,
+      "ports": ["A", "B"],
+      "default_port": "A"
+    },
     "actuators": [
       {"id": "motor_left", "type": "wheel_motor"},
       {"id": "motor_right", "type": "wheel_motor"},

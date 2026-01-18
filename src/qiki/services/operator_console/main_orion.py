@@ -1564,6 +1564,18 @@ class OrionApp(App):
                 get("power.dock_connected"),
             ),
             (
+                "docking_state",
+                I18N.bidi("Dock state", "Состояние дока"),
+                I18N.fmt_na(get("docking.state")),
+                get("docking.state"),
+            ),
+            (
+                "docking_port",
+                I18N.bidi("Dock port", "Порт дока"),
+                I18N.fmt_na(get("docking.port")),
+                get("docking.port"),
+            ),
+            (
                 "dock_soft_start",
                 I18N.bidi("Dock ramp", "Разгон дока"),
                 I18N.pct(get("power.dock_soft_start_pct"), digits=0),
@@ -4696,6 +4708,27 @@ class OrionApp(App):
             )
             return
 
+        # Docking Plane (mechanical) operator control (no mocks).
+        # Supported:
+        # - dock.engage [A|B]
+        # - dock.release
+        if low.startswith("dock.engage") or low.startswith("dock.release"):
+            parsed = self._parse_docking_cli_command(cmd)
+            if parsed is None:
+                self._console_log(
+                    f"{I18N.bidi('Invalid docking command', 'Некорректная команда стыковки')}: {cmd}",
+                    level="warn",
+                )
+                return
+            if parsed["kind"] == "release":
+                await self._publish_sim_command("sim.dock.release")
+                return
+            await self._publish_sim_command(
+                "sim.dock.engage",
+                parameters={"port": parsed["port"]} if parsed.get("port") else {},
+            )
+            return
+
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
             await self._publish_sim_command(sim_cmd)
             return
@@ -4736,7 +4769,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"dock.on/off | nbl.on/off | nbl.max <W> | rcs.<axis> <pct> <dur> | rcs.stop | "
+            f"dock.engage [A|B] | dock.release | dock.on/off | nbl.on/off | nbl.max <W> | rcs.<axis> <pct> <dur> | rcs.stop | "
             f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
 
@@ -4796,6 +4829,31 @@ class OrionApp(App):
             return float(raw)
         except Exception:
             return None
+
+    @classmethod
+    def _parse_docking_cli_command(cls, raw: str) -> Optional[dict[str, Any]]:
+        """
+        Parse operator CLI Docking command.
+
+        Supported:
+        - dock.engage [<port>]
+        - dock.release
+        """
+        text = (raw or "").strip()
+        low = text.lower()
+        if low == "dock.release":
+            return {"kind": "release"}
+        parts = text.split()
+        if not parts:
+            return None
+        head = parts[0].strip().lower()
+        if head != "dock.engage":
+            return None
+        port = None
+        if len(parts) >= 2:
+            token = parts[1].strip()
+            port = token or None
+        return {"kind": "engage", "port": port}
 
     @classmethod
     def _parse_rcs_cli_command(cls, raw: str) -> Optional[dict[str, Any]]:

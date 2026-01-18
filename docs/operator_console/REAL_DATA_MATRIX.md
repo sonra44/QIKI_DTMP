@@ -28,7 +28,7 @@
 | Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) + `qiki.commands.control` (`sim.rcs.*`) | есть (RCS) |
 | Comms / Link | uplink/downlink, качество канала | телеметрия/сервис связи | нет |
 | Radar / Perception | треки/кадры/угрозы | `qiki.radar.v1.*` | частично (tracks) |
-| Docking / Bridge | статусы байонета, питание, мост | телеметрия/события стыковки | нет |
+| Docking / Bridge | статусы байонета, питание, мост | телеметрия (power.* + docking.*) + команды `power.dock.*`/`sim.dock.*` | частично |
 | Replay / History | история телеметрии/событий | JetStream / TSDB | нет |
 
 ## MVP Phase 1 (только то, что реально доступно)

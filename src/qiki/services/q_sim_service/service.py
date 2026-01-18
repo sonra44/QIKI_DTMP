@@ -111,6 +111,21 @@ class QSimService:
             self.world_model.set_nbl_max_power_w(raw)
             return True
 
+        # Docking Plane (mechanical) operator control (no new proto).
+        # NOTE: power bridge is still controlled via power.dock.on/off.
+        if name == "sim.dock.engage":
+            params = cmd.parameters or {}
+            port = params.get("port")
+            if port is not None and not self.world_model.set_docking_port(str(port)):
+                return False
+            if port is None and not self.world_model.set_docking_port(None):
+                return False
+            self.world_model.set_dock_connected(True)
+            return True
+        if name == "sim.dock.release":
+            self.world_model.set_dock_connected(False)
+            return True
+
         # RCS operator control (no new proto): drive existing RCS simulation via COMMANDS_CONTROL.
         if name == "sim.rcs.stop":
             return self.world_model.set_rcs_command(None, 0.0, 0.0)
@@ -345,6 +360,7 @@ class QSimService:
             memory_usage=None if state.get("memory_usage") is None else float(state.get("memory_usage")),
             hull={"integrity": float(state.get("hull_integrity", 100.0))},
             power=state.get("power", {}),
+            docking=state.get("docking", {}),
             thermal=state.get("thermal", {"nodes": []}),
             propulsion=state.get("propulsion", {}),
             radiation_usvh=float(state.get("radiation_usvh", 0.0)),

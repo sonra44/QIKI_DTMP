@@ -94,6 +94,14 @@ class WorldModel:
         self.dock_a = 0.0
         self.dock_temp_c = self.temp_external_c
 
+        # Docking Plane (mechanical) — minimal MVP (no-mocks).
+        # Note: power bridge is still modeled under power.*; docking.* only reflects docking state/selection.
+        self._docking_enabled = False
+        self._docking_ports: list[str] = ["A", "B"]
+        self._docking_default_port: str = "A"
+        self.docking_port: str | None = None
+        self.docking_state: str = "undocked"
+
         # NBL Power Budgeter (virtual hardware).
         self.nbl_active = False
         self.nbl_allowed = False
@@ -205,6 +213,33 @@ class WorldModel:
         self.dock_temp_c = f("dock_temp_c_init", float(self.temp_external_c))
         self._dock_since_s = 0.0
         self.dock_soft_start_pct = 0.0
+
+        # Docking Plane params (single source of truth: bot_config.json).
+        dp = hw.get("docking_plane")
+        if not isinstance(dp, dict):
+            dp = {}
+        self._docking_enabled = bool(dp.get("enabled", False))
+        ports = dp.get("ports")
+        if isinstance(ports, list):
+            cleaned: list[str] = []
+            for raw in ports:
+                token = str(raw or "").strip()
+                if token:
+                    cleaned.append(token)
+            if cleaned:
+                self._docking_ports = cleaned
+        default_port = str(dp.get("default_port") or "").strip()
+        if default_port and default_port in self._docking_ports:
+            self._docking_default_port = default_port
+        else:
+            self._docking_default_port = self._docking_ports[0] if self._docking_ports else "A"
+
+        if not self._docking_enabled:
+            self.docking_port = None
+            self.docking_state = "disabled"
+        else:
+            self.docking_port = self._docking_default_port
+            self.docking_state = "docked" if bool(self.dock_connected) else "undocked"
 
         # NBL budgeter (scenario + limits).
         self.nbl_active = bool(pp.get("nbl_active_init", False))
@@ -442,6 +477,8 @@ class WorldModel:
         if connected == bool(getattr(self, "dock_connected", False)):
             return
         self.dock_connected = connected
+        if self._docking_enabled:
+            self.docking_state = "docked" if connected else "undocked"
         if not connected:
             # Reset soft-start state when disconnecting.
             self._dock_since_s = 0.0
@@ -453,6 +490,18 @@ class WorldModel:
             # Restart soft-start ramp on a fresh connect.
             self._dock_since_s = 0.0
             self.dock_soft_start_pct = 0.0
+
+    def set_docking_port(self, port: str | None) -> bool:
+        if not self._docking_enabled:
+            return False
+        token = str(port or "").strip()
+        if not token:
+            self.docking_port = self._docking_default_port
+            return True
+        if token not in self._docking_ports:
+            return False
+        self.docking_port = token
+        return True
 
     def set_nbl_active(self, active: bool) -> None:
         self.nbl_active = bool(active)
@@ -1169,5 +1218,12 @@ class WorldModel:
                     "net_torque_nm": list(self._rcs_net_torque_nm),
                     "thrusters": [self._rcs_thruster_state[i] for i in sorted(self._rcs_thruster_state.keys())],
                 }
+            },
+            "docking": {
+                "enabled": bool(self._docking_enabled),
+                "state": self.docking_state,
+                "connected": bool(self.dock_connected),
+                "port": self.docking_port,
+                "ports": list(self._docking_ports),
             },
         }

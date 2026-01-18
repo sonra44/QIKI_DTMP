@@ -121,6 +121,11 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                 "pulse_window_s": 0.25,
                 "ztt_torque_tol_nm": 25.0,
             },
+            "docking_plane": {
+                "enabled": True,
+                "ports": ["A", "B"],
+                "default_port": "A",
+            },
             "actuators": [],
             "sensors": []
         },
