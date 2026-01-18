@@ -2029,7 +2029,7 @@ class OrionApp(App):
                 table.clear()
             except Exception:
                 return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+            table.add_row("—", I18N.NA, I18N.NA, key="seed")
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -2051,7 +2051,6 @@ class OrionApp(App):
         age_s = max(0.0, now - float(telemetry_env.ts_epoch))
         age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
-        age_display = "" if compact else age
 
         def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None) -> str:
             if status_kind is not None:
@@ -2214,13 +2213,13 @@ class OrionApp(App):
         selected_row: Optional[int] = None
         for row_key, label, value, raw, warn, status_kind in rows:
             status = status_label(raw, value, warning=warn, status_kind=status_kind)
-            table.add_row(label, style_status(status, status_kind), value, age_display, key=row_key)
+            table.add_row(label, style_status(status, status_kind), value, key=row_key)
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
                 "status": status,
                 "value": value,
-                "age": age_display or age,
+                "age": age,
                 "source": source,
                 "raw": raw,
                 "envelope": telemetry_env,
@@ -2924,8 +2923,7 @@ class OrionApp(App):
                 sensors_table: DataTable = DataTable(id="sensors-table")
                 sensors_table.add_column(I18N.bidi("Sensor", "Сенсор"), width=40)
                 sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                sensors_table.add_column(I18N.bidi("Value", "Значение"), width=24)
-                sensors_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                sensors_table.add_column(I18N.bidi("Value", "Значение"), width=36)
                 yield sensors_table
 
             with Container(id="screen-propulsion"):
@@ -3222,7 +3220,7 @@ class OrionApp(App):
         if density in {"tiny", "narrow"}:
             set_widths("summary-table", [28, 10, 20, 12])
             set_widths("power-table", [26, 10, 16, 12, 12])
-            set_widths("sensors-table", [26, 10, 22, 12])
+            set_widths("sensors-table", [26, 10, 38])
             set_widths("propulsion-table", [26, 10, 16, 12, 12])
             set_widths("thermal-table", [20, 10, 14, 12, 12])
             set_widths("diagnostics-table", [28, 10, 20, 12])
@@ -3233,7 +3231,7 @@ class OrionApp(App):
         elif density == "normal":
             set_widths("summary-table", [36, 14, 26, 18])
             set_widths("power-table", [32, 14, 20, 18, 16])
-            set_widths("sensors-table", [32, 14, 26, 18])
+            set_widths("sensors-table", [32, 14, 64])
             set_widths("propulsion-table", [32, 14, 20, 18, 16])
             set_widths("thermal-table", [24, 14, 16, 18, 16])
             set_widths("diagnostics-table", [36, 14, 24, 18])
@@ -3522,7 +3520,7 @@ class OrionApp(App):
         self._sensors_by_key = {}
         self._selection_by_app.pop("sensors", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row("—", I18N.NA, I18N.NA, key="seed")
 
     def _seed_propulsion_table(self) -> None:
         try:
