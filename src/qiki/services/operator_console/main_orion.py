@@ -2118,6 +2118,7 @@ class OrionApp(App):
 
         cpu_usage = None
         memory_usage = None
+        hardware_profile_hash = None
         comms_enabled = None
         xpdr_mode = None
         xpdr_active = None
@@ -2133,6 +2134,8 @@ class OrionApp(App):
             if isinstance(normalized, dict):
                 cpu_usage = normalized.get("cpu_usage")
                 memory_usage = normalized.get("memory_usage")
+                hph = normalized.get("hardware_profile_hash")
+                hardware_profile_hash = str(hph).strip() if isinstance(hph, str) and hph.strip() else None
                 comms = normalized.get("comms")
                 if isinstance(comms, dict):
                     comms_enabled = comms.get("enabled")
@@ -2223,6 +2226,14 @@ class OrionApp(App):
                 title=I18N.bidi("Memory usage", "Загрузка памяти"),
                 status="na" if memory_usage is None else "ok",
                 value=I18N.pct(memory_usage, digits=1),
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            ),
+            SystemStateBlock(
+                block_id="hardware_profile_hash",
+                title=I18N.bidi("Hardware profile hash", "Хэш профиля железа"),
+                status="na" if hardware_profile_hash is None else "ok",
+                value=hardware_profile_hash or I18N.NA,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
             ),

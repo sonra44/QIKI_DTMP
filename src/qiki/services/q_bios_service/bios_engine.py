@@ -8,6 +8,7 @@ from typing import Any, Iterable
 from qiki.shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
 
 from qiki.services.q_bios_service.health_checker import SimHealthResult
+from qiki.shared.config.hardware_profile_hash import compute_hardware_profile_hash
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,7 @@ def build_bios_status(inputs: BiosPostInputs) -> BiosStatus:
         return BiosStatus(
             bios_version="virtual_bios_mvp",
             firmware_version="virtual_bios_mvp",
+            hardware_profile_hash=None,
             post_results=[
                 DeviceStatus(
                     device_id="bot_config",
@@ -83,6 +85,12 @@ def build_bios_status(inputs: BiosPostInputs) -> BiosStatus:
 
     rows = _device_rows_from_bot_config(bot_config if isinstance(bot_config, dict) else {})
     post_results: list[DeviceStatus] = []
+    profile_hash = None
+    if isinstance(bot_config, dict):
+        try:
+            profile_hash = compute_hardware_profile_hash(bot_config)
+        except Exception:
+            profile_hash = None
 
     # If simulation health is down, reflect it explicitly (no-mocks).
     if not inputs.sim_health.ok:
@@ -119,6 +127,6 @@ def build_bios_status(inputs: BiosPostInputs) -> BiosStatus:
     return BiosStatus(
         bios_version=str(bot_config.get("schema_version") or "virtual_bios_mvp"),
         firmware_version="virtual_bios_mvp",
+        hardware_profile_hash=profile_hash,
         post_results=post_results,
     )
-

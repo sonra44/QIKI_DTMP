@@ -25,6 +25,7 @@ from qiki.services.q_sim_service.core.world_model import WorldModel
 from qiki.services.q_sim_service.logger import logger
 from qiki.services.q_sim_service.radar_publisher import RadarNatsPublisher
 from qiki.services.q_sim_service.telemetry_publisher import TelemetryNatsPublisher
+from qiki.shared.config.hardware_profile_hash import compute_hardware_profile_hash
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.converters.radar_proto_pydantic import model_frame_to_proto
 from qiki.shared.converters.protobuf_pydantic import pydantic_uuid_to_proto_uuid
@@ -41,6 +42,12 @@ class QSimService:
     def __init__(self, config: QSimServiceConfig):
         self.config = config
         self._bot_config = self._load_bot_config()
+        self._hardware_profile_hash: str | None = None
+        if isinstance(self._bot_config, dict):
+            try:
+                self._hardware_profile_hash = compute_hardware_profile_hash(self._bot_config)
+            except Exception:
+                self._hardware_profile_hash = None
         self.world_model = WorldModel(bot_config=self._bot_config)
         self.sensor_data_queue: list[SensorReading] = []
         self.actuator_command_queue: list[ActuatorCommand] = []
@@ -410,7 +417,12 @@ class QSimService:
             temp_external_c=float(state.get("temp_external_c", -60.0)),
             temp_core_c=float(state.get("temp_core_c", 25.0)),
         )
-        return payload.model_dump(mode="json")
+        out = payload.model_dump(mode="json")
+        # Top-level extra key (TelemetrySnapshot v1 allows extras): trace which hardware profile is active.
+        # No-mocks: if we cannot compute it (missing/bad config) -> omit.
+        if self._hardware_profile_hash:
+            out["hardware_profile_hash"] = self._hardware_profile_hash
+        return out
 
     def _parse_transponder_mode(self, raw: str) -> TransponderModeEnum:
         mapping = {

@@ -81,6 +81,12 @@
   - команда `xpdr.mode <on|off|silent|spoof>` добавлена в подсказку и публикует `sim.xpdr.mode`.
   - `Diagnostics` таблица расширена блоками XPDR (mode/allowed/active/id), `N/A/—` если `comms` отсутствует.
 
+## Update (2026-01-18) — Hardware profile hash tracing (BIOS → telemetry → ORION)
+
+- ✅ BIOS `/bios/status` возвращает `hardware_profile_hash` (формат `sha256:<64hex>`) на основании `bot_config.json` (runtime SoT).
+- ✅ `qiki.telemetry` содержит top-level ключ `hardware_profile_hash` и он совпадает с BIOS (no-mocks: если конфиг не читается — ключ отсутствует).
+- ✅ ORION `Diagnostics` показывает `Hardware profile hash/Хэш профиля железа` (если нет данных — `N/A/—`).
+
 ## Post-run hardening (после прогона)
 
 - Порт BIOS на хосте ограничен до loopback, чтобы не ловить внешние сканеры:

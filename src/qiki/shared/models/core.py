@@ -146,6 +146,7 @@ class FsmStateSnapshot(ConfigModel):
 class BiosStatus(ConfigModel):
     bios_version: str
     firmware_version: str
+    hardware_profile_hash: str | None = None
     post_results: List[DeviceStatus]
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
