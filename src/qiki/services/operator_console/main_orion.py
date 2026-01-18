@@ -788,69 +788,101 @@ class OrionSidebar(Static):
             line = f"{mark} {app.hotkey_label} {label}"
             lines.append(fit(line, usable))
 
-        lines.extend(
-            [
-                "",
-                fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('focus cycle', 'цикл фокуса')}", usable),
-                fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('run command', 'выполнить команду')}", usable),
-                fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('quit', 'выход')}", usable),
+        def sidebar_help_lines() -> list[str]:
+            # Keep the sidebar stable in narrow tmux panes: no long bilingual phrases here.
+            if density in {"tiny", "narrow"}:
+                return [
+                    fit("Tab фокус", usable),
+                    fit("Enter команда", usable),
+                    fit("Ctrl+C выход", usable),
+                ]
+            return [
+                fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}", usable),
+                fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('Command', 'Команда')}", usable),
+                fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('Quit', 'Выход')}", usable),
             ]
-        )
+
+        lines.extend(["", *sidebar_help_lines()])
         return "\n".join(lines)
 
 
 class OrionKeybar(Static):
     def render(self) -> str:
         orion = getattr(self, "app", None)
-        density = getattr(orion, "_density", None)
+        density = getattr(orion, "_density", "wide")
         active_screen = getattr(self.app, "active_screen", "system")
         width = int(getattr(self.size, "width", 0) or 0)
+
         label_density = density if width >= 200 else "narrow"
-        extra: list[str] = [f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}"]
-        extra.append(
-            f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
-        )
-        if active_screen in {
-            "radar",
-            "events",
-            "console",
-            "summary",
-            "power",
-            "sensors",
-            "propulsion",
-            "thermal",
-            "diagnostics",
-            "mission",
-            "rules",
-        }:
-            extra.append(
-                f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
-            )
-        if active_screen == "sensors":
-            extra.append(I18N.bidi("Enter toggle compact", "Enter — компакт/детали"))
-        if active_screen == "events":
-            extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
-            extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
-            extra.append(f"R {I18N.bidi('Mark read', 'Отметить прочитанным')}")
-        if active_screen == "rules":
-            extra.append(f"T {I18N.bidi('Toggle enabled', 'Переключить включено')}")
-        extra.extend(
-            [
-                f"F9 {I18N.bidi('Help', 'Помощь')}",
-                f"F10 {I18N.bidi('Quit', 'Выход')}",
-            ]
-        )
-        result = " ".join(
-            [
-                *(f"[{app.hotkey_label} {menu_label_for_density(app, density=label_density)}]" for app in ORION_APPS),
-                *(f"[{x}]" for x in extra),
-            ]
-        )
-        if width and len(result) > width:
-            if width <= 1:
+
+        def keybar_label(app: OrionAppSpec) -> str:
+            if label_density in {"tiny", "narrow"}:
+                return ORION_SIDEBAR_LABELS_NARROW.get(app.screen) or ORION_SIDEBAR_LABELS.get(
+                    app.screen, menu_label_for_density(app, density="narrow")
+                )
+            return menu_label_for_density(app, density=label_density)
+
+        def desired_screens(max_width: int) -> list[str]:
+            if max_width and max_width < 90:
+                return ["system", "events", "console", "sensors"]
+            if max_width and max_width < 120:
+                return ["system", "radar", "events", "console", "sensors", "power"]
+            if max_width and max_width < 160:
+                return [
+                    "system",
+                    "radar",
+                    "events",
+                    "console",
+                    "summary",
+                    "power",
+                    "sensors",
+                    "propulsion",
+                    "thermal",
+                    "diagnostics",
+                ]
+            return [app.screen for app in ORION_APPS]
+
+        screens = desired_screens(width)
+        if active_screen not in screens:
+            screens.append(active_screen)
+
+        apps_by_screen = {app.screen: app for app in ORION_APPS}
+        nav_apps = [apps_by_screen[s] for s in screens if s in apps_by_screen]
+
+        nav_tokens: list[str] = []
+        for app in nav_apps:
+            label = keybar_label(app)
+            if app.screen == active_screen:
+                nav_tokens.append(f"▶{app.hotkey_label} {label}")
+            else:
+                nav_tokens.append(f"{app.hotkey_label} {label}")
+
+        help_token = f"F9 {I18N.bidi('Help', 'Помощь')}"
+        quit_token = f"F10 {I18N.bidi('Quit', 'Выход')}"
+
+        sep = " · "
+
+        def joined(tokens: list[str]) -> str:
+            return sep.join(tokens)
+
+        def fit_tokens(tokens: list[str], max_width: int) -> str:
+            if not max_width:
+                return joined(tokens)
+            if max_width <= 1:
                 return "…"
-            return f"{result[: width - 1]}…"
-        return result
+            text = joined(tokens)
+            if len(text) <= max_width:
+                return text
+            return text[: max_width - 1] + "…"
+
+        # Ensure Help/Quit are always visible: drop nav tokens from the end until it fits.
+        tokens = nav_tokens + [help_token, quit_token]
+        if width:
+            while len(nav_tokens) > 0 and len(joined(tokens)) > width:
+                nav_tokens.pop()
+                tokens = nav_tokens + [help_token, quit_token]
+
+        return fit_tokens(tokens, width)
 
 
 class OrionPanel(Static):
