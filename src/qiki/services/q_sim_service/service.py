@@ -361,6 +361,7 @@ class QSimService:
             hull={"integrity": float(state.get("hull_integrity", 100.0))},
             power=state.get("power", {}),
             docking=state.get("docking", {}),
+            sensor_plane=state.get("sensor_plane", {}),
             thermal=state.get("thermal", {"nodes": []}),
             propulsion=state.get("propulsion", {}),
             radiation_usvh=float(state.get("radiation_usvh", 0.0)),

@@ -22,7 +22,8 @@
 | Limits / Alerts | out-of-limits, критические состояния, квитирование | события/лимит‑монитор (будущий) | нет |
 | Events / Audit | поток событий и системных сообщений | `qiki.events.v1.>` | есть (подписка) |
 | Commands / Procedures | отправка команд + статус выполнения | `qiki.commands.*` / gRPC | частично (sim команды) |
-| Navigation / ADCS | ориентация (roll/pitch/yaw), IMU, режимы | телеметрия (расширить контракт) | частично (roll/pitch/yaw) |
+| Navigation / ADCS | ориентация (roll/pitch/yaw), IMU, режимы | телеметрия (`attitude.*`, `sensor_plane.imu.*`) | частично (attitude + IMU rates) |
+| Sensors | внутренние сенсоры (IMU/radiation/proximity/solar/star tracker/magnetometer) | телеметрия (`sensor_plane.*`) | частично (IMU+radiation) |
 | Power / EPS | SoC, power-in/out, PDU статусы, supercap, dock, NBL | `qiki.telemetry` | есть |
 | Thermal | узлы температур + аварии перегрева | `qiki.telemetry` | есть |
 | Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) + `qiki.commands.control` (`sim.rcs.*`) | есть (RCS) |

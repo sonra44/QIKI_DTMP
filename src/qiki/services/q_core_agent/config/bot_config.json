@@ -109,6 +109,15 @@
       "ports": ["A", "B"],
       "default_port": "A"
     },
+    "sensor_plane": {
+      "enabled": true,
+      "imu": {"enabled": true},
+      "radiation": {"enabled": true},
+      "proximity": {"enabled": false},
+      "solar": {"enabled": false},
+      "star_tracker": {"enabled": false},
+      "magnetometer": {"enabled": false}
+    },
     "actuators": [
       {"id": "motor_left", "type": "wheel_motor"},
       {"id": "motor_right", "type": "wheel_motor"},

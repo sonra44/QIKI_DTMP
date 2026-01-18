@@ -102,6 +102,33 @@ class WorldModel:
         self.docking_port: str | None = None
         self.docking_state: str = "undocked"
 
+        # Sensor Plane (internal telemetry sensors) — virtual hardware (no-mocks).
+        # NOTE: do not duplicate values already canonical under power/thermal/docking; here we expose only sensor-layer
+        # status and additional measurements when available.
+        self._sensor_plane_enabled = False
+        self._imu_enabled = False
+        self._imu_ok: bool | None = None
+        self._imu_roll_rate_rps: float | None = None
+        self._imu_pitch_rate_rps: float | None = None
+        self._imu_yaw_rate_rps: float | None = None
+
+        self._radiation_enabled = False
+        self._radiation_dose_total_usv: float | None = None
+
+        self._proximity_enabled = False
+        self._proximity_min_range_m: float | None = None
+        self._proximity_contacts: int | None = None
+
+        self._solar_enabled = False
+        self._solar_illumination_pct: float | None = None
+
+        self._star_tracker_enabled = False
+        self._star_tracker_locked: bool | None = None
+        self._star_tracker_attitude_err_deg: float | None = None
+
+        self._magnetometer_enabled = False
+        self._mag_field_ut: dict[str, float] | None = None
+
         # NBL Power Budgeter (virtual hardware).
         self.nbl_active = False
         self.nbl_allowed = False
@@ -240,6 +267,81 @@ class WorldModel:
         else:
             self.docking_port = self._docking_default_port
             self.docking_state = "docked" if bool(self.dock_connected) else "undocked"
+
+        # Sensor Plane params (single source of truth: bot_config.json).
+        sp = hw.get("sensor_plane")
+        if not isinstance(sp, dict):
+            sp = {}
+        self._sensor_plane_enabled = bool(sp.get("enabled", False))
+
+        def _sub_enabled(key: str) -> bool:
+            if not self._sensor_plane_enabled:
+                return False
+            sub = sp.get(key)
+            if isinstance(sub, dict):
+                return bool(sub.get("enabled", False))
+            return False
+
+        self._imu_enabled = _sub_enabled("imu")
+        self._radiation_enabled = _sub_enabled("radiation")
+        self._proximity_enabled = _sub_enabled("proximity")
+        self._solar_enabled = _sub_enabled("solar")
+        self._star_tracker_enabled = _sub_enabled("star_tracker")
+        self._magnetometer_enabled = _sub_enabled("magnetometer")
+
+        # Radiation dose integrator starts at 0 when enabled.
+        self._radiation_dose_total_usv = 0.0 if self._radiation_enabled else None
+
+        # Optional scenario-provided initial values (still simulation-truth, not OS metrics).
+        prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+        try:
+            self._proximity_min_range_m = (
+                float(prox.get("min_range_m_init")) if self._proximity_enabled and prox.get("min_range_m_init") is not None else None
+            )
+        except Exception:
+            self._proximity_min_range_m = None
+        try:
+            self._proximity_contacts = (
+                int(prox.get("contacts_init")) if self._proximity_enabled and prox.get("contacts_init") is not None else None
+            )
+        except Exception:
+            self._proximity_contacts = None
+
+        solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+        try:
+            self._solar_illumination_pct = (
+                float(solar.get("illumination_pct_init")) if self._solar_enabled and solar.get("illumination_pct_init") is not None else None
+            )
+        except Exception:
+            self._solar_illumination_pct = None
+
+        st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+        if self._star_tracker_enabled:
+            locked = st.get("locked_init")
+            self._star_tracker_locked = None if locked is None else bool(locked)
+            try:
+                self._star_tracker_attitude_err_deg = (
+                    float(st.get("attitude_err_deg_init")) if st.get("attitude_err_deg_init") is not None else None
+                )
+            except Exception:
+                self._star_tracker_attitude_err_deg = None
+        else:
+            self._star_tracker_locked = None
+            self._star_tracker_attitude_err_deg = None
+
+        mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
+        field_init = mag.get("field_ut_init") if isinstance(mag.get("field_ut_init"), dict) else None
+        if self._magnetometer_enabled and isinstance(field_init, dict):
+            try:
+                self._mag_field_ut = {
+                    "x": float(field_init.get("x", 0.0)),
+                    "y": float(field_init.get("y", 0.0)),
+                    "z": float(field_init.get("z", 0.0)),
+                }
+            except Exception:
+                self._mag_field_ut = None
+        else:
+            self._mag_field_ut = None
 
         # NBL budgeter (scenario + limits).
         self.nbl_active = bool(pp.get("nbl_active_init", False))
@@ -631,6 +733,12 @@ class WorldModel:
         Advances the simulation by a given delta_time.
         """
         self._sim_time_s += delta_time
+
+        # Sensor Plane: integrate radiation dose (simulation-truth; no OS metrics).
+        if self._radiation_enabled and self._radiation_dose_total_usv is not None:
+            dt = max(0.0, float(delta_time))
+            usvh = max(0.0, float(self.radiation_usvh))
+            self._radiation_dose_total_usv += (usvh / 3600.0) * dt
         # Update position based on current speed and heading
         if self.speed > 0:
             # Convert heading to radians for trigonometric functions
@@ -653,11 +761,32 @@ class WorldModel:
             )
 
         # Simple attitude model (6DOF): small oscillations + yaw follows heading.
+        prev_roll = float(self.roll_rad)
+        prev_pitch = float(self.pitch_rad)
+        prev_yaw = float(self.yaw_rad)
         roll_amp = math.radians(2.0)
         pitch_amp = math.radians(1.5)
         self.roll_rad = roll_amp * math.sin(self._sim_time_s * 0.6)
         self.pitch_rad = pitch_amp * math.cos(self._sim_time_s * 0.4)
         self.yaw_rad = math.radians(self.heading)
+
+        # IMU rates (derivatives) — only when IMU is enabled.
+        if self._imu_enabled and float(delta_time) > 0.0:
+            dt = float(delta_time)
+            self._imu_roll_rate_rps = (float(self.roll_rad) - prev_roll) / dt
+            self._imu_pitch_rate_rps = (float(self.pitch_rad) - prev_pitch) / dt
+            self._imu_yaw_rate_rps = (float(self.yaw_rad) - prev_yaw) / dt
+            self._imu_ok = True
+        elif self._imu_enabled:
+            self._imu_roll_rate_rps = None
+            self._imu_pitch_rate_rps = None
+            self._imu_yaw_rate_rps = None
+            self._imu_ok = None
+        else:
+            self._imu_ok = None
+            self._imu_roll_rate_rps = None
+            self._imu_pitch_rate_rps = None
+            self._imu_yaw_rate_rps = None
 
         # MCQPU utilization (virtual hardware, simulation-truth; not OS metrics).
         self._mcqpu.update(
@@ -1225,5 +1354,38 @@ class WorldModel:
                 "connected": bool(self.dock_connected),
                 "port": self.docking_port,
                 "ports": list(self._docking_ports),
+            },
+            "sensor_plane": {
+                "enabled": bool(self._sensor_plane_enabled),
+                "imu": {
+                    "enabled": bool(self._imu_enabled),
+                    "ok": self._imu_ok,
+                    "roll_rate_rps": self._imu_roll_rate_rps,
+                    "pitch_rate_rps": self._imu_pitch_rate_rps,
+                    "yaw_rate_rps": self._imu_yaw_rate_rps,
+                },
+                "radiation": {
+                    "enabled": bool(self._radiation_enabled),
+                    "background_usvh": float(self.radiation_usvh) if self._radiation_enabled else None,
+                    "dose_total_usv": self._radiation_dose_total_usv,
+                },
+                "proximity": {
+                    "enabled": bool(self._proximity_enabled),
+                    "min_range_m": self._proximity_min_range_m,
+                    "contacts": self._proximity_contacts,
+                },
+                "solar": {
+                    "enabled": bool(self._solar_enabled),
+                    "illumination_pct": self._solar_illumination_pct,
+                },
+                "star_tracker": {
+                    "enabled": bool(self._star_tracker_enabled),
+                    "locked": self._star_tracker_locked,
+                    "attitude_err_deg": self._star_tracker_attitude_err_deg,
+                },
+                "magnetometer": {
+                    "enabled": bool(self._magnetometer_enabled),
+                    "field_ut": self._mag_field_ut,
+                },
             },
         }

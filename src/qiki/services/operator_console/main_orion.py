@@ -494,6 +494,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("power", "питание", "energy", "энергия"),
     ),
     OrionAppSpec(
+        screen="sensors",
+        title=I18N.bidi("Sensors", "Сенсоры"),
+        hotkey="ctrl+n",
+        hotkey_label="Ctrl+N",
+        aliases=("sensors", "сенсоры", "sensor", "сенсор", "imu", "иму"),
+    ),
+    OrionAppSpec(
         screen="propulsion",
         title=I18N.bidi("Propulsion", "Двигатели"),
         hotkey="ctrl+p",
@@ -537,6 +544,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "console": I18N.bidi("Console", "Консоль"),
     "summary": I18N.bidi("Summary", "Сводка"),
     "power": I18N.bidi("Power", "Пит"),
+    "sensors": I18N.bidi("Sens", "Сенс"),
     "propulsion": I18N.bidi("Prop", "Двиг"),
     "thermal": I18N.bidi("Therm", "Тепло"),
     "diagnostics": I18N.bidi("Diag", "Диагн"),
@@ -900,6 +908,7 @@ class OrionApp(App):
         self._console_by_key: dict[str, dict[str, Any]] = {}
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
+        self._sensors_by_key: dict[str, dict[str, Any]] = {}
         self._propulsion_by_key: dict[str, dict[str, Any]] = {}
         self._thermal_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
@@ -1921,6 +1930,152 @@ class OrionApp(App):
         except Exception:
             pass
 
+    def _render_sensors_table(self) -> None:
+        try:
+            table = self.query_one("#sensors-table", DataTable)
+        except Exception:
+            return
+
+        def seed_empty() -> None:
+            self._sensors_by_key = {}
+            self._selection_by_app.pop("sensors", None)
+            try:
+                table.clear()
+            except Exception:
+                return
+            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+        telemetry_env = self._snapshots.get_last("telemetry")
+        if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
+            seed_empty()
+            return
+
+        try:
+            normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+        except ValidationError:
+            seed_empty()
+            return
+
+        sp = normalized.get("sensor_plane") if isinstance(normalized, dict) else None
+        if not isinstance(sp, dict):
+            seed_empty()
+            return
+
+        now = time.time()
+        age_s = max(0.0, now - float(telemetry_env.ts_epoch))
+        age = I18N.fmt_age_compact(age_s)
+        source = I18N.bidi("telemetry", "телеметрия")
+
+        def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False) -> str:
+            if raw_value is None:
+                return I18N.NA
+            if warning:
+                return I18N.bidi("Warning", "Предупреждение")
+            if rendered_value == I18N.INVALID:
+                return I18N.bidi("Abnormal", "Не норма")
+            return I18N.bidi("Normal", "Норма")
+
+        rows: list[tuple[str, str, str, Any, bool]] = []
+
+        imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+        rows.extend(
+            [
+                ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False),
+                ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False)),
+                ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False),
+                ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False),
+                ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False),
+            ]
+        )
+
+        rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+        rows.extend(
+            [
+                ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False),
+                ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False),
+            ]
+        )
+
+        prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+        rows.extend(
+            [
+                ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False),
+                ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False),
+                ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False),
+            ]
+        )
+
+        solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+        rows.extend(
+            [
+                ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False),
+                ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False),
+            ]
+        )
+
+        st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+        rows.extend(
+            [
+                ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False),
+                ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False)),
+                ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False),
+            ]
+        )
+
+        mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
+        field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
+        field_txt = I18N.NA
+        if isinstance(field, dict):
+            try:
+                field_txt = f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
+            except Exception:
+                field_txt = I18N.INVALID
+        rows.extend(
+            [
+                ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False),
+                ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID),
+            ]
+        )
+
+        self._sensors_by_key = {}
+        try:
+            table.clear()
+        except Exception:
+            return
+
+        for row_key, label, value, raw, warn in rows:
+            status = status_label(raw, value, warning=warn)
+            table.add_row(label, status, value, age, source, key=row_key)
+            self._sensors_by_key[row_key] = {
+                "component_id": row_key,
+                "component": label,
+                "status": status,
+                "value": value,
+                "age": age,
+                "source": source,
+                "raw": raw,
+                "envelope": telemetry_env,
+            }
+
+        current = self._selection_by_app.get("sensors")
+        if current is None or current.key not in self._sensors_by_key:
+            first_key = rows[0][0] if rows else "seed"
+            self._set_selection(
+                SelectionContext(
+                    app_id="sensors",
+                    key=first_key,
+                    kind="metric",
+                    source="telemetry",
+                    created_at_epoch=float(telemetry_env.ts_epoch),
+                    payload=telemetry_env.payload,
+                    ids=(first_key,),
+                )
+            )
+        try:
+            table.move_cursor(row=0, column=0, animate=False, scroll=False)
+        except Exception:
+            pass
+
     def _render_diagnostics_table(self) -> None:
         try:
             table = self.query_one("#diagnostics-table", DataTable)
@@ -2453,6 +2608,15 @@ class OrionApp(App):
                     power_table.add_column(I18N.bidi("Source", "Источник"), width=20)
                     yield power_table
 
+            with Container(id="screen-sensors"):
+                sensors_table: DataTable = DataTable(id="sensors-table")
+                sensors_table.add_column(I18N.bidi("Sensor", "Сенсор"), width=40)
+                sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                sensors_table.add_column(I18N.bidi("Value", "Значение"), width=24)
+                sensors_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                sensors_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                yield sensors_table
+
             with Container(id="screen-propulsion"):
                 propulsion_table: DataTable = DataTable(id="propulsion-table")
                 propulsion_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
@@ -2521,6 +2685,7 @@ class OrionApp(App):
         self._seed_console_table()
         self._seed_summary_table()
         self._seed_power_table()
+        self._seed_sensors_table()
         self._seed_propulsion_table()
         self._seed_thermal_table()
         self._seed_diagnostics_table()
@@ -3018,6 +3183,16 @@ class OrionApp(App):
         table.clear()
         table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
 
+    def _seed_sensors_table(self) -> None:
+        try:
+            table = self.query_one("#sensors-table", DataTable)
+        except Exception:
+            return
+        self._sensors_by_key = {}
+        self._selection_by_app.pop("sensors", None)
+        table.clear()
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
     def _seed_propulsion_table(self) -> None:
         try:
             table = self.query_one("#propulsion-table", DataTable)
@@ -3507,6 +3682,7 @@ class OrionApp(App):
         updated = time.strftime("%H:%M:%S")
         self._render_system_panels(normalized, updated=updated)
         self._render_power_table()
+        self._render_sensors_table()
         self._render_propulsion_table()
         self._render_diagnostics_table()
         self._refresh_summary()

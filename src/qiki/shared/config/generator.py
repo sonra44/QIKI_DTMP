@@ -126,6 +126,15 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                 "ports": ["A", "B"],
                 "default_port": "A",
             },
+            "sensor_plane": {
+                "enabled": True,
+                "imu": {"enabled": True},
+                "radiation": {"enabled": True},
+                "proximity": {"enabled": False},
+                "solar": {"enabled": False},
+                "star_tracker": {"enabled": False},
+                "magnetometer": {"enabled": False},
+            },
             "actuators": [],
             "sensors": []
         },
