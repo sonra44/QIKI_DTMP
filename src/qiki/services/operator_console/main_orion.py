@@ -750,10 +750,24 @@ class OrionKeybar(Static):
         extra.append(
             f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
         )
-        if active_screen in {"radar", "events", "console", "summary", "rules"}:
+        if active_screen in {
+            "radar",
+            "events",
+            "console",
+            "summary",
+            "power",
+            "sensors",
+            "propulsion",
+            "thermal",
+            "diagnostics",
+            "mission",
+            "rules",
+        }:
             extra.append(
                 f"{I18N.bidi('Up/Down arrows', 'Стрелки вверх/вниз')} {I18N.bidi('Selection', 'Выбор')}"
             )
+        if active_screen == "sensors":
+            extra.append(I18N.bidi("Enter toggle compact", "Enter — компакт/детали"))
         if active_screen == "events":
             extra.append(f"A {I18N.bidi('Acknowledge incident', 'Подтвердить инцидент')}")
             extra.append(f"X {I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')}")
@@ -874,6 +888,7 @@ class OrionApp(App):
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
         Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
         Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
+        Binding("c", "toggle_sensors_compact", "Sensors compact/Сенсоры компакт", show=False),
         Binding(
             "t",
             "toggle_selected_rule_enabled",
@@ -910,6 +925,8 @@ class OrionApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.nats_client: Optional[NATSClient] = None
+        self._density: str = "wide"
+        self._sensors_compact_override: Optional[bool] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
         self._events_live: bool = True
@@ -1948,6 +1965,7 @@ class OrionApp(App):
             table = self.query_one("#sensors-table", DataTable)
         except Exception:
             return
+        compact = self._sensors_compact_enabled()
 
         def style_status(text: str, kind: str | None) -> Text:
             k = (kind or "").strip().lower()
@@ -1989,6 +2007,8 @@ class OrionApp(App):
         age_s = max(0.0, now - float(telemetry_env.ts_epoch))
         age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
+        age_display = "" if compact else age
+        source_display = "" if compact else source
 
         def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None) -> str:
             if status_kind is not None:
@@ -2000,6 +2020,9 @@ class OrionApp(App):
                 if kind == "crit":
                     return I18N.bidi("Abnormal", "Не норма")
                 return I18N.NA
+            if isinstance(raw_value, dict):
+                # A dict is an aggregate; without an explicit status_kind it is safer to show N/A than pretend "Normal".
+                return I18N.NA
             if raw_value is None:
                 return I18N.NA
             if warning:
@@ -2010,69 +2033,132 @@ class OrionApp(App):
 
         rows: list[tuple[str, str, str, Any, bool, str | None]] = []
 
-        imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
-        imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
-        rows.extend(
-            [
-                ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False, None),
-                ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False), imu_status),
-                ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False, imu_status),
-                ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False, imu_status),
-                ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False, imu_status),
+        if compact:
+            imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+            imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
+            imu_rates = [
+                ("r", imu.get("roll_rate_rps")),
+                ("p", imu.get("pitch_rate_rps")),
+                ("y", imu.get("yaw_rate_rps")),
             ]
-        )
+            imu_rates_txt = " ".join(
+                [f"{k}={float(v):.3f}" for (k, v) in imu_rates if isinstance(v, (int, float))]
+            )
+            imu_value = f"{imu_rates_txt} rad/s" if imu_rates_txt else I18N.NA
+            rows.append(("imu", I18N.bidi("IMU", "ИМУ"), imu_value, imu, False, imu_status))
 
-        rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
-        rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
-        rows.extend(
-            [
-                ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False, None),
-                ("rad_background", I18N.bidi("Background", "Фон"), I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2), rad.get("background_usvh"), False, rad_status),
-                ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False, None),
-            ]
-        )
+            rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+            rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
+            rows.append(
+                (
+                    "radiation",
+                    I18N.bidi("Radiation", "Радиация"),
+                    I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2),
+                    rad,
+                    False,
+                    rad_status,
+                )
+            )
 
-        prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
-        rows.extend(
-            [
-                ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False, None),
-                ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False, None),
-                ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False, None),
-            ]
-        )
+            prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+            prox_value = I18N.fmt_na(prox.get("contacts"))
+            if prox_value == I18N.NA:
+                prox_value = I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2)
+            rows.append(("proximity", I18N.bidi("Proximity", "Близость"), prox_value, prox, False, None))
 
-        solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
-        rows.extend(
-            [
-                ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False, None),
-                ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False, None),
-            ]
-        )
+            solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+            rows.append(
+                (
+                    "solar",
+                    I18N.bidi("Solar", "Солнце"),
+                    I18N.pct(solar.get("illumination_pct"), digits=1),
+                    solar,
+                    False,
+                    None,
+                )
+            )
 
-        st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
-        st_status = st.get("status") if isinstance(st.get("status"), str) else None
-        rows.extend(
-            [
-                ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False, None),
-                ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False), st_status),
-                ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False, st_status),
-            ]
-        )
+            st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+            st_status = st.get("status") if isinstance(st.get("status"), str) else None
+            st_value = I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA
+            rows.append(("star_tracker", I18N.bidi("Star tracker", "Звёздн. трекер"), st_value, st, False, st_status))
 
-        mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
-        field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
-        field_txt = I18N.NA
-        if isinstance(field, dict):
-            try:
-                field_txt = f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
-            except Exception:
-                field_txt = I18N.INVALID
-        rows.extend(
-            [
-                ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False, None),
-                ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID, None),
-            ]
-        )
+            mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
+            field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
+            mag_value = I18N.NA
+            if isinstance(field, dict):
+                try:
+                    x = float(field.get("x"))
+                    y = float(field.get("y"))
+                    z = float(field.get("z"))
+                    mag_value = f"|B|={math.sqrt(x*x + y*y + z*z):.2f} µT"
+                except Exception:
+                    mag_value = I18N.INVALID
+            rows.append(("magnetometer", I18N.bidi("Magnetometer", "Магнитометр"), mag_value, mag, mag_value == I18N.INVALID, None))
+        else:
+            imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+            imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
+            rows.extend(
+                [
+                    ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False, None),
+                    ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False), imu_status),
+                    ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False, imu_status),
+                    ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False, imu_status),
+                    ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False, imu_status),
+                ]
+            )
+
+            rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+            rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
+            rows.extend(
+                [
+                    ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False, None),
+                    ("rad_background", I18N.bidi("Background", "Фон"), I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2), rad.get("background_usvh"), False, rad_status),
+                    ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False, None),
+                ]
+            )
+
+            prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+            rows.extend(
+                [
+                    ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False, None),
+                    ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False, None),
+                    ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False, None),
+                ]
+            )
+
+            solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+            rows.extend(
+                [
+                    ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False, None),
+                    ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False, None),
+                ]
+            )
+
+            st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+            st_status = st.get("status") if isinstance(st.get("status"), str) else None
+            rows.extend(
+                [
+                    ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False, None),
+                    ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False), st_status),
+                    ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False, st_status),
+                ]
+            )
+
+            mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
+            field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
+            field_txt = I18N.NA
+            if isinstance(field, dict):
+                try:
+                    field_txt = f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
+                except Exception:
+                    field_txt = I18N.INVALID
+            rows.extend(
+                [
+                    ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False, None),
+                    ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID, None),
+                ]
+            )
 
         self._sensors_by_key = {}
         try:
@@ -2082,14 +2168,14 @@ class OrionApp(App):
 
         for row_key, label, value, raw, warn, status_kind in rows:
             status = status_label(raw, value, warning=warn, status_kind=status_kind)
-            table.add_row(label, style_status(status, status_kind), value, age, source, key=row_key)
+            table.add_row(label, style_status(status, status_kind), value, age_display, source_display, key=row_key)
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
                 "status": status,
                 "value": value,
-                "age": age,
-                "source": source,
+                "age": age_display or age,
+                "source": source_display or source,
                 "raw": raw,
                 "envelope": telemetry_env,
             }
@@ -2904,6 +2990,7 @@ class OrionApp(App):
             density = "normal"
         else:
             density = "wide"
+        self._density = density
 
         if density == "tiny":
             sidebar_width = 0
@@ -4609,6 +4696,10 @@ class OrionApp(App):
             self._confirm_acknowledge_selected_incident()
             return
 
+        if table_id == "sensors-table":
+            self.action_toggle_sensors_compact()
+            return
+
         if table_id == "power-table":
             try:
                 row_key = str(event.row_key)
@@ -4620,6 +4711,21 @@ class OrionApp(App):
             current = selected.get("raw")
             self._confirm_power_toggle(row_key=row_key, current=current)
             return
+
+    def _sensors_compact_enabled(self) -> bool:
+        if self._sensors_compact_override is not None:
+            return bool(self._sensors_compact_override)
+        # Default to compact to keep Sensors screen glanceable; details are available via Inspector or toggle.
+        raw_default = os.getenv("ORION_SENSORS_COMPACT_DEFAULT", "1").strip().lower()
+        default_compact = raw_default not in {"0", "false", "no", "off"}
+        if self._density in {"tiny", "narrow"}:
+            return True
+        return default_compact
+
+    def action_toggle_sensors_compact(self) -> None:
+        current = self._sensors_compact_enabled()
+        self._sensors_compact_override = not current
+        self._render_sensors_table()
 
     @staticmethod
     def _normalize_screen_token(token: str) -> Optional[str]:
