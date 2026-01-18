@@ -2827,39 +2827,15 @@ class OrionApp(App):
     def compose(self) -> ComposeResult:
         with Vertical(id="orion-root"):
             yield OrionHeader(id="orion-header")
+
             with Container(id="orion-workspace"):
                 yield OrionSidebar(id="orion-sidebar")
                 inspector = OrionInspector(id="orion-inspector")
                 inspector.border_title = I18N.bidi("Inspector", "Инспектор")
                 yield inspector
 
-                with Vertical(id="bottom-bar"):
-                    try:
-                        output_max_lines = int(os.getenv("OPERATOR_CONSOLE_OUTPUT_MAX_LINES", "1024"))
-                    except Exception:
-                        output_max_lines = 1024
-                    output_max_lines = max(100, min(10_000, output_max_lines))
-                    output = RichLog(
-                        id="command-output-log",
-                        highlight=False,
-                        markup=False,
-                        wrap=True,
-                        max_lines=output_max_lines,
-                    )
-                    output.can_focus = False
-                    output.border_title = I18N.bidi("Output", "Вывод")
-                    yield output
-                    yield Input(
-                        placeholder=(
-                            f"{I18N.bidi('command', 'команда')}> "
-                            f"{I18N.bidi('help', 'помощь')} | "
-                            f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
-                            f"simulation.start/симуляция.старт"
-                        ),
-                        id="command-dock",
-                    )
-                    yield OrionKeybar(id="orion-keybar")
-
+                # Screens must all live in the same workspace container so they
+                # share chrome (sidebar/inspector) consistently.
                 with Container(id="screen-system"):
                     with Container(id="system-dashboard"):
                         yield OrionPanel(id="panel-nav", classes="mfd-panel")
@@ -2867,18 +2843,18 @@ class OrionApp(App):
                         yield OrionPanel(id="panel-thermal", classes="mfd-panel")
                         yield OrionPanel(id="panel-struct", classes="mfd-panel")
 
-                    with Container(id="screen-radar"):
-                        with Horizontal(id="radar-layout"):
-                            yield Static(id="radar-ppi")
-                            radar_table: DataTable = DataTable(id="radar-table")
-                            radar_table.add_columns(
-                                I18N.bidi("Track", "Трек"),
-                                I18N.bidi("Range", "Дальность"),
-                                I18N.bidi("Bearing", "Пеленг"),
-                                I18N.bidi("Vr", "Скорость"),
-                                I18N.bidi("Object", "Объект"),
-                            )
-                            yield radar_table
+                with Container(id="screen-radar"):
+                    with Horizontal(id="radar-layout"):
+                        yield Static(id="radar-ppi")
+                        radar_table: DataTable = DataTable(id="radar-table")
+                        radar_table.add_columns(
+                            I18N.bidi("Track", "Трек"),
+                            I18N.bidi("Range", "Дальность"),
+                            I18N.bidi("Bearing", "Пеленг"),
+                            I18N.bidi("Vr", "Скорость"),
+                            I18N.bidi("Object", "Объект"),
+                        )
+                        yield radar_table
 
                 with Container(id="screen-events"):
                     events_table: DataTable = DataTable(id="events-table")
@@ -2893,22 +2869,22 @@ class OrionApp(App):
                     )
                     yield events_table
 
-            with Container(id="screen-console"):
-                console_table: DataTable = DataTable(id="console-table")
-                console_table.add_columns(
-                    I18N.bidi("Time", "Время"),
-                    I18N.bidi("Level", "Уровень"),
-                    I18N.bidi("Message", "Сообщение"),
-                )
-                yield console_table
+                with Container(id="screen-console"):
+                    console_table: DataTable = DataTable(id="console-table")
+                    console_table.add_columns(
+                        I18N.bidi("Time", "Время"),
+                        I18N.bidi("Level", "Уровень"),
+                        I18N.bidi("Message", "Сообщение"),
+                    )
+                    yield console_table
 
-            with Container(id="screen-summary"):
-                summary_table: DataTable = DataTable(id="summary-table")
-                summary_table.add_column(I18N.bidi("Block", "Блок"), width=44)
-                summary_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                summary_table.add_column(I18N.bidi("Value", "Значение"), width=30)
-                summary_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                yield summary_table
+                with Container(id="screen-summary"):
+                    summary_table: DataTable = DataTable(id="summary-table")
+                    summary_table.add_column(I18N.bidi("Block", "Блок"), width=44)
+                    summary_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    summary_table.add_column(I18N.bidi("Value", "Значение"), width=30)
+                    summary_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                    yield summary_table
 
                 with Container(id="screen-power"):
                     power_table: DataTable = DataTable(id="power-table")
@@ -2919,68 +2895,95 @@ class OrionApp(App):
                     power_table.add_column(I18N.bidi("Source", "Источник"), width=20)
                     yield power_table
 
-            with Container(id="screen-sensors"):
-                sensors_table: DataTable = DataTable(id="sensors-table")
-                sensors_table.add_column(I18N.bidi("Sensor", "Сенсор"), width=40)
-                sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                sensors_table.add_column(I18N.bidi("Value", "Значение"), width=36)
-                yield sensors_table
+                with Container(id="screen-sensors"):
+                    sensors_table: DataTable = DataTable(id="sensors-table")
+                    sensors_table.add_column(I18N.bidi("Sensor", "Сенсор"), width=40)
+                    sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    sensors_table.add_column(I18N.bidi("Value", "Значение"), width=36)
+                    yield sensors_table
 
-            with Container(id="screen-propulsion"):
-                propulsion_table: DataTable = DataTable(id="propulsion-table")
-                propulsion_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
-                propulsion_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                propulsion_table.add_column(I18N.bidi("Value", "Значение"), width=24)
-                propulsion_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                propulsion_table.add_column(I18N.bidi("Source", "Источник"), width=20)
-                yield propulsion_table
+                with Container(id="screen-propulsion"):
+                    propulsion_table: DataTable = DataTable(id="propulsion-table")
+                    propulsion_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
+                    propulsion_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    propulsion_table.add_column(I18N.bidi("Value", "Значение"), width=24)
+                    propulsion_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                    propulsion_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                    yield propulsion_table
 
-            with Container(id="screen-thermal"):
-                thermal_table: DataTable = DataTable(id="thermal-table")
-                thermal_table.add_column(I18N.bidi("Node", "Узел"), width=26)
-                thermal_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                thermal_table.add_column(I18N.bidi("Temp", "Темп"), width=18)
-                thermal_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                thermal_table.add_column(I18N.bidi("Source", "Источник"), width=20)
-                yield thermal_table
+                with Container(id="screen-thermal"):
+                    thermal_table: DataTable = DataTable(id="thermal-table")
+                    thermal_table.add_column(I18N.bidi("Node", "Узел"), width=26)
+                    thermal_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    thermal_table.add_column(I18N.bidi("Temp", "Темп"), width=18)
+                    thermal_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                    thermal_table.add_column(I18N.bidi("Source", "Источник"), width=20)
+                    yield thermal_table
 
-            with Container(id="screen-diagnostics"):
-                diagnostics_table: DataTable = DataTable(id="diagnostics-table")
-                diagnostics_table.add_column(I18N.bidi("Block", "Блок"), width=46)
-                diagnostics_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                diagnostics_table.add_column(I18N.bidi("Value", "Значение"), width=28)
-                diagnostics_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
-                yield diagnostics_table
+                with Container(id="screen-diagnostics"):
+                    diagnostics_table: DataTable = DataTable(id="diagnostics-table")
+                    diagnostics_table.add_column(I18N.bidi("Block", "Блок"), width=46)
+                    diagnostics_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    diagnostics_table.add_column(I18N.bidi("Value", "Значение"), width=28)
+                    diagnostics_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
+                    yield diagnostics_table
 
-            with Container(id="screen-mission"):
-                mission_table: DataTable = DataTable(id="mission-table")
-                mission_table.add_column(I18N.bidi("Item", "Элемент"), width=34)
-                mission_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
-                yield mission_table
+                with Container(id="screen-mission"):
+                    mission_table: DataTable = DataTable(id="mission-table")
+                    mission_table.add_column(I18N.bidi("Item", "Элемент"), width=34)
+                    mission_table.add_column(I18N.bidi("Status", "Статус"), width=16)
+                    mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
+                    yield mission_table
 
-            with Container(id="screen-rules"):
-                with Horizontal(id="rules-toolbar"):
-                    yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
-                    yield Static(
-                        I18N.bidi(
-                            f"Rules are loaded from {self._rules_repo.rules_path}",
-                            f"Правила загружаются из {self._rules_repo.rules_path}",
-                        ),
-                        id="rules-hint",
+                with Container(id="screen-rules"):
+                    with Horizontal(id="rules-toolbar"):
+                        yield Button(I18N.bidi("Reload rules", "Перезагрузить правила"), id="rules-reload")
+                        yield Static(
+                            I18N.bidi(
+                                f"Rules are loaded from {self._rules_repo.rules_path}",
+                                f"Правила загружаются из {self._rules_repo.rules_path}",
+                            ),
+                            id="rules-hint",
+                        )
+                        yield Static(
+                            I18N.bidi("T — toggle enabled", "T — переключить включено"),
+                            id="rules-toggle-hint",
+                        )
+                    rules_table: DataTable = DataTable(id="rules-table")
+                    rules_table.add_columns(
+                        I18N.bidi("ID", "ID"),
+                        I18N.bidi("Enabled", "Вкл"),
+                        I18N.bidi("Severity", "Серьезность"),
+                        I18N.bidi("Match", "Совпадение"),
                     )
-                    yield Static(
-                        I18N.bidi("T — toggle enabled", "T — переключить включено"),
-                        id="rules-toggle-hint",
-                    )
-                rules_table: DataTable = DataTable(id="rules-table")
-                rules_table.add_columns(
-                    I18N.bidi("ID", "ID"),
-                    I18N.bidi("Enabled", "Вкл"),
-                    I18N.bidi("Severity", "Серьезность"),
-                    I18N.bidi("Match", "Совпадение"),
+                    yield rules_table
+
+            with Vertical(id="bottom-bar"):
+                try:
+                    output_max_lines = int(os.getenv("OPERATOR_CONSOLE_OUTPUT_MAX_LINES", "1024"))
+                except Exception:
+                    output_max_lines = 1024
+                output_max_lines = max(100, min(10_000, output_max_lines))
+                output = RichLog(
+                    id="command-output-log",
+                    highlight=False,
+                    markup=False,
+                    wrap=True,
+                    max_lines=output_max_lines,
                 )
-                yield rules_table
+                output.can_focus = False
+                output.border_title = I18N.bidi("Output", "Вывод")
+                yield output
+                yield Input(
+                    placeholder=(
+                        f"{I18N.bidi('command', 'команда')}> "
+                        f"{I18N.bidi('help', 'помощь')} | "
+                        f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
+                        f"simulation.start/симуляция.старт"
+                    ),
+                    id="command-dock",
+                )
+                yield OrionKeybar(id="orion-keybar")
 
     async def on_mount(self) -> None:
         # Cold-boot splash (no-mocks): it will render only proven statuses (NATS, BIOS event).
