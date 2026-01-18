@@ -91,3 +91,21 @@
 
 - Порт BIOS на хосте ограничен до loopback, чтобы не ловить внешние сканеры:
   - `docker-compose.phase1.yml`: `127.0.0.1:8080:8080` (внутри docker-сети доступ по `http://q-bios-service:8080` остаётся прежним).
+
+## Update (2026-01-18) — ORION unified UI design (design-first)
+
+Цель: сохранить единый интерфейс при росте виртуализации (Power/Thermal/Propulsion/Sensors/BIOS/Comms), особенно в tmux-сплитах.
+
+- ✅ Density-driven labels (единство названий экранов):
+  - `wide/normal` → показываем полные `EN/RU` названия экранов (Sidebar, при достаточной ширине и Keybar).
+  - `narrow/tiny` → компактные подписи (как раньше), чтобы не ломать раскладку.
+  - Детали: `src/qiki/services/operator_console/main_orion.py` (`menu_label_for_density`).
+
+- ✅ Sensors: compact по умолчанию, детали по требованию (не “простыня”):
+  - Экран `Sensors/Сенс` по умолчанию — 5–6 строк по подсистемам (glanceable).
+  - `Enter` переключает `compact ↔ details` (внутри `sensors-table`).
+  - В compact-режиме `Age/Source` скрыты (пустые), чтобы не сжигать ширину.
+  - Настройка: `ORION_SENSORS_COMPACT_DEFAULT=1` (по умолчанию включено; `0` → стартовать в details на wide).
+
+- ✅ Авто-проверка (Docker):
+  - `pytest -q src/qiki/services/operator_console/tests` — зелёный.
