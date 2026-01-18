@@ -556,6 +556,13 @@ ORION_MENU_LABELS: dict[str, str] = {
 def menu_label(app: OrionAppSpec) -> str:
     return ORION_MENU_LABELS.get(app.screen, app.title)
 
+def menu_label_for_density(app: OrionAppSpec, *, density: str | None) -> str:
+    # Full titles are readable on wide screens; on narrow/tiny prefer compact labels.
+    d = (density or "").strip().lower()
+    if d in {"wide", "normal"}:
+        return app.title
+    return menu_label(app)
+
 
 SCREEN_BY_ALIAS: dict[str, str] = {a: app.screen for app in ORION_APPS for a in app.aliases}
 
@@ -700,6 +707,9 @@ class OrionSidebar(Static):
         return f"{mark} [{label}]"
 
     def render(self) -> str:
+        orion = getattr(self, "app", None)
+        density = getattr(orion, "_density", None)
+
         def fit(text: str, max_width: int) -> str:
             if max_width <= 0:
                 return text
@@ -711,8 +721,7 @@ class OrionSidebar(Static):
 
         def title_with_state(app: OrionAppSpec) -> str:
             if app.screen != "events":
-                return menu_label(app)
-            orion = getattr(self, "app", None)
+                return menu_label_for_density(app, density=density)
             live = bool(getattr(orion, "_events_live", True))
             unread = int(getattr(orion, "_events_unread_count", 0) or 0)
             suffix: list[str] = []
@@ -722,8 +731,8 @@ class OrionSidebar(Static):
                 # Put the number first so it stays visible even when truncated.
                 suffix.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
             if not suffix:
-                return menu_label(app)
-            return f"{menu_label(app)} ({', '.join(suffix)})"
+                return menu_label_for_density(app, density=density)
+            return f"{menu_label_for_density(app, density=density)} ({', '.join(suffix)})"
 
         items = [
             (app.screen, self._line(title_with_state(app), active=self.active_screen == app.screen))
@@ -745,7 +754,11 @@ class OrionSidebar(Static):
 
 class OrionKeybar(Static):
     def render(self) -> str:
+        orion = getattr(self, "app", None)
+        density = getattr(orion, "_density", None)
         active_screen = getattr(self.app, "active_screen", "system")
+        width = int(getattr(self.size, "width", 0) or 0)
+        label_density = density if width >= 200 else "narrow"
         extra: list[str] = [f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}"]
         extra.append(
             f"{I18N.bidi('QIKI', 'QIKI')} {I18N.bidi('intent', 'намерение')}: q: | //"
@@ -782,11 +795,10 @@ class OrionKeybar(Static):
         )
         result = " ".join(
             [
-                *(f"[{app.hotkey_label} {menu_label(app)}]" for app in ORION_APPS),
+                *(f"[{app.hotkey_label} {menu_label_for_density(app, density=label_density)}]" for app in ORION_APPS),
                 *(f"[{x}]" for x in extra),
             ]
         )
-        width = int(getattr(self.size, "width", 0) or 0)
         if width and len(result) > width:
             if width <= 1:
                 return "…"
