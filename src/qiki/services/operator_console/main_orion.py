@@ -3161,6 +3161,9 @@ class OrionApp(App):
         except Exception:
             pass
 
+        # Keep the command line readable at all densities.
+        self._update_command_placeholder()
+
     def _load_incident_rules(self, *, initial: bool = False) -> None:
         try:
             if initial:
@@ -5364,14 +5367,60 @@ class OrionApp(App):
         except Exception:
             return
 
-        dock.placeholder = (
-            f"{I18N.bidi('command', 'команда')}> "
-            f"{I18N.bidi('help', 'помощь')} | "
-            f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
-            f"simulation.start/симуляция.старт | "
-            f"dock.engage [A|B] | dock.release | dock.on/off | nbl.on/off | nbl.max <W> | xpdr.mode <on|off|silent|spoof> | rcs.<axis> <pct> <dur> | rcs.stop | "
-            f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
-        )
+        density = getattr(self, "_density", "wide")
+
+        prefix = f"{I18N.bidi('command', 'команда')}> "
+        help_part = I18N.bidi("help", "помощь")
+        screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
+        sim_part = "simulation.start/симуляция.старт"
+        qiki_part = f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
+
+        # Keep the command line readable in tmux splits: show less on narrow/tiny.
+        if density == "tiny":
+            parts = [help_part, screen_part]
+        elif density == "narrow":
+            parts = [help_part, screen_part, sim_part, qiki_part]
+        elif density == "normal":
+            parts = [
+                help_part,
+                screen_part,
+                sim_part,
+                "dock.engage [A|B]",
+                "dock.release",
+                "xpdr.mode <on|off|silent|spoof>",
+                "rcs.<axis> <pct> <dur>",
+                "rcs.stop",
+                qiki_part,
+            ]
+        else:
+            parts = [
+                help_part,
+                screen_part,
+                sim_part,
+                "dock.engage [A|B]",
+                "dock.release",
+                "dock.on/off",
+                "nbl.on/off",
+                "nbl.max <W>",
+                "xpdr.mode <on|off|silent|spoof>",
+                "rcs.<axis> <pct> <dur>",
+                "rcs.stop",
+                qiki_part,
+            ]
+
+        placeholder = prefix + " | ".join(parts)
+
+        # Pre-ellipsize so the line doesn't end with broken tokens like a dangling "|".
+        width = int(getattr(self.size, "width", 0) or 0)
+        max_chars = 200
+        if width:
+            # Approximate visible width: borders/padding eat a few columns.
+            max_chars = max(48, width - 10)
+
+        if len(placeholder) > max_chars:
+            placeholder = placeholder[: max(0, max_chars - 1)] + "…"
+
+        dock.placeholder = placeholder
 
     @staticmethod
     def _parse_qiki_intent(raw: str) -> tuple[bool, Optional[str]]:

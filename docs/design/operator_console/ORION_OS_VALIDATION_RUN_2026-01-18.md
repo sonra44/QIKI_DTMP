@@ -120,3 +120,4 @@
   - `Age/Source` остаются доступными через Inspector (no-mocks сохраняется: если нет данных — `N/A/—`).
 - ✅ Discoverability: при входе на экран `Sensors` ставится фокус на `sensors-table`, и Inspector сразу показывает `Selection/Выбор` (без ручного `Tab`).
 - ✅ Layout: все `screen-*` живут в одном `#orion-workspace`, а `bottom-bar` всегда докнут снизу — `F3/F4` и остальные экраны больше не «уезжают» ниже строки команды.
+- ✅ Command line: placeholder адаптивный по ширине/density и аккуратно обрезается с `…` (без «висящих» `|`).
