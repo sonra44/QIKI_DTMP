@@ -552,6 +552,39 @@ ORION_MENU_LABELS: dict[str, str] = {
     "rules": I18N.bidi("Rules", "Прав"),
 }
 
+# Sidebar labels must stay readable without truncation (no abbreviations by default).
+# Keep them short-but-clear; full long titles remain available in other chrome/help.
+ORION_SIDEBAR_LABELS: dict[str, str] = {
+    "system": I18N.bidi("System", "Система"),
+    "radar": I18N.bidi("Radar", "Радар"),
+    "events": I18N.bidi("Events", "События"),
+    "console": I18N.bidi("Console", "Консоль"),
+    "summary": I18N.bidi("Summary", "Сводка"),
+    "power": I18N.bidi("Power", "Питание"),
+    "sensors": I18N.bidi("Sensors", "Сенсоры"),
+    "propulsion": I18N.bidi("Propulsion", "Двигатели"),
+    "thermal": I18N.bidi("Thermal", "Тепло"),
+    "diagnostics": I18N.bidi("Diagnostics", "Диагностика"),
+    "mission": I18N.bidi("Mission", "Миссия"),
+    "rules": I18N.bidi("Rules", "Правила"),
+}
+
+# Narrow/tiny sidebar: keep it readable without abbreviations by dropping the English part.
+ORION_SIDEBAR_LABELS_NARROW: dict[str, str] = {
+    "system": "Система",
+    "radar": "Радар",
+    "events": "События",
+    "console": "Консоль",
+    "summary": "Сводка",
+    "power": "Питание",
+    "sensors": "Сенсоры",
+    "propulsion": "Двигатели",
+    "thermal": "Тепло",
+    "diagnostics": "Диагностика",
+    "mission": "Миссия",
+    "rules": "Правила",
+}
+
 
 def menu_label(app: OrionAppSpec) -> str:
     return ORION_MENU_LABELS.get(app.screen, app.title)
@@ -719,36 +752,50 @@ class OrionSidebar(Static):
                 return "…"
             return f"{text[: max_width - 1]}…"
 
+        def sidebar_label(app: OrionAppSpec) -> str:
+            # Sidebar must stay readable in tmux: prefer Russian-only full words.
+            return ORION_SIDEBAR_LABELS_NARROW.get(app.screen) or ORION_SIDEBAR_LABELS.get(
+                app.screen, menu_label_for_density(app, density=density)
+            )
+
         def title_with_state(app: OrionAppSpec) -> str:
+            base = sidebar_label(app)
             if app.screen != "events":
-                return menu_label_for_density(app, density=density)
+                return base
             live = bool(getattr(orion, "_events_live", True))
             unread = int(getattr(orion, "_events_unread_count", 0) or 0)
             suffix: list[str] = []
             if not live:
                 suffix.append(I18N.bidi("Paused", "Пауза"))
             if unread > 0:
-                # Put the number first so it stays visible even when truncated.
                 suffix.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
             if not suffix:
-                return menu_label_for_density(app, density=density)
-            return f"{menu_label_for_density(app, density=density)} ({', '.join(suffix)})"
+                return base
+            return f"{base} ({', '.join(suffix)})"
 
-        items = [
-            (app.screen, self._line(title_with_state(app), active=self.active_screen == app.screen))
-            for app in ORION_APPS
-        ]
         width = int(getattr(self.size, "width", 0) or 0)
         usable = max(0, width - 1) if width else 0
-        lines = [
+
+        lines: list[str] = [
             fit(I18N.bidi("ORION SHELL", "ORION ОБОЛОЧКА"), usable),
             "—" * (usable or 18),
-            *(fit(f"{app.hotkey_label} {line}", usable) for (app, (_sid, line)) in zip(ORION_APPS, items, strict=False)),
-            "",
-            fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('focus cycle', 'цикл фокуса')}", usable),
-            fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('run command', 'выполнить команду')}", usable),
-            fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('quit', 'выход')}", usable),
         ]
+
+        for app in ORION_APPS:
+            active = self.active_screen == app.screen
+            mark = "▶" if active else " "
+            label = title_with_state(app)
+            line = f"{mark} {app.hotkey_label} {label}"
+            lines.append(fit(line, usable))
+
+        lines.extend(
+            [
+                "",
+                fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('focus cycle', 'цикл фокуса')}", usable),
+                fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('run command', 'выполнить команду')}", usable),
+                fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('quit', 'выход')}", usable),
+            ]
+        )
         return "\n".join(lines)
 
 
