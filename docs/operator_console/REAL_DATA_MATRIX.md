@@ -27,7 +27,7 @@
 | Power / EPS | SoC, power-in/out, PDU статусы, supercap, dock, NBL | `qiki.telemetry` | есть |
 | Thermal | узлы температур + аварии перегрева | `qiki.telemetry` | есть |
 | Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) + `qiki.commands.control` (`sim.rcs.*`) | есть (RCS) |
-| Comms / Link | uplink/downlink, качество канала | телеметрия/сервис связи | нет |
+| Comms / Link | XPDR/transponder режим, разрешение по питанию, активность | телеметрия (`comms.xpdr.*` + power gating) + `qiki.commands.control` (`sim.xpdr.mode`) | частично (XPDR в Diagnostics) |
 | Radar / Perception | треки/кадры/угрозы | `qiki.radar.v1.*` | частично (tracks) |
 | Docking / Bridge | статусы байонета, питание, мост | телеметрия (power.* + docking.*) + команды `power.dock.*`/`sim.dock.*` | частично |
 | Replay / History | история телеметрии/событий | JetStream / TSDB | нет |
@@ -51,7 +51,7 @@
 
 | Экран/панель | Что показываем | Источник | Контракт/формат | Пустое состояние (честно) |
 |---|---|---|---|---|
-| Telemetry | позиция/скорость/курс/ориентация/батарея/корпус/радиация/температуры + Thermal nodes + Power Plane (soc, power in/out, шина, PDU/shed/faults, supercap, dock, NBL) + **MCQPU CPU/RAM (виртуальные, simulation-truth)** + (опц.) `propulsion.rcs.*` | NATS subject `qiki.telemetry` (`SYSTEM_TELEMETRY`) | JSON dict (TelemetrySnapshot v1; ключи: `schema_version=1`, `source`, `timestamp`, `ts_unix_ms`, `position.{x,y,z}`, `velocity`, `heading` (deg), `attitude.roll_rad`, `attitude.pitch_rad`, `attitude.yaw_rad` (rad), `battery`, `cpu_usage`, `memory_usage`, `hull.integrity`, `thermal.nodes[].{id,temp_c}`, `power.*` (см. модель), `radiation_usvh`, `temp_external_c`, `temp_core_c`; доп. ключи допустимы) | Таблица со строками‑метриками и значениями `N/A`, `Updated=—`; статус: `waiting for telemetry` |
+| Telemetry | позиция/скорость/курс/ориентация/батарея/корпус/радиация/температуры + Thermal nodes + Power Plane (soc, power in/out, шина, PDU/shed/faults, supercap, dock, NBL) + **MCQPU CPU/RAM (виртуальные, simulation-truth)** + (опц.) `propulsion.rcs.*` + (опц.) `sensor_plane.*` + (опц.) `docking.*` + (опц.) `comms.xpdr.*` | NATS subject `qiki.telemetry` (`SYSTEM_TELEMETRY`) | JSON dict (TelemetrySnapshot v1; ключи: `schema_version=1`, `source`, `timestamp`, `ts_unix_ms`, `position.{x,y,z}`, `velocity`, `heading` (deg), `attitude.roll_rad`, `attitude.pitch_rad`, `attitude.yaw_rad` (rad), `battery`, `cpu_usage`, `memory_usage`, `hull.integrity`, `thermal.nodes[].{id,temp_c}`, `power.*` (см. модель), `radiation_usvh`, `temp_external_c`, `temp_core_c`; доп. ключи допустимы) | Таблица со строками‑метриками и значениями `N/A`, `Updated=—`; статус: `waiting for telemetry` |
 | Radar Tracks | треки (id, range_m, bearing_deg, vr_mps, object_type/iff/quality/status если есть) | JetStream subject `qiki.radar.v1.tracks` (`RADAR_TRACKS`) | JSON → `qiki.shared.models.radar.RadarTrackModel` | Пустая таблица или 1 строка‑статус: `no tracks yet`; соединение NATS/JS отдельно |
 | Radar Frames (опц.) | кадры радара (кол-во детекций, sensor_id, timestamp) | NATS/JetStream subject `qiki.radar.v1.frames` (`RADAR_FRAMES`) и/или `qiki.radar.v1.frames.lr` (`RADAR_FRAMES_LR`) | JSON → `qiki.shared.models.radar.RadarFrameModel` | `no frames yet` |
 | Events / Audit (опц.) | guard/fsm/audit события | NATS subject `qiki.events.v1.>` (`EVENTS_V1_WILDCARD`), audit `qiki.events.v1.audit` | JSON (CloudEvents headers могут присутствовать) | `no events yet` |

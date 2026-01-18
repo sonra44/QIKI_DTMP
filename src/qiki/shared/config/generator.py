@@ -135,6 +135,10 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
                 "star_tracker": {"enabled": False},
                 "magnetometer": {"enabled": False},
             },
+            "comms_plane": {
+                "enabled": True,
+                "xpdr_mode_init": "ON",
+            },
             "actuators": [],
             "sensors": []
         },

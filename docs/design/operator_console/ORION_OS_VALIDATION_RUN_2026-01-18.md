@@ -71,6 +71,16 @@
   - `pytest -q src/qiki/services/operator_console/tests src/qiki/services/q_sim_service/tests/test_sensor_plane.py`
   - (исправлено: `src/qiki/services/operator_console/tests/test_metrics_client.py` теперь не зависит от запуска async-тестов как async def; использует `asyncio.run(...)`, чтобы не ловить “async def functions are not natively supported”.)
 
+## Update (2026-01-18) — Comms/XPDR (partial) sanity
+
+- ✅ `qiki.telemetry` содержит `comms.xpdr.*` (mode/active/allowed/id), без моков.
+- ✅ Runtime‑контроль:
+  - команда `sim.xpdr.mode` через `qiki.commands.control` меняет `comms.xpdr.mode` в телеметрии.
+  - пример smoke: `mode=SILENT` → `active=False`, `id=None`.
+- ✅ ORION:
+  - команда `xpdr.mode <on|off|silent|spoof>` добавлена в подсказку и публикует `sim.xpdr.mode`.
+  - `Diagnostics` таблица расширена блоками XPDR (mode/allowed/active/id), `N/A/—` если `comms` отсутствует.
+
 ## Post-run hardening (после прогона)
 
 - Порт BIOS на хосте ограничен до loopback, чтобы не ловить внешние сканеры:

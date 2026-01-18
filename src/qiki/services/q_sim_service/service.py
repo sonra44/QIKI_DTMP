@@ -65,10 +65,20 @@ class QSimService:
             subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", "qiki.telemetry")
             self._telemetry_publisher = TelemetryNatsPublisher(nats_url, subject=subject)
 
-        mode_str = os.getenv("RADAR_TRANSPONDER_MODE", "ON").strip().upper()
+        # Transponder (XPDR) mode: canonical runtime source is bot_config.json (if present),
+        # but we keep env overrides for debugging.
+        mode_str = os.getenv("RADAR_TRANSPONDER_MODE", "").strip().upper()
+        if not mode_str:
+            hp = (self._bot_config or {}).get("hardware_profile") if isinstance(self._bot_config, dict) else {}
+            comms = hp.get("comms_plane") if isinstance(hp, dict) else None
+            if isinstance(comms, dict):
+                mode_str = str(comms.get("xpdr_mode_init") or "").strip().upper()
+        if not mode_str:
+            mode_str = "ON"
         self.transponder_mode = self._parse_transponder_mode(mode_str)
         default_transponder_id = f"ALLY-{uuid4().hex[:6].upper()}"
         self.transponder_id = os.getenv("RADAR_TRANSPONDER_ID", default_transponder_id)
+        self._spoof_transponder_id: str | None = None
         logger.info("QSimService initialized.")
         primary = int(self.config.sim_sensor_type)
         imu = int(ProtoSensorType.IMU)
@@ -141,6 +151,18 @@ class QSimService:
             if axis is None or pct is None or duration_s is None:
                 return False
             return self.world_model.set_rcs_command(str(axis), float(pct), float(duration_s))
+
+        # Comms/XPDR operator control (no new proto): set transponder mode.
+        if name == "sim.xpdr.mode":
+            params = cmd.parameters or {}
+            raw_mode = str(params.get("mode") or "").strip().upper()
+            if raw_mode not in {"ON", "OFF", "SILENT", "SPOOF"}:
+                return False
+            self.transponder_mode = self._parse_transponder_mode(raw_mode)
+            # If switching into SPOOF, keep a stable spoof id for the session.
+            if self.transponder_mode == TransponderModeEnum.SPOOF and not self._spoof_transponder_id:
+                self._spoof_transponder_id = f"SPOOF-{uuid4().hex[:6].upper()}"
+            return True
 
         return False
 
@@ -347,6 +369,25 @@ class QSimService:
         pitch = float(att.get("pitch_rad", 0.0))
         yaw = float(att.get("yaw_rad", math.radians(state.get("heading", 0.0))))
 
+        comms_plane = {}
+        try:
+            hp = (self._bot_config or {}).get("hardware_profile") if isinstance(self._bot_config, dict) else {}
+            comms_plane = hp.get("comms_plane") if isinstance(hp, dict) else {}
+            if not isinstance(comms_plane, dict):
+                comms_plane = {}
+        except Exception:
+            comms_plane = {}
+
+        comms = {
+            "enabled": bool(comms_plane.get("enabled", True)),
+            "xpdr": {
+                "mode": self.transponder_mode.name,
+                "active": bool(self._is_transponder_active()),
+                "allowed": bool(getattr(self.world_model, "transponder_allowed", True)),
+                "id": self._resolve_transponder_id(),
+            },
+        }
+
         payload = TelemetrySnapshotModel(
             source="q_sim_service",
             timestamp=ts,
@@ -362,6 +403,7 @@ class QSimService:
             power=state.get("power", {}),
             docking=state.get("docking", {}),
             sensor_plane=state.get("sensor_plane", {}),
+            comms=comms,
             thermal=state.get("thermal", {"nodes": []}),
             propulsion=state.get("propulsion", {}),
             radiation_usvh=float(state.get("radiation_usvh", 0.0)),
@@ -388,5 +430,7 @@ class QSimService:
         if self.transponder_mode == TransponderModeEnum.ON:
             return self.transponder_id
         if self.transponder_mode == TransponderModeEnum.SPOOF:
-            return f"SPOOF-{uuid4().hex[:6].upper()}"
+            if not self._spoof_transponder_id:
+                self._spoof_transponder_id = f"SPOOF-{uuid4().hex[:6].upper()}"
+            return self._spoof_transponder_id
         return None

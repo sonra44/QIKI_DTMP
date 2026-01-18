@@ -2118,6 +2118,11 @@ class OrionApp(App):
 
         cpu_usage = None
         memory_usage = None
+        comms_enabled = None
+        xpdr_mode = None
+        xpdr_active = None
+        xpdr_allowed = None
+        xpdr_id = None
         thermal_nodes = None
         thermal_faults: set[str] = set()
         if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
@@ -2128,6 +2133,15 @@ class OrionApp(App):
             if isinstance(normalized, dict):
                 cpu_usage = normalized.get("cpu_usage")
                 memory_usage = normalized.get("memory_usage")
+                comms = normalized.get("comms")
+                if isinstance(comms, dict):
+                    comms_enabled = comms.get("enabled")
+                    xpdr = comms.get("xpdr")
+                    if isinstance(xpdr, dict):
+                        xpdr_mode = xpdr.get("mode")
+                        xpdr_active = xpdr.get("active")
+                        xpdr_allowed = xpdr.get("allowed")
+                        xpdr_id = xpdr.get("id")
                 th = normalized.get("thermal")
                 if isinstance(th, dict):
                     nodes = th.get("nodes")
@@ -2213,6 +2227,89 @@ class OrionApp(App):
                 envelope=telemetry_env,
             ),
         ]
+
+        # Comms/XPDR (no-mocks): reflect simulation truth; do not invent values.
+        mode_txt = str(xpdr_mode) if isinstance(xpdr_mode, str) and xpdr_mode else None
+        allowed_bool = None if xpdr_allowed is None else bool(xpdr_allowed)
+        active_bool = None if xpdr_active is None else bool(xpdr_active)
+        enabled_bool = None if comms_enabled is None else bool(comms_enabled)
+        desired_active = mode_txt in {"ON", "SPOOF"} if mode_txt else None
+
+        # Comms enabled flag.
+        blocks.append(
+            SystemStateBlock(
+                block_id="comms_enabled",
+                title=I18N.bidi("Comms enabled", "Связь вкл"),
+                status="na" if enabled_bool is None else "ok",
+                value=I18N.yes_no(enabled_bool) if enabled_bool is not None else I18N.NA,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+
+        # XPDR mode.
+        blocks.append(
+            SystemStateBlock(
+                block_id="xpdr_mode",
+                title=I18N.bidi("XPDR mode", "Режим XPDR"),
+                status="na" if mode_txt is None else "ok",
+                value=mode_txt or I18N.NA,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+
+        # XPDR allowed (power gating).
+        allowed_status = "na"
+        if allowed_bool is not None:
+            if allowed_bool:
+                allowed_status = "ok"
+            else:
+                allowed_status = "warn" if desired_active else "ok"
+        blocks.append(
+            SystemStateBlock(
+                block_id="xpdr_allowed",
+                title=I18N.bidi("XPDR allowed", "XPDR разрешён"),
+                status=allowed_status,
+                value=I18N.yes_no(allowed_bool) if allowed_bool is not None else I18N.NA,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+
+        # XPDR active (actual transponder activity as seen by radar and loads).
+        active_status = "na"
+        if active_bool is not None:
+            if desired_active is None:
+                active_status = "ok" if active_bool else "ok"
+            else:
+                if active_bool == desired_active:
+                    active_status = "ok"
+                else:
+                    active_status = "warn" if allowed_bool is False else "crit"
+        blocks.append(
+            SystemStateBlock(
+                block_id="xpdr_active",
+                title=I18N.bidi("XPDR active", "XPDR активен"),
+                status=active_status,
+                value=I18N.yes_no(active_bool) if active_bool is not None else I18N.NA,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
+
+        # XPDR ID.
+        xpdr_id_txt = str(xpdr_id) if isinstance(xpdr_id, str) and xpdr_id.strip() else None
+        blocks.append(
+            SystemStateBlock(
+                block_id="xpdr_id",
+                title=I18N.bidi("XPDR id", "ID XPDR"),
+                status="na" if xpdr_id_txt is None else "ok",
+                value=xpdr_id_txt or I18N.NA,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            )
+        )
 
         # Thermal nodes (no-mocks): show real node temps from telemetry or nothing.
         if isinstance(thermal_nodes, list):
@@ -4862,6 +4959,18 @@ class OrionApp(App):
             await self._publish_sim_command("power.nbl.set_max", parameters={"max_power_w": max_w})
             return
 
+        # xpdr.mode <on|off|silent|spoof> (Comms/XPDR runtime control; no mocks).
+        if low.startswith("xpdr.mode"):
+            parsed = self._parse_xpdr_cli_command(cmd)
+            if parsed is None:
+                self._console_log(
+                    f"{I18N.bidi('Invalid XPDR command', 'Некорректная команда XPDR')}: {cmd}",
+                    level="warn",
+                )
+                return
+            await self._publish_sim_command("sim.xpdr.mode", parameters={"mode": parsed["mode"]})
+            return
+
         # rcs.<axis> <pct> [<duration>] | rcs.stop  (Propulsion/RCS operator control; no mocks).
         if low.startswith("rcs."):
             parsed = self._parse_rcs_cli_command(cmd)
@@ -4945,7 +5054,7 @@ class OrionApp(App):
             f"{I18N.bidi('help', 'помощь')} | "
             f"{I18N.bidi('screen', 'экран')} <name>/<имя> | "
             f"simulation.start/симуляция.старт | "
-            f"dock.engage [A|B] | dock.release | dock.on/off | nbl.on/off | nbl.max <W> | rcs.<axis> <pct> <dur> | rcs.stop | "
+            f"dock.engage [A|B] | dock.release | dock.on/off | nbl.on/off | nbl.max <W> | xpdr.mode <on|off|silent|spoof> | rcs.<axis> <pct> <dur> | rcs.stop | "
             f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
         )
 
@@ -5030,6 +5139,26 @@ class OrionApp(App):
             token = parts[1].strip()
             port = token or None
         return {"kind": "engage", "port": port}
+
+    @classmethod
+    def _parse_xpdr_cli_command(cls, raw: str) -> Optional[dict[str, Any]]:
+        """
+        Parse operator CLI Comms/XPDR command.
+
+        Supported:
+        - xpdr.mode <on|off|silent|spoof>
+        """
+        text = (raw or "").strip()
+        parts = text.split()
+        if len(parts) < 2:
+            return None
+        head = parts[0].strip().lower()
+        if head != "xpdr.mode":
+            return None
+        mode = parts[1].strip().lower()
+        if mode not in {"on", "off", "silent", "spoof"}:
+            return None
+        return {"mode": mode.upper()}
 
     @classmethod
     def _parse_rcs_cli_command(cls, raw: str) -> Optional[dict[str, Any]]:

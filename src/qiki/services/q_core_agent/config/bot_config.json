@@ -118,6 +118,10 @@
       "star_tracker": {"enabled": false},
       "magnetometer": {"enabled": false}
     },
+    "comms_plane": {
+      "enabled": true,
+      "xpdr_mode_init": "ON"
+    },
     "actuators": [
       {"id": "motor_left", "type": "wheel_motor"},
       {"id": "motor_right", "type": "wheel_motor"},
