@@ -799,7 +799,17 @@ class OrionInspector(Static):
         return table
 
     @staticmethod
-    def safe_preview(value: Any, *, max_chars: int = 260, max_lines: int = 12) -> str:
+    def safe_preview(value: Any, *, max_chars: int = 1024, max_lines: int = 24) -> str:
+        try:
+            max_chars = int(os.getenv("OPERATOR_CONSOLE_PREVIEW_MAX_CHARS", str(max_chars)))
+        except Exception:
+            max_chars = 1024
+        try:
+            max_lines = int(os.getenv("OPERATOR_CONSOLE_PREVIEW_MAX_LINES", str(max_lines)))
+        except Exception:
+            max_lines = 24
+        max_chars = max(32, min(16_384, max_chars))
+        max_lines = max(4, min(200, max_lines))
         if value is None:
             return I18N.NA
         if isinstance(value, (bytes, bytearray)):
@@ -846,6 +856,9 @@ class OrionApp(App):
     #console-table { height: 1fr; }
     #summary-table { height: 1fr; }
     #power-table { height: 1fr; }
+    #sensors-table { height: 1fr; }
+    #propulsion-table { height: 1fr; }
+    #thermal-table { height: 1fr; }
     #diagnostics-table { height: 1fr; }
     #mission-table { height: 1fr; }
     #rules-toolbar { height: 3; padding: 0 1; border: round #303030; background: #050505; }
@@ -1936,6 +1949,17 @@ class OrionApp(App):
         except Exception:
             return
 
+        def style_status(text: str, kind: str | None) -> Text:
+            k = (kind or "").strip().lower()
+            if k == "ok":
+                return Text(text, style="green")
+            if k == "warn":
+                return Text(text, style="yellow")
+            if k == "crit":
+                return Text(text, style="bold red")
+            # na / unknown
+            return Text(text, style="dim")
+
         def seed_empty() -> None:
             self._sensors_by_key = {}
             self._selection_by_app.pop("sensors", None)
@@ -2058,7 +2082,7 @@ class OrionApp(App):
 
         for row_key, label, value, raw, warn, status_kind in rows:
             status = status_label(raw, value, warning=warn, status_kind=status_kind)
-            table.add_row(label, status, value, age, source, key=row_key)
+            table.add_row(label, style_status(status, status_kind), value, age, source, key=row_key)
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
@@ -2649,12 +2673,17 @@ class OrionApp(App):
                 yield inspector
 
                 with Vertical(id="bottom-bar"):
+                    try:
+                        output_max_lines = int(os.getenv("OPERATOR_CONSOLE_OUTPUT_MAX_LINES", "1024"))
+                    except Exception:
+                        output_max_lines = 1024
+                    output_max_lines = max(100, min(10_000, output_max_lines))
                     output = RichLog(
                         id="command-output-log",
                         highlight=False,
                         markup=False,
                         wrap=True,
-                        max_lines=200,
+                        max_lines=output_max_lines,
                     )
                     output.can_focus = False
                     output.border_title = I18N.bidi("Output", "Вывод")
@@ -2928,6 +2957,13 @@ class OrionApp(App):
         except Exception:
             pass
 
+        # Radar: prefer the table on narrow terminals (PPI is dense and becomes unreadable).
+        try:
+            ppi = self.query_one("#radar-ppi", Static)
+            ppi.styles.display = "none" if density in {"tiny", "narrow"} else "block"
+        except Exception:
+            pass
+
         # Compact tables on narrow panes by reducing fixed column widths.
         try:
             self._apply_table_column_widths(density=density, total_width=width)
@@ -3024,13 +3060,25 @@ class OrionApp(App):
         if density in {"tiny", "narrow"}:
             set_widths("summary-table", [28, 10, 20, 12])
             set_widths("power-table", [26, 10, 16, 12, 12])
+            set_widths("sensors-table", [26, 10, 16, 12, 12])
+            set_widths("propulsion-table", [26, 10, 16, 12, 12])
+            set_widths("thermal-table", [20, 10, 14, 12, 12])
             set_widths("diagnostics-table", [28, 10, 20, 12])
             set_widths("mission-table", [22, 10, 34])
+            set_widths("events-table", [8, 14, 14, 22, 10, 8, 6])
+            set_widths("console-table", [12, 9, 40])
+            set_widths("radar-table", [10, 12, 12, 12, 20])
         elif density == "normal":
             set_widths("summary-table", [36, 14, 26, 18])
             set_widths("power-table", [32, 14, 20, 18, 16])
+            set_widths("sensors-table", [32, 14, 20, 18, 16])
+            set_widths("propulsion-table", [32, 14, 20, 18, 16])
+            set_widths("thermal-table", [24, 14, 16, 18, 16])
             set_widths("diagnostics-table", [36, 14, 24, 18])
             set_widths("mission-table", [28, 14, 52])
+            set_widths("events-table", [10, 18, 16, 28, 12, 10, 6])
+            set_widths("console-table", [14, 10, 64])
+            set_widths("radar-table", [12, 14, 14, 14, 26])
         else:
             # Keep the original compose-time widths on wide screens.
             return
