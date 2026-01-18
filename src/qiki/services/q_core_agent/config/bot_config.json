@@ -112,7 +112,13 @@
     "sensor_plane": {
       "enabled": true,
       "imu": {"enabled": true},
-      "radiation": {"enabled": true},
+      "radiation": {
+        "enabled": true,
+        "limits": {
+          "warn_usvh": 1.0,
+          "crit_usvh": 2.0
+        }
+      },
       "proximity": {"enabled": false},
       "solar": {"enabled": false},
       "star_tracker": {"enabled": false},

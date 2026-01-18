@@ -1966,7 +1966,16 @@ class OrionApp(App):
         age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
 
-        def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False) -> str:
+        def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None) -> str:
+            if status_kind is not None:
+                kind = str(status_kind).strip().lower()
+                if kind == "ok":
+                    return I18N.bidi("Normal", "Норма")
+                if kind == "warn":
+                    return I18N.bidi("Warning", "Предупреждение")
+                if kind == "crit":
+                    return I18N.bidi("Abnormal", "Не норма")
+                return I18N.NA
             if raw_value is None:
                 return I18N.NA
             if warning:
@@ -1975,50 +1984,54 @@ class OrionApp(App):
                 return I18N.bidi("Abnormal", "Не норма")
             return I18N.bidi("Normal", "Норма")
 
-        rows: list[tuple[str, str, str, Any, bool]] = []
+        rows: list[tuple[str, str, str, Any, bool, str | None]] = []
 
         imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+        imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
         rows.extend(
             [
-                ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False),
-                ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False)),
-                ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False),
-                ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False),
-                ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False),
+                ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False, None),
+                ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False), imu_status),
+                ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False, imu_status),
+                ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False, imu_status),
+                ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False, imu_status),
             ]
         )
 
         rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+        rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
         rows.extend(
             [
-                ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False),
-                ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False),
+                ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False, None),
+                ("rad_background", I18N.bidi("Background", "Фон"), I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2), rad.get("background_usvh"), False, rad_status),
+                ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False, None),
             ]
         )
 
         prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
         rows.extend(
             [
-                ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False),
-                ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False),
-                ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False),
+                ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False, None),
+                ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False, None),
+                ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False, None),
             ]
         )
 
         solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
         rows.extend(
             [
-                ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False),
-                ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False),
+                ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False, None),
+                ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False, None),
             ]
         )
 
         st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+        st_status = st.get("status") if isinstance(st.get("status"), str) else None
         rows.extend(
             [
-                ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False),
-                ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False)),
-                ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False),
+                ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False, None),
+                ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False), st_status),
+                ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False, st_status),
             ]
         )
 
@@ -2032,8 +2045,8 @@ class OrionApp(App):
                 field_txt = I18N.INVALID
         rows.extend(
             [
-                ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False),
-                ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID),
+                ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False, None),
+                ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID, None),
             ]
         )
 
@@ -2043,8 +2056,8 @@ class OrionApp(App):
         except Exception:
             return
 
-        for row_key, label, value, raw, warn in rows:
-            status = status_label(raw, value, warning=warn)
+        for row_key, label, value, raw, warn, status_kind in rows:
+            status = status_label(raw, value, warning=warn, status_kind=status_kind)
             table.add_row(label, status, value, age, source, key=row_key)
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,

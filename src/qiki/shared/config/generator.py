@@ -129,7 +129,7 @@ def generate_bot_config_from_spec(spec_path: str | Path | None = None) -> Dict[s
             "sensor_plane": {
                 "enabled": True,
                 "imu": {"enabled": True},
-                "radiation": {"enabled": True},
+                "radiation": {"enabled": True, "limits": {"warn_usvh": 1.0, "crit_usvh": 2.0}},
                 "proximity": {"enabled": False},
                 "solar": {"enabled": False},
                 "star_tracker": {"enabled": False},

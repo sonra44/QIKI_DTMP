@@ -291,6 +291,20 @@ class WorldModel:
 
         # Radiation dose integrator starts at 0 when enabled.
         self._radiation_dose_total_usv = 0.0 if self._radiation_enabled else None
+        # Sensor Plane limits/status config (single source of truth: bot_config.json).
+        # No-mocks: if limits are not configured, we mark status as NA (not evaluated).
+        self._radiation_warn_usvh = None
+        self._radiation_crit_usvh = None
+        try:
+            rad_cfg = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+            limits = rad_cfg.get("limits") if isinstance(rad_cfg.get("limits"), dict) else {}
+            warn = limits.get("warn_usvh")
+            crit = limits.get("crit_usvh")
+            self._radiation_warn_usvh = float(warn) if warn is not None else None
+            self._radiation_crit_usvh = float(crit) if crit is not None else None
+        except Exception:
+            self._radiation_warn_usvh = None
+            self._radiation_crit_usvh = None
 
         # Optional scenario-provided initial values (still simulation-truth, not OS metrics).
         prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
@@ -1276,6 +1290,28 @@ class WorldModel:
         """
         Returns the current state of the world model.
         """
+        def _status_from_bool(ok: bool | None, *, enabled: bool, warn_on_false: bool = False) -> tuple[str, str]:
+            if not enabled:
+                return ("na", "disabled")
+            if ok is None:
+                return ("na", "no reading")
+            if ok:
+                return ("ok", "ok")
+            return ("warn" if warn_on_false else "crit", "not ok")
+
+        def _status_from_limits(value: float | None, *, enabled: bool, warn: float | None, crit: float | None) -> tuple[str, str, dict | None]:
+            if not enabled:
+                return ("na", "disabled", None)
+            if value is None:
+                return ("na", "no reading", None)
+            if warn is None or crit is None:
+                return ("na", "limits not configured", None)
+            if float(value) >= float(crit):
+                return ("crit", f"value>=crit ({value:.3g}>={crit:.3g})", {"warn_usvh": warn, "crit_usvh": crit})
+            if float(value) >= float(warn):
+                return ("warn", f"value>=warn ({value:.3g}>={warn:.3g})", {"warn_usvh": warn, "crit_usvh": crit})
+            return ("ok", "within limits", {"warn_usvh": warn, "crit_usvh": crit})
+
         thermal_nodes: list[dict[str, float | str]] = []
         if self._thermal_enabled and self._thermal_nodes_order:
             for nid in self._thermal_nodes_order:
@@ -1359,6 +1395,8 @@ class WorldModel:
                 "enabled": bool(self._sensor_plane_enabled),
                 "imu": {
                     "enabled": bool(self._imu_enabled),
+                    "status": _status_from_bool(self._imu_ok, enabled=bool(self._imu_enabled))[0],
+                    "reason": _status_from_bool(self._imu_ok, enabled=bool(self._imu_enabled))[1],
                     "ok": self._imu_ok,
                     "roll_rate_rps": self._imu_roll_rate_rps,
                     "pitch_rate_rps": self._imu_pitch_rate_rps,
@@ -1368,6 +1406,24 @@ class WorldModel:
                     "enabled": bool(self._radiation_enabled),
                     "background_usvh": float(self.radiation_usvh) if self._radiation_enabled else None,
                     "dose_total_usv": self._radiation_dose_total_usv,
+                    "status": _status_from_limits(
+                        float(self.radiation_usvh) if self._radiation_enabled else None,
+                        enabled=bool(self._radiation_enabled),
+                        warn=self._radiation_warn_usvh,
+                        crit=self._radiation_crit_usvh,
+                    )[0],
+                    "reason": _status_from_limits(
+                        float(self.radiation_usvh) if self._radiation_enabled else None,
+                        enabled=bool(self._radiation_enabled),
+                        warn=self._radiation_warn_usvh,
+                        crit=self._radiation_crit_usvh,
+                    )[1],
+                    "limits": _status_from_limits(
+                        float(self.radiation_usvh) if self._radiation_enabled else None,
+                        enabled=bool(self._radiation_enabled),
+                        warn=self._radiation_warn_usvh,
+                        crit=self._radiation_crit_usvh,
+                    )[2],
                 },
                 "proximity": {
                     "enabled": bool(self._proximity_enabled),
@@ -1380,6 +1436,8 @@ class WorldModel:
                 },
                 "star_tracker": {
                     "enabled": bool(self._star_tracker_enabled),
+                    "status": _status_from_bool(self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True)[0],
+                    "reason": _status_from_bool(self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True)[1],
                     "locked": self._star_tracker_locked,
                     "attitude_err_deg": self._star_tracker_attitude_err_deg,
                 },

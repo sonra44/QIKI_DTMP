@@ -148,3 +148,39 @@
 3) `pytest` для `q_sim_service` зелёный, есть тесты на `sensor_plane` и `dose_total_usv`.
 4) Не добавлены `*_v2.*`, не создано дублирующих источников правды.
 
+---
+
+## Update (2026-01-18) — Status/Limits слой (операторская диагностика)
+
+Цель: приблизиться к “миссион-контрол” паттернам (Yamcs/COSMOS) **без ломки контрактов**:
+- без новых subject’ов (остаёмся в `qiki.telemetry`),
+- без `v2`,
+- без моков.
+
+### Формат (минимум)
+
+Добавляем **внутри `sensor_plane.<subsystem>`** поля:
+- `status`: `ok|warn|crit|na`
+- `reason`: строка (почему именно так)
+- (опционально) `limits`: словарь применённых лимитов
+
+Пример для радиации:
+
+```json
+{
+  "sensor_plane": {
+    "radiation": {
+      "enabled": true,
+      "background_usvh": 1.5,
+      "dose_total_usv": 0.12,
+      "status": "warn",
+      "reason": "value>=warn (1.5>=1.0)",
+      "limits": {"warn_usvh": 1.0, "crit_usvh": 2.0}
+    }
+  }
+}
+```
+
+Принцип no-mocks:
+- если данные отсутствуют или лимиты не настроены → `status=na` + понятный `reason`.
+
