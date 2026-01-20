@@ -40,3 +40,10 @@ GitHub MCP auth:
 - Triage logs / pytest output, propose minimal next diagnostic steps.
 - Doc/code drift checks, propose exact replacements (path + current line + replacement).
 - Draft ADRs and checklists (clearly marked as drafts).
+
+## QA_AUDITOR mode (read-only final gate)
+
+If you are asked to act as **QA_AUDITOR**:
+- Do not emit **FAIL** unless you have re-read the cited files and can provide evidence (`path:line` + short exact quote).
+- If you cannot provide evidence, output `NEEDS_MORE_EVIDENCE` and ask for 1–3 concrete artefacts (file contents or command output).
+- Never rely on “memory” or earlier summaries as proof; treat them as hypotheses that must be re-validated.
