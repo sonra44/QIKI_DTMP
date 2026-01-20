@@ -55,9 +55,9 @@ class NATSClient:
                 max_reconnect_attempts=-1,
             )
             self.js = self.nc.jetstream()
-            print(f"✅ Connected to NATS at {self.url}")
+            print(f"Connected to NATS at {self.url}")
         except (NoServersError, TimeoutError) as e:
-            print(f"❌ Failed to connect to NATS: {e}")
+            print(f"Failed to connect to NATS: {e}")
             raise
             
     async def disconnect(self) -> None:
@@ -102,9 +102,9 @@ class NATSClient:
                 manual_ack=True
             )
             self.subscriptions["RADAR_SR"] = sub
-            print(f"✅ Subscribed to RADAR_SR stream: {subject}")
+            print(f"Subscribed to RADAR_SR stream: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to RADAR_SR: {e}")
+            print(f"Failed to subscribe to RADAR_SR: {e}")
             raise
             
     async def subscribe_radar_lr(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
@@ -142,9 +142,9 @@ class NATSClient:
                 manual_ack=True
             )
             self.subscriptions["RADAR_LR"] = sub
-            print(f"✅ Subscribed to RADAR_LR stream: {subject}")
+            print(f"Subscribed to RADAR_LR stream: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to RADAR_LR: {e}")
+            print(f"Failed to subscribe to RADAR_LR: {e}")
             raise
             
     async def subscribe_tracks(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
@@ -182,9 +182,9 @@ class NATSClient:
                 manual_ack=True
             )
             self.subscriptions["TRACKS"] = sub
-            print(f"✅ Subscribed to TRACKS stream: {subject}")
+            print(f"Subscribed to TRACKS stream: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to TRACKS: {e}")
+            print(f"Failed to subscribe to TRACKS: {e}")
             raise
 
     async def subscribe_system_telemetry(
@@ -212,9 +212,9 @@ class NATSClient:
         try:
             sub = await self.nc.subscribe(subject, cb=message_handler)
             self.subscriptions["SYSTEM_TELEMETRY"] = sub
-            print(f"✅ Subscribed to SYSTEM_TELEMETRY: {subject}")
+            print(f"Subscribed to SYSTEM_TELEMETRY: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to SYSTEM_TELEMETRY: {e}")
+            print(f"Failed to subscribe to SYSTEM_TELEMETRY: {e}")
             raise
 
     async def subscribe_events(
@@ -243,9 +243,9 @@ class NATSClient:
         try:
             sub = await self.nc.subscribe(subject, cb=message_handler)
             self.subscriptions["EVENTS"] = sub
-            print(f"✅ Subscribed to EVENTS: {subject}")
+            print(f"Subscribed to EVENTS: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to EVENTS: {e}")
+            print(f"Failed to subscribe to EVENTS: {e}")
             raise
             
     async def publish_command(self, subject: str, command: Dict[str, Any]) -> None:
@@ -263,9 +263,9 @@ class NATSClient:
             # `command` can include UUID/datetime values from Pydantic models.
             payload = json.dumps(command, default=str).encode()
             await self.nc.publish(subject, payload)
-            print(f"📤 Published command to {subject}: {command}")
+            print(f"Published command to {subject}: {command}")
         except Exception as e:
-            print(f"❌ Failed to publish command: {e}")
+            print(f"Failed to publish command: {e}")
             raise
 
     async def subscribe_control_responses(
@@ -294,9 +294,9 @@ class NATSClient:
         try:
             sub = await self.nc.subscribe(subject, cb=message_handler)
             self.subscriptions["CONTROL_RESPONSES"] = sub
-            print(f"✅ Subscribed to CONTROL_RESPONSES: {subject}")
+            print(f"Subscribed to CONTROL_RESPONSES: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to CONTROL_RESPONSES: {e}")
+            print(f"Failed to subscribe to CONTROL_RESPONSES: {e}")
             raise
 
     async def subscribe_qiki_responses(
@@ -325,9 +325,9 @@ class NATSClient:
         try:
             sub = await self.nc.subscribe(subject, cb=message_handler)
             self.subscriptions["QIKI_RESPONSES"] = sub
-            print(f"✅ Subscribed to QIKI_RESPONSES: {subject}")
+            print(f"Subscribed to QIKI_RESPONSES: {subject}")
         except Exception as e:
-            print(f"❌ Failed to subscribe to QIKI_RESPONSES: {e}")
+            print(f"Failed to subscribe to QIKI_RESPONSES: {e}")
             raise
             
     async def get_jetstream_info(self) -> Dict[str, Any]:

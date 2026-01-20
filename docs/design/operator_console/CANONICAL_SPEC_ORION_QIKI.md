@@ -42,19 +42,23 @@ Mode is part of QIKI state and must be included in every response.
 
 ---
 
-## 3) Transport: NATS request/reply (single “chat” contract)
+## 3) Transport: NATS pub/sub (correlated “chat” loop)
 
 ### 3.1 Subject
 
-Canonical MVP subject (request/reply):
-- `qiki.chat.v1`
+Canonical MVP subjects:
+- Requests (intents): `qiki.intents`
+- Responses (replies/proposals): `qiki.responses.qiki`
 
-Rationale: request/reply provides a bounded “question → answer” loop without creating new streaming topics.
+Correlation: `request_id` is the join key between request and response.
 
 ### 3.2 Timeouts and resilience
 
 - ORION must use a strict timeout (e.g. `2–5s` in FACTORY; shorter in MISSION).
-- If no reply: ORION writes a calm console line `NO RESPONSE/НЕТ ОТВЕТА` and continues.
+- If no reply: ORION writes a calm console line and continues.
+- Default timeout knob: `QIKI_RESPONSE_TIMEOUT_SEC` (seconds).
+- Because responses are on a shared subject, ORION must ignore responses with unknown `request_id` by default.
+  - Debug knob: `QIKI_LOG_FOREIGN_RESPONSES=1` to log “foreign” responses.
 - QIKI must always return a valid JSON response (even on errors).
 
 ### 3.3 Security boundary (MVP)
@@ -158,7 +162,7 @@ If `ok=false`, `error` must be present and `reply/proposals` can be empty but st
 ### 5.1 Input routing (MVP, no mode toggle)
 
 - Default: `OPERATOR SHELL/ОБОЛОЧКА` — local UI commands (help/screen/filter/simulation.*).
-- QIKI intents: **explicit prefix required** — `q:` or `//` (free text after the prefix is sent as `qiki.chat.v1` request/reply).
+- QIKI intents: **explicit prefix required** — `q:` or `//` (free text after the prefix is published to `qiki.intents`).
 
 ### 5.2 Output placement rules
 
@@ -190,7 +194,7 @@ When an operator selects a QIKI reply/proposal row, inspector must show:
 1) ORION: calm console strip + `Ctrl+E` focus + input routing **без mode toggle**:
    - shell commands by default (`help`, `screen events`, ...),
    - QIKI intents only via prefix `q:` or `//`.
-2) QIKI: minimal `qiki.chat.v1` request handler that returns deterministic stub responses (no LLM).
+2) QIKI: minimal handler: subscribe `qiki.intents` and publish deterministic stub responses to `qiki.responses.qiki` (no LLM).
 3) ORION: render QIKI replies + proposal list + inspector view.
 4) QIKI: add `NeuralEngine` (LLM) behind strict schema validation + fallback.
 5) Later (separate spec): approvals + typed actions + sim pause/time control.

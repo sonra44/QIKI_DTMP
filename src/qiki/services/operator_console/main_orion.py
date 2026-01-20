@@ -483,6 +483,13 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
         aliases=("console", "консоль", "logs", "логи", "shell", "оболочка"),
     ),
     OrionAppSpec(
+        screen="qiki",
+        title=I18N.bidi("QIKI", "QIKI"),
+        hotkey="f9",
+        hotkey_label="F9",
+        aliases=("qiki", "кики", "q"),
+    ),
+    OrionAppSpec(
         screen="summary",
         title=I18N.bidi("Summary", "Сводка"),
         hotkey="f5",
@@ -545,6 +552,7 @@ ORION_MENU_LABELS: dict[str, str] = {
     "radar": I18N.bidi("Radar", "Радар"),
     "events": I18N.bidi("Events", "Событ"),
     "console": I18N.bidi("Console", "Консоль"),
+    "qiki": I18N.bidi("QIKI", "QIKI"),
     "summary": I18N.bidi("Summary", "Сводка"),
     "power": I18N.bidi("Power", "Пит"),
     "sensors": I18N.bidi("Sens", "Сенс"),
@@ -562,6 +570,7 @@ ORION_SIDEBAR_LABELS: dict[str, str] = {
     "radar": I18N.bidi("Radar", "Радар"),
     "events": I18N.bidi("Events", "События"),
     "console": I18N.bidi("Console", "Консоль"),
+    "qiki": I18N.bidi("QIKI", "QIKI"),
     "summary": I18N.bidi("Summary", "Сводка"),
     "power": I18N.bidi("Power", "Питание"),
     "sensors": I18N.bidi("Sensors", "Сенсоры"),
@@ -578,6 +587,7 @@ ORION_SIDEBAR_LABELS_NARROW: dict[str, str] = {
     "radar": "Радар",
     "events": "События",
     "console": "Консоль",
+    "qiki": "QIKI",
     "summary": "Сводка",
     "power": "Питание",
     "sensors": "Сенсоры",
@@ -1072,6 +1082,8 @@ class OrionApp(App):
         self._max_event_incidents: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS", "500"))
         self._max_events_table_rows: int = int(os.getenv("OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS", "200"))
         self._console_by_key: dict[str, dict[str, Any]] = {}
+        self._qiki_by_key: dict[str, dict[str, Any]] = {}
+        self._qiki_last_response: Optional[QikiChatResponseV1] = None
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
         self._sensors_by_key: dict[str, dict[str, Any]] = {}
@@ -1088,6 +1100,9 @@ class OrionApp(App):
         self._events_filter_text: Optional[str] = None
         self._command_max_chars: int = int(os.getenv("OPERATOR_CONSOLE_COMMAND_MAX_CHARS", "1024"))
         self._warned_command_trim: bool = False
+        self._qiki_pending: dict[str, tuple[float, str]] = {}
+        self._qiki_response_timeout_sec: float = float(os.getenv("QIKI_RESPONSE_TIMEOUT_SEC", "3.0"))
+        self._qiki_last_request_id: Optional[str] = None
         repo_root = os.getenv("QIKI_REPO_ROOT", "").strip() or "."
         default_rules = os.path.join(repo_root, "config", "incident_rules.yaml")
         # History is optional; keep it disabled by default to avoid creating extra files in the repo.
@@ -3043,6 +3058,16 @@ class OrionApp(App):
                     )
                     yield console_table
 
+                with Container(id="screen-qiki"):
+                    qiki_table: OrionDataTable = OrionDataTable(id="qiki-table")
+                    qiki_table.add_columns(
+                        I18N.bidi("Priority", "Приоритет"),
+                        I18N.bidi("Confidence", "Уверенность"),
+                        I18N.bidi("Title", "Заголовок"),
+                        I18N.bidi("Justification", "Обоснование"),
+                    )
+                    yield qiki_table
+
                 with Container(id="screen-summary"):
                     summary_table: OrionDataTable = OrionDataTable(id="summary-table")
                     summary_table.add_column(I18N.bidi("Block", "Блок"), width=44)
@@ -3160,6 +3185,7 @@ class OrionApp(App):
         self._seed_radar_ppi()
         self._seed_events_table()
         self._seed_console_table()
+        self._seed_qiki_table()
         self._seed_summary_table()
         self._seed_power_table()
         self._seed_sensors_table()
@@ -3661,6 +3687,67 @@ class OrionApp(App):
             try:
                 log.clear()
                 log.write(f"— {I18N.bidi('Console ready', 'Консоль готова')} —")
+            except Exception:
+                pass
+
+    def _seed_qiki_table(self) -> None:
+        try:
+            table = self.query_one("#qiki-table", DataTable)
+        except Exception:
+            return
+        self._qiki_by_key = {}
+        self._qiki_last_response = None
+        self._selection_by_app.pop("qiki", None)
+        table.clear()
+        table.add_row(I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+
+    def _render_qiki_table(self) -> None:
+        try:
+            table = self.query_one("#qiki-table", DataTable)
+        except Exception:
+            return
+
+        resp = self._qiki_last_response
+        table.clear()
+        self._qiki_by_key = {}
+        self._selection_by_app.pop("qiki", None)
+
+        if resp is None or not resp.proposals:
+            table.add_row(I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            return
+
+        for p in resp.proposals:
+            key = str(p.proposal_id)
+            table.add_row(
+                str(p.priority),
+                f"{p.confidence:.2f}",
+                I18N.bidi(p.title.en, p.title.ru),
+                I18N.bidi(p.justification.en, p.justification.ru),
+                key=key,
+            )
+            self._qiki_by_key[key] = {
+                "kind": "qiki_proposal",
+                "proposal": p.model_dump(mode="json"),
+                "request_id": str(resp.request_id),
+                "mode": str(resp.mode),
+                "ok": bool(resp.ok),
+            }
+
+        first_key = next(iter(self._qiki_by_key.keys()), None)
+        if first_key is not None:
+            self._set_selection(
+                SelectionContext(
+                    app_id="qiki",
+                    key=first_key,
+                    kind="proposal",
+                    source="qiki",
+                    created_at_epoch=time.time(),
+                    payload=self._qiki_by_key[first_key],
+                    ids=(first_key,),
+                )
+            )
+            try:
+                table.move_cursor(row=0, column=0, animate=False, scroll=False)
             except Exception:
                 pass
 
@@ -4641,6 +4728,11 @@ class OrionApp(App):
             self._console_log(f"QIKI: {kind} {payload}".strip())
             return
 
+        req_id = str(resp.request_id)
+        if req_id not in self._qiki_pending and os.getenv("QIKI_LOG_FOREIGN_RESPONSES", "0") != "1":
+            return
+        self._qiki_pending.pop(req_id, None)
+
         title = resp.reply.title.en if resp.reply else "QIKI"
         ru_title = resp.reply.title.ru if resp.reply else "QIKI"
         proposals = len(resp.proposals or [])
@@ -4654,6 +4746,9 @@ class OrionApp(App):
             self._console_log(f"  {idx}) {I18N.bidi(p.title.en, p.title.ru)}")
         if proposals > 3:
             self._console_log(f"  … {I18N.bidi('more proposals', 'ещё предложений')}: {proposals - 3}")
+
+        self._qiki_last_response = resp
+        self._render_qiki_table()
 
     def action_show_screen(self, screen: str) -> None:
         if screen not in {app.screen for app in ORION_APPS}:
@@ -4669,6 +4764,7 @@ class OrionApp(App):
             "radar",
             "events",
             "console",
+            "qiki",
             "summary",
             "power",
             "sensors",
@@ -4697,6 +4793,20 @@ class OrionApp(App):
                     pass
 
             self.call_after_refresh(_focus_events)
+        if screen == "qiki":
+            self._render_qiki_table()
+
+            def _focus_qiki() -> None:
+                try:
+                    table = self.query_one("#qiki-table", DataTable)
+                    self.set_focus(table)
+                    cursor_row = getattr(table, "cursor_row", None)
+                    if (cursor_row is None or cursor_row < 0) and table.row_count:
+                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
+                except Exception:
+                    pass
+
+            self.call_after_refresh(_focus_qiki)
         if screen == "summary":
             self._render_summary_table()
         if screen == "power":
@@ -4768,6 +4878,8 @@ class OrionApp(App):
             workspace = safe_query("#events-table")
         elif self.active_screen == "console":
             workspace = safe_query("#console-table")
+        elif self.active_screen == "qiki":
+            workspace = safe_query("#qiki-table")
         elif self.active_screen == "summary":
             workspace = safe_query("#summary-table")
         elif self.active_screen == "power":
@@ -4828,6 +4940,8 @@ class OrionApp(App):
             table_id = "#events-table"
         elif self.active_screen == "console":
             table_id = "#console-table"
+        elif self.active_screen == "qiki":
+            table_id = "#qiki-table"
         elif self.active_screen == "summary":
             table_id = "#summary-table"
         elif self.active_screen == "power":
@@ -4931,6 +5045,29 @@ class OrionApp(App):
                         kind="console",
                         source="shell",
                         created_at_epoch=float(selected.get("created_at_epoch") or time.time()),
+                        payload=selected,
+                        ids=(row_key,),
+                    )
+                )
+            return
+
+        if event.data_table.id == "qiki-table":
+            row_key_obj = getattr(event, "row_key", None)
+            try:
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
+            except Exception:
+                return
+            if row_key == "seed":
+                return
+            selected = self._qiki_by_key.get(row_key)
+            if isinstance(selected, dict):
+                self._set_selection(
+                    SelectionContext(
+                        app_id="qiki",
+                        key=row_key,
+                        kind="proposal",
+                        source="qiki",
+                        created_at_epoch=time.time(),
                         payload=selected,
                         ids=(row_key,),
                     )
@@ -5677,6 +5814,10 @@ class OrionApp(App):
                 QIKI_INTENTS,
                 req.model_dump(mode="json"),
             )
+            req_id = str(req.request_id)
+            self._qiki_pending[req_id] = (time.time(), text)
+            self._qiki_last_request_id = req_id
+            asyncio.create_task(self._qiki_watch_timeout(req_id))
             self._console_log(
                 f"{I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
                 f"({I18N.bidi('request', 'запрос')}={req.request_id})",
@@ -5687,6 +5828,22 @@ class OrionApp(App):
                 f"{I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
                 level="error",
             )
+
+    async def _qiki_watch_timeout(self, request_id: str) -> None:
+        timeout = max(0.1, float(self._qiki_response_timeout_sec))
+        await asyncio.sleep(timeout)
+        pending = self._qiki_pending.get(request_id)
+        if not pending:
+            return
+        started_ts, _text = pending
+        self._qiki_pending.pop(request_id, None)
+        age_s = max(0.0, time.time() - started_ts)
+        self._console_log(
+            f"QIKI: {I18N.bidi('timeout', 'таймаут')} "
+            f"({I18N.bidi('request', 'запрос')}={request_id}, "
+            f"{I18N.bidi('wait', 'ожидание')}={self._fmt_age_s(age_s)})",
+            level="warning",
+        )
 
     def _build_qiki_chat_request(self, text: str) -> QikiChatRequestV1:
         screen_label = next((app.title for app in ORION_APPS if app.screen == self.active_screen), "System/Система")
