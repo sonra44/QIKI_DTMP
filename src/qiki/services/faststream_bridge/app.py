@@ -1,9 +1,10 @@
 import logging
 import os
 import time
-from uuid import uuid4
+from uuid import UUID, uuid4
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
+from pydantic import ValidationError
 
 # Импортируем наши Pydantic модели
 # Важно, чтобы PYTHONPATH был настроен правильно, чтобы найти shared
@@ -95,11 +96,16 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
     payload = msg if isinstance(msg, dict) else {}
     try:
         req = QikiChatRequestV1.model_validate(payload)
-    except Exception:
+    except ValidationError:
         # Legacy/fallback: accept {text: "..."} and synthesize a request id.
+        raw_req_id = payload.get("request_id") or payload.get("requestId")
+        try:
+            request_id = UUID(str(raw_req_id)) if raw_req_id else uuid4()
+        except Exception:  # noqa: BLE001
+            request_id = uuid4()
         text = payload.get("text") if isinstance(payload.get("text"), str) else str(payload)
         req = QikiChatRequestV1(
-            request_id=uuid4(),
+            request_id=request_id,
             ts_epoch_ms=int(time.time() * 1000),
             input={"text": text, "lang_hint": "auto"},
         )
