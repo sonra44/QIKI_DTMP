@@ -64,3 +64,20 @@ def test_min_duration_blocks_short_spike() -> None:
     assert store.list_incidents() == []
     store.ingest(base_event(ts + 6, 90))
     assert len(store.list_incidents()) == 1
+
+
+def test_max_incidents_caps_store_to_latest_by_last_seen() -> None:
+    store = IncidentStore(make_config(), max_incidents=3)
+    ts = time.time()
+
+    for i in range(10):
+        event = base_event(ts + i, 80 + i)
+        payload = dict(event.get("payload") or {})
+        payload["id"] = f"id-{i}"
+        event["payload"] = payload
+        store.ingest(event)
+
+    incidents = store.list_incidents()
+    assert len(incidents) == 3
+    ids = {inc.incident_id for inc in incidents}
+    assert ids == {f"TEMP_SPIKE|sensor|thermal|core|id-{i}" for i in (7, 8, 9)}

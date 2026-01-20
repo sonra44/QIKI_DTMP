@@ -72,6 +72,21 @@ Result:
 
 - `3 passed` (pytest)
 
+### Bounded buffer (incidents cap) (Docker)
+
+Command:
+
+`docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/operator_console/tests/test_incidents_store.py::test_max_incidents_caps_store_to_latest_by_last_seen`
+
+Result:
+
+- `1 passed` (pytest)
+
+Notes:
+
+- Incident store cap: `OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS` (default: 500).
+- Events table render cap: `OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS` (default: 200).
+
 ## Checklist summary (✅/❌)
 
 - ✅ Preflight: services up + `healthy`
@@ -79,6 +94,8 @@ Result:
 - ✅ Paused/unread is visible in always-visible chrome (keybar) while paused
 - ✅ Unit tests for pause/unread + ack/clear semantics + rowkey normalization pass
 - ✅ ACK/Clear proven via commands (`ack <key>`, `clear`) with evidence in `Output/Вывод`
+- ❌ ACK/Clear via UI hotkeys on selected row (`A` + `X`) is not yet proven with evidence (needs manual focus/selection run)
 - ✅ tmux resize stability: proven via tmux resize at widths 120 and 60
   - Width ~120: standard chrome (sidebar + inspector) remains stable.
   - Width ~60: density becomes `tiny` and chrome reduces (sidebar + inspector hidden), panels reflow without terminal wrap.
+- ✅ Bounded buffer: incidents capped + table render capped (see test above)

@@ -3362,7 +3362,7 @@ class OrionApp(App):
             if initial:
                 config = self._rules_repo.load()
                 self._incident_rules = config
-                self._incident_store = IncidentStore(config)
+                self._incident_store = IncidentStore(config, max_incidents=self._max_event_incidents)
                 self._console_log(
                     f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
                     f"{len(config.rules)}",
@@ -3371,7 +3371,7 @@ class OrionApp(App):
                 return
             result = self._rules_repo.reload(source="file/reload")
             self._incident_rules = result.config
-            self._incident_store = IncidentStore(result.config)
+            self._incident_store = IncidentStore(result.config, max_incidents=self._max_event_incidents)
             self._console_log(
                 f"{I18N.bidi('Incident rules reloaded', 'Правила инцидентов перезагружены')}: "
                 f"{len(result.config.rules)} "
@@ -3653,7 +3653,7 @@ class OrionApp(App):
         except Exception:
             return
         if self._incident_rules is not None:
-            self._incident_store = IncidentStore(self._incident_rules)
+            self._incident_store = IncidentStore(self._incident_rules, max_incidents=self._max_event_incidents)
         self._events_live = True
         self._events_unread_count = 0
         self._selection_by_app.pop("events", None)
@@ -4625,7 +4625,7 @@ class OrionApp(App):
         try:
             result = self._rules_repo.set_rule_enabled(rid, bool(enabled), source="ui/toggle")
             self._incident_rules = result.config
-            self._incident_store = IncidentStore(result.config)
+            self._incident_store = IncidentStore(result.config, max_incidents=self._max_event_incidents)
             ctx = self._selection_by_app.get("rules")
             if ctx is not None and ctx.key == rid:
                 refreshed_rule = None

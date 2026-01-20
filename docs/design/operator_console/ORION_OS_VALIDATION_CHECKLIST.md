@@ -66,16 +66,18 @@
 - ✅ While paused: — unread видно в always-visible chrome (keybar), `R` очищает unread
   - `Unread/Непрочитано` increases on new incidents (new/updated incident keys).
   - `R` marks read and clears unread counter.
-- ✅ Incident actions: — `A`/`ack` подтверждает выбранный инцидент; `X`/`clear` удаляет подтверждённые (cleared >0 в Output при наличии acked+cleared)
+- ❌ Incident actions (UI): — нужно ручное подтверждение именно через UI-хоткеи
   - Select a row (mouse or `↑/↓`).
-  - `A` acknowledges selected incident.
-  - `X` clears acknowledged incidents.
+  - `A` acknowledges selected incident. (не подтверждено в этом прогоне; команды `ack <key>` работают)
+  - `X` clears acknowledged incidents. (команда `clear` работает; хоткей `X`/`x` нужно подтвердить вручную в UI)
   - `R` marks events read when paused and clears unread counter.
   - (Dev check) Unit tests cover pause+unread and X-clear semantics:
     - `docker compose -f docker-compose.phase1.yml exec qiki-dev pytest -q src/qiki/services/operator_console/tests/test_events_pause_unread.py src/qiki/services/operator_console/tests/test_events_ack_clear.py`
-- ❌ Bounded buffer: — не проверено (нет инцидентов/нагрузки)
-  - incidents count does not grow unbounded (caps apply).
-  - table does not attempt to render thousands of rows (render cap applies).
+- ✅ Bounded buffer: — подтверждено капами + тестом
+  - incidents store is capped by `OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS` (default: 500).
+  - events table render is capped by `OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS` (default: 200).
+  - (Dev check) Incident store cap is covered by:
+    - `docker compose -f docker-compose.phase1.yml exec qiki-dev pytest -q src/qiki/services/operator_console/tests/test_incidents_store.py::test_max_incidents_caps_store_to_latest_by_last_seen`
 
 ---
 
