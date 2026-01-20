@@ -54,8 +54,10 @@ Observed (via `tmux capture-pane`):
 
 #### Clear (x)
 
-- `x` produced `Cleared acknowledged incidents/Очищено подтверж инцидентов: 0`
-- ACK action could not be confirmed via tmux key injection in this run (needs manual focus/selection verification).
+After forcing a deterministic incident (`RADAR_SIGNAL_LOSS`) via NATS publish to `qiki.events.v1.radar.ppi.signal`:
+
+- `A` produced `Acknowledged/Подтверждено: RADAR_SIGNAL_LOSS|radar|sensor|ppi`
+- `x` produced `Cleared acknowledged incidents/Очищено подтвержденных инцидентов: 1`
 
 #### Ack + clear via commands (deterministic, no focus dependency)
 
@@ -94,7 +96,7 @@ Notes:
 - ✅ Paused/unread is visible in always-visible chrome (keybar) while paused
 - ✅ Unit tests for pause/unread + ack/clear semantics + rowkey normalization pass
 - ✅ ACK/Clear proven via commands (`ack <key>`, `clear`) with evidence in `Output/Вывод`
-- ❌ ACK/Clear via UI hotkeys on selected row (`A` + `X`) is not yet proven with evidence (needs manual focus/selection run)
+- ✅ ACK/Clear via UI hotkeys on selected row (`A` + `X`) is proven (see evidence above)
 - ✅ tmux resize stability: proven via tmux resize at widths 120 and 60
   - Width ~120: standard chrome (sidebar + inspector) remains stable.
   - Width ~60: density becomes `tiny` and chrome reduces (sidebar + inspector hidden), panels reflow without terminal wrap.

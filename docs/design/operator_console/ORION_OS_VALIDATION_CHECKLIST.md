@@ -66,10 +66,10 @@
 - ✅ While paused: — unread видно в always-visible chrome (keybar), `R` очищает unread
   - `Unread/Непрочитано` increases on new incidents (new/updated incident keys).
   - `R` marks read and clears unread counter.
-- ❌ Incident actions (UI): — нужно ручное подтверждение именно через UI-хоткеи
+- ✅ Incident actions (UI): — подтверждено через UI-хоткеи на выбранной строке
   - Select a row (mouse or `↑/↓`).
-  - `A` acknowledges selected incident. (не подтверждено в этом прогоне; команды `ack <key>` работают)
-  - `X` clears acknowledged incidents. (команда `clear` работает; хоткей `X`/`x` нужно подтвердить вручную в UI)
+  - `A` acknowledges selected incident.
+  - `X` clears acknowledged incidents.
   - `R` marks events read when paused and clears unread counter.
   - (Dev check) Unit tests cover pause+unread and X-clear semantics:
     - `docker compose -f docker-compose.phase1.yml exec qiki-dev pytest -q src/qiki/services/operator_console/tests/test_events_pause_unread.py src/qiki/services/operator_console/tests/test_events_ack_clear.py`
