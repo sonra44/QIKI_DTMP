@@ -1,0 +1,33 @@
+{
+  "$version": 2,
+  "context": {
+    "fileName": "QWEN_QIKI_DTMP.md",
+    "includeDirectories": [
+      "/home/sonra44/MEMORI"
+    ],
+    "loadFromIncludeDirectories": true,
+    "fileFiltering": {
+      "respectGitIgnore": true,
+      "respectQwenIgnore": true,
+      "enableRecursiveFileSearch": true
+    }
+  },
+  "tools": {
+    "approvalMode": "default"
+  },
+  "mcpServers": {
+    "serena": {
+      "command": "/home/sonra44/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--transport",
+        "stdio",
+        "--project",
+        "/home/sonra44/QIKI_DTMP"
+      ]
+    }
+  }
+}
