@@ -27,7 +27,13 @@ If MCP servers are configured, you may use them. If none are configured (`qwen m
 
 Current project setup:
 - Serena MCP is configured and may be used for code navigation/search.
+- GitHub MCP is configured (read-only usage preferred) to read PRs/review threads (e.g., CodeRabbit comments).
 - Sovereign Memory MCP is **not** configured here; use `/home/sonra44/MEMORI` files as the readable “memory surface”.
+
+GitHub MCP auth:
+- Do not store tokens in repo, memory, or chat.
+- The token is provided via environment variable `GITHUB_PERSONAL_ACCESS_TOKEN`.
+- The operator must set the env var before running Qwen (it will be inherited by the MCP process).
 
 ## What to do well
 

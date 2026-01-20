@@ -28,6 +28,13 @@
         "--project",
         "/home/sonra44/QIKI_DTMP"
       ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
     }
   }
 }
