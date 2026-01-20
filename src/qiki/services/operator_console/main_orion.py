@@ -798,7 +798,7 @@ class OrionSidebar(Static):
                     fit("Ctrl+C выход", usable),
                 ]
             return [
-                fit(f"{I18N.bidi('Tab', 'Табуляция')} {I18N.bidi('Focus', 'Фокус')}", usable),
+                fit(f"{I18N.bidi('Tab', 'Таб')} {I18N.bidi('Focus', 'Фокус')}", usable),
                 fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('Command', 'Команда')}", usable),
                 fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('Quit', 'Выход')}", usable),
             ]
@@ -1018,7 +1018,7 @@ class OrionApp(App):
 
     BINDINGS = [
         *(Binding(app.hotkey, f"show_screen('{app.screen}')", app.title) for app in ORION_APPS),
-        Binding("tab", "cycle_focus", I18N.bidi("Tab focus", "Табуляция фокус")),
+        Binding("tab", "cycle_focus", I18N.bidi("Tab focus", "Таб фокус")),
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
         Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
         Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
@@ -1241,7 +1241,7 @@ class OrionApp(App):
         level = cls._normalize_level(raw)
         return {
             "debug": I18N.bidi("debug", "отладка"),
-            "info": I18N.bidi("info", "информация"),
+            "info": I18N.bidi("info", "инфо"),
             "warn": I18N.bidi("warning", "предупреждение"),
             "error": I18N.bidi("error", "ошибка"),
             "critical": I18N.bidi("critical", "критично"),
