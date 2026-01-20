@@ -16,11 +16,12 @@ class SimHealthResult:
 
 def check_qsim_health(*, host: str, port: int, timeout_s: float) -> SimHealthResult:
     address = f"{host}:{int(port)}"
+    channel = grpc.insecure_channel(address)
     try:
-        channel = grpc.insecure_channel(address)
         stub = QSimAPIServiceStub(channel)
         resp = stub.HealthCheck(HealthCheckRequest(), timeout=float(timeout_s))
         return SimHealthResult(ok=True, message=str(getattr(resp, "message", "") or "ok"))
     except Exception as e:
         return SimHealthResult(ok=False, message=str(e))
-
+    finally:
+        channel.close()
