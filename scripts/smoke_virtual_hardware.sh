@@ -29,7 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "🐳 Bringing up stack (phase1 + operator overlay)..."
-${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build nats q-sim-service q-bios-service operator-console
+${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build nats q-sim-service q-bios-service operator-console qiki-dev
 
 echo "⏱  Waiting for health (max ~40s)..."
 for i in $(seq 1 40); do
