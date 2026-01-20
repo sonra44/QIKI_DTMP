@@ -24,6 +24,24 @@
 
 ---
 
+## 1.5) Screens quick map (for validation)
+
+- `System/Система` (F1)
+- `Radar/Радар` (F2) — non-goal; stability only
+- `Events/События` (F3)
+- `Console/Консоль` (F4)
+- `Summary/Сводка` (F5)
+- `Power systems/Система питания` (F6)
+- `Diagnostics/Диагностика` (F7)
+- `Mission control/Управление миссией` (F8)
+- `QIKI` (F9)
+- `Sensors/Сенсоры` (Ctrl+N)
+- `Propulsion/Двигатели` (Ctrl+P)
+- `Thermal/Тепло` (Ctrl+T)
+- `Rules/Правила` (Ctrl+R)
+
+---
+
 ## 2) Input/Output dock (calm operator loop)
 
 - ✅ `command/команда>` input shows typed text (visible color), does not overflow outside the input border. — длинная строка видна, текст остаётся внутри рамки
