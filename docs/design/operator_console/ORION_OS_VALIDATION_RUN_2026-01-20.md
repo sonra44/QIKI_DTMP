@@ -79,4 +79,6 @@ Result:
 - ✅ Paused/unread is visible in always-visible chrome (keybar) while paused
 - ✅ Unit tests for pause/unread + ack/clear semantics + rowkey normalization pass
 - ✅ ACK/Clear proven via commands (`ack <key>`, `clear`) with evidence in `Output/Вывод`
-- ⚠️ tmux resize stability not fully proven by captures (needs manual run at target sizes, see checklist)
+- ✅ tmux resize stability: proven via tmux resize at widths 120 and 60
+  - Width ~120: standard chrome (sidebar + inspector) remains stable.
+  - Width ~60: density becomes `tiny` and chrome reduces (sidebar + inspector hidden), panels reflow without terminal wrap.

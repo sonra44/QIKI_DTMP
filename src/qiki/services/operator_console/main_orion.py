@@ -3222,8 +3222,10 @@ class OrionApp(App):
         else:
             self._console_log(I18N.bidi("Boot aborted", "Загрузка прервана"), level="warning")
 
-    def on_resize(self) -> None:
-        self._apply_responsive_chrome()
+    def on_resize(self, event: events.Resize) -> None:
+        # Apply after refresh so Textual has the updated terminal size; otherwise we may
+        # compute density from stale dimensions under tmux/docker attach.
+        self.call_after_refresh(self._apply_responsive_chrome)
 
     def action_toggle_inspector(self) -> None:
         # None -> auto (depending on density), otherwise hard override.

@@ -96,7 +96,7 @@
 
 ## 5) Chrome stability under tmux resizing
 
-- ❌ Resize terminal narrower/wider: — tmux split 60/120: строки в хедере/таблице переносятся (не `…`), структура «плывёт»
+- ✅ Resize terminal narrower/wider: — tmux split 60/120: вместо wrap применяется reflow (tiny hides sidebar/inspector) и строки не “ломают” chrome
   - sidebar/inspector/keybar do not break layout.
   - long lines truncate with `…` instead of wrapping into chaos.
 - ✅ Bottom bar does not crush content on low terminal height. — tmux высота 8/12: панели видимы, наложения не заметил
