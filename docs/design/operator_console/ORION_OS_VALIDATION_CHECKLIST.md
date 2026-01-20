@@ -52,6 +52,7 @@
   - Select a row (mouse or `↑/↓`).
   - `A` acknowledges selected incident.
   - `X` clears acknowledged incidents.
+  - `R` marks events read when paused and clears unread counter.
   - (Dev check) Unit tests cover pause+unread and X-clear semantics:
     - `docker compose -f docker-compose.phase1.yml exec qiki-dev pytest -q src/qiki/services/operator_console/tests/test_events_pause_unread.py src/qiki/services/operator_console/tests/test_events_ack_clear.py`
 - ❌ Bounded buffer: — не проверено (нет инцидентов/нагрузки)
@@ -62,11 +63,11 @@
 
 ## 4) Inspector/Инспектор contract (predictable details)
 
-- ✅ Inspector structure is always: — на Events видны `Summary/Fields/Raw data (JSON)/Actions`
+- ✅ Inspector structure is always: — на Events видны `Summary/Fields/Actions/Raw data (JSON)`
   1) `Summary/Сводка`
   2) `Fields/Поля`
-  3) `Raw data (JSON)/Сырые данные (JSON)`
-  4) `Actions/Действия`
+  3) `Actions/Действия`
+  4) `Raw data (JSON)/Сырые данные (JSON)`
 - ✅ Selection-driven: — выбор строки меняет инспектор детерминированно (Events/Sensors)
   - selecting a row updates inspector deterministically.
 - no selection shows `N/A/—`.
