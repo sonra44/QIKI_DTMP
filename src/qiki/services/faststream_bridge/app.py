@@ -1,5 +1,7 @@
 import logging
 import os
+import time
+from uuid import uuid4
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
 
@@ -8,8 +10,11 @@ from faststream.nats import NatsBroker
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
 from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 from qiki.shared.models.radar import RadarFrameModel
+from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.nats_subjects import (
     COMMANDS_CONTROL,
+    QIKI_INTENTS,
+    QIKI_RESPONSES,
     RADAR_FRAMES,
     RADAR_FRAMES_DURABLE as RADAR_FRAMES_DURABLE_DEFAULT,
     RADAR_STREAM_NAME,
@@ -81,6 +86,55 @@ async def handle_control_command(
 
     logger.info(f"Sending response: {response}")
     return response
+
+
+@broker.subscriber(QIKI_INTENTS)
+@broker.publisher(QIKI_RESPONSES)
+async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
+    """MVP: accept operator intent and return a deterministic stub proposal (no LLM, no actions)."""
+    payload = msg if isinstance(msg, dict) else {}
+    try:
+        req = QikiChatRequestV1.model_validate(payload)
+    except Exception:
+        # Legacy/fallback: accept {text: "..."} and synthesize a request id.
+        text = payload.get("text") if isinstance(payload.get("text"), str) else str(payload)
+        req = QikiChatRequestV1(
+            request_id=uuid4(),
+            ts_epoch_ms=int(time.time() * 1000),
+            input={"text": text, "lang_hint": "auto"},
+        )
+
+    logger.info("QIKI intent received: request_id=%s text=%r", req.request_id, req.input.text)
+
+    resp = QikiChatResponseV1(
+        request_id=req.request_id,
+        ok=True,
+        mode=req.mode_hint,
+        reply={
+            "title": {"en": "QIKI proposal stub", "ru": "Заглушка предложений QIKI"},
+            "body": {
+                "en": "MVP: no actions will be executed automatically. Review proposals in ORION.",
+                "ru": "MVP: действия не выполняются автоматически. Просмотрите предложения в ORION.",
+            },
+        },
+        proposals=[
+            {
+                "proposal_id": str(uuid4()),
+                "title": {"en": "Next step: verify telemetry freshness", "ru": "Следующий шаг: проверить свежесть телеметрии"},
+                "justification": {
+                    "en": "Based on current UI context; this is a deterministic placeholder.",
+                    "ru": "На основе текущего UI контекста; это детерминированная заглушка.",
+                },
+                "confidence": 0.5,
+                "priority": 50,
+                "suggested_questions": [
+                    {"en": "What is the current mode (FACTORY/MISSION)?", "ru": "Какой сейчас режим (ЗАВОД/МИССИЯ)?"},
+                ],
+                "proposed_actions": [],
+            }
+        ],
+    )
+    return resp.model_dump(mode="json")
 
 
 @app.on_startup

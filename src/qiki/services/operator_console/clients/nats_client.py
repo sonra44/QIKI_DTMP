@@ -24,6 +24,7 @@ from qiki.shared.nats_subjects import (
     RADAR_TRACKS_SR,
     SYSTEM_TELEMETRY,
     RESPONSES_CONTROL,
+    QIKI_RESPONSES,
 )
 
 
@@ -296,6 +297,37 @@ class NATSClient:
             print(f"✅ Subscribed to CONTROL_RESPONSES: {subject}")
         except Exception as e:
             print(f"❌ Failed to subscribe to CONTROL_RESPONSES: {e}")
+            raise
+
+    async def subscribe_qiki_responses(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe to QIKI responses (intent reply/proposals)."""
+        if not self.nc:
+            raise RuntimeError("Not connected to NATS")
+
+        async def message_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                await callback(
+                    {
+                        "stream": "QIKI_RESPONSES",
+                        "timestamp": datetime.now().isoformat(),
+                        "subject": getattr(msg, "subject", None),
+                        "data": data,
+                    }
+                )
+            except Exception as e:
+                print(f"Error processing QIKI_RESPONSES message: {e}")
+
+        subject = os.getenv("QIKI_RESPONSES_SUBJECT", QIKI_RESPONSES)
+        try:
+            sub = await self.nc.subscribe(subject, cb=message_handler)
+            self.subscriptions["QIKI_RESPONSES"] = sub
+            print(f"✅ Subscribed to QIKI_RESPONSES: {subject}")
+        except Exception as e:
+            print(f"❌ Failed to subscribe to QIKI_RESPONSES: {e}")
             raise
             
     async def get_jetstream_info(self) -> Dict[str, Any]:

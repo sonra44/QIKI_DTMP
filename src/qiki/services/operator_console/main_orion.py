@@ -9,6 +9,7 @@ import math
 import os
 import time
 from typing import Any, Optional
+from uuid import uuid4
 
 from pydantic import ValidationError
 from rich.table import Table
@@ -25,6 +26,7 @@ from qiki.services.operator_console.core.incident_rules import FileRulesReposito
 from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
 
@@ -3871,6 +3873,12 @@ class OrionApp(App):
                 f"⚠️ {I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
             )
 
+        try:
+            await self.nats_client.subscribe_qiki_responses(self.handle_qiki_response)
+            self._log_msg(f"🤖 {I18N.bidi('Subscribed', 'Подписка')}: QIKI")
+        except Exception as e:
+            self._log_msg(f"⚠️ {I18N.bidi('QIKI subscribe failed', 'Подписка QIKI не удалась')}: {e}")
+
     def _refresh_header(self) -> None:
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -4620,6 +4628,32 @@ class OrionApp(App):
             f"↩️ {I18N.bidi('Control response', 'Ответ управления')}: "
             f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()
         )
+
+    async def handle_qiki_response(self, data: dict) -> None:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            resp = QikiChatResponseV1.model_validate(payload)
+        except Exception:
+            # Best-effort: still surface something in the console.
+            kind = payload.get("kind") or payload.get("type") or "response"
+            self._console_log(f"🤖 QIKI: {kind} {payload}".strip())
+            return
+
+        title = resp.reply.title.en if resp.reply else "QIKI"
+        ru_title = resp.reply.title.ru if resp.reply else "QIKI"
+        proposals = len(resp.proposals or [])
+        ok = I18N.yes_no(resp.ok)
+        self._console_log(
+            f"🤖 QIKI: {I18N.bidi(title, ru_title)} "
+            f"({I18N.bidi('ok', 'ок')}={ok}, {I18N.bidi('proposals', 'предложений')}={proposals}, "
+            f"{I18N.bidi('request', 'запрос')}={resp.request_id})"
+        )
+        for idx, p in enumerate(resp.proposals[:3], start=1):
+            self._console_log(f"  {idx}) {I18N.bidi(p.title.en, p.title.ru)}")
+        if proposals > 3:
+            self._console_log(f"  … {I18N.bidi('more proposals', 'ещё предложений')}: {proposals - 3}")
 
     def action_show_screen(self, screen: str) -> None:
         if screen not in {app.screen for app in ORION_APPS}:
@@ -5637,21 +5671,38 @@ class OrionApp(App):
         if not self.nats_client:
             self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
+        req = self._build_qiki_chat_request(text)
         try:
             await self.nats_client.publish_command(
                 QIKI_INTENTS,
-                {
-                    "text": text,
-                    "source": "operator-console",
-                    "ts_epoch": time.time(),
-                },
+                req.model_dump(mode="json"),
             )
-            self._console_log(f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS}", level="info")
+            self._console_log(
+                f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
+                f"({I18N.bidi('request', 'запрос')}={req.request_id})",
+                level="info",
+            )
         except Exception as e:
             self._console_log(
                 f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
                 level="error",
             )
+
+    def _build_qiki_chat_request(self, text: str) -> QikiChatRequestV1:
+        screen_label = next((app.title for app in ORION_APPS if app.screen == self.active_screen), "System/Система")
+        sel = self._selection_by_app.get(self.active_screen)
+        kind = "none"
+        sel_id = None
+        if sel is not None:
+            if sel.kind in {"event", "incident", "track", "snapshot", "none"}:
+                kind = sel.kind
+            sel_id = sel.key
+        return QikiChatRequestV1(
+            request_id=uuid4(),
+            ts_epoch_ms=int(time.time() * 1000),
+            input={"text": text, "lang_hint": "auto"},
+            ui_context={"screen": screen_label, "selection": {"kind": kind, "id": sel_id}},
+        )
 
     def _update_command_placeholder(self) -> None:
         try:
