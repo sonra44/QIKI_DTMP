@@ -3833,12 +3833,12 @@ class OrionApp(App):
         try:
             await self.nats_client.connect()
             self.nats_connected = True
-            self._log_msg(f"✅ {I18N.bidi('NATS connected', 'NATS подключен')}")
+            self._log_msg(f"{I18N.bidi('NATS connected', 'NATS подключен')}")
             self._update_system_snapshot()
         except Exception as e:
             self.nats_connected = False
             self._boot_nats_error = str(e)
-            self._log_msg(f"❌ {I18N.bidi('NATS connect failed', 'NATS не подключился')}: {e}")
+            self._log_msg(f"{I18N.bidi('NATS connect failed', 'NATS не подключился')}: {e}")
             self._update_system_snapshot()
             return
         finally:
@@ -3847,37 +3847,37 @@ class OrionApp(App):
         # Subscriptions are best-effort; missing streams shouldn't crash UI.
         try:
             await self.nats_client.subscribe_system_telemetry(self.handle_telemetry_data)
-            self._log_msg(f"📈 {I18N.bidi('Subscribed', 'Подписка')}: qiki.telemetry")
+            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: qiki.telemetry")
         except Exception as e:
-            self._log_msg(f"⚠️ {I18N.bidi('Telemetry subscribe failed', 'Подписка телеметрии не удалась')}: {e}")
+            self._log_msg(f"{I18N.bidi('Telemetry subscribe failed', 'Подписка телеметрии не удалась')}: {e}")
 
         try:
             await self.nats_client.subscribe_tracks(self.handle_track_data)
-            self._log_msg(f"📡 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('radar tracks', 'радар треки')}")
+            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('radar tracks', 'радар треки')}")
         except Exception as e:
             self._log_msg(
-                f"⚠️ {I18N.bidi('Radar tracks subscribe failed', 'Подписка треков радара не удалась')}: {e}"
+                f"{I18N.bidi('Radar tracks subscribe failed', 'Подписка треков радара не удалась')}: {e}"
             )
 
         try:
             await self.nats_client.subscribe_events(self.handle_event_data)
-            self._log_msg(f"🧾 {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('events wildcard', 'события *')}")
+            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('events wildcard', 'события *')}")
         except Exception as e:
-            self._log_msg(f"⚠️ {I18N.bidi('Events subscribe failed', 'Подписка событий не удалась')}: {e}")
+            self._log_msg(f"{I18N.bidi('Events subscribe failed', 'Подписка событий не удалась')}: {e}")
 
         try:
             await self.nats_client.subscribe_control_responses(self.handle_control_response)
-            self._log_msg(f"↩️ {I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('control responses', 'ответы управления')}")
+            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('control responses', 'ответы управления')}")
         except Exception as e:
             self._log_msg(
-                f"⚠️ {I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
+                f"{I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
             )
 
         try:
             await self.nats_client.subscribe_qiki_responses(self.handle_qiki_response)
-            self._log_msg(f"🤖 {I18N.bidi('Subscribed', 'Подписка')}: QIKI")
+            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: QIKI")
         except Exception as e:
-            self._log_msg(f"⚠️ {I18N.bidi('QIKI subscribe failed', 'Подписка QIKI не удалась')}: {e}")
+            self._log_msg(f"{I18N.bidi('QIKI subscribe failed', 'Подписка QIKI не удалась')}: {e}")
 
     def _refresh_header(self) -> None:
         telemetry_env = self._snapshots.get_last("telemetry")
@@ -4191,7 +4191,7 @@ class OrionApp(App):
         try:
             normalized = TelemetrySnapshotModel.normalize_payload(payload)
         except ValidationError as e:
-            self._log_msg(f"⚠️ {I18N.bidi('Bad telemetry payload', 'Плохая телеметрия')}: {e}")
+            self._log_msg(f"{I18N.bidi('Bad telemetry payload', 'Плохая телеметрия')}: {e}")
             return
 
         ts_unix_ms = normalized.get("ts_unix_ms")
@@ -4250,7 +4250,7 @@ class OrionApp(App):
         self._render_radar_ppi()
         if self.active_screen == "radar":
             self._refresh_inspector()
-        self._log_msg(f"🎯 {I18N.bidi('Track update', 'Обновление трека')} ({updated}): {track_id}")
+        self._log_msg(f"{I18N.bidi('Track update', 'Обновление трека')} ({updated}): {track_id}")
 
     async def handle_event_data(self, data: dict) -> None:
         if isinstance(data, dict):
@@ -4625,7 +4625,7 @@ class OrionApp(App):
         if isinstance(inner_payload, dict):
             message = inner_payload.get("status") or inner_payload.get("message")
         self._console_log(
-            f"↩️ {I18N.bidi('Control response', 'Ответ управления')}: "
+            f"{I18N.bidi('Control response', 'Ответ управления')}: "
             f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()
         )
 
@@ -4638,7 +4638,7 @@ class OrionApp(App):
         except Exception:
             # Best-effort: still surface something in the console.
             kind = payload.get("kind") or payload.get("type") or "response"
-            self._console_log(f"🤖 QIKI: {kind} {payload}".strip())
+            self._console_log(f"QIKI: {kind} {payload}".strip())
             return
 
         title = resp.reply.title.en if resp.reply else "QIKI"
@@ -4646,7 +4646,7 @@ class OrionApp(App):
         proposals = len(resp.proposals or [])
         ok = I18N.yes_no(resp.ok)
         self._console_log(
-            f"🤖 QIKI: {I18N.bidi(title, ru_title)} "
+            f"QIKI: {I18N.bidi(title, ru_title)} "
             f"({I18N.bidi('ok', 'ок')}={ok}, {I18N.bidi('proposals', 'предложений')}={proposals}, "
             f"{I18N.bidi('request', 'запрос')}={resp.request_id})"
         )
@@ -5669,7 +5669,7 @@ class OrionApp(App):
             return
         self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
         if not self.nats_client:
-            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
         req = self._build_qiki_chat_request(text)
         try:
@@ -5678,13 +5678,13 @@ class OrionApp(App):
                 req.model_dump(mode="json"),
             )
             self._console_log(
-                f"📤 {I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
+                f"{I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
                 f"({I18N.bidi('request', 'запрос')}={req.request_id})",
                 level="info",
             )
         except Exception as e:
             self._console_log(
-                f"❌ {I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
+                f"{I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",
                 level="error",
             )
 
@@ -5947,7 +5947,7 @@ class OrionApp(App):
         self, cmd_name: str, *, parameters: Optional[dict[str, Any]] = None
     ) -> None:
         if not self.nats_client:
-            self._console_log(f"❌ {I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
 
         destination = "q_sim_service" if cmd_name.startswith(("sim.", "power.")) else "faststream_bridge"
@@ -5962,10 +5962,10 @@ class OrionApp(App):
         )
         try:
             await self.nats_client.publish_command(COMMANDS_CONTROL, cmd.model_dump(mode="json"))
-            self._console_log(f"📤 {I18N.bidi('Published', 'Отправлено')}: {cmd_name}", level="info")
+            self._console_log(f"{I18N.bidi('Published', 'Отправлено')}: {cmd_name}", level="info")
         except Exception as e:
             self._console_log(
-                f"❌ {I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}",
+                f"{I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}",
                 level="error",
             )
 
