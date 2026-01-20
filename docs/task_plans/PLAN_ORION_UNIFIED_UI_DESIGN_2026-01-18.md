@@ -103,7 +103,7 @@
 
 4) Валидация по чеклисту ORION
    - `docs/design/operator_console/ORION_OS_VALIDATION_CHECKLIST.md`
-   - зафиксировать ✅/❌ для ввод/resize/hotkeys/overflow.
+   - зафиксировать ✅/❌ для ввода/resize/hotkeys/overflow.
 
 ## Done today (для ориентира)
 

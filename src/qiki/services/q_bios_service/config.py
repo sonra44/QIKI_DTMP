@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+def _parse_bool_env(name: str, default: str) -> bool:
+    raw = os.getenv(name)
+    value = (raw if raw is not None else default).strip().lower()
+    return value not in {"", "0", "false", "no", "off"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,8 +26,7 @@ class BiosConfig:
 
     nats_url: str = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
     nats_subject: str = os.getenv("NATS_EVENT_SUBJECT", "qiki.events.v1.bios_status")
-    publish_enabled: bool = os.getenv("BIOS_PUBLISH_ENABLED", "1").strip() not in {"0", "false", "False"}
+    publish_enabled: bool = field(default_factory=lambda: _parse_bool_env("BIOS_PUBLISH_ENABLED", "1"))
     publish_interval_s: float = float(os.getenv("BIOS_PUBLISH_INTERVAL_SEC", "5.0"))
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
-

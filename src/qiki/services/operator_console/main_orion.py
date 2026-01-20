@@ -20,6 +20,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, RichLog, Static
+from textual import events
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
 from qiki.services.operator_console.core.incident_rules import FileRulesRepository

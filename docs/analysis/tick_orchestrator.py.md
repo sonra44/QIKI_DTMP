@@ -112,7 +112,7 @@ class TickOrchestrator:
         if not self.use_state_store or not self.state_store:
             # Fallback на синхронный метод с предупреждением
             logger.warning("StateStore not available or not enabled, falling back to sync mode")
-            self.run_tick(data_provider)
+            await asyncio.to_thread(self.run_tick, data_provider)
             return
 
         start_time = time.time()
@@ -171,10 +171,9 @@ class TickOrchestrator:
         """Выполнение одной фазы с измерением времени"""
         start_time = time.time()
         try:
-            if asyncio.iscoroutinefunction(phase_func):
-                await phase_func()
-            else:
-                phase_func()
+            result = phase_func()
+            if asyncio.iscoroutine(result):
+                await result
         except Exception as e:
             logger.error(f"Phase '{phase_name}' failed: {e}")
             raise

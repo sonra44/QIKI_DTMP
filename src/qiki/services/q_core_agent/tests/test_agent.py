@@ -14,7 +14,7 @@ from qiki.services.q_core_agent.core.tick_orchestrator import TickOrchestrator
 from qiki.services.q_core_agent.core.rule_engine import RuleEngine
 from qiki.services.q_core_agent.core.neural_engine import NeuralEngine
 from generated.bios_status_pb2 import BiosStatusReport
-from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
+from generated.fsm_state_pb2 import FsmStateSnapshot
 from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
 from generated.proposal_pb2 import Proposal
 from qiki.shared.config_models import QCoreAgentConfig

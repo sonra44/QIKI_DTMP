@@ -4,7 +4,8 @@ import json
 import os
 import threading
 import time
-from typing import Any, Optional
+from typing import Optional
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from qiki.services.q_core_agent.core.agent_logger import logger
@@ -15,11 +16,31 @@ def _unavailable_status() -> BiosStatus:
     return BiosStatus(bios_version="unavailable", firmware_version="unavailable", post_results=[])
 
 
+_DEFAULT_BIOS_BASE_URL = "http://q-bios-service:8080"
+
+
+def _validated_bios_base_url() -> str:
+    raw = os.getenv("BIOS_URL")
+    base = (raw if raw is not None else _DEFAULT_BIOS_BASE_URL).strip()
+    if not base:
+        base = _DEFAULT_BIOS_BASE_URL
+
+    base = base.rstrip("/")
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"BIOS_URL scheme must be http or https, got: {parsed.scheme!r}")
+    if not parsed.netloc:
+        raise ValueError("BIOS_URL must include host[:port]")
+
+    return base
+
+
 def _fetch_bios_status_blocking() -> BiosStatus:
-    base = (os.getenv("BIOS_URL", "http://q-bios-service:8080") or "").rstrip("/")
-    url = f"{base}/bios/status"
+    url = "<unavailable>"
     timeout_s = float(os.getenv("BIOS_HTTP_TIMEOUT_SEC", "2.0"))
     try:
+        base = _validated_bios_base_url()
+        url = f"{base}/bios/status"
         with urlopen(url, timeout=timeout_s) as resp:
             raw = resp.read()
         payload = json.loads(raw.decode("utf-8"))

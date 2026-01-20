@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: RUF002
+
 """
 QIKI Operator Console - LEGACY / ARCHIVE ENTRYPOINT.
 

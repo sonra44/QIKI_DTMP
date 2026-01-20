@@ -4,8 +4,7 @@ from typing import List
 from qiki.services.q_core_agent.core.interfaces import IDataProvider
 from qiki.services.q_core_agent.core.agent_logger import logger
 
-from datetime import datetime, UTC
-from qiki.shared.models.core import BiosStatus, DeviceStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatusEnum, SensorTypeEnum, FsmStateEnum
+from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, SensorTypeEnum, FsmStateEnum
 from qiki.shared.converters.protobuf_pydantic import (
     pydantic_actuator_command_to_proto_actuator_command,
     proto_sensor_reading_to_pydantic_sensor_data,

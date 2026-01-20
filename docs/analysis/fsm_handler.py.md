@@ -5,7 +5,7 @@
 - **Итог**: Обзор обработчика конечного автомата агента
 
 ## Сбор контекста
-- **Исходник**: /home/sonra44/QIKI_DTMP/services/q_core_agent/core/fsm_handler.py
+- **Исходник**: src/qiki/services/q_core_agent/core/fsm_handler.py
 - **Связанные файлы**:
   - services/q_core_agent/core/interfaces.py (интерфейс IFSMHandler)
   - services/q_core_agent/core/agent.py (основной агент и контекст)
@@ -18,7 +18,7 @@
 **[Факт]**: Файл реализует обработчик конечного автомата агента с поддержкой как новой архитектуры StateStore, так и legacy protobuf режима.
 
 ## Локализация артефакта
-- **Точный путь**: /home/sonra44/QIKI_DTMP/services/q_core_agent/core/fsm_handler.py
+- **Точный путь**: src/qiki/services/q_core_agent/core/fsm_handler.py
 - **Окружение**: Python 3.x, typing, asyncio
 
 ## Фактический разбор

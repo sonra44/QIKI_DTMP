@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Dict, Iterable, Sequence
+from typing import Any, Dict, Sequence
 
 import math
 
@@ -1122,8 +1122,12 @@ class WorldModel:
                 for i in combo:
                     f = forces[i]
                     tau = torques[i]
-                    net_f[0] += f[0]; net_f[1] += f[1]; net_f[2] += f[2]
-                    net_tau[0] += tau[0]; net_tau[1] += tau[1]; net_tau[2] += tau[2]
+                    net_f[0] += f[0]
+                    net_f[1] += f[1]
+                    net_f[2] += f[2]
+                    net_tau[0] += tau[0]
+                    net_tau[1] += tau[1]
+                    net_tau[2] += tau[2]
                 candidates.append((list(combo), net_f, net_tau))
 
         for axis_name, axis_vec in axes.items():
@@ -1211,8 +1215,12 @@ class WorldModel:
             duty = duty_by_idx[idx]
             f = [float(d[0]) * float(t.f_max_newton) * duty, float(d[1]) * float(t.f_max_newton) * duty, float(d[2]) * float(t.f_max_newton) * duty]
             tau = self._cross(pos, f)
-            net_f_avg[0] += f[0]; net_f_avg[1] += f[1]; net_f_avg[2] += f[2]
-            net_tau_avg[0] += tau[0]; net_tau_avg[1] += tau[1]; net_tau_avg[2] += tau[2]
+            net_f_avg[0] += f[0]
+            net_f_avg[1] += f[1]
+            net_f_avg[2] += f[2]
+            net_tau_avg[0] += tau[0]
+            net_tau_avg[1] += tau[1]
+            net_tau_avg[2] += tau[2]
             f_total_mag += float(self._norm(f))
 
         # Propellant consumption (MVP): proportional to total thrust magnitude.
@@ -1262,7 +1270,7 @@ class WorldModel:
 
         # Decrement remaining duration after applying this tick.
         if self._rcs_cmd_time_left_s > 0.0:
-            self._rcs_cmd_time_left_s = max(0.0, float(self._rcs_cmd_time_left_s) - dt)
+            self._rcs_cmd_time_left_s = max(0.0, float(self._rcs_cmd_time_left_s) - dt_eff)
             if self._rcs_cmd_time_left_s <= 0.0:
                 self._rcs_cmd_pct = 0.0
 

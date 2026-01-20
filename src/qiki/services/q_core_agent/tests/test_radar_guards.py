@@ -18,7 +18,6 @@ from qiki.services.q_core_agent.core.rule_engine import RuleEngine
 from qiki.services.q_core_agent.core.world_model import WorldModel
 from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, FsmState
 from generated.bios_status_pb2 import BiosStatusReport
-from generated.fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum
 from qiki.shared.models.core import ProposalTypeEnum, SensorData, SensorTypeEnum
 from qiki.shared.models.radar import (
     FriendFoeEnum,

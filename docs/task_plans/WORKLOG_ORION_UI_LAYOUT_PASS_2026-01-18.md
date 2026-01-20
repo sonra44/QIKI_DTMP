@@ -21,9 +21,9 @@
 - NATS subjects: документация рекомендует **короткие subjects** и вынос данных в payload; 256 — практический предел.
 
 Ссылки (для контекста команды):
-- https://textual.textualize.io/guide/layout/
-- https://textual.textualize.io/widgets/log/
-- https://docs.nats.io/nats-concepts/subjects
+- <https://textual.textualize.io/guide/layout/>
+- <https://textual.textualize.io/widgets/log/>
+- <https://docs.nats.io/nats-concepts/subjects>
 
 ## Что изменено (код)
 
