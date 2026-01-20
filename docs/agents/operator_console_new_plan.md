@@ -1,5 +1,9 @@
 # План развития QIKI Operator Console TUI
 
+> NOTE (2026-01-20): this document describes an **alternate/legacy** console plan (Warp agent mode + gRPC client + panels).
+> Current ORION “Shell OS” canon for QIKI_DTMP is in `docs/design/operator_console/*` and is NATS/Textual-first.
+> Treat this file as **reference only** unless we explicitly decide (and record an ADR) to revive a gRPC-based operator console track.
+
 Этот план предназначен для агентного режима в Warp и описывает ключевые задачи по дальнейшему развитию новой консоли оператора, расположенной в `src/qiki/services/operator_console`. Консоль уже имеет модульную архитектуру (`clients`, `ui`, `utils`) и реализует основные функции: телеметрию через NATS, чат с агентом, командную панель и вкладки интерфейса. План направлен на завершение интеграции, улучшение дизайна, плавность обновления и обеспечение качества. Все задачи предполагают использование Python 3.12, соблюдение PEP 8, проверку Ruff, оценку Pylint не ниже 8/10, тестирование PyTest с покрытием ≥ 80 и поддержку локализации (русский/английский).
 
 ## 1. Интеграция gRPC‑команд и чата

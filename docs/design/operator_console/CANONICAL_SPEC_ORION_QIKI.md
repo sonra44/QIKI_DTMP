@@ -155,10 +155,10 @@ If `ok=false`, `error` must be present and `reply/proposals` can be empty but st
 
 ## 5) ORION UI behavior (input/output)
 
-### 5.1 Input modes (MVP)
+### 5.1 Input routing (MVP, no mode toggle)
 
-- `OPERATOR SHELL/ОБОЛОЧКА`: local UI commands (help/screen/filter/simulation.*).
-- `QIKI INPUT/ВВОД QIKI`: free text is sent as `qiki.chat.v1` request/reply.
+- Default: `OPERATOR SHELL/ОБОЛОЧКА` — local UI commands (help/screen/filter/simulation.*).
+- QIKI intents: **explicit prefix required** — `q:` or `//` (free text after the prefix is sent as `qiki.chat.v1` request/reply).
 
 ### 5.2 Output placement rules
 
@@ -187,9 +187,10 @@ When an operator selects a QIKI reply/proposal row, inspector must show:
 
 ## 7) Linear implementation order (no branching)
 
-1) ORION: calm console strip + input mode toggle (UI only).
+1) ORION: calm console strip + `Ctrl+E` focus + input routing **без mode toggle**:
+   - shell commands by default (`help`, `screen events`, ...),
+   - QIKI intents only via prefix `q:` or `//`.
 2) QIKI: minimal `qiki.chat.v1` request handler that returns deterministic stub responses (no LLM).
 3) ORION: render QIKI replies + proposal list + inspector view.
 4) QIKI: add `NeuralEngine` (LLM) behind strict schema validation + fallback.
 5) Later (separate spec): approvals + typed actions + sim pause/time control.
-

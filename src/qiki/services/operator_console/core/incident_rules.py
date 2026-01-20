@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator

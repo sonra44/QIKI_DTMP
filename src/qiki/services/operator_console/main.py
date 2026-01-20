@@ -24,7 +24,7 @@ from datetime import datetime
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Static
+from textual.widgets import Button, Input, Static, TabbedContent
 from textual.binding import Binding
 
 from ui.profile_panel import ProfilePanel

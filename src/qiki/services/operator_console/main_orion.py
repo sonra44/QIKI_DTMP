@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -765,10 +766,10 @@ class OrionSidebar(Static):
             live = bool(getattr(orion, "_events_live", True))
             unread = int(getattr(orion, "_events_unread_count", 0) or 0)
             suffix: list[str] = []
-            if not live:
-                suffix.append(I18N.bidi("Paused", "Пауза"))
             if unread > 0:
                 suffix.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
+            if not live:
+                suffix.append(I18N.bidi("Paused", "Пауза"))
             if not suffix:
                 return base
             return f"{base} ({', '.join(suffix)})"
@@ -852,6 +853,15 @@ class OrionKeybar(Static):
         nav_tokens: list[str] = []
         for app in nav_apps:
             label = keybar_label(app)
+            if app.screen == "events" and app.screen == active_screen:
+                live = bool(getattr(orion, "_events_live", True))
+                if not live:
+                    unread = int(getattr(orion, "_events_unread_count", 0) or 0)
+                    prefix: list[str] = []
+                    if unread > 0:
+                        prefix.append(str(unread))
+                    prefix.append(I18N.bidi("Paused", "Пауза"))
+                    label = f"{' '.join(prefix)} {label}"
             if app.screen == active_screen:
                 nav_tokens.append(f"▶{app.hotkey_label} {label}")
             else:
@@ -887,6 +897,39 @@ class OrionKeybar(Static):
 
 class OrionPanel(Static):
     can_focus = True
+
+
+class OrionDataTable(DataTable):
+    def on_mount(self) -> None:
+        # Row-based navigation is required for selection-driven inspector updates.
+        self.cursor_type = "row"
+        self.show_cursor = True
+
+    async def _on_key(self, event) -> None:
+        key = getattr(event, "key", "")
+        char = getattr(event, "character", "")
+        if key in {"tab", "shift+tab", "backtab", "ctrl+i"} or char == "\t":
+            event.stop()
+            try:
+                self.app.action_cycle_focus()
+            except Exception:
+                pass
+            return
+        await super()._on_key(event)
+
+
+class OrionCommandInput(Input):
+    async def _on_key(self, event) -> None:
+        key = getattr(event, "key", "")
+        char = getattr(event, "character", "")
+        if key in {"tab", "shift+tab", "backtab", "ctrl+i"} or char == "\t":
+            event.stop()
+            try:
+                self.app.action_cycle_focus()
+            except Exception:
+                pass
+            return
+        await super()._on_key(event)
 
 
 class OrionInspector(Static):
@@ -1445,10 +1488,8 @@ class OrionApp(App):
             mission_env = self._snapshots.get_last(t)
             if mission_env is not None:
                 break
-        mission_age_s = None
         mission_freshness = None
         if mission_env is not None:
-            mission_age_s = max(0.0, now - float(mission_env.ts_epoch))
             mission_freshness = self._snapshots.freshness(mission_env.type, now_epoch=now)
         mission_status = self._freshness_to_status(mission_freshness)
 
@@ -1553,6 +1594,11 @@ class OrionApp(App):
             try:
                 if getattr(table, "cursor_row", None) != selected_row:
                     table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+            except Exception:
+                pass
+        if self.active_screen == "events" and not isinstance(self.focused, Input):
+            try:
+                self.set_focus(table)
             except Exception:
                 pass
 
@@ -2799,26 +2845,9 @@ class OrionApp(App):
             except Exception:
                 pass
 
-    def _render_events_table(self) -> None:
-        try:
-            table = self.query_one("#events-table", DataTable)
-        except Exception:
-            return
-
-        table.clear()
+    def _events_filtered_sorted(self) -> list[Any]:
         if self._incident_store is None:
-            table.add_row(
-                "—",
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                key="seed",
-            )
-            self._selection_by_app.pop("events", None)
-            return
+            return []
 
         def severity_rank(sev: str) -> int:
             return {"A": 0, "C": 1, "W": 2, "I": 3}.get((sev or "").upper(), 4)
@@ -2843,6 +2872,51 @@ class OrionApp(App):
         self._incident_store.refresh()
         incidents = [inc for inc in self._incident_store.list_incidents() if passes(inc)]
         if not incidents:
+            return []
+        return sorted(
+            incidents,
+            key=lambda inc: (bool(inc.acked), severity_rank(inc.severity), -float(inc.last_seen)),
+        )
+
+    def _move_events_selection(self, direction: int) -> None:
+        incidents_sorted = self._events_filtered_sorted()
+        if not incidents_sorted:
+            return
+        visible = incidents_sorted[: self._max_events_table_rows]
+        if not visible:
+            return
+        current = self._selection_by_app.get("events")
+        current_key = current.key if current is not None else None
+        keys = [inc.incident_id for inc in visible]
+        try:
+            idx = keys.index(current_key) if current_key is not None else 0
+        except ValueError:
+            idx = 0
+        new_idx = max(0, min(len(visible) - 1, idx + int(direction)))
+        selected = visible[new_idx]
+        self._set_selection(
+            SelectionContext(
+                app_id="events",
+                key=selected.incident_id,
+                kind="incident",
+                source=selected.source,
+                created_at_epoch=selected.first_seen,
+                payload=selected,
+                ids=(selected.rule_id, selected.type, selected.subject),
+            )
+        )
+        self._render_events_table()
+        if self.active_screen == "events":
+            self._refresh_inspector()
+
+    def _render_events_table(self) -> None:
+        try:
+            table = self.query_one("#events-table", DataTable)
+        except Exception:
+            return
+
+        table.clear()
+        if self._incident_store is None:
             table.add_row(
                 "—",
                 I18N.NA,
@@ -2856,10 +2930,20 @@ class OrionApp(App):
             self._selection_by_app.pop("events", None)
             return
 
-        incidents_sorted = sorted(
-            incidents,
-            key=lambda inc: (bool(inc.acked), severity_rank(inc.severity), -float(inc.last_seen)),
-        )
+        incidents_sorted = self._events_filtered_sorted()
+        if not incidents_sorted:
+            table.add_row(
+                "—",
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                I18N.NA,
+                key="seed",
+            )
+            self._selection_by_app.pop("events", None)
+            return
         current = self._selection_by_app.get("events")
         selected_key = current.key if current is not None else None
         selected_row: Optional[int] = None
@@ -2925,7 +3009,7 @@ class OrionApp(App):
                 with Container(id="screen-radar"):
                     with Horizontal(id="radar-layout"):
                         yield Static(id="radar-ppi")
-                        radar_table: DataTable = DataTable(id="radar-table")
+                        radar_table: OrionDataTable = OrionDataTable(id="radar-table")
                         radar_table.add_columns(
                             I18N.bidi("Track", "Трек"),
                             I18N.bidi("Range", "Дальность"),
@@ -2936,7 +3020,7 @@ class OrionApp(App):
                         yield radar_table
 
                 with Container(id="screen-events"):
-                    events_table: DataTable = DataTable(id="events-table")
+                    events_table: OrionDataTable = OrionDataTable(id="events-table")
                     events_table.add_columns(
                         I18N.bidi("Severity", "Серьёзн"),
                         I18N.bidi("Type", "Тип"),
@@ -2949,7 +3033,7 @@ class OrionApp(App):
                     yield events_table
 
                 with Container(id="screen-console"):
-                    console_table: DataTable = DataTable(id="console-table")
+                    console_table: OrionDataTable = OrionDataTable(id="console-table")
                     console_table.add_columns(
                         I18N.bidi("Time", "Время"),
                         I18N.bidi("Level", "Уровень"),
@@ -2958,7 +3042,7 @@ class OrionApp(App):
                     yield console_table
 
                 with Container(id="screen-summary"):
-                    summary_table: DataTable = DataTable(id="summary-table")
+                    summary_table: OrionDataTable = OrionDataTable(id="summary-table")
                     summary_table.add_column(I18N.bidi("Block", "Блок"), width=44)
                     summary_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     summary_table.add_column(I18N.bidi("Value", "Значение"), width=30)
@@ -2966,7 +3050,7 @@ class OrionApp(App):
                     yield summary_table
 
                 with Container(id="screen-power"):
-                    power_table: DataTable = DataTable(id="power-table")
+                    power_table: OrionDataTable = OrionDataTable(id="power-table")
                     power_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
                     power_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     power_table.add_column(I18N.bidi("Value", "Значение"), width=24)
@@ -2975,14 +3059,14 @@ class OrionApp(App):
                     yield power_table
 
                 with Container(id="screen-sensors"):
-                    sensors_table: DataTable = DataTable(id="sensors-table")
+                    sensors_table: OrionDataTable = OrionDataTable(id="sensors-table")
                     sensors_table.add_column(I18N.bidi("Sensor", "Сенсор"), width=40)
                     sensors_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     sensors_table.add_column(I18N.bidi("Value", "Значение"), width=36)
                     yield sensors_table
 
                 with Container(id="screen-propulsion"):
-                    propulsion_table: DataTable = DataTable(id="propulsion-table")
+                    propulsion_table: OrionDataTable = OrionDataTable(id="propulsion-table")
                     propulsion_table.add_column(I18N.bidi("Component", "Компонент"), width=40)
                     propulsion_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     propulsion_table.add_column(I18N.bidi("Value", "Значение"), width=24)
@@ -2991,7 +3075,7 @@ class OrionApp(App):
                     yield propulsion_table
 
                 with Container(id="screen-thermal"):
-                    thermal_table: DataTable = DataTable(id="thermal-table")
+                    thermal_table: OrionDataTable = OrionDataTable(id="thermal-table")
                     thermal_table.add_column(I18N.bidi("Node", "Узел"), width=26)
                     thermal_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     thermal_table.add_column(I18N.bidi("Temp", "Темп"), width=18)
@@ -3000,7 +3084,7 @@ class OrionApp(App):
                     yield thermal_table
 
                 with Container(id="screen-diagnostics"):
-                    diagnostics_table: DataTable = DataTable(id="diagnostics-table")
+                    diagnostics_table: OrionDataTable = OrionDataTable(id="diagnostics-table")
                     diagnostics_table.add_column(I18N.bidi("Block", "Блок"), width=46)
                     diagnostics_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     diagnostics_table.add_column(I18N.bidi("Value", "Значение"), width=28)
@@ -3008,7 +3092,7 @@ class OrionApp(App):
                     yield diagnostics_table
 
                 with Container(id="screen-mission"):
-                    mission_table: DataTable = DataTable(id="mission-table")
+                    mission_table: OrionDataTable = OrionDataTable(id="mission-table")
                     mission_table.add_column(I18N.bidi("Item", "Элемент"), width=34)
                     mission_table.add_column(I18N.bidi("Status", "Статус"), width=16)
                     mission_table.add_column(I18N.bidi("Value", "Значение"), width=60)
@@ -3028,7 +3112,7 @@ class OrionApp(App):
                             I18N.bidi("T — toggle enabled", "T — переключить включено"),
                             id="rules-toggle-hint",
                         )
-                    rules_table: DataTable = DataTable(id="rules-table")
+                    rules_table: OrionDataTable = OrionDataTable(id="rules-table")
                     rules_table.add_columns(
                         I18N.bidi("ID", "ID"),
                         I18N.bidi("Enabled", "Вкл"),
@@ -3053,7 +3137,7 @@ class OrionApp(App):
                 output.can_focus = False
                 output.border_title = I18N.bidi("Output", "Вывод")
                 yield output
-                yield Input(
+                yield OrionCommandInput(
                     placeholder=(
                         f"{I18N.bidi('command', 'команда')}> "
                         f"{I18N.bidi('help', 'помощь')} | "
@@ -3810,6 +3894,8 @@ class OrionApp(App):
             inspector = self.query_one("#orion-inspector", OrionInspector)
         except Exception:
             return
+        height = int(getattr(getattr(inspector, "size", None), "height", 0) or 0)
+        compact = bool(self._density in {"tiny", "narrow"} or (height and height < 28))
 
         def app_title(screen: str) -> str:
             for app in ORION_APPS:
@@ -3916,6 +4002,16 @@ class OrionApp(App):
                                 I18N.fmt_age_compact(max(0.0, time.time() - float(incident.cleared_at))),
                             )
                         )
+                # Keep Events inspector compact so Raw data remains visible in tmux splits.
+                max_fields = 10
+                if len(fields_rows) > max_fields:
+                    fields_rows[:] = fields_rows[:max_fields]
+                    fields_rows.append(
+                        (
+                            I18N.bidi("More", "Ещё"),
+                            I18N.bidi("See raw data", "Смотрите сырые данные"),
+                        )
+                    )
 
             if ctx.app_id == "rules" and hasattr(ctx.payload, "id"):
                 rule = ctx.payload
@@ -4002,15 +4098,18 @@ class OrionApp(App):
                 )
 
             if hasattr(ctx.payload, "model_dump"):
-                raw_preview = OrionInspector.safe_preview(ctx.payload.model_dump())
+                raw_preview = OrionInspector.safe_preview(ctx.payload.model_dump(), max_lines=8 if compact else 24)
             elif ctx.app_id == "events" and hasattr(ctx.payload, "__dataclass_fields__"):
-                raw_preview = OrionInspector.safe_preview(asdict(ctx.payload))
+                raw_preview = OrionInspector.safe_preview(asdict(ctx.payload), max_lines=8 if compact else 24)
             else:
-                raw_preview = OrionInspector.safe_preview(ctx.payload)
+                raw_preview = OrionInspector.safe_preview(ctx.payload, max_lines=8 if compact else 24)
 
         if self.active_screen == "events":
             state = I18N.bidi("Live", "Живое") if self._events_live else I18N.bidi("Paused", "Пауза")
             unread = int(self._events_unread_count) if not self._events_live else 0
+            if unread > 0:
+                # Put the number first so it stays visible even when truncated.
+                actions.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
             actions.append(f"Ctrl+Y — {I18N.bidi('toggle events mode', 'переключить режим событий')} ({state})")
             if ctx is not None and ctx.app_id == "events":
                 actions.append(
@@ -4021,9 +4120,6 @@ class OrionApp(App):
             actions.append(f"X — {I18N.bidi('Clear acknowledged incidents', 'Очистить подтвержденные инциденты')}")
             if not self._events_live:
                 actions.append(f"R — {I18N.bidi('Mark events read', 'Отметить события прочитанными')}")
-            if unread > 0:
-                # Put the number first so it stays visible even when truncated.
-                actions.append(f"{unread} {I18N.bidi('Unread', 'Непрочитано')}")
 
         if self.active_screen == "rules":
             actions.append(
@@ -4043,6 +4139,26 @@ class OrionApp(App):
                 I18N.fmt_age_compact(telemetry_age_s) if telemetry_age_s is not None else I18N.NA,
             )
         )
+
+        def _cap_rows(rows: list[tuple[str, str]], max_rows: int) -> list[tuple[str, str]]:
+            if max_rows <= 0 or len(rows) <= max_rows:
+                return rows
+            more = len(rows) - max_rows
+            capped = rows[:max_rows]
+            capped.append((I18N.bidi("More", "Ещё"), f"{more} {I18N.bidi('rows', 'строк')}"))
+            return capped
+
+        def _cap_actions(lines: list[str], max_lines: int) -> list[str]:
+            if max_lines <= 0 or len(lines) <= max_lines:
+                return lines
+            more = len(lines) - max_lines
+            capped = lines[:max_lines]
+            capped.append(f"{I18N.bidi('More actions', 'Ещё действий')}: {more}")
+            return capped
+
+        summary_rows = _cap_rows(summary_rows, 8 if compact else 16)
+        fields_rows = _cap_rows(fields_rows, 8 if compact else 28)
+        actions = _cap_actions(actions, 6 if compact else 20)
 
         outer = Table.grid(expand=True)
         outer.add_column(ratio=1)
@@ -4178,6 +4294,10 @@ class OrionApp(App):
                 self.query_one("#orion-sidebar", OrionSidebar).refresh()
             except Exception:
                 pass
+            try:
+                self.query_one("#orion-keybar", OrionKeybar).refresh()
+            except Exception:
+                pass
             # While paused, the table stays stable, but the operator still needs a live unread counter.
             # Refresh the inspector with a small throttle to avoid repaint storms under high event rates.
             if self.active_screen == "events":
@@ -4230,6 +4350,15 @@ class OrionApp(App):
     def _clear_acked_incidents(self) -> int:
         if self._incident_store is None:
             return 0
+        # Operator intent for "X" is to clear (remove) acknowledged incidents.
+        # Implement it deterministically: mark all acked incidents as cleared (to apply cooldown),
+        # then sweep cleared+acked from the store.
+        for inc in list(self._incident_store.list_incidents()):
+            try:
+                if bool(getattr(inc, "acked", False)):
+                    self._incident_store.clear(str(getattr(inc, "incident_id", "")))
+            except Exception:
+                continue
         return self._incident_store.clear_acked_cleared()
 
     def action_toggle_events_live(self) -> None:
@@ -4247,6 +4376,10 @@ class OrionApp(App):
             self._console_log(f"{I18N.bidi('Events paused', 'События пауза')}", level="info")
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
+        except Exception:
+            pass
+        try:
+            self.query_one("#orion-keybar", OrionKeybar).refresh()
         except Exception:
             pass
 
@@ -4378,6 +4511,10 @@ class OrionApp(App):
         self._events_unread_incident_ids.clear()
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
+        except Exception:
+            pass
+        try:
+            self.query_one("#orion-keybar", OrionKeybar).refresh()
         except Exception:
             pass
         if self.active_screen == "events":
@@ -4514,6 +4651,18 @@ class OrionApp(App):
 
         if screen == "events":
             self._render_events_table()
+            # Make selection/Inspector discoverable: focus + initial highlight.
+            def _focus_events() -> None:
+                try:
+                    table = self.query_one("#events-table", DataTable)
+                    self.set_focus(table)
+                    cursor_row = getattr(table, "cursor_row", None)
+                    if (cursor_row is None or cursor_row < 0) and table.row_count:
+                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
+                except Exception:
+                    pass
+
+            self.call_after_refresh(_focus_events)
         if screen == "summary":
             self._render_summary_table()
         if screen == "power":
@@ -4624,10 +4773,64 @@ class OrionApp(App):
     def action_help(self) -> None:
         self._show_help()
 
+    def on_key(self, event) -> None:
+        key = getattr(event, "key", "")
+        if key not in {"up", "down"}:
+            return
+        if isinstance(self.focused, Input):
+            return
+        if isinstance(self.focused, DataTable):
+            return
+
+        if self.active_screen == "events":
+            self._move_events_selection(-1 if key == "up" else 1)
+            event.stop()
+            return
+
+        table_id: Optional[str] = None
+        if self.active_screen == "radar":
+            table_id = "#radar-table"
+        elif self.active_screen == "events":
+            table_id = "#events-table"
+        elif self.active_screen == "console":
+            table_id = "#console-table"
+        elif self.active_screen == "summary":
+            table_id = "#summary-table"
+        elif self.active_screen == "power":
+            table_id = "#power-table"
+        elif self.active_screen == "sensors":
+            table_id = "#sensors-table"
+        elif self.active_screen == "propulsion":
+            table_id = "#propulsion-table"
+        elif self.active_screen == "thermal":
+            table_id = "#thermal-table"
+        elif self.active_screen == "diagnostics":
+            table_id = "#diagnostics-table"
+        elif self.active_screen == "mission":
+            table_id = "#mission-table"
+        elif self.active_screen == "rules":
+            table_id = "#rules-table"
+
+        if table_id is None:
+            return
+        try:
+            table = self.query_one(table_id, DataTable)
+        except Exception:
+            return
+        try:
+            if key == "up":
+                table.action_cursor_up()
+            else:
+                table.action_cursor_down()
+            event.stop()
+        except Exception:
+            pass
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id == "rules-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4655,8 +4858,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "events-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4677,8 +4881,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "console-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4699,8 +4904,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "summary-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4724,8 +4930,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "power-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4750,8 +4957,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "sensors-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4776,8 +4984,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "propulsion-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4802,8 +5011,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "thermal-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4828,8 +5038,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "diagnostics-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4854,8 +5065,9 @@ class OrionApp(App):
             return
 
         if event.data_table.id == "mission-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
@@ -4920,8 +5132,9 @@ class OrionApp(App):
             return
 
         if table_id == "power-table":
+            row_key_obj = getattr(event, "row_key", None)
             try:
-                row_key = str(event.row_key)
+                row_key = str(getattr(row_key_obj, "value", row_key_obj))
             except Exception:
                 return
             if row_key == "seed":
