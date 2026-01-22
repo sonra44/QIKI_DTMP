@@ -1,5 +1,10 @@
 # Critical Tasks (P1)
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## P1-001: Fix remaining 7 tests
 - **Description**: Resolve the seven failing tests related to context assertions, FSM transitions, `ProposalEvaluator`, and `RuleEngine`.
 - **Goal**: Achieve at least 80% unit-test pass rate, correct the `DeviceStatus` schema, and avoid regressions.

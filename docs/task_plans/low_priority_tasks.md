@@ -1,5 +1,10 @@
 # Low Priority Tasks (P4)
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## P4-001: Neural Engine Integration
 - **Description**: Integrate a neural engine into the platform to support machine‑learning inference and model training.
 - **Tasks**:

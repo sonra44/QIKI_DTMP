@@ -1,5 +1,10 @@
 # Medium Priority Tasks (P3)
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## P3-001: Radar Track Store Core
 - **Description**: Implement a stateful radar track store with Alpha‑Beta filtering, detection association, and track lifecycle management, replacing the existing stateless `frame_to_track` stub.
 - **Tasks**:

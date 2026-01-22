@@ -1,5 +1,10 @@
 # High Priority Tasks (P2)
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## P2-001: Q-Operator Console MVP
 - **Description**: Develop a minimal operator console with three interfaces: a command-line interface (CLI) using Python Click + Rich, a text-based user interface (TUI) using Rich/Textual, and a basic web interface built with FastAPI and simple HTML/CSS.
 - **Components**:
