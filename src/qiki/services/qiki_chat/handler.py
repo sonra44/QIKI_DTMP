@@ -18,8 +18,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def handle_chat_request(request: QikiChatRequestV1) -> QikiChatResponseV1:
-    mode = QikiMode.FACTORY
+def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -> QikiChatResponseV1:
+    mode = current_mode
     proposals = [
         QikiProposalV1(
             proposal_id="p-001",
@@ -48,12 +48,13 @@ def handle_chat_request(request: QikiChatRequestV1) -> QikiChatResponseV1:
         title=BilingualText(en="OK", ru="ОК"),
         body=BilingualText(
             en=(
-                "I am running in FACTORY mode. I can answer questions and return "
+                f"I am running in {mode.value} mode. I can answer questions and return "
                 "structured proposals. Actions are disabled in this MVP."
             ),
             ru=(
-                "Я запущена в режиме ЗАВОД. Я могу отвечать на вопросы и возвращать "
-                "структурированные предложения. Действия отключены в этом MVP."
+                f"Я запущена в режиме {('ЗАВОД' if mode == QikiMode.FACTORY else 'МИССИЯ')}. "
+                "Я могу отвечать на вопросы и возвращать структурированные предложения. "
+                "Действия отключены в этом MVP."
             ),
         ),
     )
@@ -75,7 +76,9 @@ def handle_chat_request(request: QikiChatRequestV1) -> QikiChatResponseV1:
     )
 
 
-def build_invalid_request_response_model(raw_request_id: str | None) -> QikiChatResponseV1:
+def build_invalid_request_response_model(
+    raw_request_id: str | None, *, current_mode: QikiMode
+) -> QikiChatResponseV1:
     # Best-effort: keep deterministic shape even if request_id is missing.
     # For transport-level JSON, we must include a UUID value; generate one.
     request_id = uuid4()
@@ -87,7 +90,7 @@ def build_invalid_request_response_model(raw_request_id: str | None) -> QikiChat
     response = QikiChatResponseV1(
         request_id=request_id,
         ok=False,
-        mode=QikiMode.FACTORY,
+        mode=current_mode,
         reply=None,
         proposals=[],
         warnings=[BilingualText(en="INVALID REQUEST", ru="НЕВЕРНЫЙ ЗАПРОС")],
@@ -103,4 +106,8 @@ def build_invalid_request_response_model(raw_request_id: str | None) -> QikiChat
 
 
 def build_invalid_request_response(raw_request_id: str | None) -> bytes:
-    return build_invalid_request_response_model(raw_request_id).model_dump_json().encode("utf-8")
+    return (
+        build_invalid_request_response_model(raw_request_id, current_mode=QikiMode.FACTORY)
+        .model_dump_json()
+        .encode("utf-8")
+    )

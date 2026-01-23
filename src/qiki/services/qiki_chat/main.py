@@ -13,7 +13,7 @@ from qiki.services.qiki_chat.handler import (
     build_invalid_request_response,
     handle_chat_request,
 )
-from qiki.shared.models.qiki_chat import QikiChatRequestV1
+from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiMode
 
 
 CHAT_SUBJECT = "qiki.chat.v1"
@@ -32,10 +32,11 @@ async def _serve(nats_url: str) -> None:
         raise RuntimeError(f"Failed to connect to NATS at {nats_url}: {exc}") from exc
 
     async def on_msg(msg) -> None:
+        mode = QikiMode(os.getenv("QIKI_MODE", QikiMode.FACTORY.value))
         try:
             payload = json.loads(msg.data.decode("utf-8"))
             request = QikiChatRequestV1.model_validate(payload)
-            response = handle_chat_request(request)
+            response = handle_chat_request(request, current_mode=mode)
             await msg.respond(response.model_dump_json(ensure_ascii=False).encode("utf-8"))
         except Exception:
             await msg.respond(build_invalid_request_response(raw_request_id=None))
@@ -66,4 +67,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

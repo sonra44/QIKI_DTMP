@@ -2,6 +2,8 @@ import logging
 import logging
 import os
 import time
+from datetime import datetime, timezone
+
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
 from pydantic import ValidationError
@@ -9,11 +11,9 @@ from pydantic import ValidationError
 # Импортируем наши Pydantic модели
 # Важно, чтобы PYTHONPATH был настроен правильно, чтобы найти shared
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
-from qiki.shared.models.core import CommandMessage, ResponseMessage, MessageMetadata
 from qiki.shared.models.radar import RadarFrameModel
-from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
+from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1, QikiMode
 from qiki.shared.nats_subjects import (
-    COMMANDS_CONTROL,
     QIKI_INTENTS,
     QIKI_RESPONSES,
     RADAR_FRAMES,
@@ -21,7 +21,6 @@ from qiki.shared.nats_subjects import (
     RADAR_STREAM_NAME,
     RADAR_TRACKS,
     RADAR_TRACKS_DURABLE as RADAR_TRACKS_DURABLE_DEFAULT,
-    RESPONSES_CONTROL,
 )
 from qiki.services.faststream_bridge.radar_handlers import frame_to_track
 from qiki.services.faststream_bridge.track_publisher import RadarTrackPublisher
@@ -30,6 +29,8 @@ from qiki.services.faststream_bridge.lag_monitor import (
     JetStreamLagMonitor,
 )
 from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
+from qiki.services.faststream_bridge.mode_store import get_mode, set_mode
+from qiki.shared.nats_subjects import SYSTEM_MODE_EVENT
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -59,35 +60,22 @@ _lag_monitor = JetStreamLagMonitor(
 )
 
 
-@broker.subscriber(COMMANDS_CONTROL)
-@broker.publisher(RESPONSES_CONTROL)
-async def handle_control_command(
-    msg: CommandMessage, logger: Logger
-) -> ResponseMessage:
-    """
-    Этот обработчик принимает команды управления, логирует их
-    и возвращает простое подтверждение.
-    """
-    logger.info(f"Received command: {msg.command_name}")
-    logger.info(f"Parameters: {msg.parameters}")
+def _parse_mode_change(text: str) -> QikiMode | None:
+    raw = text.strip()
+    low = raw.lower()
+    if low.startswith("mode "):
+        value = raw.split(" ", 1)[1].strip()
+    elif low.startswith("режим "):
+        value = raw.split(" ", 1)[1].strip()
+    else:
+        return None
 
-    # Простое бизнес-логика: отвечаем успехом
-    response_payload = {
-        "status": "Command received",
-        "command": msg.command_name,
-    }
-
-    response = ResponseMessage(
-        request_id=msg.metadata.message_id,
-        metadata=MessageMetadata(
-            source="faststream_bridge", correlation_id=msg.metadata.message_id
-        ),
-        payload=response_payload,
-        success=True,
-    )
-
-    logger.info(f"Sending response: {response}")
-    return response
+    norm = value.strip().lower()
+    if norm in {"factory", "завод"}:
+        return QikiMode.FACTORY
+    if norm in {"mission", "миссия"}:
+        return QikiMode.MISSION
+    return None
 
 
 @broker.subscriber(QIKI_INTENTS)
@@ -100,11 +88,30 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
         req = QikiChatRequestV1.model_validate(payload)
     except ValidationError:
         raw_req_id = payload.get("request_id") or payload.get("requestId")
-        resp = build_invalid_request_response_model(str(raw_req_id) if raw_req_id is not None else None)
+        resp = build_invalid_request_response_model(
+            str(raw_req_id) if raw_req_id is not None else None,
+            current_mode=get_mode(),
+        )
         return resp.model_dump(mode="json")
 
     logger.info("QIKI intent received: request_id=%s text=%r", req.request_id, req.input.text)
-    resp: QikiChatResponseV1 = handle_chat_request(req)
+    if (new_mode := _parse_mode_change(req.input.text)) is not None:
+        set_mode(new_mode)
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            await broker.publish(
+                {
+                    "event_schema_version": 1,
+                    "source": "faststream_bridge",
+                    "subject": SYSTEM_MODE_EVENT,
+                    "timestamp": now,
+                    "mode": new_mode.value,
+                },
+                subject=SYSTEM_MODE_EVENT,
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to publish system mode event: %s", exc)
+    resp: QikiChatResponseV1 = handle_chat_request(req, current_mode=get_mode())
     return resp.model_dump(mode="json")
 
 

@@ -40,6 +40,12 @@ Canonical modes (MVP):
 
 Mode is part of QIKI state and must be included in every response.
 
+### 2.1 Mode changes (MVP)
+
+- Mode can be changed only by an explicit operator intent (no hidden auto-toggles).
+- Canonical commands (intent text): `mode factory` / `mode mission` (also accepted: `режим завод` / `режим миссия`).
+- ORION does not change the mode itself; it only sends intents and displays QIKI state.
+
 ---
 
 ## 3) Transport: NATS pub/sub (correlated “chat” loop)

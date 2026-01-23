@@ -14,7 +14,7 @@ def test_handle_chat_request_returns_ok_response() -> None:
         mode_hint=QikiMode.FACTORY,
         input=QikiChatInput(text="hello", lang_hint="auto"),
     )
-    resp = handle_chat_request(req)
+    resp = handle_chat_request(req, current_mode=QikiMode.FACTORY)
     assert resp.ok is True
     assert resp.request_id == req.request_id
     assert resp.mode.value == "FACTORY"
@@ -23,4 +23,3 @@ def test_handle_chat_request_returns_ok_response() -> None:
     assert resp.reply.title.ru
     assert resp.proposals
     assert resp.proposals[0].proposed_actions == []
-

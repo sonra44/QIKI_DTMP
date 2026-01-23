@@ -22,11 +22,12 @@ async def main() -> int:
     intents_subject = os.getenv("QIKI_INTENTS_SUBJECT", QIKI_INTENTS)
     responses_subject = os.getenv("QIKI_RESPONSES_SUBJECT", QIKI_RESPONSES)
     timeout_s = float(os.getenv("QIKI_INTENT_SMOKE_TIMEOUT_SEC", "5.0"))
+    text = os.getenv("QIKI_INTENT_TEXT", "ping")
 
     req = QikiChatRequestV1(
         request_id=uuid4(),
         ts_epoch_ms=int(time.time() * 1000),
-        input={"text": "ping", "lang_hint": "auto"},
+        input={"text": text, "lang_hint": "auto"},
     )
 
     # Avoid hanging indefinitely on misconfigured network; fail fast.

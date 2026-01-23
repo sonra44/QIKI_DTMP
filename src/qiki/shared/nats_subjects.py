@@ -36,3 +36,4 @@ QIKI_RESPONSES = "qiki.responses.qiki"
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"
 EVENTS_AUDIT = "qiki.events.v1.audit"
+SYSTEM_MODE_EVENT = "qiki.events.v1.system_mode"
