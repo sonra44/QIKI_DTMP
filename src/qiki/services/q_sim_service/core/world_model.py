@@ -733,10 +733,8 @@ class WorldModel:
             pct = max(0.0, min(100.0, float(pct)))
             timeout_ms = int(getattr(command, "timeout_ms", 0) or 0)
             duration_s = max(0.0, float(timeout_ms) / 1000.0) if timeout_ms > 0 else 0.0
-            self._rcs_cmd_axis = axis
-            self._rcs_cmd_pct = pct
-            self._rcs_cmd_time_left_s = duration_s
-            logger.info(f"RCS command: {axis} {pct:.1f}% for {duration_s:.2f}s")
+            if not self.set_rcs_command(axis, pct, duration_s):
+                return
             return
 
         # Unknown / unsupported command types are ignored safely.

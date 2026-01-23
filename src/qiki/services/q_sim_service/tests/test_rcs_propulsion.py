@@ -45,3 +45,29 @@ def test_rcs_command_consumes_propellant_and_emits_telemetry() -> None:
     assert isinstance(payload, dict)
     assert "propulsion" in payload
     assert "rcs" in (payload.get("propulsion") or {})
+
+
+def test_rcs_timeout_zero_stops_immediately() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    state0 = qsim.world_model.get_state()
+    prop0 = (state0.get("propulsion") or {}).get("rcs") or {}
+    propellant0 = float(prop0.get("propellant_kg", 0.0))
+
+    cmd = ActuatorCommand()
+    cmd.actuator_id.value = "rcs_port"
+    cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+    cmd.float_value = 60.0
+    cmd.unit = Unit.PERCENT
+    cmd.timeout_ms = 0
+    qsim.receive_actuator_command(cmd)
+
+    qsim.step()
+
+    state1 = qsim.world_model.get_state()
+    rcs = (state1.get("propulsion") or {}).get("rcs") or {}
+    assert float(rcs.get("command_pct", 0.0)) == 0.0
+    assert float(rcs.get("time_left_s", 0.0)) == 0.0
+    propellant1 = float(rcs.get("propellant_kg", 0.0))
+    assert propellant1 == propellant0
