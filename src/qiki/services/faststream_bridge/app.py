@@ -61,18 +61,27 @@ class _StoredProposal:
 _proposal_store: dict[str, _StoredProposal] = {}
 
 
+# Proposal store limits (avoid magic numbers; env-overridable).
+_PROPOSAL_STORE_TTL_DEFAULT_SEC = 600.0
+_PROPOSAL_STORE_TTL_MIN_SEC = 1.0
+_PROPOSAL_STORE_MAX_DEFAULT = 500
+_PROPOSAL_STORE_MAX_MIN = 10
+
+
 def _proposal_store_ttl_s() -> float:
     try:
-        return max(1.0, float(os.getenv("QIKI_PROPOSAL_STORE_TTL_SEC", "600")))
+        raw = float(os.getenv("QIKI_PROPOSAL_STORE_TTL_SEC", str(_PROPOSAL_STORE_TTL_DEFAULT_SEC)))
     except Exception:
-        return 600.0
+        return _PROPOSAL_STORE_TTL_DEFAULT_SEC
+    return max(_PROPOSAL_STORE_TTL_MIN_SEC, raw)
 
 
 def _proposal_store_max() -> int:
     try:
-        return max(10, int(os.getenv("QIKI_PROPOSAL_STORE_MAX", "500")))
+        raw = int(os.getenv("QIKI_PROPOSAL_STORE_MAX", str(_PROPOSAL_STORE_MAX_DEFAULT)))
     except Exception:
-        return 500
+        return _PROPOSAL_STORE_MAX_DEFAULT
+    return max(_PROPOSAL_STORE_MAX_MIN, raw)
 
 
 def _proposal_store_gc(now_epoch: float) -> None:

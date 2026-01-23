@@ -16,6 +16,10 @@ from qiki.shared.models.qiki_chat import (
 from qiki.shared.nats_subjects import COMMANDS_CONTROL
 
 
+_PROPOSAL_CONFIDENCE_DEFAULT = 1.0
+_PROPOSAL_PRIORITY_DEFAULT = 70
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -126,8 +130,8 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
                 proposal_id=proposal_id,
                 title=title,
                 justification=justification,
-                confidence=1.0,
-                priority=70,
+                confidence=_PROPOSAL_CONFIDENCE_DEFAULT,
+                priority=_PROPOSAL_PRIORITY_DEFAULT,
                 suggested_questions=[],
                 proposed_actions=proposed_actions,
             )
