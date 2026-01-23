@@ -831,16 +831,34 @@ class OrionSidebar(Static):
         def sidebar_help_lines() -> list[str]:
             # Keep the sidebar stable in narrow tmux panes: no long bilingual phrases here.
             if density in {"tiny", "narrow"}:
-                return [
+                base = [
                     fit("Tab фокус", usable),
                     fit("Enter команда", usable),
                     fit("Ctrl+C выход", usable),
                 ]
-            return [
+                if self.active_screen == "qiki":
+                    base.extend(
+                        [
+                            fit("V принять", usable),
+                            fit("B отклон", usable),
+                        ]
+                    )
+                return base
+
+            base = [
                 fit(f"{I18N.bidi('Tab', 'Таб')} {I18N.bidi('Focus', 'Фокус')}", usable),
                 fit(f"{I18N.bidi('Enter', 'Ввод')} {I18N.bidi('Command', 'Команда')}", usable),
                 fit(f"{I18N.bidi('Ctrl+C', 'Ctrl+C')} {I18N.bidi('Quit', 'Выход')}", usable),
             ]
+
+            if self.active_screen == "qiki":
+                base.extend(
+                    [
+                        fit(f"V {I18N.bidi('Accept', 'Принять')}", usable),
+                        fit(f"B {I18N.bidi('Reject', 'Отклонить')}", usable),
+                    ]
+                )
+            return base
 
         lines.extend(["", *sidebar_help_lines()])
         return "\n".join(lines)
