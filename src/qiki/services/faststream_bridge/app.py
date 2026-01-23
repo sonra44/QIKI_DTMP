@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from faststream import FastStream, Logger
-from faststream.nats import NatsBroker
+from faststream.nats import JStream, NatsBroker
 from pydantic import ValidationError
 
 # Импортируем наши Pydantic модели
@@ -257,7 +257,7 @@ async def on_shutdown():
 @broker.subscriber(
     RADAR_FRAMES_SUBJECT,
     durable=RADAR_FRAMES_DURABLE,
-    stream=RADAR_STREAM,
+    stream=JStream(name=RADAR_STREAM, declare=False),
     pull_sub=True,
 )
 async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:

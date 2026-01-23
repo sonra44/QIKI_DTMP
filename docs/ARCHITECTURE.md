@@ -15,6 +15,7 @@
 - `q-sim-service` стартует после NATS; health-check через gRPC `HealthCheck`.
 - `q-sim-service` публикует radar frames в NATS (при `RADAR_ENABLED=1` и `RADAR_NATS_ENABLED=1`).
 - `faststream-bridge` подписывается на NATS (кадры/команды) и публикует ответы/треки.
+  - Важно: `faststream-bridge` **не объявляет** JetStream stream; stream/consumers создаются только `nats-js-init` (иначе появляется warning NATS 10058 про “different configuration”).
 - `qiki-dev` стартует последним (ожидает health `q-sim-service`).
 
 ## Пошаговая схема тика (legacy)
