@@ -7,8 +7,8 @@ Date: 2026-01-23
 
 Make `simulation.reset/симуляция.сброс` deterministic and evidenced:
 
-- Reset does not auto-start the sim.
-- Reset while STOPPED clears world state (attitude to 0, position to 0).
+- Reset implies STOPPED (no auto-running after reset).
+- Reset clears world state (attitude to 0, position to 0).
 
 ## Evidence
 
@@ -26,16 +26,15 @@ Expected output:
 
 ORION UI (tmux) evidence:
 
-- `simulation.stop` -> `Sim/Сим Stopped/Остановлено` and Roll/Pitch are non-zero.
-- `simulation.reset` -> `Sim/Сим` stays `Stopped/Остановлено` and Roll/Pitch become `0.0°`.
+- While running: Roll/Pitch become non-zero.
+- `simulation.reset` -> `Sim/Сим` becomes `Stopped/Остановлено` and Roll/Pitch become `0.0°`.
 
 Captured lines (tmux):
 
 ```text
-Sim/Сим Stopped/Остановлено
-Roll/Крен               1.6°
-Pitch/Тангаж            1.2°
-command/команда> simulation.stop
+Sim/Сим Running/Работает
+Roll/Крен               1.9°
+Pitch/Тангаж            1.0°
 
 Sim/Сим Stopped/Остановлено
 Roll/Крен               0.0°

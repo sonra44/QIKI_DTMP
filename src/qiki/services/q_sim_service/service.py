@@ -179,6 +179,11 @@ class QSimService:
             return True
 
         if name == "sim.reset":
+            # Decision: reset implies stop.
+            # Rationale: reset should be deterministic and never keep the world ticking implicitly.
+            self._sim_running = False
+            self._sim_paused = False
+            self._sim_speed = 1.0
             self.reset_simulation()
             return True
 

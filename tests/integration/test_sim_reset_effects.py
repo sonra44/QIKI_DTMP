@@ -56,15 +56,7 @@ async def test_sim_reset_clears_world_state_while_stopped() -> None:
             timeout_s=8.0,
         )
 
-        # Stop => freeze state (no world stepping).
-        await publish(CommandMessage(command_name="sim.stop", parameters={}, metadata=meta))
-        t_stopped = await wait_for(lambda t: (t.get("sim_state") or {}).get("fsm_state") == "STOPPED")
-
-        roll_before = float((t_stopped.get("attitude") or {}).get("roll_rad", 0.0))
-        pitch_before = float((t_stopped.get("attitude") or {}).get("pitch_rad", 0.0))
-        assert abs(roll_before) > 1e-6 or abs(pitch_before) > 1e-6, "Attitude was already zero; reset proof weak"
-
-        # Reset while stopped => world returns to initial state (zeros) and stays STOPPED.
+        # Reset implies stop: world returns to initial state (zeros) and becomes STOPPED.
         await publish(CommandMessage(command_name="sim.reset", parameters={}, metadata=meta))
         t_reset = await wait_for(
             lambda t: (t.get("sim_state") or {}).get("fsm_state") == "STOPPED"
@@ -82,7 +74,7 @@ async def test_sim_reset_clears_world_state_while_stopped() -> None:
         await publish(CommandMessage(command_name="sim.start", parameters={"speed": 1.0}, metadata=meta))
         await wait_for(lambda t: (t.get("sim_state") or {}).get("fsm_state") == "RUNNING")
 
-        # Sanity: we observed non-zero attitude before stop.
+        # Sanity: we observed non-zero attitude before reset.
         assert t_nonzero is not None
     finally:
         await nc.close()

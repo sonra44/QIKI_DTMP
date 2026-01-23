@@ -67,6 +67,19 @@ Pitch/Тангаж            0.0°
 command/команда> simulation.reset
 ```
 
+Observed via tmux (reset implies stop): while RUNNING, `simulation.reset` results in STOPPED and zeros.
+
+```text
+Sim/Сим Running/Работает
+Roll/Крен               1.9°
+Pitch/Тангаж            1.0°
+
+Sim/Сим Stopped/Остановлено
+Roll/Крен               0.0°
+Pitch/Тангаж            0.0°
+command/команда> simulation.reset
+```
+
 ## Checklist summary (✅/❌)
 
 - ✅ Active pause is functional: pause stops `qiki.radar.v1.frames`, start resumes (integration test).
