@@ -2,7 +2,7 @@
 
 **Дата обновления:** 2026-01-23  
 **Статус:** Production Ready (93-95%)  
-**Последние изменения:** ORION: добавлена одноразовая строка подтверждения загрузки BIOS внутри UI (`BIOS loaded/BIOS загрузился: ...`) при первом событии `qiki.events.v1.bios_status`; чеклист валидации дополнен; commit `6cea609`  
+**Последние изменения:** Ship FSM handler: убраны fallback mocks; переход на реальный `FsmStateSnapshot` (protobuf `generated/fsm_state_pb2`), чтобы FSM логика опиралась только на “truth” из generated/симуляции; commit `168433b`. ORION BIOS one-shot confirm line + checklist update; commit `6cea609`  
 
 ---
 
