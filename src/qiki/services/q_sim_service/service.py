@@ -332,6 +332,10 @@ class QSimService:
         )
         self.world_model.step(delta_time)
 
+        # Commands are applied immediately on receipt, so treat the queue as a per-tick backlog/activity counter.
+        # Clear it each tick to avoid unbounded growth impacting load simulation.
+        self.actuator_command_queue.clear()
+
         self._maybe_publish_telemetry()
 
         sensor_data = self.generate_sensor_data()

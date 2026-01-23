@@ -44,21 +44,42 @@ def test_qsim_service_step_generates_sensor_data():
     """Test that QSimService.step() generates sensor data."""
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     qsim = QSimService(cfg)
-    
+
     # Initially queue should be empty
     assert len(qsim.sensor_data_queue) == 0
-    
+
     # Run one simulation step
     qsim.step()
-    
+
     # Queue should now have one sensor reading
     assert len(qsim.sensor_data_queue) == 1
     sensor_data = qsim.sensor_data_queue[0]
-    
+
     # Verify it's a valid SensorReading
     assert isinstance(sensor_data, SensorReading)
     assert sensor_data.sensor_id is not None
     assert sensor_data.is_valid is True
+
+
+def test_actuator_command_queue_is_cleared_each_tick() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    from generated.actuator_raw_out_pb2 import ActuatorCommand
+    from generated.common_types_pb2 import Unit
+
+    cmd = ActuatorCommand()
+    cmd.actuator_id.value = "rcs_port"
+    cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+    cmd.float_value = 10.0
+    cmd.unit = Unit.PERCENT
+    cmd.timeout_ms = 1000
+
+    qsim.receive_actuator_command(cmd)
+    assert len(qsim.actuator_command_queue) == 1
+
+    qsim.step()
+    assert qsim.actuator_command_queue == []
 
 
 def test_generate_sensor_data():
