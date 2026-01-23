@@ -19,6 +19,7 @@ Make `simulation.pause/start/stop/reset` actually control the simulation tick lo
 - Tests:
 - `tests/integration/test_sim_pause_effects.py` (integration): pause stops radar frames, start resumes.
 - `tests/integration/test_sim_reset_effects.py` (integration): reset implies stop, clears world.
+- `tests/integration/test_sim_stop_effects.py` (integration): stop stops radar frames, start resumes.
   - `src/qiki/services/q_sim_service/tests/test_qsim_service.py` (unit): pause/start/stop/reset toggles state.
 
 ## Evidence
