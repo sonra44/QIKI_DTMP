@@ -28,7 +28,7 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "kind": { "type": "string", "enum": ["event", "incident", "track", "snapshot", "none"] },
+            "kind": { "type": "string", "enum": ["event", "incident", "track", "snapshot", "proposal", "none"] },
             "id": { "type": ["string", "null"] }
           }
         }
@@ -51,4 +51,3 @@
     }
   }
 }
-

@@ -29,7 +29,7 @@ class TelemetryFreshness(str, Enum):
 
 
 class SelectionContext(_StrictModel):
-    kind: Literal["event", "incident", "track", "snapshot", "none"]
+    kind: Literal["event", "incident", "track", "snapshot", "proposal", "none"]
     id: Optional[str] = None
 
 

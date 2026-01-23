@@ -1062,6 +1062,18 @@ class OrionApp(App):
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
         Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
         Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
+        Binding(
+            "v",
+            "accept_selected_proposal",
+            I18N.bidi("Accept selected proposal", "Принять выбранное предложение"),
+            show=False,
+        ),
+        Binding(
+            "b",
+            "reject_selected_proposal",
+            I18N.bidi("Reject selected proposal", "Отклонить выбранное предложение"),
+            show=False,
+        ),
         Binding("c", "toggle_sensors_compact", "Sensors compact/Сенсоры компакт", show=False),
         Binding(
             "t",
@@ -6137,7 +6149,7 @@ class OrionApp(App):
         kind = "none"
         sel_id = None
         if sel is not None:
-            if sel.kind in {"event", "incident", "track", "snapshot", "none"}:
+            if sel.kind in {"event", "incident", "track", "snapshot", "proposal", "none"}:
                 kind = sel.kind
             sel_id = sel.key
         return QikiChatRequestV1(
@@ -6146,6 +6158,55 @@ class OrionApp(App):
             input={"text": text, "lang_hint": "auto"},
             ui_context={"screen": screen_label, "selection": {"kind": kind, "id": sel_id}},
         )
+
+    def action_accept_selected_proposal(self) -> None:
+        if self.active_screen != "qiki":
+            return
+        if isinstance(self.focused, Input):
+            return
+        ctx = self._selection_by_app.get("qiki")
+        pid = (ctx.key if ctx is not None else "").strip()
+        if not pid or pid == "seed" or getattr(ctx, "kind", "") != "proposal":
+            self._console_log(
+                f"{I18N.bidi('No proposal selected', 'Предложение не выбрано')}",
+                level="info",
+            )
+            return
+
+        prompt = f"{I18N.bidi('Accept proposal?', 'Принять предложение?')} {pid} ({I18N.bidi('Y/N', 'Да/Нет')})"
+
+        def after(decision: bool) -> None:
+            if not decision:
+                self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+                return
+            # Send a deterministic intent; proposal_id is also attached via ui_context.selection.
+            asyncio.create_task(self._publish_qiki_intent(f"proposal.accept id={pid}"))
+
+        self.push_screen(ConfirmDialog(prompt), after)
+
+    def action_reject_selected_proposal(self) -> None:
+        if self.active_screen != "qiki":
+            return
+        if isinstance(self.focused, Input):
+            return
+        ctx = self._selection_by_app.get("qiki")
+        pid = (ctx.key if ctx is not None else "").strip()
+        if not pid or pid == "seed" or getattr(ctx, "kind", "") != "proposal":
+            self._console_log(
+                f"{I18N.bidi('No proposal selected', 'Предложение не выбрано')}",
+                level="info",
+            )
+            return
+
+        prompt = f"{I18N.bidi('Reject proposal?', 'Отклонить предложение?')} {pid} ({I18N.bidi('Y/N', 'Да/Нет')})"
+
+        def after(decision: bool) -> None:
+            if not decision:
+                self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+                return
+            asyncio.create_task(self._publish_qiki_intent(f"proposal.reject id={pid}"))
+
+        self.push_screen(ConfirmDialog(prompt), after)
 
     def _update_command_placeholder(self) -> None:
         try:

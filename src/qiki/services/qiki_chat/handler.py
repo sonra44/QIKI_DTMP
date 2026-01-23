@@ -20,6 +20,49 @@ def _now_iso() -> str:
 
 def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -> QikiChatResponseV1:
     mode = current_mode
+
+    # Minimal deterministic workflow hook: ORION can accept/reject a proposal by
+    # sending an intent with ui_context.selection.kind == "proposal".
+    try:
+        sel = request.ui_context.selection
+    except Exception:
+        sel = None
+    if sel is not None and sel.kind == "proposal" and sel.id:
+        text = (request.input.text or "").strip().lower()
+        pid = str(sel.id)
+        if text.startswith("proposal.accept"):
+            return QikiChatResponseV1(
+                request_id=request.request_id,
+                ok=True,
+                mode=mode,
+                reply=QikiReplyV1(
+                    title=BilingualText(en="Accepted", ru="Принято"),
+                    body=BilingualText(
+                        en=f"Operator accepted proposal {pid}. Actions remain disabled in this MVP.",
+                        ru=f"Оператор принял предложение {pid}. Действия остаются отключены в этом MVP.",
+                    ),
+                ),
+                proposals=[],
+                warnings=[BilingualText(en="ACTIONS DISABLED", ru="ДЕЙСТВИЯ ОТКЛЮЧЕНЫ")],
+                error=None,
+            )
+        if text.startswith("proposal.reject"):
+            return QikiChatResponseV1(
+                request_id=request.request_id,
+                ok=True,
+                mode=mode,
+                reply=QikiReplyV1(
+                    title=BilingualText(en="Rejected", ru="Отклонено"),
+                    body=BilingualText(
+                        en=f"Operator rejected proposal {pid}. Actions remain disabled in this MVP.",
+                        ru=f"Оператор отклонил предложение {pid}. Действия остаются отключены в этом MVP.",
+                    ),
+                ),
+                proposals=[],
+                warnings=[BilingualText(en="ACTIONS DISABLED", ru="ДЕЙСТВИЯ ОТКЛЮЧЕНЫ")],
+                error=None,
+            )
+
     proposals = [
         QikiProposalV1(
             proposal_id="p-001",
@@ -64,7 +107,6 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
         BilingualText(en=f"ts={_now_iso()}", ru=f"время={_now_iso()}"),
     ]
 
-    _ = request  # reserved for future: context-driven proposals
     return QikiChatResponseV1(
         request_id=request.request_id,
         ok=True,
@@ -76,9 +118,7 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
     )
 
 
-def build_invalid_request_response_model(
-    raw_request_id: str | None, *, current_mode: QikiMode
-) -> QikiChatResponseV1:
+def build_invalid_request_response_model(raw_request_id: str | None, *, current_mode: QikiMode) -> QikiChatResponseV1:
     # Best-effort: keep deterministic shape even if request_id is missing.
     # For transport-level JSON, we must include a UUID value; generate one.
     request_id = uuid4()
