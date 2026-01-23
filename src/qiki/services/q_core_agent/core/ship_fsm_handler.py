@@ -8,11 +8,13 @@ import os
 
 # Add project root and generated to sys.path
 project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..")
 )
 generated_path = os.path.join(project_root, "generated")
-sys.path.append(project_root)
-sys.path.append(generated_path)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+if generated_path not in sys.path:
+    sys.path.append(generated_path)
 
 from typing import Dict, Any, Optional
 from enum import Enum
@@ -35,45 +37,14 @@ except ImportError:
     ShipActuatorController = ship_actuators.ShipActuatorController
     PropulsionMode = ship_actuators.PropulsionMode
 
-try:
-    from generated.fsm_state_pb2 import FSMState, StateTransition
-    from google.protobuf.timestamp_pb2 import Timestamp
-except ImportError:
-    # Mock classes for development
-    class MockFSMState:
-        def __init__(self):
-            self.current_state_name = "SHIP_STARTUP"
-            self.phase = "STARTUP"
-            self.history = []
-            self.timestamp = None
+from fsm_state_pb2 import (
+    FsmStateSnapshot as FSMState,
+    StateTransition,
+    FSMStateEnum,
+    FSMTransitionStatus,
+)
 
-        def CopyFrom(self, other):
-            self.current_state_name = other.current_state_name
-            self.phase = other.phase
-            self.history = list(other.history)
-
-        class FSMPhase:
-            STARTUP = "STARTUP"
-            IDLE = "IDLE"
-            FLIGHT = "FLIGHT"
-            DOCKING = "DOCKING"
-            EMERGENCY = "EMERGENCY"
-            ERROR_STATE = "ERROR_STATE"
-
-    class MockStateTransition:
-        def __init__(self, from_state="", to_state="", trigger_event=""):
-            self.from_state = from_state
-            self.to_state = to_state
-            self.trigger_event = trigger_event
-            self.timestamp = None
-
-    class MockTimestamp:
-        def GetCurrentTime(self):
-            pass
-
-    FSMState = MockFSMState
-    StateTransition = MockStateTransition
-    Timestamp = MockTimestamp
+_SHIP_STATE_CONTEXT_KEY = "ship_state_name"
 
 
 class ShipState(Enum):
@@ -87,6 +58,29 @@ class ShipState(Enum):
     DOCKING_ENGAGED = "DOCKING_ENGAGED"  # Стыковка выполнена
     EMERGENCY_STOP = "EMERGENCY_STOP"  # Аварийная остановка
     SYSTEMS_ERROR = "SYSTEMS_ERROR"  # Ошибка систем корабля
+
+
+def _map_ship_state_to_fsm_state_enum(ship_state_name: str) -> int:
+    if ship_state_name == ShipState.SHIP_STARTUP.value:
+        return FSMStateEnum.BOOTING
+    if ship_state_name == ShipState.SHIP_IDLE.value:
+        return FSMStateEnum.IDLE
+    if ship_state_name in {
+        ShipState.EMERGENCY_STOP.value,
+        ShipState.SYSTEMS_ERROR.value,
+    }:
+        return FSMStateEnum.ERROR_STATE
+    return FSMStateEnum.ACTIVE
+
+
+def _get_ship_state_name(snapshot: FSMState) -> str:
+    try:
+        name = snapshot.context_data.get(_SHIP_STATE_CONTEXT_KEY)
+    except Exception:
+        name = None
+    if not name:
+        return ShipState.SHIP_STARTUP.value
+    return str(name)
 
 
 class ShipContext:
@@ -190,7 +184,7 @@ class ShipContext:
     def _get_best_station_track(self) -> Optional[Any]:
         """Возвращает ближайший радар трек типа STATION, если доступен."""
         try:
-            from generated.radar.v1 import radar_pb2
+            from radar.v1 import radar_pb2
         except Exception:
             return None
 
@@ -239,21 +233,14 @@ class ShipFSMHandler(IFSMHandler):
 
     def process_fsm_state(self, current_fsm_state: FSMState) -> FSMState:
         """Обрабатывает текущее состояние FSM корабля и определяет следующее состояние."""
-        logger.debug(
-            f"Processing ship FSM state: {current_fsm_state.current_state_name}"
-        )
+        current_ship_state_name = _get_ship_state_name(current_fsm_state)
+        logger.debug(f"Processing ship FSM state: {current_ship_state_name}")
 
         next_state = FSMState()
-        if hasattr(next_state, "CopyFrom"):
-            next_state.CopyFrom(current_fsm_state)
-        else:
-            # Fallback для mock классов
-            next_state.current_state_name = current_fsm_state.current_state_name
-            next_state.phase = current_fsm_state.phase
-            next_state.history = list(current_fsm_state.history)
+        next_state.CopyFrom(current_fsm_state)
 
         # Анализ текущего состояния систем корабля
-        current_state = current_fsm_state.current_state_name
+        current_state = current_ship_state_name
         systems_ok = self.ship_context.is_ship_systems_ok()
         nav_capable = self.ship_context.has_navigation_capability()
         docking_target = self.ship_context.is_docking_target_in_range()
@@ -262,24 +249,20 @@ class ShipFSMHandler(IFSMHandler):
         # Логика переходов состояний
         new_state_name = current_state
         trigger_event = ""
-        new_phase = current_fsm_state.phase
 
         # Состояние: ЗАПУСК КОРАБЛЯ
         if current_state == ShipState.SHIP_STARTUP.value:
             if systems_ok and nav_capable:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "SHIP_SYSTEMS_ONLINE"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.info("🚀 Ship startup complete - all systems online")
             elif systems_ok and not nav_capable:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "SHIP_SYSTEMS_PARTIAL"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.warning("⚠️ Ship startup with limited navigation capability")
             else:
                 new_state_name = ShipState.SYSTEMS_ERROR.value
                 trigger_event = "CRITICAL_SYSTEMS_FAILURE"
-                new_phase = FSMState.FSMPhase.ERROR_STATE
                 logger.error("❌ Ship startup failed - critical systems offline")
 
         # Состояние: ГОТОВНОСТЬ
@@ -287,22 +270,18 @@ class ShipFSMHandler(IFSMHandler):
             if not systems_ok:
                 new_state_name = ShipState.SYSTEMS_ERROR.value
                 trigger_event = "SYSTEMS_DEGRADED"
-                new_phase = FSMState.FSMPhase.ERROR_STATE
                 logger.error("🚨 Systems failure detected - entering error state")
             elif propulsion_mode == PropulsionMode.CRUISE:
                 new_state_name = ShipState.FLIGHT_CRUISE.value
                 trigger_event = "MAIN_DRIVE_ENGAGED"
-                new_phase = FSMState.FSMPhase.FLIGHT
                 logger.info("🌟 Entering cruise flight mode")
             elif propulsion_mode == PropulsionMode.MANEUVERING:
                 new_state_name = ShipState.FLIGHT_MANEUVERING.value
                 trigger_event = "RCS_MANEUVERING_ACTIVE"
-                new_phase = FSMState.FSMPhase.FLIGHT
                 logger.info("🎯 Entering maneuvering mode")
             elif docking_target:
                 new_state_name = ShipState.DOCKING_APPROACH.value
                 trigger_event = "DOCKING_TARGET_ACQUIRED"
-                new_phase = FSMState.FSMPhase.DOCKING
                 logger.info("🎯 Docking target acquired - approaching")
 
         # Состояние: КРЕЙСЕРСКИЙ ПОЛЕТ
@@ -310,18 +289,15 @@ class ShipFSMHandler(IFSMHandler):
             if not systems_ok:
                 new_state_name = ShipState.EMERGENCY_STOP.value
                 trigger_event = "EMERGENCY_SYSTEMS_FAILURE"
-                new_phase = FSMState.FSMPhase.EMERGENCY
                 logger.error("🚨 Emergency stop - systems failure during cruise")
                 self._execute_emergency_stop()
             elif propulsion_mode == PropulsionMode.MANEUVERING:
                 new_state_name = ShipState.FLIGHT_MANEUVERING.value
                 trigger_event = "SWITCHING_TO_MANEUVERING"
-                new_phase = FSMState.FSMPhase.FLIGHT
                 logger.info("🎯 Switching from cruise to maneuvering")
             elif propulsion_mode == PropulsionMode.IDLE:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "FLIGHT_COMPLETED"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.info("✅ Flight completed - returning to idle")
 
         # Состояние: МАНЕВРИРОВАНИЕ
@@ -329,23 +305,19 @@ class ShipFSMHandler(IFSMHandler):
             if not systems_ok:
                 new_state_name = ShipState.EMERGENCY_STOP.value
                 trigger_event = "EMERGENCY_SYSTEMS_FAILURE"
-                new_phase = FSMState.FSMPhase.EMERGENCY
                 logger.error("🚨 Emergency stop during maneuvering")
                 self._execute_emergency_stop()
             elif propulsion_mode == PropulsionMode.CRUISE:
                 new_state_name = ShipState.FLIGHT_CRUISE.value
                 trigger_event = "SWITCHING_TO_CRUISE"
-                new_phase = FSMState.FSMPhase.FLIGHT
                 logger.info("🌟 Switching from maneuvering to cruise")
             elif propulsion_mode == PropulsionMode.IDLE:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "MANEUVERING_COMPLETED"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.info("✅ Maneuvering completed")
             elif docking_target:
                 new_state_name = ShipState.DOCKING_APPROACH.value
                 trigger_event = "DOCKING_TARGET_IN_RANGE"
-                new_phase = FSMState.FSMPhase.DOCKING
                 logger.info("🎯 Docking target in range - beginning approach")
 
         # Состояние: ПОДЛЕТ К СТЫКОВКЕ
@@ -353,18 +325,15 @@ class ShipFSMHandler(IFSMHandler):
             if not systems_ok:
                 new_state_name = ShipState.EMERGENCY_STOP.value
                 trigger_event = "EMERGENCY_DURING_DOCKING"
-                new_phase = FSMState.FSMPhase.EMERGENCY
                 logger.error("🚨 Emergency during docking approach")
                 self._execute_emergency_stop()
             elif self.ship_context.is_docking_engaged():
                 new_state_name = ShipState.DOCKING_ENGAGED.value
                 trigger_event = "DOCKING_COMPLETE"
-                new_phase = FSMState.FSMPhase.DOCKING
                 logger.info("✅ Docking complete - engaged")
             elif not docking_target:
                 new_state_name = ShipState.FLIGHT_MANEUVERING.value
                 trigger_event = "DOCKING_TARGET_LOST"
-                new_phase = FSMState.FSMPhase.FLIGHT
                 logger.warning("⚠️ Docking target lost - returning to maneuvering")
 
         # Состояние: АВАРИЙНАЯ ОСТАНОВКА
@@ -372,7 +341,6 @@ class ShipFSMHandler(IFSMHandler):
             if systems_ok and propulsion_mode == PropulsionMode.EMERGENCY:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "EMERGENCY_CLEARED"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.info("✅ Emergency cleared - returning to normal operations")
 
         # Состояние: ОШИБКА СИСТЕМ
@@ -380,7 +348,6 @@ class ShipFSMHandler(IFSMHandler):
             if systems_ok:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "SYSTEMS_RECOVERED"
-                new_phase = FSMState.FSMPhase.IDLE
                 logger.info("✅ Systems recovered - returning to idle")
 
         # Выполнение перехода состояния
@@ -389,29 +356,29 @@ class ShipFSMHandler(IFSMHandler):
                 f"🔄 Ship FSM Transition: {current_state} -> {new_state_name} (Trigger: {trigger_event})"
             )
 
+            from_fsm_state = _map_ship_state_to_fsm_state_enum(current_state)
+            to_fsm_state = _map_ship_state_to_fsm_state_enum(new_state_name)
+
             new_transition = StateTransition(
-                from_state=current_state,
-                to_state=new_state_name,
+                from_state=from_fsm_state,
+                to_state=to_fsm_state,
                 trigger_event=trigger_event,
+                status=FSMTransitionStatus.SUCCESS,
             )
-            if hasattr(new_transition, "timestamp"):
-                timestamp = Timestamp()
-                if hasattr(timestamp, "GetCurrentTime"):
-                    timestamp.GetCurrentTime()
-                new_transition.timestamp = timestamp
+            new_transition.timestamp.GetCurrentTime()
 
-            next_state.current_state_name = new_state_name
             next_state.history.append(new_transition)
-            next_state.phase = new_phase
 
-        # Обновление временной метки состояния
-        if hasattr(next_state, "timestamp"):
-            timestamp = Timestamp()
-            if hasattr(timestamp, "GetCurrentTime"):
-                timestamp.GetCurrentTime()
-            next_state.timestamp = timestamp
+        try:
+            next_state.context_data[_SHIP_STATE_CONTEXT_KEY] = new_state_name
+        except Exception:
+            pass
 
-        logger.debug(f"Ship FSM new state: {next_state.current_state_name}")
+        next_state.current_state = _map_ship_state_to_fsm_state_enum(new_state_name)
+
+        next_state.timestamp.GetCurrentTime()
+
+        logger.debug(f"Ship FSM new state: {_get_ship_state_name(next_state)}")
         return next_state
 
     async def process_fsm_dto(self, current_fsm_state: Any) -> Any:
@@ -470,17 +437,19 @@ if __name__ == "__main__":
 
         # Создание начального состояния
         initial_state = FSMState()
-        initial_state.current_state_name = ShipState.SHIP_STARTUP.value
-        initial_state.phase = FSMState.FSMPhase.STARTUP
+        initial_state.current_state = FSMStateEnum.BOOTING
+        initial_state.context_data[_SHIP_STATE_CONTEXT_KEY] = (
+            ShipState.SHIP_STARTUP.value
+        )
 
-        print(f"Initial state: {initial_state.current_state_name}")
+        print(f"Initial state: {_get_ship_state_name(initial_state)}")
 
         # Симуляция нескольких циклов FSM
         current_state = initial_state
         for i in range(5):
             print(f"\n--- FSM Cycle {i + 1} ---")
             next_state = fsm_handler.process_fsm_state(current_state)
-            print(f"State: {next_state.current_state_name}")
+            print(f"State: {_get_ship_state_name(next_state)}")
 
             # Получение сводки состояния
             summary = fsm_handler.get_ship_state_summary()
@@ -494,9 +463,8 @@ if __name__ == "__main__":
             current_state = next_state
 
             # Прерывание если состояние не меняется
-            if (
-                i > 0
-                and current_state.current_state_name == next_state.current_state_name
+            if i > 0 and _get_ship_state_name(current_state) == _get_ship_state_name(
+                next_state
             ):
                 print("State stabilized.")
                 break

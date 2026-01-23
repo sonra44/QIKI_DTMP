@@ -44,6 +44,17 @@ if [[ -n "${SCOPE}" ]]; then
   dc exec -T qiki-dev ruff check ${SCOPE}
 else
   mapfile -t changed_py < <(compute_changed_python_files)
+  # The file list is computed from commits (base_ref...HEAD) and may include files that
+  # were deleted in the working tree but not committed yet. Filter to existing paths.
+  if ((${#changed_py[@]} > 0)); then
+    existing_py=()
+    for path in "${changed_py[@]}"; do
+      if [[ -f "${path}" ]]; then
+        existing_py+=("${path}")
+      fi
+    done
+    changed_py=("${existing_py[@]}")
+  fi
   if ((${#changed_py[@]} == 0)); then
     echo "[quality-gate] Ruff: no changed Python files; skipping lint"
   else
