@@ -109,3 +109,22 @@
 ## 6) Radar/Радар — scope guard
 
 - ✅ No radar UX redesign is performed as part of validation. — изменений не вносилось
+
+---
+
+## 7) QIKI — proposals decision workflow (no auto-actions)
+
+**Enter:** `F9`
+
+- ✅ Generate proposals: — отправить intent и увидеть proposal list
+  - `Ctrl+E` → `q: dock.on` → `Enter`
+  - Output shows `Sent to QIKI/Отправлено в QIKI` + `QIKI: OK/ОК` and at least 1 proposal.
+- ✅ Accept proposal from UI: — `v` → confirm `y`
+  - Press `v` (accept) and confirm `y`.
+  - Output shows `QIKI: Accepted/Принято` and proposals count becomes 0.
+- ✅ Reject proposal from UI: — `b` → confirm `y`
+  - Generate a new proposal again: `Ctrl+E` → `q: dock.on` → `Enter`.
+  - Press `b` (reject) and confirm `y`.
+  - Output shows `QIKI: Rejected/Отклонено` and proposals count becomes 0.
+- ✅ Evidence in faststream-bridge logs: — видны follow-up intents на `qiki.intents`
+  - `docker compose -f docker-compose.phase1.yml logs --tail=200 faststream-bridge | sed -r 's/\x1b\[[0-9;]*m//g' | rg -n "proposal (accept|reject)"`
