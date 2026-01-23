@@ -28,6 +28,7 @@
 References:
 - System logic and screen model: `docs/design/operator_console/ORION_OS_SYSTEM.md`
 - Integration overview: `docs/design/operator_console/QIKI_INTEGRATION_PLAN.md`
+- Simulation control contract: `docs/design/operator_console/SIMULATION_CONTROL_CONTRACT.md`
 
 ---
 

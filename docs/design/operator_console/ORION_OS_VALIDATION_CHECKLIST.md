@@ -56,6 +56,7 @@
   - Placeholder hints prefixes and never suggests a “mode toggle”.
 
 - ✅ Active pause visibility: — состояние симуляции видно в хедере
+  - Spec reference: `docs/design/operator_console/SIMULATION_CONTROL_CONTRACT.md`
   - Send `simulation.pause` and confirm header shows `Sim/Сим Paused/Пауза`.
   - Send `simulation.start` and confirm header shows `Sim/Сим Running/Работает`.
   - Optional: send `simulation.start 2` and confirm header shows `Sim/Сим Running/Работает x2`.
