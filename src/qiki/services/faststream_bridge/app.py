@@ -1,7 +1,7 @@
 import logging
+import logging
 import os
 import time
-from uuid import UUID, uuid4
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
 from pydantic import ValidationError
@@ -29,6 +29,7 @@ from qiki.services.faststream_bridge.lag_monitor import (
     ConsumerTarget,
     JetStreamLagMonitor,
 )
+from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -92,54 +93,18 @@ async def handle_control_command(
 @broker.subscriber(QIKI_INTENTS)
 @broker.publisher(QIKI_RESPONSES)
 async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
-    """MVP: accept operator intent and return a deterministic stub proposal (no LLM, no actions)."""
+    """Handle operator intent and return a strictly validated QikiChatResponseV1."""
     payload = msg if isinstance(msg, dict) else {}
+
     try:
         req = QikiChatRequestV1.model_validate(payload)
     except ValidationError:
-        # Legacy/fallback: accept {text: "..."} and synthesize a request id.
         raw_req_id = payload.get("request_id") or payload.get("requestId")
-        try:
-            request_id = UUID(str(raw_req_id)) if raw_req_id else uuid4()
-        except Exception:  # noqa: BLE001
-            request_id = uuid4()
-        text = payload.get("text") if isinstance(payload.get("text"), str) else str(payload)
-        req = QikiChatRequestV1(
-            request_id=request_id,
-            ts_epoch_ms=int(time.time() * 1000),
-            input={"text": text, "lang_hint": "auto"},
-        )
+        resp = build_invalid_request_response_model(str(raw_req_id) if raw_req_id is not None else None)
+        return resp.model_dump(mode="json")
 
     logger.info("QIKI intent received: request_id=%s text=%r", req.request_id, req.input.text)
-
-    resp = QikiChatResponseV1(
-        request_id=req.request_id,
-        ok=True,
-        mode=req.mode_hint,
-        reply={
-            "title": {"en": "QIKI proposal stub", "ru": "Заглушка предложений QIKI"},
-            "body": {
-                "en": "MVP: no actions will be executed automatically. Review proposals in ORION.",
-                "ru": "MVP: действия не выполняются автоматически. Просмотрите предложения в ORION.",
-            },
-        },
-        proposals=[
-            {
-                "proposal_id": str(uuid4()),
-                "title": {"en": "Next step: verify telemetry freshness", "ru": "Следующий шаг: проверить свежесть телеметрии"},
-                "justification": {
-                    "en": "Based on current UI context; this is a deterministic placeholder.",
-                    "ru": "На основе текущего UI контекста; это детерминированная заглушка.",
-                },
-                "confidence": 0.5,
-                "priority": 50,
-                "suggested_questions": [
-                    {"en": "What is the current mode (FACTORY/MISSION)?", "ru": "Какой сейчас режим (ЗАВОД/МИССИЯ)?"},
-                ],
-                "proposed_actions": [],
-            }
-        ],
-    )
+    resp: QikiChatResponseV1 = handle_chat_request(req)
     return resp.model_dump(mode="json")
 
 

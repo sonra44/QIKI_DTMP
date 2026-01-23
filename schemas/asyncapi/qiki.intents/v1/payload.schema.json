@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qiki.intents/v1/payload.schema.json",
+  "title": "qiki.intents payload (QikiChatRequest.v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "request_id", "ts_epoch_ms", "input"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string", "format": "uuid" },
+    "ts_epoch_ms": { "type": "integer", "minimum": 0 },
+    "mode_hint": { "type": "string", "enum": ["FACTORY", "MISSION"] },
+    "input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "lang_hint": { "type": "string", "enum": ["auto", "ru", "en"] }
+      }
+    },
+    "ui_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "screen": { "type": "string" },
+        "selection": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "kind": { "type": "string", "enum": ["event", "incident", "track", "snapshot", "none"] },
+            "id": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "system_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "telemetry_freshness": { "type": "string", "enum": ["FRESH", "STALE", "DEAD", "UNKNOWN"] },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "battery_pct": { "type": ["number", "null"] },
+            "online": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
+

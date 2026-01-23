@@ -73,6 +73,14 @@ class QikiReplyV1(_StrictModel):
     body: BilingualText
 
 
+class QikiProposedActionV1(_StrictModel):
+    kind: Literal["NATS_COMMAND"] = "NATS_COMMAND"
+    subject: str
+    name: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = True
+
+
 class QikiProposalV1(_StrictModel):
     proposal_id: str
     title: BilingualText
@@ -80,7 +88,7 @@ class QikiProposalV1(_StrictModel):
     confidence: float = Field(ge=0.0, le=1.0)
     priority: int = Field(ge=0, le=100)
     suggested_questions: list[BilingualText] = Field(default_factory=list)
-    proposed_actions: list[dict[str, Any]] = Field(default_factory=list)
+    proposed_actions: list[QikiProposedActionV1] = Field(default_factory=list)
 
 
 class QikiChatResponseV1(_StrictModel):
@@ -92,4 +100,3 @@ class QikiChatResponseV1(_StrictModel):
     proposals: list[QikiProposalV1] = Field(default_factory=list)
     warnings: list[BilingualText] = Field(default_factory=list)
     error: Optional[QikiErrorV1] = None
-

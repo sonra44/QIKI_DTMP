@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qiki.responses.qiki/v1/payload.schema.json",
+  "title": "qiki.responses.qiki payload (QikiChatResponse.v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "request_id", "ok", "mode", "proposals", "warnings"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string", "format": "uuid" },
+    "ok": { "type": "boolean" },
+    "mode": { "type": "string", "enum": ["FACTORY", "MISSION"] },
+    "reply": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "title": { "$ref": "#/$defs/bilingual" },
+        "body": { "$ref": "#/$defs/bilingual" }
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/proposal" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bilingual" }
+    },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "code": { "type": "string", "enum": ["TIMEOUT", "INVALID_REQUEST", "INTERNAL", "UNAVAILABLE"] },
+        "message": { "$ref": "#/$defs/bilingual" }
+      }
+    }
+  },
+  "$defs": {
+    "bilingual": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["en", "ru"],
+      "properties": {
+        "en": { "type": "string" },
+        "ru": { "type": "string" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "subject", "name", "parameters", "dry_run"],
+      "properties": {
+        "kind": { "type": "string", "const": "NATS_COMMAND" },
+        "subject": { "type": "string" },
+        "name": { "type": "string" },
+        "parameters": { "type": "object" },
+        "dry_run": { "type": "boolean" }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["proposal_id", "title", "justification", "confidence", "priority", "suggested_questions", "proposed_actions"],
+      "properties": {
+        "proposal_id": { "type": "string" },
+        "title": { "$ref": "#/$defs/bilingual" },
+        "justification": { "$ref": "#/$defs/bilingual" },
+        "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "suggested_questions": { "type": "array", "items": { "$ref": "#/$defs/bilingual" } },
+        "proposed_actions": { "type": "array", "items": { "$ref": "#/$defs/action" } }
+      }
+    }
+  }
+}
+

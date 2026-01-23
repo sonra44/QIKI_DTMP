@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from qiki.shared.models.qiki_chat import (
     BilingualText,
@@ -75,12 +75,15 @@ def handle_chat_request(request: QikiChatRequestV1) -> QikiChatResponseV1:
     )
 
 
-def build_invalid_request_response(raw_request_id: str | None) -> bytes:
+def build_invalid_request_response_model(raw_request_id: str | None) -> QikiChatResponseV1:
     # Best-effort: keep deterministic shape even if request_id is missing.
     # For transport-level JSON, we must include a UUID value; generate one.
     request_id = uuid4()
     if raw_request_id:
-        pass
+        try:
+            request_id = UUID(str(raw_request_id))
+        except Exception:
+            request_id = uuid4()
     response = QikiChatResponseV1(
         request_id=request_id,
         ok=False,
@@ -96,4 +99,8 @@ def build_invalid_request_response(raw_request_id: str | None) -> bytes:
             ),
         ),
     )
-    return response.model_dump_json().encode("utf-8")
+    return response
+
+
+def build_invalid_request_response(raw_request_id: str | None) -> bytes:
+    return build_invalid_request_response_model(raw_request_id).model_dump_json().encode("utf-8")

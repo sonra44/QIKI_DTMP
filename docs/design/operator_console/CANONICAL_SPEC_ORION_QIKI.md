@@ -71,6 +71,10 @@ Correlation: `request_id` is the join key between request and response.
 
 ## 4) Data contract (JSON) — strict, validated
 
+Formal JSON Schemas (canonical, docs-as-code):
+- `schemas/asyncapi/qiki.intents/v1/payload.schema.json`
+- `schemas/asyncapi/qiki.responses.qiki/v1/payload.schema.json`
+
 ### 4.1 Common type: bilingual text
 
 All human-facing strings are bilingual objects; ORION formats them as `en/ru`.

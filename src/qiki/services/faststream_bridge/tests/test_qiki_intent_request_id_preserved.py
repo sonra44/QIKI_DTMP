@@ -23,6 +23,8 @@ async def test_qiki_intent_preserves_request_id_in_fallback() -> None:
 
     resp = await handle_qiki_intent(payload, _DummyLogger())  # type: ignore[arg-type]
     assert UUID(resp["request_id"]) == req_id
+    assert resp["ok"] is False
+    assert resp["error"]["code"] == "INVALID_REQUEST"
 
 
 @pytest.mark.asyncio
@@ -30,4 +32,5 @@ async def test_qiki_intent_generates_request_id_when_missing() -> None:
     payload = {"text": "ping"}
     resp = await handle_qiki_intent(payload, _DummyLogger())  # type: ignore[arg-type]
     assert UUID(resp["request_id"])
-
+    assert resp["ok"] is False
+    assert resp["error"]["code"] == "INVALID_REQUEST"

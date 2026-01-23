@@ -4754,6 +4754,21 @@ class OrionApp(App):
             return
         self._qiki_pending.pop(req_id, None)
 
+        if not resp.ok:
+            code = resp.error.code if resp.error else "UNKNOWN"
+            if resp.error and resp.error.message:
+                msg_en = resp.error.message.en
+                msg_ru = resp.error.message.ru
+                msg = I18N.bidi(msg_en, msg_ru)
+            else:
+                msg = I18N.NA
+            self._console_log(
+                f"QIKI: {I18N.bidi('error', 'ошибка')} "
+                f"({I18N.bidi('code', 'код')}={code}, {I18N.bidi('request', 'запрос')}={resp.request_id}) "
+                f"{msg}".strip(),
+                level="warning",
+            )
+
         title = resp.reply.title.en if resp.reply else "QIKI"
         ru_title = resp.reply.title.ru if resp.reply else "QIKI"
         proposals = len(resp.proposals or [])
