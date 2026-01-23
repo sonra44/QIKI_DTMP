@@ -31,7 +31,7 @@ Integration proof (Docker):
 
 Command:
 
-`NATS_URL=nats://nats:4222 pytest -q -m integration tests/integration/test_sim_pause_effects.py`
+`./scripts/run_integration_tests_docker.sh tests/integration/test_sim_pause_effects.py`
 
 Output:
 
@@ -51,6 +51,20 @@ Observed via tmux (header line):
 Sim/Сим Running/Работает
 Sim/Сим Paused/Пауза
 Sim/Сим Stopped/Остановлено
+```
+
+Observed via tmux (Navigation): after `simulation.reset` while stopped, Roll/Pitch return to `0.0°`.
+
+```text
+Sim/Сим Stopped/Остановлено
+Roll/Крен               1.6°
+Pitch/Тангаж            1.2°
+command/команда> simulation.stop
+
+Sim/Сим Stopped/Остановлено
+Roll/Крен               0.0°
+Pitch/Тангаж            0.0°
+command/команда> simulation.reset
 ```
 
 ## Checklist summary (✅/❌)

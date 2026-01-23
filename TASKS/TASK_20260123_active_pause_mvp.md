@@ -24,7 +24,7 @@ Make `simulation.pause/start/stop/reset` actually control the simulation tick lo
 
 Integration test:
 
-`docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'NATS_URL=nats://nats:4222 pytest -q -m integration tests/integration/test_sim_pause_effects.py'`
+`./scripts/run_integration_tests_docker.sh tests/integration/test_sim_pause_effects.py`
 
 Output:
 

@@ -9,6 +9,7 @@ from nats.errors import NoServersError, TimeoutError as NatsTimeoutError
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_sim_pause_stops_radar_frames_and_start_resumes() -> None:
     nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")

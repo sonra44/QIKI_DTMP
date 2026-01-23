@@ -59,6 +59,9 @@
   - Send `simulation.pause` and confirm header shows `Sim/Сим Paused/Пауза`.
   - Send `simulation.start` and confirm header shows `Sim/Сим Running/Работает`.
   - Send `simulation.stop` and confirm header shows `Sim/Сим Stopped/Остановлено`.
+  - Send `simulation.reset` while stopped and confirm:
+    - `Sim/Сим` stays `Stopped/Остановлено` (reset does not auto-start)
+    - Roll/Pitch in Navigation reset to `0.0°`
 
 ---
 
