@@ -4,15 +4,21 @@ Simple test for ship diagnostics without protobuf dependencies.
 Tests the core logic of ship system analysis.
 """
 
-import sys
 import os
+import sys
 
-# Add current directory to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+if __package__:
+    from qiki.services.q_core_agent.core.ship_core import ShipCore
 
-# Import ship components
-from ship_core import ShipCore
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+else:
+    # Legacy: allow direct execution from this directory.
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
+
+    # Import ship components
+    from ship_core import ShipCore
 
 
 def test_ship_diagnostics():
@@ -34,9 +40,7 @@ def test_ship_diagnostics():
         print(f"   Mass: {hull.mass_kg:,} kg")
         print(f"   Compartments: {len(hull.compartments)}")
         for comp_name, comp_data in hull.compartments.items():
-            print(
-                f"     {comp_name}: {comp_data['pressure']:.1f} atm, {comp_data['temperature']:.0f}K"
-            )
+            print(f"     {comp_name}: {comp_data['pressure']:.1f} atm, {comp_data['temperature']:.0f}K")
         print()
 
         print("2. POWER SYSTEMS:")
@@ -51,17 +55,13 @@ def test_ship_diagnostics():
         )
         print("   Power Distribution:")
         for system, allocation in power.power_distribution.items():
-            print(
-                f"     {system}: {allocation['allocated_mw']:.1f} MW (priority {allocation['priority']})"
-            )
+            print(f"     {system}: {allocation['allocated_mw']:.1f} MW (priority {allocation['priority']})")
         print()
 
         print("3. PROPULSION:")
         propulsion = ship.get_propulsion_status()
         print(f"   Main Drive: {propulsion.main_drive_status}")
-        print(
-            f"   Thrust: {propulsion.main_drive_thrust_n:,}/{propulsion.main_drive_max_thrust_n:,} N"
-        )
+        print(f"   Thrust: {propulsion.main_drive_thrust_n:,}/{propulsion.main_drive_max_thrust_n:,} N")
         print(f"   Fuel: {propulsion.main_drive_fuel_kg:.1f} kg")
         print(f"   RCS Thrusters: {len(propulsion.rcs_status)}")
         for thruster_id, thruster_data in propulsion.rcs_status.items():
@@ -72,9 +72,7 @@ def test_ship_diagnostics():
 
         print("4. SENSORS:")
         sensors = ship.get_sensor_status()
-        print(
-            f"   Active Sensors: {len(sensors.active_sensors)} / {len(sensors.sensor_data)}"
-        )
+        print(f"   Active Sensors: {len(sensors.active_sensors)} / {len(sensors.sensor_data)}")
         print(f"   Total Power: {sensors.total_power_consumption_kw:.0f} kW")
         for sensor_id, sensor_data in sensors.sensor_data.items():
             status_indicator = "●" if sensor_data["status"] == "active" else "○"

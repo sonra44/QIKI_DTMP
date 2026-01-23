@@ -9,12 +9,13 @@ import time
 from typing import Dict, Optional
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.append(CURRENT_DIR)
-
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
+if not __package__:
+    # Allow direct execution while keeping normal package imports clean.
+    repo_root = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", "..", "..", ".."))
+    src_root = os.path.join(repo_root, "src")
+    for path in (src_root, repo_root):
+        if path not in sys.path:
+            sys.path.append(path)
 
 from qiki.services.q_core_agent.core.ship_core import ShipCore  # noqa: E402
 from qiki.services.q_core_agent.core.ship_actuators import (  # noqa: E402
@@ -33,9 +34,7 @@ class MissionControlTerminal:
         q_core_agent_root = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
         self.ship_core = ShipCore(base_path=q_core_agent_root)
         self.actuator_controller = ShipActuatorController(self.ship_core)
-        self.logic_controller = ShipLogicController(
-            self.ship_core, self.actuator_controller
-        )
+        self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
         self.autopilot_enabled = False
         self.running = True
         self.last_cycle: Optional[Dict[str, str]] = None
@@ -141,10 +140,7 @@ class MissionControlTerminal:
             print(f"Состояние: {state} | Драйв: {mode} | Триггер: {trigger}")
 
         hull = snapshot["hull"]
-        print(
-            "Корпус: "
-            f"{hull.get('integrity', 'n/a')}% | Масса: {hull.get('mass_kg', 'n/a')} кг"
-        )
+        print(f"Корпус: {hull.get('integrity', 'n/a')}% | Масса: {hull.get('mass_kg', 'n/a')} кг")
 
         power = snapshot["power"]
         print(
@@ -161,18 +157,10 @@ class MissionControlTerminal:
         )
 
         life_support = snapshot["life_support"]
-        print(
-            "ЖО: "
-            f"O₂ {life_support.get('oxygen_percent', 'n/a')}% | "
-            f"CO₂ {life_support.get('co2_ppm', 'n/a')} ppm"
-        )
+        print(f"ЖО: O₂ {life_support.get('oxygen_percent', 'n/a')}% | CO₂ {life_support.get('co2_ppm', 'n/a')} ppm")
 
         computing = snapshot["computing"]
-        print(
-            "Вычисления: "
-            f"статус {computing.get('status', 'n/a')} | "
-            f"t={computing.get('temperature_k', 'n/a')} К"
-        )
+        print(f"Вычисления: статус {computing.get('status', 'n/a')} | t={computing.get('temperature_k', 'n/a')} К")
 
     def handle_command(self, raw_command: str) -> bool:
         """Обрабатывает пользовательскую команду."""
@@ -219,9 +207,7 @@ class MissionControlTerminal:
         print("  status               — выполнить цикл логики и обновить статус")
         print("  autopilot on|off     — включить или отключить автопилот")
         print("  thrust <0-100>       — установить тягу основного двигателя")
-        rcs_help = (
-            "  rcs <axis> <0-100>   — импульс РДО (axis: forward/back/port/starboard)"
-        )
+        rcs_help = "  rcs <axis> <0-100>   — импульс РДО (axis: forward/back/port/starboard)"
         print(rcs_help)
         print("  stop                 — аварийная остановка")
         print("  exit|quit            — завершить работу")

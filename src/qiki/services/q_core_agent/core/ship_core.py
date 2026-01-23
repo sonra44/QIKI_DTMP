@@ -7,13 +7,18 @@ from dataclasses import dataclass
 # Import generated protobuf classes
 import sys
 
-# Add project root and generated to sys.path
-project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-generated_path = os.path.join(project_root, "generated")
-sys.path.append(project_root)
-sys.path.append(generated_path)
+# NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
+# dangerous and can mask real import issues.
+#
+# Keep the legacy sys.path bootstrap only for direct execution
+# (`python ship_core.py`), not for normal package imports.
+if not __package__:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+    generated_path = os.path.join(project_root, "generated")
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    if generated_path not in sys.path:
+        sys.path.append(generated_path)
 
 from generated import sensor_raw_in_pb2
 from generated import actuator_raw_out_pb2
@@ -97,12 +102,8 @@ class ShipCore:
         self._ship_id: Optional[str] = None
         self._config: Dict[str, Any] = {}
         self._runtime_sensor_snapshot: Dict[str, sensor_raw_in_pb2.SensorReading] = {}
-        self._last_actuator_commands: Dict[
-            str, actuator_raw_out_pb2.ActuatorCommand
-        ] = {}
-        self._sensor_callbacks: List[
-            Callable[[sensor_raw_in_pb2.SensorReading], None]
-        ] = []
+        self._last_actuator_commands: Dict[str, actuator_raw_out_pb2.ActuatorCommand] = {}
+        self._sensor_callbacks: List[Callable[[sensor_raw_in_pb2.SensorReading], None]] = []
 
         self._load_config()
         self._initialize_ship_id()
@@ -118,9 +119,7 @@ class ShipCore:
             raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
 
         if self._config.get("mode") == "minimal":
-            print(
-                "ShipCore running in minimal mode. Sensor/actuator methods will be non-operational."
-            )
+            print("ShipCore running in minimal mode. Sensor/actuator methods will be non-operational.")
 
     def _initialize_ship_id(self):
         id_path = os.path.join(self.base_path, self.SHIP_ID_FILE)
@@ -256,9 +255,7 @@ class ShipCore:
         backup_systems = {}
 
         for backup in comp_config.get("backup_computers", []):
-            backup_systems[backup.get("id", "unknown")] = backup.get(
-                "status", "unknown"
-            )
+            backup_systems[backup.get("id", "unknown")] = backup.get("status", "unknown")
 
         return ComputingStatus(
             qiki_core_status=qiki_core.get("status", "unknown"),
@@ -269,23 +266,17 @@ class ShipCore:
 
     # === Sensor/Actuator Interface ===
 
-    def register_sensor_callback(
-        self, callback: Callable[[sensor_raw_in_pb2.SensorReading], None]
-    ):
+    def register_sensor_callback(self, callback: Callable[[sensor_raw_in_pb2.SensorReading], None]):
         """Registers a callback function for new sensor data."""
         self._sensor_callbacks.append(callback)
 
-    def _process_incoming_sensor_data(
-        self, sensor_data: sensor_raw_in_pb2.SensorReading
-    ):
+    def _process_incoming_sensor_data(self, sensor_data: sensor_raw_in_pb2.SensorReading):
         """Internal method to update runtime snapshot and trigger callbacks."""
         self._runtime_sensor_snapshot[sensor_data.sensor_id] = sensor_data
         for callback in self._sensor_callbacks:
             callback(sensor_data)
 
-    def get_latest_sensor_value(
-        self, sensor_id: str
-    ) -> Optional[sensor_raw_in_pb2.SensorReading]:
+    def get_latest_sensor_value(self, sensor_id: str) -> Optional[sensor_raw_in_pb2.SensorReading]:
         """Retrieves the most recent value for a specific sensor."""
         if self._config.get("mode") == "minimal":
             return None
@@ -300,9 +291,7 @@ class ShipCore:
     def send_actuator_command(self, command: actuator_raw_out_pb2.ActuatorCommand):
         """Sends a raw command to a ship system (actuator)."""
         if self._config.get("mode") == "minimal":
-            print(
-                f"Minimal mode: Ship system command for {command.actuator_id} ignored."
-            )
+            print(f"Minimal mode: Ship system command for {command.actuator_id} ignored.")
             return
 
         # Validate against ship systems (sensors, thrusters, etc.)
@@ -321,14 +310,10 @@ class ShipCore:
             all_systems.append(thruster.get("id"))
 
         actuator_id_str = (
-            command.actuator_id.value
-            if hasattr(command.actuator_id, "value")
-            else str(command.actuator_id)
+            command.actuator_id.value if hasattr(command.actuator_id, "value") else str(command.actuator_id)
         )
         if actuator_id_str not in all_systems:
-            raise ValueError(
-                f"Unknown ship system ID: {actuator_id_str}. Must be one of {all_systems}"
-            )
+            raise ValueError(f"Unknown ship system ID: {actuator_id_str}. Must be one of {all_systems}")
 
         self._last_actuator_commands[actuator_id_str] = command
         print(f"ShipCore: Command sent to {actuator_id_str}: {command.command_type}")
@@ -356,22 +341,15 @@ class ShipCore:
             "ship_id": self.get_id(),
             "ship_class": self.get_ship_class(),
             "hull_integrity_percent": hull.integrity,
-            "reactor_output_percent": (
-                power.reactor_output_mw / power.reactor_max_output_mw
-            )
-            * 100
+            "reactor_output_percent": (power.reactor_output_mw / power.reactor_max_output_mw) * 100
             if power.reactor_max_output_mw > 0
             else 0,
-            "battery_charge_percent": (
-                power.battery_charge_mwh / power.battery_capacity_mwh
-            )
-            * 100
+            "battery_charge_percent": (power.battery_charge_mwh / power.battery_capacity_mwh) * 100
             if power.battery_capacity_mwh > 0
             else 0,
             "main_drive_status": propulsion.main_drive_status,
             "active_sensors": len(sensors.active_sensors),
-            "life_support_status": life_support.atmosphere.get("pressure_kpa", 0)
-            > 50,  # Simplified check
+            "life_support_status": life_support.atmosphere.get("pressure_kpa", 0) > 50,  # Simplified check
             "qiki_core_status": computing.qiki_core_status,
             "total_mass_kg": hull.mass_kg,
         }
@@ -379,13 +357,13 @@ class ShipCore:
 
 # Example Usage (for testing purposes)
 if __name__ == "__main__":
-    import sys
-    import os
-
-    # Add project root to path for imports
+    # Allow direct execution while keeping normal package imports clean.
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
-    sys.path.append(project_root)
+    repo_root = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "..", ".."))
+    src_root = os.path.join(repo_root, "src")
+    for path in (src_root, repo_root):
+        if path not in sys.path:
+            sys.path.append(path)
 
     try:
         # Test with the q_core_agent directory as base_path
@@ -409,9 +387,7 @@ if __name__ == "__main__":
         print(f"Active Sensors: {sensor_status.active_sensors}")
 
         life_support_status = ship.get_life_support_status()
-        print(
-            f"Atmosphere Pressure: {life_support_status.atmosphere.get('pressure_kpa', 0)} kPa"
-        )
+        print(f"Atmosphere Pressure: {life_support_status.atmosphere.get('pressure_kpa', 0)} kPa")
 
         computing_status = ship.get_computing_status()
         print(f"QIKI Core: {computing_status.qiki_core_status}")

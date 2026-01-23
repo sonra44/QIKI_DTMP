@@ -4,15 +4,24 @@
 Проверяет переходы между состояниями корабля в различных ситуациях.
 """
 
-import sys
 import os
+import sys
 
-# Add current directory to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+if __package__:
+    from qiki.services.q_core_agent.core.ship_actuators import (
+        PropulsionMode,
+        ShipActuatorController,
+        ThrusterAxis,
+    )
+    from qiki.services.q_core_agent.core.ship_core import ShipCore
+else:
+    # Legacy: allow direct execution from this directory.
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
 
-from ship_core import ShipCore
-from ship_actuators import ShipActuatorController, PropulsionMode, ThrusterAxis
+    from ship_actuators import PropulsionMode, ShipActuatorController, ThrusterAxis
+    from ship_core import ShipCore
 from enum import Enum
 from typing import Dict, Any
 
@@ -43,9 +52,7 @@ class ShipLogicController:
     Реализует основную логику управления состояниями без protobuf зависимостей.
     """
 
-    def __init__(
-        self, ship_core: ShipCore, actuator_controller: ShipActuatorController
-    ):
+    def __init__(self, ship_core: ShipCore, actuator_controller: ShipActuatorController):
         self.ship_core = ship_core
         self.actuator_controller = actuator_controller
         self.current_state = ShipState.SHIP_STARTUP
@@ -229,9 +236,7 @@ def test_ship_logic_controller():
 
     try:
         # Инициализация корабельных систем
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         ship = ShipCore(base_path=q_core_agent_root)
         actuator_controller = ShipActuatorController(ship)
 
@@ -280,9 +285,7 @@ def test_ship_logic_controller():
 
             # Прерывание если состояние стабилизировалось
             if cycle > 2 and not result["state_changed"]:
-                consecutive_stable = (
-                    getattr(test_ship_logic_controller, "stable_count", 0) + 1
-                )
+                consecutive_stable = getattr(test_ship_logic_controller, "stable_count", 0) + 1
                 test_ship_logic_controller.stable_count = consecutive_stable
 
                 if consecutive_stable >= 2:

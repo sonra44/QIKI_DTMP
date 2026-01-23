@@ -4,16 +4,21 @@ Provides high-level interfaces for controlling ship systems.
 Translates pilot commands into low-level actuator commands.
 """
 
-import sys
 import os
+import sys
 
-# Add project root and generated to sys.path
-project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-generated_path = os.path.join(project_root, "generated")
-sys.path.append(project_root)
-sys.path.append(generated_path)
+# NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
+# dangerous and can mask real import issues.
+#
+# Keep the legacy sys.path bootstrap only for direct execution
+# (`python ship_actuators.py`), not for normal package imports.
+if not __package__:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+    generated_path = os.path.join(project_root, "generated")
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    if generated_path not in sys.path:
+        sys.path.append(generated_path)
 
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
@@ -140,9 +145,7 @@ class ShipActuatorController:
 
     # === PROPULSION CONTROL ===
 
-    def set_main_drive_thrust(
-        self, thrust_percent: float, duration_sec: Optional[float] = None
-    ) -> bool:
+    def set_main_drive_thrust(self, thrust_percent: float, duration_sec: Optional[float] = None) -> bool:
         """
         Set main drive thrust as percentage of maximum.
 
@@ -240,18 +243,14 @@ class ShipActuatorController:
             self.ship_core.send_actuator_command(command)
 
             self.current_mode = PropulsionMode.MANEUVERING
-            logger.info(
-                f"RCS {thruster_axis.value} fired at {thrust_percent:.1f}% for {duration_sec:.1f}s"
-            )
+            logger.info(f"RCS {thruster_axis.value} fired at {thrust_percent:.1f}% for {duration_sec:.1f}s")
             return True
 
         except Exception as e:
             logger.error(f"Failed to fire RCS thruster: {e}")
             return False
 
-    def execute_maneuver(
-        self, thrust_vector: ThrustVector, duration_sec: float = 2.0
-    ) -> bool:
+    def execute_maneuver(self, thrust_vector: ThrustVector, duration_sec: float = 2.0) -> bool:
         """
         Execute complex maneuver using multiple RCS thrusters.
 
@@ -269,11 +268,7 @@ class ShipActuatorController:
             # X-axis (forward/backward)
             if abs(thrust_vector.x) > 0.1:
                 total_commands += 1
-                axis = (
-                    ThrusterAxis.FORWARD
-                    if thrust_vector.x > 0
-                    else ThrusterAxis.BACKWARD
-                )
+                axis = ThrusterAxis.FORWARD if thrust_vector.x > 0 else ThrusterAxis.BACKWARD
                 thrust_percent = min(100.0, abs(thrust_vector.x))
                 if self.fire_rcs_thruster(axis, thrust_percent, duration_sec):
                     success_count += 1
@@ -291,9 +286,7 @@ class ShipActuatorController:
                 logger.warning(f"Z-axis thrust not supported yet: {thrust_vector.z}")
 
             success = success_count == total_commands if total_commands > 0 else True
-            logger.info(
-                f"Maneuver executed: {success_count}/{total_commands} commands successful"
-            )
+            logger.info(f"Maneuver executed: {success_count}/{total_commands} commands successful")
             return success
 
         except Exception as e:
@@ -462,12 +455,8 @@ class ShipActuatorController:
             "mode": self.current_mode.value,
             "main_drive": propulsion.main_drive_status,
             "main_drive_fuel_kg": propulsion.main_drive_fuel_kg,
-            "rcs_thrusters": len(
-                [t for t in propulsion.rcs_status.values() if t["status"] == "ready"]
-            ),
-            "total_rcs_fuel_kg": sum(
-                t["fuel_kg"] for t in propulsion.rcs_status.values()
-            ),
+            "rcs_thrusters": len([t for t in propulsion.rcs_status.values() if t["status"] == "ready"]),
+            "total_rcs_fuel_kg": sum(t["fuel_kg"] for t in propulsion.rcs_status.values()),
         }
 
     def get_control_summary(self) -> Dict[str, Any]:
@@ -497,9 +486,7 @@ class ShipActuatorController:
 if __name__ == "__main__":
     try:
         # Test ship actuator control
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         ship = ShipCore(base_path=q_core_agent_root)
         controller = ShipActuatorController(ship)
 
@@ -526,9 +513,7 @@ if __name__ == "__main__":
         # Test power control
         print("2. POWER TESTS:")
         print("   Setting power allocation...")
-        allocation = PowerAllocation(
-            life_support=10.0, propulsion=20.0, sensors=8.0, qiki_core=4.0, shields=6.0
-        )
+        allocation = PowerAllocation(life_support=10.0, propulsion=20.0, sensors=8.0, qiki_core=4.0, shields=6.0)
         success = controller.set_power_allocation(allocation)
         print(f"   Result: {'SUCCESS' if success else 'FAILED'}")
         print()

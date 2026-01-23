@@ -6,32 +6,39 @@ QIKI MISSION CONTROL - Рабочий образец
 Поддерживает prompt_toolkit для улучшенного интерфейса.
 """
 
-import sys
 import os
+import sys
 import time
 import threading
 import importlib.util
 from datetime import datetime
 from typing import Dict, Any
 
-# Add current directory to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+if not __package__:
+    # Legacy: allow direct execution from this directory.
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
 
 # ASCII LIVE INTERFACE - Без зависимостей!
-
 ASCII_INTERFACE_AVAILABLE = True
-print("✅ ASCII Live Interface loaded - full terminal control")
+if __name__ == "__main__":
+    print("✅ ASCII Live Interface loaded - full terminal control")
 
 PROMPT_TOOLKIT_AVAILABLE = importlib.util.find_spec("prompt_toolkit") is not None
 
-from ship_core import ShipCore
-from ship_actuators import (
-    ShipActuatorController,
-    ThrusterAxis,
-    PowerAllocation,
-)
-from test_ship_fsm import ShipLogicController
+if __package__:
+    from qiki.services.q_core_agent.core.ship_actuators import (
+        PowerAllocation,
+        ShipActuatorController,
+        ThrusterAxis,
+    )
+    from qiki.services.q_core_agent.core.ship_core import ShipCore
+    from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController
+else:
+    from ship_actuators import PowerAllocation, ShipActuatorController, ThrusterAxis
+    from ship_core import ShipCore
+    from test_ship_fsm import ShipLogicController
 
 
 class QIKIMissionControl:
@@ -44,14 +51,10 @@ class QIKIMissionControl:
         print("🚀 Initializing QIKI Mission Control...")
 
         # Инициализация корабельных систем
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.ship_core = ShipCore(base_path=q_core_agent_root)
         self.actuator_controller = ShipActuatorController(self.ship_core)
-        self.logic_controller = ShipLogicController(
-            self.ship_core, self.actuator_controller
-        )
+        self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
 
         # Состояние Mission Control
         self.mission_start_time = time.time()
@@ -109,9 +112,7 @@ class QIKIMissionControl:
         self.live_telemetry = {}
 
         # Фоновые процессы - ОБЯЗАТЕЛЬНО запускаем симуляцию!
-        self.background_thread = threading.Thread(
-            target=self._background_processes, daemon=True
-        )
+        self.background_thread = threading.Thread(target=self._background_processes, daemon=True)
         self.background_thread.start()
 
         # ПРИНУДИТЕЛЬНО запускаем обновление параметров сразу
@@ -169,9 +170,7 @@ class QIKIMissionControl:
                     if result.get("state_changed"):
                         self.log("AUTOPILOT", f"🤖 State: {result['current_state']}")
                         if result["trigger_event"]:
-                            self.log(
-                                "AUTOPILOT", f"🔄 Trigger: {result['trigger_event']}"
-                            )
+                            self.log("AUTOPILOT", f"🔄 Trigger: {result['trigger_event']}")
 
                 # Телеметрия
                 self._check_system_alerts()
@@ -213,19 +212,12 @@ class QIKIMissionControl:
             # Прогресс миссии
             if self.mission_data["progress"] < 100:
                 self.mission_data["progress"] += random.uniform(0.1, 0.3)
-                self.mission_data["eta_seconds"] = max(
-                    0, self.mission_data["eta_seconds"] - random.uniform(10, 30)
-                )
+                self.mission_data["eta_seconds"] = max(0, self.mission_data["eta_seconds"] - random.uniform(10, 30))
 
             # Обновляем этапы миссии
-            if (
-                self.mission_data["progress"] > 50
-                and not self.mission_data["steps"][3]["done"]
-            ):
+            if self.mission_data["progress"] > 50 and not self.mission_data["steps"][3]["done"]:
                 self.mission_data["steps"][3]["done"] = True
-                self.log(
-                    "MISSION", "✅ Приближение к J7 завершено / Approach to J7 complete"
-                )
+                self.log("MISSION", "✅ Приближение к J7 завершено / Approach to J7 complete")
 
         except Exception as e:
             self.log("TELEMETRY", f"❌ Live parameter update error: {e}")
@@ -268,10 +260,7 @@ class QIKIMissionControl:
             elif telemetry["main_drive_fuel"] < 50:
                 self.log("ALERT", "⚠️ WARNING: Low fuel reserves")
 
-            elif (
-                telemetry["battery_charge"] / max(telemetry["battery_capacity"], 1)
-                < 0.2
-            ):
+            elif telemetry["battery_charge"] / max(telemetry["battery_capacity"], 1) < 0.2:
                 self.log("ALERT", "⚠️ WARNING: Battery charge low")
 
         except Exception as e:
@@ -323,9 +312,7 @@ class QIKIMissionControl:
         alert_level = self._get_alert_level(telemetry)
         mode = "🤖 AUTOPILOT" if self.autopilot_enabled else "👨‍🚀 MANUAL"
 
-        print(
-            f"║ STATUS: {alert_level:<20} MODE: {mode:<15} STATE: {telemetry['ship_state']:<15} ║"
-        )
+        print(f"║ STATUS: {alert_level:<20} MODE: {mode:<15} STATE: {telemetry['ship_state']:<15} ║")
         print("╠" + "═" * 98 + "╣")
 
         # Телеметрия (две колонки)
@@ -364,9 +351,7 @@ class QIKIMissionControl:
 
         # Последние 5 записей лога
         print("║ 📋 RECENT LOG ENTRIES:" + " " * 75 + "║")
-        recent_logs = (
-            self.log_messages[-5:] if len(self.log_messages) >= 5 else self.log_messages
-        )
+        recent_logs = self.log_messages[-5:] if len(self.log_messages) >= 5 else self.log_messages
 
         for log_entry in recent_logs:
             message = log_entry["full"]
@@ -390,16 +375,10 @@ class QIKIMissionControl:
         coords = self.navigation_data["coordinates"]
         vel = self.navigation_data["velocity"]
 
-        lang_title = (
-            "НАВИГАЦИЯ / NAVIGATION"
-            if self.language == "RU"
-            else "NAVIGATION / НАВИГАЦИЯ"
-        )
+        lang_title = "НАВИГАЦИЯ / NAVIGATION" if self.language == "RU" else "NAVIGATION / НАВИГАЦИЯ"
 
         print(f"║ 🧭 {lang_title:<93} ║")
-        print(
-            f"║   Координаты / Coordinates: X:{coords['x']:+9.1f} Y:{coords['y']:+9.1f} Z:{coords['z']:+7.1f}  ║"
-        )
+        print(f"║   Координаты / Coordinates: X:{coords['x']:+9.1f} Y:{coords['y']:+9.1f} Z:{coords['z']:+7.1f}  ║")
         print(
             f"║   Скорость / Velocity: {vel['absolute']:4.0f} м/с абсолютная, {vel['relative']:+3.0f} м/с к цели          ║"
         )
@@ -419,23 +398,15 @@ class QIKIMissionControl:
         eta_mins = int((mission["eta_seconds"] % 3600) // 60)
 
         lang_title = (
-            "УПРАВЛЕНИЕ МИССИЕЙ / MISSION CONTROL"
-            if self.language == "RU"
-            else "MISSION CONTROL / УПРАВЛЕНИЕ МИССИЕЙ"
+            "УПРАВЛЕНИЕ МИССИЕЙ / MISSION CONTROL" if self.language == "RU" else "MISSION CONTROL / УПРАВЛЕНИЕ МИССИЕЙ"
         )
-        lang_progress = (
-            "Прогресс / Progress" if self.language == "RU" else "Progress / Прогресс"
-        )
+        lang_progress = "Прогресс / Progress" if self.language == "RU" else "Progress / Прогресс"
         lang_eta = (
-            f"ETC: {eta_hours:02}ч {eta_mins:02}м"
-            if self.language == "RU"
-            else f"ETC: {eta_hours:02}h {eta_mins:02}m"
+            f"ETC: {eta_hours:02}ч {eta_mins:02}м" if self.language == "RU" else f"ETC: {eta_hours:02}h {eta_mins:02}m"
         )
 
         print(f"║ 🎯 {lang_title:<89} ║")
-        print(
-            f"║   ID: {mission['designator']:<30} {lang_progress}: {progress_bar} {mission['progress']:4.1f}%  ║"
-        )
+        print(f"║   ID: {mission['designator']:<30} {lang_progress}: {progress_bar} {mission['progress']:4.1f}%  ║")
         print(f"║   Цель / Objective: {mission['objective'][:50]:<50}               ║")
         print(
             f"║   {lang_eta:<20} Этапы / Steps завершено: {sum(1 for s in mission['steps'] if s['done'])}/{len(mission['steps'])}              ║"
@@ -457,11 +428,7 @@ class QIKIMissionControl:
 
     def _get_alert_level(self, telemetry: Dict[str, Any]) -> str:
         """Определяет уровень тревоги."""
-        if (
-            telemetry["hull_integrity"] < 30
-            or telemetry["oxygen_level"] < 16
-            or telemetry["reactor_temp"] > 3500
-        ):
+        if telemetry["hull_integrity"] < 30 or telemetry["oxygen_level"] < 16 or telemetry["reactor_temp"] > 3500:
             return "🚨 EMERGENCY"
         elif (
             telemetry["hull_integrity"] < 60
@@ -469,11 +436,7 @@ class QIKIMissionControl:
             or telemetry["main_drive_fuel"] < 50
         ):
             return "⚠️  WARNING"
-        elif (
-            telemetry["hull_integrity"] < 80
-            or telemetry["co2_level"] > 1000
-            or telemetry["reactor_temp"] > 3000
-        ):
+        elif telemetry["hull_integrity"] < 80 or telemetry["co2_level"] > 1000 or telemetry["reactor_temp"] > 3000:
             return "⚡ CAUTION"
         else:
             return "✅ NOMINAL"
@@ -497,9 +460,7 @@ class QIKIMissionControl:
                 if len(cmd_parts) >= 2:
                     thrust_pct = float(cmd_parts[1])
                     if 0 <= thrust_pct <= 100:
-                        success = self.actuator_controller.set_main_drive_thrust(
-                            thrust_pct
-                        )
+                        success = self.actuator_controller.set_main_drive_thrust(thrust_pct)
                         if success:
                             self.log("PROPULSION", f"🚀 Main drive: {thrust_pct}%")
                             return True
@@ -529,13 +490,9 @@ class QIKIMissionControl:
 
                     if direction in axis_map and 0 <= thrust_pct <= 100:
                         duration = float(cmd_parts[3]) if len(cmd_parts) > 3 else 2.0
-                        success = self.actuator_controller.fire_rcs_thruster(
-                            axis_map[direction], thrust_pct, duration
-                        )
+                        success = self.actuator_controller.fire_rcs_thruster(axis_map[direction], thrust_pct, duration)
                         if success:
-                            self.log(
-                                "RCS", f"🎯 {direction}: {thrust_pct}% for {duration}s"
-                            )
+                            self.log("RCS", f"🎯 {direction}: {thrust_pct}% for {duration}s")
                             return True
                         else:
                             self.log("ERROR", f"❌ Failed to fire {direction} thruster")
@@ -572,9 +529,7 @@ class QIKIMissionControl:
                             qiki_core=3.0,
                             shields=0.0,
                         )
-                        success = self.actuator_controller.set_power_allocation(
-                            allocation
-                        )
+                        success = self.actuator_controller.set_power_allocation(allocation)
                         if success:
                             self.log("POWER", "🚨 Emergency power allocation set")
                             return True
@@ -600,9 +555,7 @@ class QIKIMissionControl:
                     else:
                         self.log("ERROR", "❌ Use 'activate' or 'deactivate'")
                 else:
-                    self.log(
-                        "ERROR", "❌ Usage: sensor <activate|deactivate> <sensor_id>"
-                    )
+                    self.log("ERROR", "❌ Usage: sensor <activate|deactivate> <sensor_id>")
 
             # === ПЕРЕКЛЮЧЕНИЕ ЯЗЫКА ===
             elif cmd in ["lang", "language", "язык"]:
@@ -645,9 +598,7 @@ class QIKIMissionControl:
                 bios_handler = ShipBiosHandler(self.ship_core)
                 health = bios_handler.get_system_health_summary()
 
-                self.log(
-                    "DIAGNOSTICS", f"🔧 Hull: {health.get('hull_integrity', 0):.1f}%"
-                )
+                self.log("DIAGNOSTICS", f"🔧 Hull: {health.get('hull_integrity', 0):.1f}%")
                 self.log(
                     "DIAGNOSTICS",
                     f"⚡ Reactor: {health.get('reactor_output_percent', 0):.1f}%",
@@ -665,16 +616,10 @@ class QIKIMissionControl:
                 print("   PROPULSION:")
                 print("     thrust <0-100>                    - Set main drive thrust")
                 print("     rcs <direction> <0-100> [time]    - Fire RCS thrusters")
-                print(
-                    "     emergency                         - Emergency stop all systems"
-                )
+                print("     emergency                         - Emergency stop all systems")
                 print("   POWER:")
-                print(
-                    "     power status                      - Show power system status"
-                )
-                print(
-                    "     power emergency                   - Emergency power allocation"
-                )
+                print("     power status                      - Show power system status")
+                print("     power emergency                   - Emergency power allocation")
                 print("   SENSORS:")
                 print("     sensor activate <id>              - Activate sensor")
                 print("     sensor deactivate <id>            - Deactivate sensor")
@@ -684,15 +629,9 @@ class QIKIMissionControl:
                 print("     diagnostics                       - Run system diagnostics")
                 print("   INTERFACE:")
                 print("     help                              - Show this help")
-                print(
-                    "     exit                              - Terminate Mission Control"
-                )
-                print(
-                    "\n💡 RCS Directions: forward/aft/port/starboard (or fwd/aft/left/right)"
-                )
-                print(
-                    "💡 Available Sensors: long_range_radar, thermal_scanner, quantum_scanner"
-                )
+                print("     exit                              - Terminate Mission Control")
+                print("\n💡 RCS Directions: forward/aft/port/starboard (or fwd/aft/left/right)")
+                print("💡 Available Sensors: long_range_radar, thermal_scanner, quantum_scanner")
                 return True
 
             # === ВЫХОД ===
@@ -846,9 +785,7 @@ def run_enhanced_mode():
 
             @bindings.add("f12")
             def toggle_lang(event):
-                mission_control.language = (
-                    "EN" if mission_control.language == "RU" else "RU"
-                )
+                mission_control.language = "EN" if mission_control.language == "RU" else "RU"
                 mission_control.log(
                     "INTERFACE",
                     f"🌐 Language: {'English' if mission_control.language == 'EN' else 'Русский'}",
@@ -857,9 +794,7 @@ def run_enhanced_mode():
 
             @bindings.add("f1")
             def toggle_autopilot(event):
-                mission_control.autopilot_enabled = (
-                    not mission_control.autopilot_enabled
-                )
+                mission_control.autopilot_enabled = not mission_control.autopilot_enabled
                 status = "ENABLED" if mission_control.autopilot_enabled else "DISABLED"
                 mission_control.log("AUTOPILOT", f"🤖 Autopilot {status}")
                 status_area.text = mission_control._create_status_content()

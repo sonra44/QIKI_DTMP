@@ -1,13 +1,18 @@
 import sys
 import os
 
-# Add project root and generated to sys.path
-project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-generated_path = os.path.join(project_root, "generated")
-sys.path.append(project_root)
-sys.path.append(generated_path)
+# NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
+# dangerous and can mask real import issues.
+#
+# Keep the legacy sys.path bootstrap only for direct execution
+# (`python ship_bios_handler.py`), not for normal package imports.
+if not __package__:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+    generated_path = os.path.join(project_root, "generated")
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    if generated_path not in sys.path:
+        sys.path.append(generated_path)
 
 from typing import Dict, Any, List
 
@@ -158,13 +163,9 @@ class ShipBiosHandler(IBiosHandler):
             device_status = DeviceStatus()
             if hasattr(device_status, "device_id") and hasattr(UUID, "__call__"):
                 device_status.device_id = UUID(value=issue["device_id"])
-            device_status.status = getattr(
-                DeviceStatus.Status, issue["status"], "ERROR"
-            )
+            device_status.status = getattr(DeviceStatus.Status, issue["status"], "ERROR")
             device_status.error_message = issue["message"]
-            device_status.status_code = getattr(
-                DeviceStatus.StatusCode, issue.get("code", "UNSTABLE_READINGS"), 2
-            )
+            device_status.status_code = getattr(DeviceStatus.StatusCode, issue.get("code", "UNSTABLE_READINGS"), 2)
             updated_bios_status.post_results.append(device_status)
 
         # Update overall status
@@ -180,9 +181,7 @@ class ShipBiosHandler(IBiosHandler):
 
         if system_issues:
             for issue in system_issues[:5]:  # Log first 5 issues
-                logger.warning(
-                    f"System issue: {issue['device_id']} - {issue['message']}"
-                )
+                logger.warning(f"System issue: {issue['device_id']} - {issue['message']}")
 
         return updated_bios_status
 
@@ -207,9 +206,7 @@ class ShipBiosHandler(IBiosHandler):
             pressure = params.get("pressure", 0.0)
             temp = params.get("temperature", 0.0)
 
-            if (
-                pressure < 0.8 and compartment != "cargo_bay"
-            ):  # cargo_bay can be depressurized
+            if pressure < 0.8 and compartment != "cargo_bay":  # cargo_bay can be depressurized
                 issues.append(
                     {
                         "device_id": f"compartment_{compartment}",
@@ -256,9 +253,7 @@ class ShipBiosHandler(IBiosHandler):
             issues.append(
                 {
                     "device_id": "reactor_fuel",
-                    "status": "WARNING"
-                    if power_status.reactor_fuel_hours > 8
-                    else "ERROR",
+                    "status": "WARNING" if power_status.reactor_fuel_hours > 8 else "ERROR",
                     "message": f"Low fuel: {power_status.reactor_fuel_hours:.1f} hours remaining",
                     "code": "UNSTABLE_READINGS",
                 }
@@ -312,9 +307,7 @@ class ShipBiosHandler(IBiosHandler):
             issues.append(
                 {
                     "device_id": "main_drive_fuel",
-                    "status": "WARNING"
-                    if propulsion_status.main_drive_fuel_kg > 20
-                    else "ERROR",
+                    "status": "WARNING" if propulsion_status.main_drive_fuel_kg > 20 else "ERROR",
                     "message": f"Low propellant: {propulsion_status.main_drive_fuel_kg:.1f}kg remaining",
                     "code": "UNSTABLE_READINGS",
                 }
@@ -452,9 +445,7 @@ class ShipBiosHandler(IBiosHandler):
             issues.append(
                 {
                     "device_id": "qiki_cooling",
-                    "status": "WARNING"
-                    if computing_status.qiki_temperature_k < 320
-                    else "ERROR",
+                    "status": "WARNING" if computing_status.qiki_temperature_k < 320 else "ERROR",
                     "message": f"QIKI core temperature: {computing_status.qiki_temperature_k:.1f}K",
                     "code": "UNSTABLE_READINGS",
                 }
@@ -488,14 +479,10 @@ class ShipBiosHandler(IBiosHandler):
 
             return {
                 "hull_integrity": hull.integrity,
-                "reactor_output_percent": (
-                    power.reactor_output_mw / power.reactor_max_output_mw * 100
-                )
+                "reactor_output_percent": (power.reactor_output_mw / power.reactor_max_output_mw * 100)
                 if power.reactor_max_output_mw > 0
                 else 0,
-                "battery_charge_percent": (
-                    power.battery_charge_mwh / power.battery_capacity_mwh * 100
-                )
+                "battery_charge_percent": (power.battery_charge_mwh / power.battery_capacity_mwh * 100)
                 if power.battery_capacity_mwh > 0
                 else 0,
                 "main_drive": propulsion.main_drive_status,
@@ -524,9 +511,7 @@ class ShipBiosHandler(IBiosHandler):
 if __name__ == "__main__":
     try:
         # Test with ShipCore
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         ship = ShipCore(base_path=q_core_agent_root)
         bios_handler = ShipBiosHandler(ship)
 
@@ -535,9 +520,7 @@ if __name__ == "__main__":
         result = bios_handler.process_bios_status(mock_bios_status)
 
         print("Ship BIOS Diagnostics completed!")
-        print(
-            f"Systems status: {'NOMINAL' if result.all_systems_go else 'ISSUES DETECTED'}"
-        )
+        print(f"Systems status: {'NOMINAL' if result.all_systems_go else 'ISSUES DETECTED'}")
         print(f"Issues found: {len(result.post_results)}")
 
         # Health summary

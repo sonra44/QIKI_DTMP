@@ -5,18 +5,27 @@ QIKI Mission Control Terminal Demo
 в стиле NASA Mission Control / военного кокпита.
 """
 
-import sys
 import os
+import sys
 import time
 from datetime import datetime
 
-# Add current directory to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+if __package__:
+    from qiki.services.q_core_agent.core.ship_actuators import (
+        ShipActuatorController,
+        ThrusterAxis,
+    )
+    from qiki.services.q_core_agent.core.ship_core import ShipCore
+    from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController
+else:
+    # Legacy: allow direct execution from this directory.
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
 
-from ship_core import ShipCore
-from ship_actuators import ShipActuatorController, ThrusterAxis
-from test_ship_fsm import ShipLogicController
+    from ship_actuators import ShipActuatorController, ThrusterAxis
+    from ship_core import ShipCore
+    from test_ship_fsm import ShipLogicController
 
 
 class MissionControlDemo:
@@ -27,14 +36,10 @@ class MissionControlDemo:
 
     def __init__(self):
         # Инициализация корабельных систем
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.ship_core = ShipCore(base_path=q_core_agent_root)
         self.actuator_controller = ShipActuatorController(self.ship_core)
-        self.logic_controller = ShipLogicController(
-            self.ship_core, self.actuator_controller
-        )
+        self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
 
         self.mission_time_start = time.time()
         print(f"🚀 QIKI Mission Control Demo initialized for {self.ship_core.get_id()}")
@@ -84,11 +89,7 @@ class MissionControlDemo:
 
     def get_alert_level(self, telemetry):
         """Определяет уровень тревоги."""
-        if (
-            telemetry["hull_integrity"] < 30
-            or telemetry["oxygen_level"] < 16
-            or telemetry["reactor_temp"] > 3500
-        ):
+        if telemetry["hull_integrity"] < 30 or telemetry["oxygen_level"] < 16 or telemetry["reactor_temp"] > 3500:
             return "🚨 EMERGENCY"
         elif (
             telemetry["hull_integrity"] < 60
@@ -96,11 +97,7 @@ class MissionControlDemo:
             or telemetry["main_drive_fuel"] < 50
         ):
             return "⚠️  WARNING"
-        elif (
-            telemetry["hull_integrity"] < 80
-            or telemetry["co2_level"] > 1000
-            or telemetry["reactor_temp"] > 3000
-        ):
+        elif telemetry["hull_integrity"] < 80 or telemetry["co2_level"] > 1000 or telemetry["reactor_temp"] > 3000:
             return "⚡ CAUTION"
         else:
             return "✅ NOMINAL"
@@ -115,19 +112,11 @@ class MissionControlDemo:
         alert_level = self.get_alert_level(telemetry)
 
         # Заголовок
-        print(
-            "╔══════════════════════════════════════════════════════════════════════════════════════════╗"
-        )
-        print(
-            f"║ 🚀 QIKI MISSION CONTROL TERMINAL                    MISSION TIME: {mission_time} ║"
-        )
+        print("╔══════════════════════════════════════════════════════════════════════════════════════════╗")
+        print(f"║ 🚀 QIKI MISSION CONTROL TERMINAL                    MISSION TIME: {mission_time} ║")
         print(f"║ 🛰️  SPACECRAFT: {self.ship_core.get_id()}  UTC: {current_time} ║")
-        print(
-            f"║ 📊 SYSTEM STATUS: {alert_level:<20} MODE: {'AUTO' if False else 'MANUAL':<6} ║"
-        )
-        print(
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝"
-        )
+        print(f"║ 📊 SYSTEM STATUS: {alert_level:<20} MODE: {'AUTO' if False else 'MANUAL':<6} ║")
+        print("╚══════════════════════════════════════════════════════════════════════════════════════════╝")
         print()
 
         # Основная панель (две колонки)
@@ -137,13 +126,9 @@ class MissionControlDemo:
 
         # Телеметрия
         hull_bar = self.format_bar(telemetry["hull_integrity"])
-        reactor_pct = (
-            telemetry["reactor_output"] / max(telemetry["reactor_max"], 1)
-        ) * 100
+        reactor_pct = (telemetry["reactor_output"] / max(telemetry["reactor_max"], 1)) * 100
         reactor_bar = self.format_bar(reactor_pct)
-        battery_pct = (
-            telemetry["battery_charge"] / max(telemetry["battery_capacity"], 1)
-        ) * 100
+        battery_pct = (telemetry["battery_charge"] / max(telemetry["battery_capacity"], 1)) * 100
         battery_bar = self.format_bar(battery_pct)
 
         log_entries = [
@@ -193,9 +178,7 @@ class MissionControlDemo:
                 log_entry = log_entries[i]
                 if len(log_entry) > 65:
                     log_entry = log_entry[:62] + "..."
-                print(
-                    f"                                                     │ {log_entry:<65} │"
-                )
+                print(f"                                                     │ {log_entry:<65} │")
 
         print(
             "                                                     └───────────────────────────────────────────────────────────────────┘"
@@ -205,15 +188,9 @@ class MissionControlDemo:
         # Панель двигательной системы
         print("┌─ PROPULSION SYSTEMS ────────────────────────────┐")
 
-        main_fuel_bar = self.format_bar(
-            telemetry["main_drive_fuel"], 500
-        )  # Макс 500 кг
+        main_fuel_bar = self.format_bar(telemetry["main_drive_fuel"], 500)  # Макс 500 кг
 
-        drive_status_color = (
-            "🟢"
-            if telemetry["main_drive_status"] in ["ready", "idle", "active"]
-            else "🔴"
-        )
+        drive_status_color = "🟢" if telemetry["main_drive_status"] in ["ready", "idle", "active"] else "🔴"
         mode_color = {
             "idle": "🟢",
             "maneuvering": "🟡",
@@ -221,42 +198,24 @@ class MissionControlDemo:
             "emergency": "🔴",
         }.get(telemetry["propulsion_mode"], "⚪")
 
-        print(
-            f"│ 🚀 MAIN DRIVE     : {drive_status_color} {telemetry['main_drive_status']:>8}                │"
-        )
-        print(
-            f"│ 🎯 PROPULSION MODE: {mode_color} {telemetry['propulsion_mode'].upper():>8}               │"
-        )
+        print(f"│ 🚀 MAIN DRIVE     : {drive_status_color} {telemetry['main_drive_status']:>8}                │")
+        print(f"│ 🎯 PROPULSION MODE: {mode_color} {telemetry['propulsion_mode'].upper():>8}               │")
         print(f"│ ⛽ MAIN FUEL      : {main_fuel_bar} kg │")
-        print(
-            f"│ 📡 ACTIVE SENSORS : {telemetry['active_sensors']:8d}                │"
-        )
+        print(f"│ 📡 ACTIVE SENSORS : {telemetry['active_sensors']:8d}                │")
         print(f"│ 🛰️  SHIP STATE     : {telemetry['ship_state']:>8}   │")
         print("└─────────────────────────────────────────────────┘")
         print()
 
         # Командная строка
-        print(
-            "┌─ COMMAND INTERFACE ──────────────────────────────────────────────────────────────────────┐"
-        )
-        print(
-            "│ MISSION CONTROL> _                                                                       │"
-        )
-        print(
-            "│                                                                                          │"
-        )
-        print(
-            "└──────────────────────────────────────────────────────────────────────────────────────────┘"
-        )
+        print("┌─ COMMAND INTERFACE ──────────────────────────────────────────────────────────────────────┐")
+        print("│ MISSION CONTROL> _                                                                       │")
+        print("│                                                                                          │")
+        print("└──────────────────────────────────────────────────────────────────────────────────────────┘")
         print()
 
         # Hotkeys
-        print(
-            "💡 HOTKEYS: F1=Autopilot | F2=Emergency Stop | F3=Diagnostics | Ctrl+C=Exit"
-        )
-        print(
-            "💡 COMMANDS: thrust <0-100> | rcs <dir> <0-100> | power status | sensor activate <id> | status | help"
-        )
+        print("💡 HOTKEYS: F1=Autopilot | F2=Emergency Stop | F3=Diagnostics | Ctrl+C=Exit")
+        print("💡 COMMANDS: thrust <0-100> | rcs <dir> <0-100> | power status | sensor activate <id> | status | help")
 
     def simulate_mission_scenario(self):
         """Симулирует сценарий миссии с различными событиями."""
@@ -324,9 +283,7 @@ class MissionControlDemo:
                 }
 
                 if direction in axis_map:
-                    self.actuator_controller.fire_rcs_thruster(
-                        axis_map[direction], thrust_pct, 2.0
-                    )
+                    self.actuator_controller.fire_rcs_thruster(axis_map[direction], thrust_pct, 2.0)
                     print(f"🎯 {direction} RCS thruster fired at {thrust_pct}%")
 
             elif cmd == "sensor" and len(cmd_parts) >= 3:
@@ -372,9 +329,7 @@ class MissionControlDemo:
                 elif command.lower() == "help":
                     print("\n💡 Available commands:")
                     print("  thrust <0-100>        - Set main drive thrust")
-                    print(
-                        "  rcs <dir> <0-100>     - Fire RCS thruster (forward/backward/port/starboard)"
-                    )
+                    print("  rcs <dir> <0-100>     - Fire RCS thruster (forward/backward/port/starboard)")
                     print("  power status          - Show power status")
                     print("  sensor activate <id>  - Activate sensor")
                     print("  status                - Show ship status")

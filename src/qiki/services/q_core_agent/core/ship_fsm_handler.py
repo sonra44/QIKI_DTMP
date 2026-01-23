@@ -3,18 +3,21 @@ Ship FSM Handler - конечный автомат для управления �
 Управляет состояниями корабля: загрузка, режим ожидания, полет, стыковка, аварийные состояния.
 """
 
-import sys
 import os
+import sys
 
-# Add project root and generated to sys.path
-project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..")
-)
-generated_path = os.path.join(project_root, "generated")
-if project_root not in sys.path:
-    sys.path.append(project_root)
-if generated_path not in sys.path:
-    sys.path.append(generated_path)
+# NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
+# dangerous and can mask real import issues.
+#
+# Keep the legacy sys.path bootstrap only for direct execution
+# (`python ship_fsm_handler.py`), not for normal package imports.
+if not __package__:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+    generated_path = os.path.join(project_root, "generated")
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    if generated_path not in sys.path:
+        sys.path.append(generated_path)
 
 from typing import Dict, Any, Optional
 from enum import Enum
@@ -86,9 +89,7 @@ def _get_ship_state_name(snapshot: FSMState) -> str:
 class ShipContext:
     """Контекст состояния корабля для принятия решений FSM."""
 
-    def __init__(
-        self, ship_core: ShipCore, actuator_controller: ShipActuatorController
-    ):
+    def __init__(self, ship_core: ShipCore, actuator_controller: ShipActuatorController):
         self.ship_core = ship_core
         self.actuator_controller = actuator_controller
 
@@ -106,18 +107,14 @@ class ShipContext:
                     hull.integrity > 50.0,  # Корпус не критично поврежден
                     power.reactor_output_mw > 0,  # Реактор работает
                     power.battery_charge_mwh > 0,  # Есть аварийное питание
-                    18
-                    <= life_support.atmosphere.get("oxygen_percent", 0)
-                    <= 25,  # Кислород в норме
+                    18 <= life_support.atmosphere.get("oxygen_percent", 0) <= 25,  # Кислород в норме
                     life_support.atmosphere.get("co2_ppm", 0) < 5000,  # CO2 не критичен
                     computing.qiki_core_status == "active",  # QIKI активен
                 ]
             )
 
             if not systems_ok:
-                logger.warning(
-                    "Ship systems check failed - some critical systems degraded"
-                )
+                logger.warning("Ship systems check failed - some critical systems degraded")
 
             return systems_ok
 
@@ -223,9 +220,7 @@ class ShipFSMHandler(IFSMHandler):
     Управляет переходами между состояниями: запуск, ожидание, полет, стыковка, аварийные режимы.
     """
 
-    def __init__(
-        self, ship_core: ShipCore, actuator_controller: ShipActuatorController
-    ):
+    def __init__(self, ship_core: ShipCore, actuator_controller: ShipActuatorController):
         self.ship_context = ShipContext(ship_core, actuator_controller)
         self.ship_core = ship_core
         self.actuator_controller = actuator_controller
@@ -352,9 +347,7 @@ class ShipFSMHandler(IFSMHandler):
 
         # Выполнение перехода состояния
         if new_state_name != current_state:
-            logger.info(
-                f"🔄 Ship FSM Transition: {current_state} -> {new_state_name} (Trigger: {trigger_event})"
-            )
+            logger.info(f"🔄 Ship FSM Transition: {current_state} -> {new_state_name} (Trigger: {trigger_event})")
 
             from_fsm_state = _map_ship_state_to_fsm_state_enum(current_state)
             to_fsm_state = _map_ship_state_to_fsm_state_enum(new_state_name)
@@ -422,9 +415,7 @@ class ShipFSMHandler(IFSMHandler):
 if __name__ == "__main__":
     try:
         # Инициализация корабельных систем
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         ship = ShipCore(base_path=q_core_agent_root)
         controller = ShipActuatorController(ship)
 
@@ -438,9 +429,7 @@ if __name__ == "__main__":
         # Создание начального состояния
         initial_state = FSMState()
         initial_state.current_state = FSMStateEnum.BOOTING
-        initial_state.context_data[_SHIP_STATE_CONTEXT_KEY] = (
-            ShipState.SHIP_STARTUP.value
-        )
+        initial_state.context_data[_SHIP_STATE_CONTEXT_KEY] = ShipState.SHIP_STARTUP.value
 
         print(f"Initial state: {_get_ship_state_name(initial_state)}")
 
@@ -463,9 +452,7 @@ if __name__ == "__main__":
             current_state = next_state
 
             # Прерывание если состояние не меняется
-            if i > 0 and _get_ship_state_name(current_state) == _get_ship_state_name(
-                next_state
-            ):
+            if i > 0 and _get_ship_state_name(current_state) == _get_ship_state_name(next_state):
                 print("State stabilized.")
                 break
 
