@@ -6,6 +6,65 @@ import os
 from typing import Any
 
 
+def _is_nonempty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_bios_status_payload(payload: dict[str, Any], expected_subject: str) -> tuple[bool, str]:
+    if payload.get("event_schema_version") != 1:
+        return False, f"event_schema_version != 1: {payload.get('event_schema_version')}"
+
+    if not _is_nonempty_str(payload.get("source")):
+        return False, f"missing/invalid source: {payload.get('source')}"
+
+    if payload.get("subject") != expected_subject:
+        return False, f"subject mismatch: expected={expected_subject!r} got={payload.get('subject')!r}"
+
+    if not _is_nonempty_str(payload.get("timestamp")):
+        return False, f"missing/invalid timestamp: {payload.get('timestamp')}"
+
+    if not _is_nonempty_str(payload.get("bios_version")):
+        return False, f"missing/invalid bios_version: {payload.get('bios_version')}"
+
+    if not _is_nonempty_str(payload.get("firmware_version")):
+        return False, f"missing/invalid firmware_version: {payload.get('firmware_version')}"
+
+    hp = payload.get("hardware_profile_hash")
+    if hp is not None and not _is_nonempty_str(hp):
+        return False, f"invalid hardware_profile_hash: {hp}"
+
+    rows = payload.get("post_results")
+    if not isinstance(rows, list):
+        return False, f"missing/invalid post_results list: {rows}"
+
+    statuses: list[int] = []
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            return False, f"post_results[{idx}] is not an object: {row}"
+        if not _is_nonempty_str(row.get("device_id")):
+            return False, f"post_results[{idx}] missing/invalid device_id: {row.get('device_id')}"
+        if not _is_nonempty_str(row.get("device_name")):
+            return False, f"post_results[{idx}] missing/invalid device_name: {row.get('device_name')}"
+        status = row.get("status")
+        if not isinstance(status, int) or status not in (0, 1, 2, 3):
+            return False, f"post_results[{idx}] invalid status (expected 0..3 int): {status}"
+        statuses.append(status)
+        sm = row.get("status_message")
+        if sm is not None and not isinstance(sm, str):
+            return False, f"post_results[{idx}] invalid status_message (expected str|null): {sm}"
+
+    # Consistency check if all_systems_go присутствует в payload.
+    asg = payload.get("all_systems_go")
+    if asg is not None:
+        if not isinstance(asg, bool):
+            return False, f"invalid all_systems_go (expected bool): {asg}"
+        computed = bool(statuses) and all(s == 1 for s in statuses)
+        if asg != computed:
+            return False, f"all_systems_go mismatch: got={asg} computed={computed}"
+
+    return True, "ok"
+
+
 async def main() -> int:
     try:
         import nats
@@ -34,14 +93,9 @@ async def main() -> int:
         if not isinstance(payload, dict):
             print(f"BAD: bios status payload is not a dict on {subject}: {payload}")
             return 1
-        if not isinstance(payload.get("post_results"), list):
-            print(f"BAD: bios status missing post_results list on {subject}: {payload}")
-            return 1
-        if payload.get("event_schema_version") != 1:
-            print(f"BAD: bios status event_schema_version != 1 on {subject}: {payload}")
-            return 1
-        if "bios_version" not in payload:
-            print(f"BAD: bios status missing bios_version on {subject}: {payload}")
+        ok, reason = _validate_bios_status_payload(payload, expected_subject=subject)
+        if not ok:
+            print(f"BAD: bios status contract violation on {subject}: {reason}; payload={payload}")
             return 1
         print(f"OK: received bios status on {subject}: {payload}")
         return 0

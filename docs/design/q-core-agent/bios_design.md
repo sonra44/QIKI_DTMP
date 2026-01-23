@@ -9,11 +9,13 @@
 - Источник конфигурации/“железа”: `bot_config.json` (см. `src/qiki/services/q_bios_service/config.py`, `bios_engine.py`).
 - HTTP API (реально): `GET /healthz`, `GET /bios/status` (см. `src/qiki/services/q_bios_service/handlers.py`).
 - Публикация в NATS (реально): subject по умолчанию `qiki.events.v1.bios_status` (см. `BiosConfig.nats_subject`).
+- Канонический контракт события BIOS (реально, v1): `schemas/asyncapi/qiki.events.v1.bios_status/v1/` (JSON Schema + README).
 
 ### 0.2 Что описано здесь как намерение (ещё не реализовано)
 
 - Чтение `bot_physical_specs.json` как аппаратного контракта.
 - Расширенный API (`get_component_status`, `soft_reboot`, `hot_reload_config`, `read_port`, `write_port`) и события `hardware_ready/hardware_error`.
+  - Важно: в v1 эти subject’ы **не используются**. Канон для статуса BIOS в v1 — только `qiki.events.v1.bios_status`.
 
 ## 1. Обзор
 Этот документ описывает компонент BIOS, низкоуровневую "прошивку" для QIKI платформы. В архитектуре Digital Twin, BIOS выполняет ту же роль, что и в PC: он инициализирует и тестирует "оборудование" (`bot_physical_specs`) и передает управление высокоуровневой логике (`Q-Core Agent`).

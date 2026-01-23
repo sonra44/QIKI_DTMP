@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qiki.events.v1.bios_status/v1/payload.schema.json",
+  "title": "qiki.events.v1.bios_status payload (v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "event_schema_version",
+    "source",
+    "subject",
+    "timestamp",
+    "bios_version",
+    "firmware_version",
+    "post_results"
+  ],
+  "properties": {
+    "event_schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string",
+      "const": "qiki.events.v1.bios_status"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "bios_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "firmware_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hardware_profile_hash": {
+      "type": ["string", "null"]
+    },
+    "all_systems_go": {
+      "type": "boolean"
+    },
+    "post_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["device_id", "device_name", "status"],
+        "properties": {
+          "device_id": { "type": "string", "minLength": 1 },
+          "device_name": { "type": "string", "minLength": 1 },
+          "status": { "type": "integer", "enum": [0, 1, 2, 3] },
+          "status_message": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
+
