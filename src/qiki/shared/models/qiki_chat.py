@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class _StrictModel(BaseModel):
@@ -55,7 +55,7 @@ class QikiChatInput(_StrictModel):
 
 class QikiChatRequestV1(_StrictModel):
     version: Literal[1] = 1
-    request_id: UUID
+    request_id: UUID = Field(validation_alias=AliasChoices("request_id", "requestId"))
     ts_epoch_ms: int
     mode_hint: QikiMode = QikiMode.FACTORY
     input: QikiChatInput
@@ -85,7 +85,7 @@ class QikiProposalV1(_StrictModel):
 
 class QikiChatResponseV1(_StrictModel):
     version: Literal[1] = 1
-    request_id: UUID
+    request_id: UUID = Field(validation_alias=AliasChoices("request_id", "requestId"))
     ok: bool
     mode: QikiMode
     reply: Optional[QikiReplyV1] = None

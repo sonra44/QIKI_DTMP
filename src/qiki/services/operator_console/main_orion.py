@@ -4723,12 +4723,30 @@ class OrionApp(App):
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
             payload = {}
+
+        raw_req_id = payload.get("request_id") or payload.get("requestId")
+
         try:
             resp = QikiChatResponseV1.model_validate(payload)
-        except Exception:
-            # Best-effort: still surface something in the console.
+        except ValidationError as e:
+            # Best-effort: keep request_id visible even if schema is invalid.
+            request = I18N.NA if raw_req_id is None else str(raw_req_id)
             kind = payload.get("kind") or payload.get("type") or "response"
-            self._console_log(f"QIKI: {kind} {payload}".strip())
+            first = (e.errors() or [{}])[0]
+            loc = ".".join(str(x) for x in first.get("loc", []))
+            msg = first.get("msg", "invalid")
+            detail = f"{loc}: {msg}" if loc else str(msg)
+            self._console_log(
+                f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request})"
+            )
+            self._calm_log(f"QIKI schema error: {detail}")
+            return
+        except Exception:
+            kind = payload.get("kind") or payload.get("type") or "response"
+            request = I18N.NA if raw_req_id is None else str(raw_req_id)
+            self._console_log(
+                f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request}) {payload}".strip()
+            )
             return
 
         req_id = str(resp.request_id)
