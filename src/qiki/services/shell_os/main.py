@@ -13,9 +13,15 @@ from textual.binding import Binding
 from textual.widgets import Static
 from textual.containers import Vertical
 
-from ui.resources_panel import ResourcesPanel
-from ui.services_panel import ServicesPanel
-from ui.system_panel import SystemPanel
+if __package__:
+    from qiki.services.shell_os.ui.resources_panel import ResourcesPanel
+    from qiki.services.shell_os.ui.services_panel import ServicesPanel
+    from qiki.services.shell_os.ui.system_panel import SystemPanel
+else:
+    # Legacy direct execution from this directory.
+    from ui.resources_panel import ResourcesPanel
+    from ui.services_panel import ServicesPanel
+    from ui.system_panel import SystemPanel
 
 
 def _has_active_textual_app() -> bool:
@@ -92,4 +98,3 @@ class ShellOSApp(App):
 
 if __name__ == "__main__":
     ShellOSApp().run()
-
