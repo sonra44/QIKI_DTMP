@@ -95,7 +95,16 @@ class QSimDataProvider(IDataProvider):
         self.qsim_service = qsim_service_instance
 
     def get_bios_status(self) -> BiosStatus:
-        # No-mocks: BIOS comes from q-bios-service (BIOS_URL).
+        """Return BIOS status for the tick.
+
+        Important:
+        - `fetch_bios_status()` is designed to be non-blocking by default.
+        - Default behavior returns a cached value immediately and refreshes BIOS in a background thread.
+        - Configure via env:
+          - `BIOS_CACHE_TTL_SEC` (default 5.0): cache TTL; set <= 0 to force legacy blocking HTTP fetch.
+          - `BIOS_HTTP_TIMEOUT_SEC` (default 2.0): timeout for the blocking HTTP call (used only when forced).
+        """
+        # No-mocks: BIOS comes from q-bios-service (BIOS_URL). Cached by default.
         return fetch_bios_status()
 
     def get_fsm_state(self) -> PydanticFsmStateSnapshot:
