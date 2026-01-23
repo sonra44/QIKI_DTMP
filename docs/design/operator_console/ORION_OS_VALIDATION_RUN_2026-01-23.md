@@ -35,6 +35,7 @@ Observed via tmux (header line):
 
 - `Sim/Сим Running/Работает`
 - After `simulation.pause`: `Sim/Сим Paused/Пауза`
+- After `simulation.stop`: `Sim/Сим Stopped/Остановлено`
 
 ## Checklist summary (✅/❌)
 

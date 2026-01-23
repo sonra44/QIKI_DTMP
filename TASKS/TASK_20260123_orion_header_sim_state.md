@@ -19,3 +19,4 @@ In ORION (attached via `docker attach qiki-operator-console`):
 
 1) Send `simulation.pause` -> header shows `Sim/Сим Paused/Пауза`.
 2) Send `simulation.start` -> header shows `Sim/Сим Running/Работает`.
+3) Send `simulation.stop` -> header shows `Sim/Сим Stopped/Остановлено`.
