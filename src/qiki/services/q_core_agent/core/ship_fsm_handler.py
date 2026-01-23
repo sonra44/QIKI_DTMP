@@ -14,7 +14,7 @@ generated_path = os.path.join(project_root, "generated")
 sys.path.append(project_root)
 sys.path.append(generated_path)
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from enum import Enum
 
 try:
@@ -155,9 +155,68 @@ class ShipContext:
 
     def is_docking_target_in_range(self) -> bool:
         """Проверяет, есть ли цель для стыковки в радиусе действия."""
-        # TODO: В будущем здесь будет проверка данных сенсоров
-        # на наличие станций/кораблей для стыковки
-        return False
+        track = self._get_best_station_track()
+        if track is None:
+            return False
+        try:
+            range_m = float(getattr(track, "range_m", 0.0) or 0.0)
+        except Exception:
+            return False
+        if range_m <= 0.0:
+            return False
+        threshold_m = float(os.getenv("QIKI_DOCKING_TARGET_RANGE_M", "5000.0"))
+        return range_m <= threshold_m
+
+    def is_docking_engaged(self) -> bool:
+        """Проверяет, выполнена ли стыковка (по данным сенсоров/радар трека)."""
+        track = self._get_best_station_track()
+        if track is None:
+            return False
+        try:
+            range_m = float(getattr(track, "range_m", 0.0) or 0.0)
+            vr_mps = float(getattr(track, "vr_mps", 0.0) or 0.0)
+        except Exception:
+            return False
+        if range_m <= 0.0:
+            return False
+        engaged_range_m = float(os.getenv("QIKI_DOCKING_ENGAGED_RANGE_M", "20.0"))
+        max_abs_vr_mps = float(os.getenv("QIKI_DOCKING_MAX_ABS_VR_MPS", "0.5"))
+        if range_m > engaged_range_m:
+            return False
+        if abs(vr_mps) > max_abs_vr_mps:
+            return False
+        return True
+
+    def _get_best_station_track(self) -> Optional[Any]:
+        """Возвращает ближайший радар трек типа STATION, если доступен."""
+        try:
+            from generated.radar.v1 import radar_pb2
+        except Exception:
+            return None
+
+        best_track: Optional[Any] = None
+        best_range_m: Optional[float] = None
+        for reading in self.ship_core.iter_latest_sensor_readings():
+            try:
+                if not getattr(reading, "HasField", None):
+                    continue
+                if not reading.HasField("radar_track"):
+                    continue
+                track = reading.radar_track
+            except Exception:
+                continue
+            try:
+                if track.object_type != radar_pb2.ObjectType.STATION:
+                    continue
+                range_m = float(getattr(track, "range_m", 0.0) or 0.0)
+            except Exception:
+                continue
+            if range_m <= 0.0:
+                continue
+            if best_range_m is None or range_m < best_range_m:
+                best_track = track
+                best_range_m = range_m
+        return best_track
 
     def get_current_propulsion_mode(self) -> PropulsionMode:
         """Получает текущий режим двигательной системы."""
@@ -297,7 +356,11 @@ class ShipFSMHandler(IFSMHandler):
                 new_phase = FSMState.FSMPhase.EMERGENCY
                 logger.error("🚨 Emergency during docking approach")
                 self._execute_emergency_stop()
-            # TODO: Логика успешной стыковки будет добавлена позже
+            elif self.ship_context.is_docking_engaged():
+                new_state_name = ShipState.DOCKING_ENGAGED.value
+                trigger_event = "DOCKING_COMPLETE"
+                new_phase = FSMState.FSMPhase.DOCKING
+                logger.info("✅ Docking complete - engaged")
             elif not docking_target:
                 new_state_name = ShipState.FLIGHT_MANEUVERING.value
                 trigger_event = "DOCKING_TARGET_LOST"
@@ -350,6 +413,12 @@ class ShipFSMHandler(IFSMHandler):
 
         logger.debug(f"Ship FSM new state: {next_state.current_state_name}")
         return next_state
+
+    async def process_fsm_dto(self, current_fsm_state: Any) -> Any:
+        raise NotImplementedError(
+            "ShipFSMHandler.process_fsm_dto is not implemented. "
+            "Use qiki.services.q_core_agent.core.fsm_handler.FSMHandler for the canonical FSM DTO path."
+        )
 
     def _execute_emergency_stop(self):
         """Выполняет аварийную остановку всех систем корабля."""

@@ -1,7 +1,7 @@
 import json
 import os
 import hashlib
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 from dataclasses import dataclass
 
 # Import generated protobuf classes
@@ -290,6 +290,12 @@ class ShipCore:
         if self._config.get("mode") == "minimal":
             return None
         return self._runtime_sensor_snapshot.get(sensor_id)
+
+    def iter_latest_sensor_readings(self) -> Sequence[sensor_raw_in_pb2.SensorReading]:
+        """Returns a snapshot of latest sensor readings (best-effort, minimal-mode safe)."""
+        if self._config.get("mode") == "minimal":
+            return ()
+        return tuple(self._runtime_sensor_snapshot.values())
 
     def send_actuator_command(self, command: actuator_raw_out_pb2.ActuatorCommand):
         """Sends a raw command to a ship system (actuator)."""
