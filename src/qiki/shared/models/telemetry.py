@@ -36,6 +36,35 @@ class PowerTelemetry(BaseModel):
     power_out_w: float = Field(ge=0.0)
     bus_v: float = Field(ge=0.0)
     bus_a: float = Field(ge=0.0)
+    # Power Supervisor state (virtual hardware, no-mocks).
+    load_shedding: bool = Field(default=False)
+    shed_loads: list[str] = Field(default_factory=list)
+    shed_reasons: list[str] = Field(default_factory=list)
+
+    # PDU (power path constraints) - virtual hardware.
+    pdu_limit_w: float = Field(default=0.0, ge=0.0)
+    pdu_throttled: bool = Field(default=False)
+    throttled_loads: list[str] = Field(default_factory=list)
+
+    # Faults and peak buffer (supercaps).
+    faults: list[str] = Field(default_factory=list)
+    supercap_soc_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    supercap_charge_w: float = Field(default=0.0, ge=0.0)
+    supercap_discharge_w: float = Field(default=0.0, ge=0.0)
+
+    # Dock Power Bridge.
+    dock_connected: bool = Field(default=False)
+    dock_soft_start_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    dock_power_w: float = Field(default=0.0, ge=0.0)
+    dock_v: float = Field(default=0.0, ge=0.0)
+    dock_a: float = Field(default=0.0, ge=0.0)
+    dock_temp_c: float = Field(default=0.0)
+
+    # NBL Power Budgeter.
+    nbl_active: bool = Field(default=False)
+    nbl_allowed: bool = Field(default=False)
+    nbl_power_w: float = Field(default=0.0, ge=0.0)
+    nbl_budget_w: float = Field(default=0.0, ge=0.0)
 
 
 class ThermalNodeTelemetry(BaseModel):

@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -162,3 +162,11 @@ class FileRulesRepository(RulesRepository):
     @property
     def current_config(self) -> Optional[IncidentRulesConfig]:
         return self._current_config
+
+    @property
+    def rules_path(self) -> str:
+        return self._rules_path
+
+    @property
+    def history_path(self) -> Optional[str]:
+        return self._history_path

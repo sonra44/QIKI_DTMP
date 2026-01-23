@@ -8,7 +8,7 @@ Complete console with charts, metrics history, and data export.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Any, Dict, Optional, Deque, List
+from typing import Any, Deque, Dict, Optional
 import sys
 import uuid
 

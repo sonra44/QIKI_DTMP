@@ -17,7 +17,6 @@ from qiki.services.q_core_agent.state.types import (
     next_snapshot,
     FsmSnapshotDTO,
 )
-from generated.fsm_state_pb2 import FsmStateSnapshot as ProtoFsmStateSnapshot
 
 from qiki.shared.models.core import (
     FsmStateSnapshot as PydanticFsmStateSnapshot,

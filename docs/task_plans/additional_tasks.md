@@ -1,5 +1,10 @@
 # Additional Tasks for QIKI_DTMP
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## Observability & Metrics
 
 - Instrumentation of JetStream, gRPC, and sensors; integrate Prometheus and OpenTelemetry to collect latency, throughput, error rates, CPU/memory usage.

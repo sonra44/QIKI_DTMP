@@ -218,120 +218,108 @@ class TestMetricsClient:
         client.clear_metrics()
         assert len(client.metrics) == 0
     
-    @patch('clients.metrics_client.psutil.cpu_percent')
-    @patch('clients.metrics_client.psutil.virtual_memory')
-    async def test_collect_system_metrics(self, mock_memory, mock_cpu, client):
+    def test_collect_system_metrics(self, client):
         """Test system metrics collection."""
-        # Mock psutil calls
-        mock_cpu.return_value = 45.5
-        mock_memory.return_value = MagicMock(percent=75.2, available=1024*1024*1024)
-        
-        now = datetime.now()
-        await client._collect_system_metrics(now)
-        
-        # Check metrics were added
-        assert "system.cpu.usage_percent" in client.metrics
-        assert "system.memory.usage_percent" in client.metrics
-        assert "system.memory.available_mb" in client.metrics
-        
-        # Check values
-        cpu_series = client.metrics["system.cpu.usage_percent"]
-        assert cpu_series.points[-1].value == 45.5
-        assert cpu_series.unit == "%"
-        
-        memory_series = client.metrics["system.memory.usage_percent"] 
-        assert memory_series.points[-1].value == 75.2
-    
-    async def test_collect_nats_metrics_connected(self, client):
+        with (
+            patch('clients.metrics_client.psutil.cpu_percent') as mock_cpu,
+            patch('clients.metrics_client.psutil.virtual_memory') as mock_memory,
+        ):
+            mock_cpu.return_value = 45.5
+            mock_memory.return_value = MagicMock(percent=75.2, available=1024 * 1024 * 1024)
+
+            now = datetime.now()
+            asyncio.run(client._collect_system_metrics(now))
+
+            assert "system.cpu.usage_percent" in client.metrics
+            assert "system.memory.usage_percent" in client.metrics
+            assert "system.memory.available_mb" in client.metrics
+
+            cpu_series = client.metrics["system.cpu.usage_percent"]
+            assert cpu_series.points[-1].value == 45.5
+            assert cpu_series.unit == "%"
+
+            memory_series = client.metrics["system.memory.usage_percent"]
+            assert memory_series.points[-1].value == 75.2
+
+    def test_collect_nats_metrics_connected(self, client):
         """Test NATS metrics collection when connected."""
-        # Mock NATS client
         mock_nats = MagicMock()
         mock_nats.is_connected = True
         mock_nats.messages_received = 100
         mock_nats.messages_processed = 95
-        
+
         client.register_nats_client(mock_nats)
-        
+
         now = datetime.now()
-        await client._collect_nats_metrics(now)
-        
-        # Check connection status metric
+        asyncio.run(client._collect_nats_metrics(now))
+
         assert "nats.connection.status" in client.metrics
         assert client.metrics["nats.connection.status"].points[-1].value == 1.0
-        
-        # Check message metrics
+
         assert "nats.messages.received_total" in client.metrics
         assert client.metrics["nats.messages.received_total"].points[-1].value == 100.0
-    
-    async def test_collect_nats_metrics_disconnected(self, client):
+
+    def test_collect_nats_metrics_disconnected(self, client):
         """Test NATS metrics collection when disconnected."""
         mock_nats = MagicMock()
         mock_nats.is_connected = False
-        
+
         client.register_nats_client(mock_nats)
-        
+
         now = datetime.now()
-        await client._collect_nats_metrics(now)
-        
-        # Should record disconnected status
+        asyncio.run(client._collect_nats_metrics(now))
+
         assert "nats.connection.status" in client.metrics
         assert client.metrics["nats.connection.status"].points[-1].value == 0.0
-    
-    async def test_collect_grpc_metrics(self, client):
+
+    def test_collect_grpc_metrics(self, client):
         """Test gRPC metrics collection."""
-        # Mock gRPC client
         mock_grpc = AsyncMock()
         mock_grpc.connected = True
         mock_grpc.health_check = AsyncMock()
-        
+
         client.register_grpc_client("test", mock_grpc)
-        
+
         now = datetime.now()
-        await client._collect_grpc_metrics("test", mock_grpc, now)
-        
-        # Check connection status
+        asyncio.run(client._collect_grpc_metrics("test", mock_grpc, now))
+
         assert "grpc.test.connection.status" in client.metrics
         assert client.metrics["grpc.test.connection.status"].points[-1].value == 1.0
-        
-        # Health check should have been called
+
         mock_grpc.health_check.assert_called_once()
-    
-    async def test_collect_app_metrics(self, client):
+
+    def test_collect_app_metrics(self, client):
         """Test application metrics collection."""
-        # Let some time pass
-        client.start_time = time.time() - 10  # 10 seconds ago
-        client.last_collection = time.time() - 1  # 1 second ago
-        
+        client.start_time = time.time() - 10
+        client.last_collection = time.time() - 1
+
         now = datetime.now()
-        await client._collect_app_metrics(now)
-        
-        # Check uptime
+        asyncio.run(client._collect_app_metrics(now))
+
         assert "app.uptime_seconds" in client.metrics
         uptime = client.metrics["app.uptime_seconds"].points[-1].value
-        assert 9 <= uptime <= 11  # Should be around 10 seconds
-        
-        # Check collection interval
+        assert 9 <= uptime <= 11
+
         assert "app.metrics.collection_interval_seconds" in client.metrics
         interval = client.metrics["app.metrics.collection_interval_seconds"].points[-1].value
-        assert 0.5 <= interval <= 2  # Should be around 1 second
-    
-    @pytest.mark.asyncio
-    async def test_start_stop_collection(self, client):
+        assert 0.5 <= interval <= 2
+
+    def test_start_stop_collection(self, client):
         """Test starting and stopping metrics collection."""
-        assert not client.running
-        assert client.collection_task is None
-        
-        # Start collection
-        await client.start_collection()
-        assert client.running
-        assert client.collection_task is not None
-        
-        # Let it run briefly
-        await asyncio.sleep(0.1)
-        
-        # Stop collection
-        await client.stop_collection()
-        assert not client.running
+        async def run() -> None:
+            assert not client.running
+            assert client.collection_task is None
+
+            await client.start_collection()
+            assert client.running
+            assert client.collection_task is not None
+
+            await asyncio.sleep(0.1)
+
+            await client.stop_collection()
+            assert not client.running
+
+        asyncio.run(run())
     
     def test_export_json(self, client):
         """Test JSON export."""

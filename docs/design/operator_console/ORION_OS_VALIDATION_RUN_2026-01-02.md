@@ -4,6 +4,10 @@
 **Rule:** mark ✅/❌ and add a short reproduction note.  
 **Non-goal:** radar UX/design (radar is stability-only).
 
+> Update (2026-01-14): this run contains **historical** notes about `Ctrl+G` “mode toggle”.
+> Current ORION behavior: no mode toggle; QIKI intents use prefix `q:` or `//`. Events live/pause is `Ctrl+Y`.
+> Canonical validation flow: `docs/design/operator_console/ORION_OS_VALIDATION_CHECKLIST.md`.
+
 ---
 
 ## 0) Preflight (runtime)
@@ -33,9 +37,9 @@
 - [ ] Focus works:
   - ✅ `Ctrl+E` focuses input (used to run `events pause` / `events live`).
   - ✅ `Tab` cycles focus (verified by typing not going into input after `Tab`).
-- [ ] Mode toggle:
-  - ✅ `Ctrl+G` toggles Shell ↔ QIKI mode.
-  - ✅ Placeholder clearly indicates current mode (`command/команда>` vs `QIKI input/Ввод QIKI>`).
+- [ ] Input routing (no mode toggle):
+  - ✅ Shell commands default (`help`, `screen ...`, etc).
+  - ✅ QIKI intents require prefix: `q:` or `//` (no `Ctrl+G` toggle).
 
 ---
 

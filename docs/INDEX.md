@@ -15,8 +15,8 @@
 
 ## 2) Should-read (как реально работает поведение/безопасность, 1–3 часа)
 
-9. `CONTEXT/CURRENT_STATE.md` — срез состояния (2025-09-27) и “что ещё не сделано”.
-10. `CURRENT_STATE.md` — более свежий срез (обновлялся позже; сверять с `CONTEXT/CURRENT_STATE.md`).
+9. `CONTEXT/CURRENT_STATE.md` — архивный срез (2025-09-27); актуальное в `CURRENT_STATE.md`.
+10. `CURRENT_STATE.md` — актуальный срез (обновлялся позже; сверять с ним).
 11. `docs/CONTRACT_POLICY.md` — правила эволюции контрактов (proto/gRPC/NATS/AsyncAPI).
 12. `docs/design/q-core-agent/bios_design.md` — концепт BIOS/POST (низкий уровень vs FSM).
 13. `docs/design/q-core-agent/proposal_evaluator.md` — как выбираются предложения (приоритет/уверенность).

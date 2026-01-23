@@ -2,7 +2,6 @@ from .interfaces import IBiosHandler
 from .agent_logger import logger
 from .bot_core import BotCore
 from qiki.shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
-from uuid import UUID as PyUUID
 
 
 class BiosHandler(IBiosHandler):
@@ -19,34 +18,45 @@ class BiosHandler(IBiosHandler):
     def process_bios_status(self, bios_status: BiosStatus) -> BiosStatus:
         logger.debug(f"Processing BIOS status: {bios_status}")
 
-        # Simulate some processing based on bot_core's hardware profile
-        # In a real system, this would involve actual checks against hardware
         updated_bios_status = BiosStatus(
             bios_version=bios_status.bios_version,
             firmware_version=bios_status.firmware_version,
-            post_results=list(bios_status.post_results), # Create a mutable copy
-            timestamp=bios_status.timestamp
+            hardware_profile_hash=bios_status.hardware_profile_hash,
+            post_results=list(bios_status.post_results),  # Create a mutable copy
+            timestamp=bios_status.timestamp,
         )
 
         hardware_profile = self.bot_core.get_property("hardware_profile")
         if hardware_profile:
-            expected_devices = {
-                act["id"] for act in hardware_profile.get("actuators", [])
-            }.union({sens["id"] for sens in hardware_profile.get("sensors", [])})
+            # Expected devices come from bot_config.json (hardware_profile).
+            # No-mocks: if BIOS didn't report an expected device, we mark it ERROR
+            # (we do not invent "OK" statuses).
+            expected_devices: dict[str, str] = {}
+            for kind in ("actuators", "sensors"):
+                items = hardware_profile.get(kind, [])
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    did = item.get("id")
+                    dtype = item.get("type")
+                    if isinstance(did, str) and did.strip():
+                        expected_devices[did.strip()] = str(dtype or kind)
 
             current_devices = {ds.device_id for ds in bios_status.post_results}
 
             # Check for missing devices
-            for expected_device_id in expected_devices:
+            for expected_device_id, expected_device_type in expected_devices.items():
                 if expected_device_id not in current_devices:
                     logger.warning(
                         f"Device {expected_device_id} from hardware profile not found in BIOS report."
                     )
-                    # Add a missing device status to the report
                     missing_device_status = DeviceStatus(
-                        device_id=PyUUID(expected_device_id),
-                        status=DeviceStatusEnum.NOT_FOUND,
-                        status_message="Device not reported by BIOS",
+                        device_id=expected_device_id,
+                        device_name=expected_device_type,
+                        status=DeviceStatusEnum.ERROR,
+                        status_message="Device expected by hardware_profile but not reported by BIOS",
                     )
                     updated_bios_status.post_results.append(missing_device_status)
 

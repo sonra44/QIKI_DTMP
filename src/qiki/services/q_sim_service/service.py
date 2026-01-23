@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from google.protobuf.json_format import MessageToDict
@@ -23,6 +25,7 @@ from qiki.services.q_sim_service.core.world_model import WorldModel
 from qiki.services.q_sim_service.logger import logger
 from qiki.services.q_sim_service.radar_publisher import RadarNatsPublisher
 from qiki.services.q_sim_service.telemetry_publisher import TelemetryNatsPublisher
+from qiki.shared.config.hardware_profile_hash import compute_hardware_profile_hash
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.converters.radar_proto_pydantic import model_frame_to_proto
 from qiki.shared.converters.protobuf_pydantic import pydantic_uuid_to_proto_uuid
@@ -31,13 +34,21 @@ from qiki.shared.models.radar import (
     RadarFrameModel,
     TransponderModeEnum,
 )
+from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
 
 class QSimService:
     def __init__(self, config: QSimServiceConfig):
         self.config = config
-        self.world_model = WorldModel()
+        self._bot_config = self._load_bot_config()
+        self._hardware_profile_hash: str | None = None
+        if isinstance(self._bot_config, dict):
+            try:
+                self._hardware_profile_hash = compute_hardware_profile_hash(self._bot_config)
+            except Exception:
+                self._hardware_profile_hash = None
+        self.world_model = WorldModel(bot_config=self._bot_config)
         self.sensor_data_queue: list[SensorReading] = []
         self.actuator_command_queue: list[ActuatorCommand] = []
         env_flag = os.getenv("RADAR_ENABLED", "0").strip().lower()
@@ -61,10 +72,20 @@ class QSimService:
             subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", "qiki.telemetry")
             self._telemetry_publisher = TelemetryNatsPublisher(nats_url, subject=subject)
 
-        mode_str = os.getenv("RADAR_TRANSPONDER_MODE", "ON").strip().upper()
+        # Transponder (XPDR) mode: canonical runtime source is bot_config.json (if present),
+        # but we keep env overrides for debugging.
+        mode_str = os.getenv("RADAR_TRANSPONDER_MODE", "").strip().upper()
+        if not mode_str:
+            hp = (self._bot_config or {}).get("hardware_profile") if isinstance(self._bot_config, dict) else {}
+            comms = hp.get("comms_plane") if isinstance(hp, dict) else None
+            if isinstance(comms, dict):
+                mode_str = str(comms.get("xpdr_mode_init") or "").strip().upper()
+        if not mode_str:
+            mode_str = "ON"
         self.transponder_mode = self._parse_transponder_mode(mode_str)
         default_transponder_id = f"ALLY-{uuid4().hex[:6].upper()}"
         self.transponder_id = os.getenv("RADAR_TRANSPONDER_ID", default_transponder_id)
+        self._spoof_transponder_id: str | None = None
         logger.info("QSimService initialized.")
         primary = int(self.config.sim_sensor_type)
         imu = int(ProtoSensorType.IMU)
@@ -77,6 +98,105 @@ class QSimService:
             cycle.append(int(ProtoSensorType.LIDAR))
         self._sensor_cycle = cycle
         self._sensor_index = 0
+
+    def apply_control_command(self, cmd: CommandMessage) -> bool:
+        """
+        Applies a control command to the simulation state (no mocks).
+
+        This is intentionally limited to runtime toggles that do not require proto changes.
+        """
+        name = (cmd.command_name or "").strip()
+        if not name:
+            return False
+
+        if name == "power.dock.on":
+            self.world_model.set_dock_connected(True)
+            return True
+        if name == "power.dock.off":
+            self.world_model.set_dock_connected(False)
+            return True
+        if name == "power.nbl.on":
+            self.world_model.set_nbl_active(True)
+            return True
+        if name == "power.nbl.off":
+            self.world_model.set_nbl_active(False)
+            return True
+        if name == "power.nbl.set_max":
+            raw = (cmd.parameters or {}).get("max_power_w")
+            if raw is None:
+                return False
+            self.world_model.set_nbl_max_power_w(raw)
+            return True
+
+        # Docking Plane (mechanical) operator control (no new proto).
+        # NOTE: power bridge is still controlled via power.dock.on/off.
+        if name == "sim.dock.engage":
+            params = cmd.parameters or {}
+            port = params.get("port")
+            if port is not None and not self.world_model.set_docking_port(str(port)):
+                return False
+            if port is None and not self.world_model.set_docking_port(None):
+                return False
+            self.world_model.set_dock_connected(True)
+            return True
+        if name == "sim.dock.release":
+            self.world_model.set_dock_connected(False)
+            return True
+
+        # RCS operator control (no new proto): drive existing RCS simulation via COMMANDS_CONTROL.
+        if name == "sim.rcs.stop":
+            return self.world_model.set_rcs_command(None, 0.0, 0.0)
+        if name == "sim.rcs.fire":
+            params = cmd.parameters or {}
+            axis = params.get("axis")
+            pct = params.get("pct")
+            if pct is None:
+                pct = params.get("percent")
+            duration_s = params.get("duration_s")
+            if duration_s is None:
+                duration_s = params.get("duration")
+            if axis is None or pct is None or duration_s is None:
+                return False
+            return self.world_model.set_rcs_command(str(axis), float(pct), float(duration_s))
+
+        # Comms/XPDR operator control (no new proto): set transponder mode.
+        if name == "sim.xpdr.mode":
+            params = cmd.parameters or {}
+            raw_mode = str(params.get("mode") or "").strip().upper()
+            if raw_mode not in {"ON", "OFF", "SILENT", "SPOOF"}:
+                return False
+            self.transponder_mode = self._parse_transponder_mode(raw_mode)
+            # If switching into SPOOF, keep a stable spoof id for the session.
+            if self.transponder_mode == TransponderModeEnum.SPOOF and not self._spoof_transponder_id:
+                self._spoof_transponder_id = f"SPOOF-{uuid4().hex[:6].upper()}"
+            return True
+
+        return False
+
+    def _load_bot_config(self) -> dict | None:
+        env_path = os.getenv("QIKI_BOT_CONFIG_PATH", "").strip()
+        candidates: list[Path] = []
+        if env_path:
+            candidates.append(Path(env_path))
+
+        # Works both in repo runs and inside Docker (/workspace/src/...).
+        repo_root = Path(__file__).resolve().parents[4]
+        candidates.append(
+            repo_root / "src/qiki/services/q_core_agent/config/bot_config.json"
+        )
+
+        for path in candidates:
+            try:
+                if not path.exists():
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    logger.info(f"Loaded bot_config.json for simulation: {path}")
+                    return data
+            except Exception as e:
+                logger.warning(f"Failed to load bot_config.json from {path}: {e}")
+        logger.warning("bot_config.json not found; simulation will use fallback defaults.")
+        return None
 
     async def get_sensor_data(self) -> SensorReading:
         while not self.sensor_data_queue:
@@ -204,7 +324,17 @@ class QSimService:
 
     def step(self):
         delta_time = self.config.sim_tick_interval
+        self.world_model.set_runtime_load_inputs(
+            radar_enabled=self.radar_enabled,
+            sensor_queue_depth=len(self.sensor_data_queue),
+            actuator_queue_depth=len(self.actuator_command_queue),
+            transponder_active=self._is_transponder_active(),
+        )
         self.world_model.step(delta_time)
+
+        # Commands are applied immediately on receipt, so treat the queue as a per-tick backlog/activity counter.
+        # Clear it each tick to avoid unbounded growth impacting load simulation.
+        self.actuator_command_queue.clear()
 
         self._maybe_publish_telemetry()
 
@@ -212,7 +342,7 @@ class QSimService:
         self.sensor_data_queue.append(sensor_data)
         logger.debug(f"Generated sensor data: {MessageToDict(sensor_data)}")
 
-        if self.radar_enabled:
+        if self.radar_enabled and getattr(self.world_model, "radar_allowed", True):
             rf = self.generate_radar_frame()
             self.radar_frames.append(rf)
             if self.radar_nats_enabled and self._radar_publisher is not None:
@@ -250,6 +380,25 @@ class QSimService:
         pitch = float(att.get("pitch_rad", 0.0))
         yaw = float(att.get("yaw_rad", math.radians(state.get("heading", 0.0))))
 
+        comms_plane = {}
+        try:
+            hp = (self._bot_config or {}).get("hardware_profile") if isinstance(self._bot_config, dict) else {}
+            comms_plane = hp.get("comms_plane") if isinstance(hp, dict) else {}
+            if not isinstance(comms_plane, dict):
+                comms_plane = {}
+        except Exception:
+            comms_plane = {}
+
+        comms = {
+            "enabled": bool(comms_plane.get("enabled", True)),
+            "xpdr": {
+                "mode": self.transponder_mode.name,
+                "active": bool(self._is_transponder_active()),
+                "allowed": bool(getattr(self.world_model, "transponder_allowed", True)),
+                "id": self._resolve_transponder_id(),
+            },
+        }
+
         payload = TelemetrySnapshotModel(
             source="q_sim_service",
             timestamp=ts,
@@ -259,14 +408,25 @@ class QSimService:
             heading=float(state.get("heading", 0.0)),
             attitude={"roll_rad": roll, "pitch_rad": pitch, "yaw_rad": yaw},
             battery=float(state.get("battery_level", 0.0)),
+            cpu_usage=None if state.get("cpu_usage") is None else float(state.get("cpu_usage")),
+            memory_usage=None if state.get("memory_usage") is None else float(state.get("memory_usage")),
             hull={"integrity": float(state.get("hull_integrity", 100.0))},
             power=state.get("power", {}),
+            docking=state.get("docking", {}),
+            sensor_plane=state.get("sensor_plane", {}),
+            comms=comms,
             thermal=state.get("thermal", {"nodes": []}),
+            propulsion=state.get("propulsion", {}),
             radiation_usvh=float(state.get("radiation_usvh", 0.0)),
             temp_external_c=float(state.get("temp_external_c", -60.0)),
             temp_core_c=float(state.get("temp_core_c", 25.0)),
         )
-        return payload.model_dump(mode="json")
+        out = payload.model_dump(mode="json")
+        # Top-level extra key (TelemetrySnapshot v1 allows extras): trace which hardware profile is active.
+        # No-mocks: if we cannot compute it (missing/bad config) -> omit.
+        if self._hardware_profile_hash:
+            out["hardware_profile_hash"] = self._hardware_profile_hash
+        return out
 
     def _parse_transponder_mode(self, raw: str) -> TransponderModeEnum:
         mapping = {
@@ -278,11 +438,15 @@ class QSimService:
         return mapping.get(raw.upper(), TransponderModeEnum.ON)
 
     def _is_transponder_active(self) -> bool:
+        if not getattr(self.world_model, "transponder_allowed", True):
+            return False
         return self.transponder_mode in (TransponderModeEnum.ON, TransponderModeEnum.SPOOF)
 
     def _resolve_transponder_id(self) -> str | None:
         if self.transponder_mode == TransponderModeEnum.ON:
             return self.transponder_id
         if self.transponder_mode == TransponderModeEnum.SPOOF:
-            return f"SPOOF-{uuid4().hex[:6].upper()}"
+            if not self._spoof_transponder_id:
+                self._spoof_transponder_id = f"SPOOF-{uuid4().hex[:6].upper()}"
+            return self._spoof_transponder_id
         return None

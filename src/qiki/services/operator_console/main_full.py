@@ -8,7 +8,7 @@ Complete console with NATS data, gRPC commands, and agent chat.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Optional, Dict, Any, Deque, List
+from typing import Any, Deque, Dict, Optional
 import sys
 
 from rich.table import Table

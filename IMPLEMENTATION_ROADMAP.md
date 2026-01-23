@@ -1,5 +1,10 @@
 # QIKI_DTMP — Implementation Roadmap (обновлено 2025-09-27)
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 ## 0. Метаданные
 - **Дата создания:** 2025-07-30  
 - **Последняя ревизия:** 2025-09-27 (Stage 1 LR/SR foundation)  

@@ -1,0 +1,40 @@
+{
+  "$version": 2,
+  "context": {
+    "fileName": "QWEN_QIKI_DTMP.md",
+    "includeDirectories": [
+      "${HOME}/MEMORI"
+    ],
+    "loadFromIncludeDirectories": true,
+    "fileFiltering": {
+      "respectGitIgnore": true,
+      "respectQwenIgnore": true,
+      "enableRecursiveFileSearch": true
+    }
+  },
+  "tools": {
+    "approvalMode": "default"
+  },
+  "mcpServers": {
+    "serena": {
+      "command": "${HOME}/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--transport",
+        "stdio",
+        "--project",
+        "${HOME}/QIKI_DTMP"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    }
+  }
+}

@@ -1,5 +1,10 @@
 # QIKI_DTMP - Детализированное Описание Задач
 
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
 **Связанный документ:** `TASK_LIST.md`  
 **Назначение:** Подробное техническое описание каждой задачи  
 **Обновлено:** 2025-10-07 07:03
@@ -44,7 +49,7 @@ python -m pytest services/q_core_agent/tests/ --tb=no -q
 
 **Файлы для обновления:**
 - `CLAUDE_MEMORY.md` - новые показатели готовности (88-93%)
-- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% → 80%+ success rate)
+- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% → 80%+ success rate) **[архив, см. CURRENT_STATE.md]**
 - `IMPLEMENTATION_ROADMAP.md` - актуализация Phase статусов
 - `PROJECT_MAP.md` - отражение текущих изменений
 

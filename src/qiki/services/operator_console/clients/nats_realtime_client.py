@@ -154,14 +154,15 @@ class RealtimeNATSClient:
             
         except Exception as e:
             print(f"⚠️ Could not subscribe to JetStream, falling back to regular NATS: {e}")
-            # Fallback to regular NATS subscription
+            # Fallback to legacy subject (deprecated)
             try:
+                legacy_subject = "qiki.radar.v1.frames"
                 sub = await self.nc.subscribe(
-                    "radar.frames",
+                    legacy_subject,
                     cb=message_handler
                 )
                 self.subscriptions["radar_frames"] = sub
-                print("✅ Subscribed to radar frames (radar.frames)")
+                print(f"✅ Subscribed to radar frames ({legacy_subject}) [fallback]")
             except Exception as e2:
                 print(f"❌ Failed to subscribe to radar frames: {e2}")
                 
@@ -184,8 +185,9 @@ class RealtimeNATSClient:
                     "velocity": data.get("velocity", 0),
                     "heading": data.get("heading", 0),
                     "battery": data.get("battery", 100),
-                    "cpu_usage": data.get("cpu_usage", 0),
-                    "memory_usage": data.get("memory_usage", 0)
+                    # no-mocks: keep missing values as None, don't invent 0%
+                    "cpu_usage": data.get("cpu_usage"),
+                    "memory_usage": data.get("memory_usage"),
                 })
                 
                 # Call callbacks

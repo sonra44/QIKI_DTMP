@@ -87,6 +87,7 @@ HISTORY_COPY/
 journal/
 tmp/
 test_output.txt
+.qiki_bot.id
 
 # Temporary files
 *.tmp
@@ -113,3 +114,4 @@ docs/_build/
 # Development tools
 .mypy_cache/
 .ruff_cache/
+.serena/

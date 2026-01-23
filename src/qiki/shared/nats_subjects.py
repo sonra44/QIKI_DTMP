@@ -31,6 +31,7 @@ RESPONSES_CONTROL = "qiki.responses.control"
 
 # QIKI interaction subjects (operator intents, agent replies)
 QIKI_INTENTS = "qiki.intents"
+QIKI_RESPONSES = "qiki.responses.qiki"
 
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"

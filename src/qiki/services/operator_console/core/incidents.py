@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import time
 from typing import Any, Optional
 
@@ -34,11 +34,12 @@ class PendingIncident:
 
 
 class IncidentStore:
-    def __init__(self, config: IncidentRulesConfig) -> None:
+    def __init__(self, config: IncidentRulesConfig, *, max_incidents: Optional[int] = None) -> None:
         self._config = config
         self._incidents: dict[str, Incident] = {}
         self._pending: dict[str, PendingIncident] = {}
         self._cooldowns: dict[str, float] = {}
+        self._max_incidents = int(max_incidents) if max_incidents is not None else None
 
     def ingest(self, event: dict[str, Any]) -> list[Incident]:
         matched: list[Incident] = []
@@ -50,6 +51,7 @@ class IncidentStore:
             incident = self._apply_rule(rule, event)
             if incident is not None:
                 matched.append(incident)
+        self._enforce_max_incidents()
         return matched
 
     def ack(self, incident_id: str) -> bool:
@@ -96,6 +98,37 @@ class IncidentStore:
 
     def list_incidents(self) -> list[Incident]:
         return list(self._incidents.values())
+
+    def _enforce_max_incidents(self) -> None:
+        limit = self._max_incidents
+        if limit is None or limit <= 0:
+            return
+        if len(self._incidents) <= limit:
+            return
+
+        # Eviction policy (deterministic):
+        # 1) Drop acked+cleared first
+        # 2) Then cleared
+        # 3) Then acked
+        # 4) Finally, oldest by last_seen
+        def rank(inc: Incident) -> tuple[int, float]:
+            acked = bool(getattr(inc, "acked", False))
+            cleared = getattr(inc, "state", "") == "cleared"
+            if acked and cleared:
+                bucket = 0
+            elif cleared:
+                bucket = 1
+            elif acked:
+                bucket = 2
+            else:
+                bucket = 3
+            last_seen = float(getattr(inc, "last_seen", 0.0) or 0.0)
+            return (bucket, last_seen)
+
+        to_remove = len(self._incidents) - limit
+        candidates = sorted(self._incidents.values(), key=rank)
+        for inc in candidates[:to_remove]:
+            self._incidents.pop(inc.incident_id, None)
 
     def _apply_rule(self, rule: IncidentRule, event: dict[str, Any]) -> Optional[Incident]:
         ts = self._event_ts(event)

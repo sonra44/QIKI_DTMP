@@ -176,7 +176,7 @@ services:
         condition: service_healthy
     stdin_open: true  # Для интерактивного TUI
     tty: true         # Для работы с терминалом
-    command: python main.py
+    command: python main_orion.py
     profiles: ["full", "console"]  # Запускается только с профилем
 
   # Инициализация JetStream Stream для радарных топиков

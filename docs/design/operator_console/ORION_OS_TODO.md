@@ -47,14 +47,27 @@
 
 **Acceptance:** любая selection даёт одинаково предсказуемый inspector.
 
-### 2.4 Ввод в ORION: разделить “оболочку” и “намерение”
+### 2.4 Ввод в ORION: разделить “оболочку” и “намерение” (без mode toggle)
 
 **Цель:** оператор пишет свободный текст/намерение, а системой управляет QIKI.
 
-**Сделать (UI-часть):**
-- Режим `OPERATOR SHELL/ОБОЛОЧКА` (минимум локальных команд UI).
-- Режим `QIKI INPUT/ВВОД QIKI` (свободный ввод, уходит как Intent).
-- Визуальный индикатор режима в поле ввода (placeholder) и в keybar (hotkey для переключения).
+**Текущий канон (2026-01):**
+- Shell-команды по умолчанию (например `help`, `screen events`, `reload rules`).
+- Намерение QIKI вводится только с префиксом `q:` или `//`.
+- Плейсхолдер обязан подсказывать эти префиксы и не создавать “режимов”, которые можно перепутать.
+
+**Acceptance:** нет двусмысленности: оператор всегда понимает, что уйдёт в Shell vs QIKI; в `Help/Помощь` (`F9`) это явно описано.
+
+### 2.5 Навигация/фокус: одна детерминированная модель (чтобы “не плавало”)
+
+**Проблема:** ощущение “хаоса” обычно не в данных, а в фокусе/selection: стрелки/`A/X/R` работают только при правильном фокусе.
+
+**Сделать:**
+- Зафиксировать “фокус-граф”: `sidebar ↔ table(workspace) ↔ inspector ↔ command`.
+- При входе на screen с таблицей (например `Events`, `Sensors`, `Rules`) фокус по умолчанию ставится на таблицу, и selection/inspector обновляются предсказуемо.
+- Любые “быстрые действия” (например `A/X/R`) либо явно требуют фокус таблицы, либо сами переводят фокус туда.
+
+**Acceptance:** оператор не “угадывает” куда ушёл фокус; selection-driven inspector работает одинаково на всех табличных экранах.
 
 ---
 
@@ -63,3 +76,72 @@
 - ORION app: `src/qiki/services/operator_console/main_orion.py`
 - NATS subjects: `src/qiki/shared/nats_subjects.py`
 - ORION system reference: `docs/design/operator_console/ORION_OS_SYSTEM.md`
+
+---
+
+## 4) План: вернуть логику ORION шаг-за-шагом (и перестать чинить симптомы)
+
+**Текущее состояние (источник правды):** `docs/design/operator_console/ORION_OS_VALIDATION_CHECKLIST.md` (❌ фиксируем как конкретные долги, а не “ощущения”).  
+
+### 4.1 Инварианты → критерии
+- Сформулировать 10–12 инвариантов как проверяемые пункты (не лозунги).
+- Для каждого инварианта: “как проверить за 30–60 сек в Docker/tmux”.
+
+### 4.2 Контракты экранов
+- Для каждого screen: вход (hotkey/команда), главный виджет, что такое selection, какие Actions допустимы.
+- Для Inspector: единая структура + правила `Raw data (JSON)` видимости/тримминга.
+
+### 4.3 Фокус/ввод/навигация как единая система
+- Описать и зафиксировать фокус-граф.
+- Убрать “скрытые” зависимости: если действие зависит от фокуса, это видно оператору (подсказка/статус).
+
+### 4.4 Events/Incidents как FSM (операторский loop)
+- Описать состояния: `live/pause`, `unread`, `acknowledged/cleared`.
+- Правило: paused+unread всегда видны в always-visible chrome (keybar), даже если sidebar скрыт/обрезан.
+
+### 4.5 Tmux resize: управляемая деградация, не хаос
+- Где допускаем `…`, где запрещаем wrap.
+- Что скрываем/компактируем первым при узком терминале.
+
+### 4.6 Закрепление: тесты + доки + валидация
+- Минимальные pytest-тесты на ключевые контракты (focus/selection/paused+unread visibility).
+- Обновлять доки только после подтверждения в Docker (чеклист ✅/❌).
+
+### 4.7 Исполняемая карта долга (текущие ❌ из чеклиста)
+
+Ниже — не “идеи”, а конкретные долги с **Definition of Done** и быстрым способом проверки.
+
+1) **No abbreviations by default** (`docs/design/operator_console/ABBREVIATIONS_POLICY.md`)
+- DoD: на базовых экранах (`System`, `Events`, `Sensors`, `Power`) нет сокращений по умолчанию; если сокращение разрешено политикой — оно раскрывается через `Help/Помощь` (`F9`) или `Inspector/Инспектор`.
+- Проверка: tmux 160x40 и 120x30 → визуальный проход + `F9` глоссарий.
+
+2) **Events paused/unread visibility**
+- DoD: при `Events` + `Paused/Пауза` (`Ctrl+Y`) unread виден в always-visible chrome (keybar), даже если sidebar скрыт/обрезан; `R` очищает unread; unread растёт по новым incident keys.
+- Опорные точки: `src/qiki/services/operator_console/main_orion.py` (`OrionKeybar.render`, `handle_event_data`, `action_toggle_events_live`, `action_mark_events_read`).
+- Проверка: `F3` → `Ctrl+Y` → создать новый инцидент → увидеть `<N> Paused/Пауза` в keybar → `R` → `<N>` обнуляется.
+
+3) **Incident actions (`A`/`X`/`R`)**
+- DoD: при выбранной строке в таблице `Events`:
+  - `A` подтверждает выбранный инцидент (и это отражается в таблице/инспекторе),
+  - `X` очищает подтверждённые (и счётчик cleared > 0 при наличии acked),
+  - `R` работает только в paused и очищает unread.
+- Проверка: `F3` → убедиться, что фокус в таблице → `↑/↓` меняют selection → `A` → `X` → `R` (в paused).
+
+4) **Bounded buffer / caps (не бесконечные таблицы)**
+- DoD: количество incident’ов и строк таблицы ограничено; UI не пытается рендерить “тысячи строк”.
+- Опорные точки: `src/qiki/services/operator_console/main_orion.py` (лимиты `OPERATOR_CONSOLE_MAX_EVENT_INCIDENTS`, `OPERATOR_CONSOLE_MAX_EVENTS_TABLE_ROWS`).
+- Проверка: нагрузочный прогон только с реальными событиями (no-mocks) или отдельный unit-test на cap-логику (если нет доступного real-load сценария).
+
+5) **Inspector contract (всегда одна структура)**
+- DoD: Inspector всегда в порядке: `Summary/Сводка` → `Fields/Поля` → `Raw data (JSON)/Сырые данные (JSON)` → `Actions/Действия` (последний блок может отсутствовать только если действий нет); `Raw` не “теряется” на `Events`.
+- Опорные точки: `src/qiki/services/operator_console/main_orion.py` (`OrionInspector`, `_refresh_inspector`).
+- Проверка: пройти selection на `Events` и `Sensors` → сравнить структуру, убедиться что `Raw` видим.
+
+6) **Selection-driven (стрелки → selection → inspector)**
+- DoD: на `Events` стрелки меняют selection, и inspector обновляется на выбранный элемент; при входе на `Events` фокус по умолчанию на таблице.
+- Опорные точки: `src/qiki/services/operator_console/main_orion.py` (`action_show_screen`, `on_data_table_row_highlighted`, `on_key`).
+- Проверка: `F3` → `↑/↓` → меняется выделение + меняется inspector.
+
+7) **Tmux resize (управляемая деградация)**
+- DoD: при изменении ширины/высоты структура chrome сохраняется; длинные строки деградируют через `…`, а не wrap-хаос; keybar/sidebar/inspector не “ломают” layout.
+- Проверка: tmux split 60/120 → resize → фиксируем ✅/❌ с точными размерами и скрином/логом (как в чеклисте).

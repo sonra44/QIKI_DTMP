@@ -77,7 +77,7 @@ def main():
         
     print("\n✅ All tests passed! Environment is ready.")
     print("\nYou can now run the main application:")
-    print("  python main.py")
+    print("  python main_orion.py")
     
     return 0
 

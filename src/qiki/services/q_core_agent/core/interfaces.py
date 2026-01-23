@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Any
 
-from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, DeviceStatus, DeviceStatusEnum
+from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand
+from qiki.services.q_core_agent.core.bios_http_client import fetch_bios_status
 
 
 class IDataProvider(ABC):
@@ -94,34 +95,17 @@ class QSimDataProvider(IDataProvider):
         self.qsim_service = qsim_service_instance
 
     def get_bios_status(self) -> BiosStatus:
-        # Generate realistic BIOS status with POST test results for known devices
-        # This simulates what a real BIOS would report after Power-On Self-Test
-        bios_report = BiosStatus(bios_version="sim_v1.0", firmware_version="sim_v1.0", post_results=[])
+        """Return BIOS status for the tick.
 
-        # Simulate POST results for typical bot devices
-        from uuid import UUID
-
-        typical_devices = [
-            ("motor_left", DeviceStatusEnum.OK, "Motor left operational"),
-            ("motor_right", DeviceStatusEnum.OK, "Motor right operational"),
-            ("lidar_front", DeviceStatusEnum.OK, "LIDAR sensor operational"),
-            ("imu_main", DeviceStatusEnum.OK, "IMU sensor operational"),
-            (
-                "system_controller",
-                DeviceStatusEnum.OK,
-                "System controller operational",
-            ),
-        ]
-
-        for device_id, status, message in typical_devices:
-            device_status = DeviceStatus(
-                device_id=str(UUID(device_id)),
-                status=status,
-                status_message=message,
-            )
-            bios_report.post_results.append(device_status)
-
-        return bios_report
+        Important:
+        - `fetch_bios_status()` is designed to be non-blocking by default.
+        - Default behavior returns a cached value immediately and refreshes BIOS in a background thread.
+        - Configure via env:
+          - `BIOS_CACHE_TTL_SEC` (default 5.0): cache TTL; set <= 0 to force legacy blocking HTTP fetch.
+          - `BIOS_HTTP_TIMEOUT_SEC` (default 2.0): timeout for the blocking HTTP call (used only when forced).
+        """
+        # No-mocks: BIOS comes from q-bios-service (BIOS_URL). Cached by default.
+        return fetch_bios_status()
 
     def get_fsm_state(self) -> PydanticFsmStateSnapshot:
         # При StateStore режиме возвращаем пустышку - FSM читается из StateStore
