@@ -5695,7 +5695,8 @@ class OrionApp(App):
         )
         self._console_log(
             f"{I18N.bidi('Simulation', 'Симуляция')}: "
-            f"simulation.start/симуляция.старт | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | simulation.reset/симуляция.сброс",
+            f"simulation.start/симуляция.старт | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | "
+            f"simulation.reset/симуляция.сброс ({I18N.bidi('confirm', 'подтвердить')}: Y)",
             level="info",
         )
         self._console_log(
@@ -6137,6 +6138,22 @@ class OrionApp(App):
             return
 
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
+            if sim_cmd == "sim.reset":
+                prompt = (
+                    f"{I18N.bidi('Reset simulation?', 'Сбросить симуляцию?')} "
+                    f"{I18N.bidi('(stop + clear world)', '(стоп + очистка мира)')} "
+                    f"({I18N.bidi('Y/N', 'Да/Нет')})"
+                )
+
+                def after(decision: bool) -> None:
+                    if not decision:
+                        self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+                        return
+                    asyncio.create_task(self._publish_sim_command(sim_cmd))
+
+                self.push_screen(ConfirmDialog(prompt), after)
+                return
+
             await self._publish_sim_command(sim_cmd)
             return
 

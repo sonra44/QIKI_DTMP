@@ -80,6 +80,8 @@ Pitch/Тангаж            0.0°
 command/команда> simulation.reset
 ```
 
+Note: `simulation.reset` requires confirmation (`y`).
+
 ## Checklist summary (✅/❌)
 
 - ✅ Active pause is functional: pause stops `qiki.radar.v1.frames`, start resumes (integration test).

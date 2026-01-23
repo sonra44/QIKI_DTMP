@@ -27,7 +27,7 @@ Expected output:
 ORION UI (tmux) evidence:
 
 - While running: Roll/Pitch become non-zero.
-- `simulation.reset` -> `Sim/Сим` becomes `Stopped/Остановлено` and Roll/Pitch become `0.0°`.
+- `simulation.reset` -> ConfirmDialog (`y`) -> `Sim/Сим` becomes `Stopped/Остановлено` and Roll/Pitch become `0.0°`.
 
 Captured lines (tmux):
 

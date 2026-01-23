@@ -60,6 +60,7 @@
   - Send `simulation.start` and confirm header shows `Sim/Сим Running/Работает`.
   - Send `simulation.stop` and confirm header shows `Sim/Сим Stopped/Остановлено`.
   - Send `simulation.reset` and confirm (reset implies stop):
+    - ConfirmDialog appears -> press `y`.
     - `Sim/Сим` becomes `Stopped/Остановлено`
     - Roll/Pitch in Navigation reset to `0.0°`
 
