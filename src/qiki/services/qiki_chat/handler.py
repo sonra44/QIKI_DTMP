@@ -63,9 +63,13 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
                 error=None,
             )
 
+    # Avoid magic/static IDs: proposal_id must be deterministic per request so
+    # ORION can reference it without hardcoded values.
+    proposal_id = f"p-{request.request_id.hex[:8]}"
+
     proposals = [
         QikiProposalV1(
-            proposal_id="p-001",
+            proposal_id=proposal_id,
             title=BilingualText(en="Headless QIKI online", ru="Headless QIKI в сети"),
             justification=BilingualText(
                 en="MVP request/reply channel is working; actions are disabled.",
