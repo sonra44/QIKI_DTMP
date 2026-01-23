@@ -48,6 +48,3 @@ async def test_handle_qiki_response_error_logs_and_clears_pending() -> None:
     await app.handle_qiki_response({"data": payload})
     assert str(req_id) not in app._qiki_pending
     assert any("INVALID_REQUEST" in line for line in logs)
-
-
-import pytest
