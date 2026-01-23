@@ -30,9 +30,7 @@ class QSimAPIService(QSimAPIServiceServicer):
     def __init__(self, sim_service: QSimService):
         self.sim_service = sim_service
 
-    async def HealthCheck(
-        self, request: HealthCheckRequest, context: grpc.aio.ServicerContext
-    ) -> HealthCheckResponse:
+    async def HealthCheck(self, request: HealthCheckRequest, context: grpc.aio.ServicerContext) -> HealthCheckResponse:
         return HealthCheckResponse(status="SERVING")
 
     async def GetSensorData(
@@ -47,7 +45,7 @@ async def sim_service_loop(sim_service: QSimService) -> None:
     logging.info("Starting QSimService background loop")
     try:
         while True:
-            sim_service.step()
+            sim_service.tick()
             await asyncio.sleep(sim_service.config.sim_tick_interval)
     except asyncio.CancelledError:
         logging.info("QSimService loop cancelled")
@@ -69,25 +67,33 @@ async def control_commands_loop(sim_service: QSimService) -> None:
         return
 
     logging.info("Subscribed to %s (control) on %s", COMMANDS_CONTROL, nats_url)
-    try:
-        sub = await nc.subscribe(COMMANDS_CONTROL)
-        async for msg in sub.messages:
-            try:
-                payload = json.loads(msg.data.decode("utf-8"))
-                cmd = CommandMessage.model_validate(payload)
-            except Exception as exc:
-                logging.debug("Invalid control command payload: %s", exc)
-                continue
 
-            try:
-                handled = sim_service.apply_control_command(cmd)
-                if handled:
-                    logging.info("Applied control command: %s", cmd.command_name)
-            except Exception as exc:
-                logging.warning("Failed applying control command %s: %s", cmd.command_name, exc)
+    async def handler(msg) -> None:
+        try:
+            payload = json.loads(msg.data.decode("utf-8"))
+            cmd = CommandMessage.model_validate(payload)
+        except Exception as exc:
+            logging.warning("Invalid control command payload: %s", exc)
+            return
+
+        try:
+            handled = sim_service.apply_control_command(cmd)
+            if handled:
+                logging.info("Applied control command: %s", cmd.command_name)
+        except Exception as exc:
+            logging.warning("Failed applying control command %s: %s", cmd.command_name, exc)
+
+    stop = asyncio.Event()
+    sub = await nc.subscribe(COMMANDS_CONTROL, cb=handler)
+    try:
+        await stop.wait()
     except asyncio.CancelledError:
         raise
     finally:
+        try:
+            await sub.unsubscribe()
+        except Exception:
+            pass
         try:
             await nc.close()
         except Exception:

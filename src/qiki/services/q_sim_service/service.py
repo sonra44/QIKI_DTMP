@@ -99,6 +99,33 @@ class QSimService:
         self._sensor_cycle = cycle
         self._sensor_index = 0
 
+        # Simulation runtime state (single source of truth).
+        self._sim_running = True
+        self._sim_paused = False
+        self._sim_speed = 1.0
+
+    def get_sim_state(self) -> dict:
+        fsm_state = "STOPPED"
+        if self._sim_running and self._sim_paused:
+            fsm_state = "PAUSED"
+        elif self._sim_running:
+            fsm_state = "RUNNING"
+        return {
+            "running": bool(self._sim_running),
+            "paused": bool(self._sim_paused),
+            "speed": float(self._sim_speed),
+            "fsm_state": fsm_state,
+        }
+
+    def reset_simulation(self) -> None:
+        # Keep publishers and config; reset simulation truth.
+        self.world_model = WorldModel(bot_config=self._bot_config)
+        self.sensor_data_queue.clear()
+        self.actuator_command_queue.clear()
+        self.radar_frames.clear()
+        self._sensor_index = 0
+        self._telemetry_last_sent_mono = 0.0
+
     def apply_control_command(self, cmd: CommandMessage) -> bool:
         """
         Applies a control command to the simulation state (no mocks).
@@ -126,6 +153,33 @@ class QSimService:
             if raw is None:
                 return False
             self.world_model.set_nbl_max_power_w(raw)
+            return True
+
+        if name == "sim.start":
+            raw_speed = (cmd.parameters or {}).get("speed", 1.0)
+            try:
+                speed = float(raw_speed)
+            except Exception:
+                speed = 1.0
+            if speed <= 0:
+                speed = 1.0
+            self._sim_running = True
+            self._sim_paused = False
+            self._sim_speed = speed
+            return True
+
+        if name == "sim.pause":
+            self._sim_running = True
+            self._sim_paused = True
+            return True
+
+        if name == "sim.stop":
+            self._sim_running = False
+            self._sim_paused = False
+            return True
+
+        if name == "sim.reset":
+            self.reset_simulation()
             return True
 
         # Docking Plane (mechanical) operator control (no new proto).
@@ -181,9 +235,7 @@ class QSimService:
 
         # Works both in repo runs and inside Docker (/workspace/src/...).
         repo_root = Path(__file__).resolve().parents[4]
-        candidates.append(
-            repo_root / "src/qiki/services/q_core_agent/config/bot_config.json"
-        )
+        candidates.append(repo_root / "src/qiki/services/q_core_agent/config/bot_config.json")
 
         for path in candidates:
             try:
@@ -317,20 +369,37 @@ class QSimService:
         logger.info("QSimService started.")
         try:
             while True:
-                self.step()
+                self.tick()
                 time.sleep(self.config.sim_tick_interval)
         except KeyboardInterrupt:
             logger.info("QSimService stopped by user.")
 
-    def step(self):
-        delta_time = self.config.sim_tick_interval
+    def tick(self) -> None:
+        if self._sim_running and not self._sim_paused:
+            delta_time = self.config.sim_tick_interval * float(self._sim_speed)
+            self.step(delta_time=delta_time, advance_world=True, publish_radar=True)
+            return
+        # Paused/stopped: keep telemetry + sensor data alive, but freeze world and do not publish radar frames.
+        self.step(delta_time=0.0, advance_world=False, publish_radar=False)
+
+    def step(
+        self,
+        delta_time: float | None = None,
+        *,
+        advance_world: bool = True,
+        publish_radar: bool = True,
+    ) -> None:
+        if delta_time is None:
+            delta_time = float(self.config.sim_tick_interval)
+
         self.world_model.set_runtime_load_inputs(
             radar_enabled=self.radar_enabled,
             sensor_queue_depth=len(self.sensor_data_queue),
             actuator_queue_depth=len(self.actuator_command_queue),
             transponder_active=self._is_transponder_active(),
         )
-        self.world_model.step(delta_time)
+        if advance_world:
+            self.world_model.step(delta_time)
 
         # Commands are applied immediately on receipt, so treat the queue as a per-tick backlog/activity counter.
         # Clear it each tick to avoid unbounded growth impacting load simulation.
@@ -342,7 +411,7 @@ class QSimService:
         self.sensor_data_queue.append(sensor_data)
         logger.debug(f"Generated sensor data: {MessageToDict(sensor_data)}")
 
-        if self.radar_enabled and getattr(self.world_model, "radar_allowed", True):
+        if publish_radar and self.radar_enabled and getattr(self.world_model, "radar_allowed", True):
             rf = self.generate_radar_frame()
             self.radar_frames.append(rf)
             if self.radar_nats_enabled and self._radar_publisher is not None:
@@ -426,6 +495,7 @@ class QSimService:
         # No-mocks: if we cannot compute it (missing/bad config) -> omit.
         if self._hardware_profile_hash:
             out["hardware_profile_hash"] = self._hardware_profile_hash
+        out["sim_state"] = self.get_sim_state()
         return out
 
     def _parse_transponder_mode(self, raw: str) -> TransponderModeEnum:

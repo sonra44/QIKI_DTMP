@@ -4,12 +4,14 @@ import pytest
 from qiki.services.q_sim_service.service import QSimService
 from qiki.services.q_sim_service.grpc_server import QSimAPIService
 from qiki.shared.config_models import QSimServiceConfig
+from qiki.shared.models.core import CommandMessage, MessageMetadata
 from generated.q_sim_api_pb2 import HealthCheckRequest, HealthCheckResponse
 from generated.sensor_raw_in_pb2 import SensorReading
 
 
 class _DummyCtx:
     """Mock context for gRPC servicer."""
+
     def set_code(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
@@ -33,7 +35,7 @@ def test_qsim_service_initialization():
     """Test that QSimService initializes correctly."""
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     qsim = QSimService(cfg)
-    
+
     assert qsim.config == cfg
     assert qsim.sensor_data_queue == []
     assert qsim.actuator_command_queue == []
@@ -86,10 +88,10 @@ def test_generate_sensor_data():
     """Test sensor data generation directly."""
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     qsim = QSimService(cfg)
-    
+
     # Generate sensor data
     sensor_data = qsim.generate_sensor_data()
-    
+
     # Verify it's a valid SensorReading
     assert isinstance(sensor_data, SensorReading)
     assert sensor_data.sensor_id is not None
@@ -119,3 +121,31 @@ def test_telemetry_payload_includes_3d_position() -> None:
     assert isinstance(memory_usage, float)
     assert 0.0 <= cpu_usage <= 100.0
     assert 0.0 <= memory_usage <= 100.0
+
+
+def test_sim_pause_start_stop_and_reset_control_commands() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
+
+    pause = CommandMessage(command_name="sim.pause", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(pause) is True
+    assert qsim.get_sim_state()["paused"] is True
+
+    start = CommandMessage(command_name="sim.start", parameters={"speed": 2.0}, metadata=meta)
+    assert qsim.apply_control_command(start) is True
+    st = qsim.get_sim_state()
+    assert st["running"] is True
+    assert st["paused"] is False
+    assert st["speed"] == 2.0
+
+    qsim.world_model.position.x = 123.0
+    reset = CommandMessage(command_name="sim.reset", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(reset) is True
+    assert qsim.world_model.position.x == 0.0
+
+    stop = CommandMessage(command_name="sim.stop", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(stop) is True
+    st = qsim.get_sim_state()
+    assert st["running"] is False
