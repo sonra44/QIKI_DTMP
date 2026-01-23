@@ -82,6 +82,13 @@ command/команда> simulation.reset
 
 Note: `simulation.reset` requires confirmation (`y`).
 
+Optional speed multiplier (tmux):
+
+```text
+command/команда> simulation.start 2
+Sim/Сим Running/Работает x2
+```
+
 ## Checklist summary (✅/❌)
 
 - ✅ Active pause is functional: pause stops `qiki.radar.v1.frames`, start resumes (integration test).

@@ -774,6 +774,12 @@ class OrionHeader(Container):
             fsm_state = sim_state.get("fsm_state")
             running = sim_state.get("running")
             paused = sim_state.get("paused")
+            raw_speed = sim_state.get("speed")
+            speed: float | None = None
+            try:
+                speed = float(raw_speed)
+            except Exception:
+                speed = None
             state_norm = str(fsm_state).strip().upper() if isinstance(fsm_state, str) else ""
             if paused is True or state_norm == "PAUSED":
                 self.sim = I18N.bidi("Paused", "Пауза")
@@ -781,6 +787,11 @@ class OrionHeader(Container):
                 self.sim = I18N.bidi("Running", "Работает")
             elif running is False or state_norm == "STOPPED":
                 self.sim = I18N.bidi("Stopped", "Остановлено")
+
+            if self.sim != I18N.NA and speed is not None and speed > 0 and abs(speed - 1.0) > 1e-6:
+                # Keep it short: x2, x0.5, x2.5.
+                speed_s = f"{speed:.2f}".rstrip("0").rstrip(".")
+                self.sim = f"{self.sim} x{speed_s}"
 
         # Online is a function of connectivity + freshness (no magic).
         self.online = bool(nats_connected and telemetry_freshness_kind == "fresh")
@@ -5695,7 +5706,7 @@ class OrionApp(App):
         )
         self._console_log(
             f"{I18N.bidi('Simulation', 'Симуляция')}: "
-            f"simulation.start/симуляция.старт | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | "
+            f"simulation.start [speed]/симуляция.старт [скорость] | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | "
             f"simulation.reset/симуляция.сброс ({I18N.bidi('confirm', 'подтвердить')}: Y)",
             level="info",
         )
@@ -6137,6 +6148,30 @@ class OrionApp(App):
             )
             return
 
+        # simulation.start [<speed>] (active pause + speed multiplier).
+        # NOTE: `simulation.reset` is handled separately and requires confirmation.
+        if low.startswith(("simulation.start", "sim.start", "симуляция.старт")):
+            parts = cmd.split()
+            speed: float | None = None
+            if len(parts) >= 2:
+                token = parts[1].strip().lower()
+                if token.startswith("speed="):
+                    token = token.split("=", 1)[1].strip()
+                if token.startswith("x"):
+                    token = token[1:].strip()
+                if token.endswith("x"):
+                    token = token[:-1].strip()
+                try:
+                    speed = float(token)
+                except Exception:
+                    self._console_log(
+                        f"{I18N.bidi('Invalid speed', 'Некорректная скорость')}: {parts[1]}",
+                        level="warn",
+                    )
+                    return
+            await self._publish_sim_command("sim.start", parameters={} if speed is None else {"speed": speed})
+            return
+
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
             if sim_cmd == "sim.reset":
                 prompt = (
@@ -6310,7 +6345,7 @@ class OrionApp(App):
         prefix = f"{I18N.bidi('command', 'команда')}> "
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
-        sim_part = "simulation.start/симуляция.старт"
+        sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
 
         # Keep the command line readable in tmux splits: show less on narrow/tiny.

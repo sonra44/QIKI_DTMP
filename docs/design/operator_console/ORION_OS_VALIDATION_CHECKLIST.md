@@ -58,6 +58,7 @@
 - ✅ Active pause visibility: — состояние симуляции видно в хедере
   - Send `simulation.pause` and confirm header shows `Sim/Сим Paused/Пауза`.
   - Send `simulation.start` and confirm header shows `Sim/Сим Running/Работает`.
+  - Optional: send `simulation.start 2` and confirm header shows `Sim/Сим Running/Работает x2`.
   - Send `simulation.stop` and confirm header shows `Sim/Сим Stopped/Остановлено`.
   - Send `simulation.reset` and confirm (reset implies stop):
     - ConfirmDialog appears -> press `y`.
