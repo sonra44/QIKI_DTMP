@@ -20,18 +20,18 @@ cd "$(dirname "$0")/.."
 
 cleanup() {
   if [ "${KEEP_STACK}" = "1" ]; then
-    echo "ℹ️  KEEP_STACK=1 -> leaving containers running"
+    echo "INFO: KEEP_STACK=1 -> leaving containers running"
     return
   fi
-  echo "🧹 Bringing stack down..."
+  echo "Bringing stack down..."
   ${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml down >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-echo "🐳 Bringing up stack (phase1 + operator overlay)..."
+echo "Bringing up stack (phase1 + operator overlay)..."
 ${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d --build nats q-sim-service q-bios-service operator-console qiki-dev
 
-echo "⏱  Waiting for health (max ~40s)..."
+echo "Waiting for health (max ~40s)..."
 for i in $(seq 1 40); do
   if ${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml ps | grep -q "qiki-bios-phase1.*healthy" \
     && ${DC} -f docker-compose.phase1.yml -f docker-compose.operator.yml ps | grep -q "qiki-nats-phase1.*healthy" \
@@ -42,7 +42,7 @@ for i in $(seq 1 40); do
   sleep 1
 done
 
-echo "🔍 BIOS HTTP endpoints..."
+echo "BIOS HTTP endpoints..."
 curl -fsS http://localhost:8080/healthz >/dev/null
 BIOS_STATUS_JSON="$(curl -fsS http://localhost:8080/bios/status)"
 printf '%s' "${BIOS_STATUS_JSON}" | ${DC} -f docker-compose.phase1.yml exec -T qiki-dev python -c '
@@ -53,10 +53,10 @@ assert data.get("source") == "q-bios-service"
 assert data.get("subject") == "qiki.events.v1.bios_status"
 assert isinstance(data.get("post_results"), list)
 assert isinstance(data.get("all_systems_go"), bool)
-print("✅ BIOS status OK:", "all_systems_go=", data["all_systems_go"], "post_results=", len(data["post_results"]))
+print("BIOS status OK:", "all_systems_go=", data["all_systems_go"], "post_results=", len(data["post_results"]))
 '
 
-echo "🔍 NATS: telemetry contains MCQPU cpu_usage/memory_usage (non-null, 0..100)..."
+echo "NATS: telemetry contains MCQPU cpu_usage/memory_usage (non-null, 0..100)..."
 ${DC} -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'
 import asyncio, json
 import nats
@@ -86,12 +86,12 @@ async def main():
   cpu = float(cpu); mem = float(mem)
   assert 0.0 <= cpu <= 100.0, f"cpu_usage out of range: {cpu}"
   assert 0.0 <= mem <= 100.0, f"memory_usage out of range: {mem}"
-  print("✅ Telemetry MCQPU OK:", "cpu_usage=", cpu, "memory_usage=", mem)
+  print("Telemetry MCQPU OK:", "cpu_usage=", cpu, "memory_usage=", mem)
 
 asyncio.run(main())
 PY
 
-echo "🔍 NATS: BIOS publishes qiki.events.v1.bios_status (trigger via HTTP)..."
+echo "NATS: BIOS publishes qiki.events.v1.bios_status (trigger via HTTP)..."
 ${DC} -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'
 import asyncio, json
 from urllib.request import urlopen
@@ -117,9 +117,9 @@ async def main():
 
   assert data.get("subject") == "qiki.events.v1.bios_status"
   assert isinstance(data.get("all_systems_go"), bool)
-  print("✅ BIOS event OK:", "all_systems_go=", data["all_systems_go"])
+  print("BIOS event OK:", "all_systems_go=", data["all_systems_go"])
 
 asyncio.run(main())
 PY
 
-echo "✅ Smoke OK (virtual MCQPU + BIOS + NATS + operator-console running)"
+echo "Smoke OK (virtual MCQPU + BIOS + NATS + operator-console running)"
