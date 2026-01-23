@@ -1,8 +1,8 @@
 import logging
-import logging
 import os
 import time
 from datetime import datetime, timezone
+from dataclasses import dataclass
 
 from faststream import FastStream, Logger
 from faststream.nats import NatsBroker
@@ -13,6 +13,8 @@ from pydantic import ValidationError
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
 from qiki.shared.models.radar import RadarFrameModel
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1, QikiMode
+from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, EVENTS_AUDIT
 from qiki.shared.nats_subjects import (
     QIKI_INTENTS,
     QIKI_RESPONSES,
@@ -47,6 +49,47 @@ RADAR_STREAM = os.getenv("RADAR_STREAM", RADAR_STREAM_NAME)
 
 broker = NatsBroker(NATS_URL)
 app = FastStream(broker)
+
+
+@dataclass
+class _StoredProposal:
+    proposal_id: str
+    actions: list[dict]
+    ts_epoch: float
+
+
+_proposal_store: dict[str, _StoredProposal] = {}
+
+
+def _proposal_store_ttl_s() -> float:
+    try:
+        return max(1.0, float(os.getenv("QIKI_PROPOSAL_STORE_TTL_SEC", "600")))
+    except Exception:
+        return 600.0
+
+
+def _proposal_store_max() -> int:
+    try:
+        return max(10, int(os.getenv("QIKI_PROPOSAL_STORE_MAX", "500")))
+    except Exception:
+        return 500
+
+
+def _proposal_store_gc(now_epoch: float) -> None:
+    ttl = _proposal_store_ttl_s()
+    for pid, item in list(_proposal_store.items()):
+        if now_epoch - item.ts_epoch > ttl:
+            _proposal_store.pop(pid, None)
+
+    max_items = _proposal_store_max()
+    if len(_proposal_store) <= max_items:
+        return
+    # Drop oldest first.
+    for pid, _item in sorted(_proposal_store.items(), key=lambda kv: kv[1].ts_epoch)[
+        : max(0, len(_proposal_store) - max_items)
+    ]:
+        _proposal_store.pop(pid, None)
+
 
 _track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
 _lag_monitor = JetStreamLagMonitor(
@@ -111,7 +154,81 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
             )
         except Exception as exc:  # pragma: no cover
             logger.warning("Failed to publish system mode event: %s", exc)
+    # Handle proposal decisions: execute stored actions on ACCEPT.
+    if req.decision is not None:
+        pid = str(req.decision.proposal_id)
+        decision = req.decision.decision
+        now_epoch = time.time()
+        _proposal_store_gc(now_epoch)
+
+        stored = _proposal_store.get(pid)
+        if decision == "REJECT":
+            _proposal_store.pop(pid, None)
+            resp = handle_chat_request(req, current_mode=get_mode())
+            return resp.model_dump(mode="json")
+
+        # ACCEPT
+        executed: list[str] = []
+        if stored is not None:
+            for action in stored.actions:
+                try:
+                    subject = str(action.get("subject") or "")
+                    name = str(action.get("name") or "")
+                    raw_params = action.get("parameters")
+                    params = raw_params if isinstance(raw_params, dict) else {}
+                    dry_run = bool(action.get("dry_run", True))
+                    if dry_run:
+                        continue
+                    if subject != COMMANDS_CONTROL or not name:
+                        continue
+
+                    cmd = CommandMessage(
+                        command_name=name,
+                        parameters={str(k): v for k, v in params.items()},
+                        metadata=MessageMetadata(
+                            correlation_id=req.request_id,
+                            message_type="control",
+                            source="faststream_bridge",
+                            destination="q_sim_service",
+                        ),
+                    )
+                    await broker.publish(cmd.model_dump(mode="json"), subject=COMMANDS_CONTROL)
+                    executed.append(name)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Failed executing proposal action: %s", exc)
+
+            try:
+                await broker.publish(
+                    {
+                        "event_schema_version": 1,
+                        "source": "faststream_bridge",
+                        "subject": EVENTS_AUDIT,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "kind": "proposal_accept",
+                        "proposal_id": pid,
+                        "request_id": str(req.request_id),
+                        "executed": executed,
+                    },
+                    subject=EVENTS_AUDIT,
+                )
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to publish audit event: %s", exc)
+
+        resp = handle_chat_request(req, current_mode=get_mode())
+        return resp.model_dump(mode="json")
+
+    # Regular intents: generate proposals and store their actions for later decisions.
     resp: QikiChatResponseV1 = handle_chat_request(req, current_mode=get_mode())
+    now_epoch = time.time()
+    _proposal_store_gc(now_epoch)
+    for p in resp.proposals:
+        actions = [a.model_dump(mode="json") for a in (p.proposed_actions or [])]
+        _proposal_store[str(p.proposal_id)] = _StoredProposal(
+            proposal_id=str(p.proposal_id),
+            actions=actions,
+            ts_epoch=now_epoch,
+        )
+
     return resp.model_dump(mode="json")
 
 
@@ -150,12 +267,8 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
         # Минимальная агрегация: кадр -> трек
         track = frame_to_track(msg)
         _track_publisher.publish_track(track)
-        logger.debug(
-            "Track published with CloudEvents headers: track_id=%s", track.track_id
-        )
+        logger.debug("Track published with CloudEvents headers: track_id=%s", track.track_id)
     except Exception as exc:  # pragma: no cover
         logger.warning("Failed to handle radar frame: %s", exc)
-        fallback = frame_to_track(
-            RadarFrameModel(sensor_id=msg.sensor_id, detections=[])
-        )
+        fallback = frame_to_track(RadarFrameModel(sensor_id=msg.sensor_id, detections=[]))
         _track_publisher.publish_track(fallback)

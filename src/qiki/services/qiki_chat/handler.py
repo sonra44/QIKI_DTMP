@@ -10,8 +10,10 @@ from qiki.shared.models.qiki_chat import (
     QikiErrorV1,
     QikiMode,
     QikiProposalV1,
+    QikiProposedActionV1,
     QikiReplyV1,
 )
+from qiki.shared.nats_subjects import COMMANDS_CONTROL
 
 
 def _now_iso() -> str:
@@ -21,16 +23,11 @@ def _now_iso() -> str:
 def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -> QikiChatResponseV1:
     mode = current_mode
 
-    # Minimal deterministic workflow hook: ORION can accept/reject a proposal by
-    # sending an intent with ui_context.selection.kind == "proposal".
-    try:
-        sel = request.ui_context.selection
-    except Exception:
-        sel = None
-    if sel is not None and sel.kind == "proposal" and sel.id:
-        text = (request.input.text or "").strip().lower()
-        pid = str(sel.id)
-        if text.startswith("proposal.accept"):
+    # Decisions are handled upstream (faststream bridge executes actions). Here we
+    # only acknowledge the operator decision deterministically.
+    if request.decision is not None:
+        pid = str(request.decision.proposal_id)
+        if request.decision.decision == "ACCEPT":
             return QikiChatResponseV1(
                 request_id=request.request_id,
                 ok=True,
@@ -38,78 +35,119 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
                 reply=QikiReplyV1(
                     title=BilingualText(en="Accepted", ru="Принято"),
                     body=BilingualText(
-                        en=f"Operator accepted proposal {pid}. Actions remain disabled in this MVP.",
-                        ru=f"Оператор принял предложение {pid}. Действия остаются отключены в этом MVP.",
+                        en=f"Operator accepted proposal {pid}.",
+                        ru=f"Оператор принял предложение {pid}.",
                     ),
                 ),
                 proposals=[],
-                warnings=[BilingualText(en="ACTIONS DISABLED", ru="ДЕЙСТВИЯ ОТКЛЮЧЕНЫ")],
+                warnings=[],
                 error=None,
             )
-        if text.startswith("proposal.reject"):
-            return QikiChatResponseV1(
-                request_id=request.request_id,
-                ok=True,
-                mode=mode,
-                reply=QikiReplyV1(
-                    title=BilingualText(en="Rejected", ru="Отклонено"),
-                    body=BilingualText(
-                        en=f"Operator rejected proposal {pid}. Actions remain disabled in this MVP.",
-                        ru=f"Оператор отклонил предложение {pid}. Действия остаются отключены в этом MVP.",
-                    ),
+        return QikiChatResponseV1(
+            request_id=request.request_id,
+            ok=True,
+            mode=mode,
+            reply=QikiReplyV1(
+                title=BilingualText(en="Rejected", ru="Отклонено"),
+                body=BilingualText(
+                    en=f"Operator rejected proposal {pid}.",
+                    ru=f"Оператор отклонил предложение {pid}.",
                 ),
-                proposals=[],
-                warnings=[BilingualText(en="ACTIONS DISABLED", ru="ДЕЙСТВИЯ ОТКЛЮЧЕНЫ")],
-                error=None,
-            )
-
-    # Avoid magic/static IDs: proposal_id must be deterministic per request so
-    # ORION can reference it without hardcoded values.
-    proposal_id = f"p-{request.request_id.hex[:8]}"
-
-    proposals = [
-        QikiProposalV1(
-            proposal_id=proposal_id,
-            title=BilingualText(en="Headless QIKI online", ru="Headless QIKI в сети"),
-            justification=BilingualText(
-                en="MVP request/reply channel is working; actions are disabled.",
-                ru="MVP канал request/reply работает; действия отключены.",
             ),
-            confidence=1.0,
-            priority=50,
-            suggested_questions=[
-                BilingualText(
-                    en="Explain ORION vs QIKI roles",
-                    ru="Объясни роли ORION и QIKI",
-                ),
-                BilingualText(
-                    en="What is the next implementation step?",
-                    ru="Какой следующий шаг внедрения?",
-                ),
-            ],
-            proposed_actions=[],
+            proposals=[],
+            warnings=[],
+            error=None,
         )
-    ]
 
+    text = (request.input.text or "").strip()
+    low = text.lower()
+
+    proposed_actions: list[QikiProposedActionV1] = []
+    title = BilingualText(en="No actionable intent", ru="Нет исполнимого намерения")
+    justification = BilingualText(
+        en="Intent does not match a supported control command.",
+        ru="Намерение не соответствует поддерживаемой команде управления.",
+    )
+
+    if low in {"dock.on", "power.dock.on"}:
+        title = BilingualText(en="Enable dock power", ru="Включить питание дока")
+        justification = BilingualText(en="Operator requested dock power on.", ru="Оператор запросил питание дока.")
+        proposed_actions = [
+            QikiProposedActionV1(
+                subject=COMMANDS_CONTROL,
+                name="power.dock.on",
+                parameters={},
+                dry_run=False,
+            )
+        ]
+    elif low in {"dock.off", "power.dock.off"}:
+        title = BilingualText(en="Disable dock power", ru="Выключить питание дока")
+        justification = BilingualText(en="Operator requested dock power off.", ru="Оператор отключил питание дока.")
+        proposed_actions = [
+            QikiProposedActionV1(
+                subject=COMMANDS_CONTROL,
+                name="power.dock.off",
+                parameters={},
+                dry_run=False,
+            )
+        ]
+    elif low.startswith("dock.engage"):
+        # Example: "dock.engage" or "dock.engage A".
+        parts = text.split()
+        port = parts[1].strip() if len(parts) > 1 else ""
+        params = {"port": port} if port else {}
+        title = BilingualText(en="Engage docking", ru="Включить стыковку")
+        justification = BilingualText(en="Operator requested docking engage.", ru="Оператор запросил стыковку.")
+        proposed_actions = [
+            QikiProposedActionV1(
+                subject=COMMANDS_CONTROL,
+                name="sim.dock.engage",
+                parameters=params,
+                dry_run=False,
+            )
+        ]
+    elif low.startswith("dock.release"):
+        title = BilingualText(en="Release docking", ru="Отпустить стыковку")
+        justification = BilingualText(en="Operator requested docking release.", ru="Оператор отпустил стыковку.")
+        proposed_actions = [
+            QikiProposedActionV1(
+                subject=COMMANDS_CONTROL,
+                name="sim.dock.release",
+                parameters={},
+                dry_run=False,
+            )
+        ]
+
+    proposals: list[QikiProposalV1] = []
+    if proposed_actions:
+        proposal_id = f"p-{request.request_id.hex[:8]}"
+        proposals = [
+            QikiProposalV1(
+                proposal_id=proposal_id,
+                title=title,
+                justification=justification,
+                confidence=1.0,
+                priority=70,
+                suggested_questions=[],
+                proposed_actions=proposed_actions,
+            )
+        ]
+
+    reply_title = (
+        BilingualText(en="OK", ru="ОК") if proposals else BilingualText(en="No proposals", ru="Нет предложений")
+    )
     reply = QikiReplyV1(
-        title=BilingualText(en="OK", ru="ОК"),
+        title=reply_title,
         body=BilingualText(
-            en=(
-                f"I am running in {mode.value} mode. I can answer questions and return "
-                "structured proposals. Actions are disabled in this MVP."
-            ),
+            en=f"mode={mode.value} proposals={len(proposals)} ts={_now_iso()}",
             ru=(
-                f"Я запущена в режиме {('ЗАВОД' if mode == QikiMode.FACTORY else 'МИССИЯ')}. "
-                "Я могу отвечать на вопросы и возвращать структурированные предложения. "
-                "Действия отключены в этом MVP."
+                f"режим={('ЗАВОД' if mode == QikiMode.FACTORY else 'МИССИЯ')} "
+                f"предложений={len(proposals)} время={_now_iso()}"
             ),
         ),
     )
 
-    warnings = [
-        BilingualText(en="ACTIONS DISABLED", ru="ДЕЙСТВИЯ ОТКЛЮЧЕНЫ"),
-        BilingualText(en=f"ts={_now_iso()}", ru=f"время={_now_iso()}"),
-    ]
+    warnings = []
 
     return QikiChatResponseV1(
         request_id=request.request_id,

@@ -9,11 +9,19 @@ from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.nats_subjects import QIKI_INTENTS, QIKI_RESPONSES
 
 
-async def _request_once(nc, *, text: str, selection_kind: str, selection_id: str | None) -> QikiChatResponseV1:
+async def _request_once(
+    nc,
+    *,
+    text: str,
+    selection_kind: str,
+    selection_id: str | None,
+    decision: dict[str, str] | None = None,
+) -> QikiChatResponseV1:
     req = QikiChatRequestV1(
         request_id=uuid4(),
         ts_epoch_ms=int(time.time() * 1000),
         input={"text": text, "lang_hint": "auto"},
+        decision=decision,
         ui_context={"screen": "QIKI/QIKI", "selection": {"kind": selection_kind, "id": selection_id}},
     )
 
@@ -62,14 +70,23 @@ async def main() -> int:
     )
     try:
         resp = await _request_once(
-            nc, text=os.getenv("QIKI_INTENT_TEXT", "ping"), selection_kind="none", selection_id=None
+            nc,
+            text=os.getenv("QIKI_INTENT_TEXT", "dock.on"),
+            selection_kind="none",
+            selection_id=None,
         )
         if not resp.proposals:
             print("BAD: no proposals returned")
             return 1
 
         pid = str(resp.proposals[0].proposal_id)
-        accept = await _request_once(nc, text=f"proposal.accept id={pid}", selection_kind="proposal", selection_id=pid)
+        accept = await _request_once(
+            nc,
+            text=f"proposal accept {pid}",
+            selection_kind="proposal",
+            selection_id=pid,
+            decision={"proposal_id": pid, "decision": "ACCEPT"},
+        )
         title = accept.reply.title.en if accept.reply else ""
         if title.lower() != "accepted":
             print(f"BAD: expected Accepted, got {title!r}")

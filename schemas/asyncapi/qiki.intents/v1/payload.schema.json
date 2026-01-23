@@ -19,6 +19,15 @@
         "lang_hint": { "type": "string", "enum": ["auto", "ru", "en"] }
       }
     },
+    "decision": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["proposal_id", "decision"],
+      "properties": {
+        "proposal_id": { "type": "string" },
+        "decision": { "type": "string", "enum": ["ACCEPT", "REJECT"] }
+      }
+    },
     "ui_context": {
       "type": "object",
       "additionalProperties": true,

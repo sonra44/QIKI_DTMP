@@ -6145,6 +6145,38 @@ class OrionApp(App):
                 level="error",
             )
 
+    async def _publish_qiki_proposal_decision(self, *, proposal_id: str, decision: str) -> None:
+        pid = (proposal_id or "").strip()
+        dec = (decision or "").strip().upper()
+        if not pid or dec not in {"ACCEPT", "REJECT"}:
+            return
+        if not self.nats_client:
+            self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
+            return
+
+        screen_label = next((app.title for app in ORION_APPS if app.screen == self.active_screen), "System/Система")
+        req = QikiChatRequestV1(
+            request_id=uuid4(),
+            ts_epoch_ms=int(time.time() * 1000),
+            input={"text": f"proposal {dec.lower()} {pid}", "lang_hint": "auto"},
+            decision={"proposal_id": pid, "decision": dec},
+            ui_context={"screen": screen_label, "selection": {"kind": "proposal", "id": pid}},
+        )
+
+        try:
+            await self.nats_client.publish_command(QIKI_INTENTS, req.model_dump(mode="json"))
+            req_id = str(req.request_id)
+            self._qiki_pending[req_id] = (time.time(), req.input.text)
+            self._qiki_last_request_id = req_id
+            asyncio.create_task(self._qiki_watch_timeout(req_id))
+            self._console_log(
+                f"{I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
+                f"({I18N.bidi('request', 'запрос')}={req.request_id})",
+                level="info",
+            )
+        except Exception as e:
+            self._console_log(f"{I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}", level="error")
+
     async def _qiki_watch_timeout(self, request_id: str) -> None:
         timeout = max(0.1, float(self._qiki_response_timeout_sec))
         await asyncio.sleep(timeout)
@@ -6197,8 +6229,7 @@ class OrionApp(App):
             if not decision:
                 self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                 return
-            # Send a deterministic intent; proposal_id is also attached via ui_context.selection.
-            asyncio.create_task(self._publish_qiki_intent(f"proposal.accept id={pid}"))
+            asyncio.create_task(self._publish_qiki_proposal_decision(proposal_id=pid, decision="ACCEPT"))
 
         self.push_screen(ConfirmDialog(prompt), after)
 
@@ -6222,7 +6253,7 @@ class OrionApp(App):
             if not decision:
                 self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                 return
-            asyncio.create_task(self._publish_qiki_intent(f"proposal.reject id={pid}"))
+            asyncio.create_task(self._publish_qiki_proposal_decision(proposal_id=pid, decision="REJECT"))
 
         self.push_screen(ConfirmDialog(prompt), after)
 

@@ -53,12 +53,18 @@ class QikiChatInput(_StrictModel):
     lang_hint: Literal["auto", "ru", "en"] = "auto"
 
 
+class QikiProposalDecisionV1(_StrictModel):
+    proposal_id: str
+    decision: Literal["ACCEPT", "REJECT"]
+
+
 class QikiChatRequestV1(_StrictModel):
     version: Literal[1] = 1
     request_id: UUID = Field(validation_alias=AliasChoices("request_id", "requestId"))
     ts_epoch_ms: int
     mode_hint: QikiMode = QikiMode.FACTORY
     input: QikiChatInput
+    decision: Optional[QikiProposalDecisionV1] = None
     ui_context: UiContext = Field(default_factory=UiContext)
     system_context: SystemContext = Field(default_factory=SystemContext)
 

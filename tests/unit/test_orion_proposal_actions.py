@@ -24,13 +24,16 @@ async def test_accept_selected_proposal_publishes_intent() -> None:
         ids=("p-001",),
     )
 
-    app._publish_qiki_intent = AsyncMock()  # type: ignore[method-assign]
+    app._publish_qiki_proposal_decision = AsyncMock()  # type: ignore[method-assign]
     app.push_screen = lambda _screen, cb=None: cb(True) if cb else None  # type: ignore[method-assign]
 
     app.action_accept_selected_proposal()
     await asyncio.sleep(0)
 
-    app._publish_qiki_intent.assert_awaited_once_with("proposal.accept id=p-001")  # type: ignore[attr-defined]
+    app._publish_qiki_proposal_decision.assert_awaited_once_with(  # type: ignore[attr-defined]
+        proposal_id="p-001",
+        decision="ACCEPT",
+    )
 
 
 @pytest.mark.asyncio
@@ -49,10 +52,13 @@ async def test_reject_selected_proposal_publishes_intent() -> None:
         ids=("p-001",),
     )
 
-    app._publish_qiki_intent = AsyncMock()  # type: ignore[method-assign]
+    app._publish_qiki_proposal_decision = AsyncMock()  # type: ignore[method-assign]
     app.push_screen = lambda _screen, cb=None: cb(True) if cb else None  # type: ignore[method-assign]
 
     app.action_reject_selected_proposal()
     await asyncio.sleep(0)
 
-    app._publish_qiki_intent.assert_awaited_once_with("proposal.reject id=p-001")  # type: ignore[attr-defined]
+    app._publish_qiki_proposal_decision.assert_awaited_once_with(  # type: ignore[attr-defined]
+        proposal_id="p-001",
+        decision="REJECT",
+    )
