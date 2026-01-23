@@ -36,6 +36,7 @@ class BiosService:
             BiosPostInputs(bot_config_path=self._cfg.bot_config_path, sim_health=sim_health)
         )
         payload = status.model_dump(mode="json")
+        payload["event_schema_version"] = 1
         payload["source"] = "q-bios-service"
         payload["subject"] = self._cfg.nats_subject
         return payload

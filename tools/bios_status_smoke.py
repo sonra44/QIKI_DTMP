@@ -37,6 +37,9 @@ async def main() -> int:
         if not isinstance(payload.get("post_results"), list):
             print(f"BAD: bios status missing post_results list on {subject}: {payload}")
             return 1
+        if payload.get("event_schema_version") != 1:
+            print(f"BAD: bios status event_schema_version != 1 on {subject}: {payload}")
+            return 1
         if "bios_version" not in payload:
             print(f"BAD: bios status missing bios_version on {subject}: {payload}")
             return 1
@@ -56,4 +59,3 @@ async def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))
-
