@@ -4,7 +4,7 @@
 ---
 
 **Дата создания:** 2025-07-30  
-**Последнее обновление:** 2025-09-21 (Stage 0 Implementation Complete)  
+**Последнее обновление:** 2026-01-23 (ORION: BIOS loaded line + validation checklist)  
 **Модель:** Claude Code (Sonnet 4) / Codex CLI  
 **Статус:** Phase 1 стек стабилен, Radar v1 интегрирован, Stage 0 завершен (≈92% технической готовности, см. обновление ниже)
 
@@ -140,6 +140,11 @@ Q-Core Agent (мозг) ↔ Q-Sim Service (физический мир) ↔ Q-Op
 **Q-Core Agent:** Гибридный ИИ (Rule Engine + Neural Engine + Arbiter)
 **Q-Sim Service:** Физическая симуляция с step-based архитектурой
 **Q-Operator Console:** CLI/TUI/Web интерфейсы для операторов
+
+### 0.6 Обновление 2026-01-23 — ORION: BIOS loaded line
+- ORION (Operator Console) добавляет одноразовую строку подтверждения загрузки BIOS внутри UI при первом событии `qiki.events.v1.bios_status`: `BIOS loaded/BIOS загрузился: ...`.
+- Чеклист валидации ORION дополнен пунктом о проверке строки на экране Console (`F4`) после cold boot.
+- Commit: `6cea609` (“ORION: log BIOS loaded in UI”).
 
 ---
 

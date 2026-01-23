@@ -259,7 +259,10 @@ class BootScreen(ModalScreen[bool]):
         else:
             err = str(getattr(app, "_boot_nats_error", "") or "").strip()
             tail = f": {err}" if err else ""
-            log.add_line(I18N.bidi(f"NET: NATS connect failed [FAIL]{tail}", f"NET: NATS не подключился [СБОЙ]{tail}"), style="bold red")
+            log.add_line(
+                I18N.bidi(f"NET: NATS connect failed [FAIL]{tail}", f"NET: NATS не подключился [СБОЙ]{tail}"),
+                style="bold red",
+            )
 
         # Phase 2: BIOS event (real, from NATS).
         log.add_line(
@@ -286,12 +289,18 @@ class BootScreen(ModalScreen[bool]):
             if isinstance(all_go, bool):
                 if all_go:
                     log.add_line(
-                        I18N.bidi(f"BIOS: POST complete [OK] (devices: {len(post)})", f"BIOS: POST завершён [OK] (устройств: {len(post)})"),
+                        I18N.bidi(
+                            f"BIOS: POST complete [OK] (devices: {len(post)})",
+                            f"BIOS: POST завершён [OK] (устройств: {len(post)})",
+                        ),
                         style="bold green",
                     )
                 else:
                     log.add_line(
-                        I18N.bidi(f"BIOS: POST complete [FAIL] (devices: {len(post)})", f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})"),
+                        I18N.bidi(
+                            f"BIOS: POST complete [FAIL] (devices: {len(post)})",
+                            f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})",
+                        ),
                         style="bold red",
                     )
             else:
@@ -353,7 +362,9 @@ class BootScreen(ModalScreen[bool]):
             # No-mocks: no fake OK. Show N/A and proceed.
             log.add_line(I18N.bidi("BIOS: No data (N/A)", "BIOS: Нет данных (N/A)"), style="yellow")
 
-        log.add_line(I18N.bidi("HANDOVER: Switching to operator view...", "ПЕРЕДАЧА: Переход в режим оператора..."), style="dim")
+        log.add_line(
+            I18N.bidi("HANDOVER: Switching to operator view...", "ПЕРЕДАЧА: Переход в режим оператора..."), style="dim"
+        )
         await self._sleep_chunked(0.4)
         self.dismiss(True)
 
@@ -603,6 +614,7 @@ ORION_SIDEBAR_LABELS_NARROW: dict[str, str] = {
 def menu_label(app: OrionAppSpec) -> str:
     return ORION_MENU_LABELS.get(app.screen, app.title)
 
+
 def menu_label_for_density(app: OrionAppSpec, *, density: str | None) -> str:
     # Full titles are readable on wide screens; on narrow/tiny prefer compact labels.
     d = (density or "").strip().lower()
@@ -719,7 +731,6 @@ class OrionHeader(Container):
             return
         self.mode = value
         self._refresh_cells()
-
 
     def update_from_telemetry(
         self,
@@ -1002,6 +1013,7 @@ class OrionInspector(Static):
         if len(rendered) <= max_chars:
             return rendered
         return rendered[: max(0, max_chars - 1)] + "…"
+
 
 class OrionApp(App):
     TITLE = "QIKI — ORION"
@@ -1979,6 +1991,7 @@ class OrionApp(App):
         current = self._selection_by_app.get("thermal")
         selected_key = current.key if current is not None else None
         selected_row: Optional[int] = None
+
         def status_label(node_id: str, temp: Any) -> str:
             if temp is None:
                 return I18N.NA
@@ -2093,12 +2106,42 @@ class OrionApp(App):
         rows.extend(
             [
                 ("rcs_enabled", I18N.bidi("RCS enabled", "РДС включено"), I18N.yes_no(bool(enabled)), enabled, False),
-                ("rcs_active", I18N.bidi("RCS active", "РДС активно"), I18N.yes_no(bool(active)), active, bool(throttled)),
+                (
+                    "rcs_active",
+                    I18N.bidi("RCS active", "РДС активно"),
+                    I18N.yes_no(bool(active)),
+                    active,
+                    bool(throttled),
+                ),
                 ("rcs_axis", I18N.bidi("Axis", "Ось"), I18N.fmt_na(axis), axis, bool(throttled)),
-                ("rcs_command", I18N.bidi("Command", "Команда"), I18N.num_unit(cmd_pct, "%", "%", digits=0), cmd_pct, bool(throttled)),
-                ("rcs_time_left", I18N.bidi("Time left", "Осталось"), I18N.num_unit(time_left, "s", "с", digits=1), time_left, bool(throttled)),
-                ("rcs_propellant", I18N.bidi("Propellant", "Топливо"), I18N.num_unit(propellant, "kg", "кг", digits=2), propellant, bool(throttled)),
-                ("rcs_power", I18N.bidi("RCS power", "РДС мощн"), I18N.num_unit(power_w, "W", "Вт", digits=1), power_w, bool(throttled)),
+                (
+                    "rcs_command",
+                    I18N.bidi("Command", "Команда"),
+                    I18N.num_unit(cmd_pct, "%", "%", digits=0),
+                    cmd_pct,
+                    bool(throttled),
+                ),
+                (
+                    "rcs_time_left",
+                    I18N.bidi("Time left", "Осталось"),
+                    I18N.num_unit(time_left, "s", "с", digits=1),
+                    time_left,
+                    bool(throttled),
+                ),
+                (
+                    "rcs_propellant",
+                    I18N.bidi("Propellant", "Топливо"),
+                    I18N.num_unit(propellant, "kg", "кг", digits=2),
+                    propellant,
+                    bool(throttled),
+                ),
+                (
+                    "rcs_power",
+                    I18N.bidi("RCS power", "РДС мощн"),
+                    I18N.num_unit(power_w, "W", "Вт", digits=1),
+                    power_w,
+                    bool(throttled),
+                ),
             ]
         )
 
@@ -2213,7 +2256,9 @@ class OrionApp(App):
         age = I18N.fmt_age_compact(age_s)
         source = I18N.bidi("telemetry", "телеметрия")
 
-        def status_label(raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None) -> str:
+        def status_label(
+            raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None
+        ) -> str:
             if status_kind is not None:
                 kind = str(status_kind).strip().lower()
                 if kind == "ok":
@@ -2244,9 +2289,7 @@ class OrionApp(App):
                 ("p", imu.get("pitch_rate_rps")),
                 ("y", imu.get("yaw_rate_rps")),
             ]
-            imu_rates_txt = " ".join(
-                [f"{k}={float(v):.3f}" for (k, v) in imu_rates if isinstance(v, (int, float))]
-            )
+            imu_rates_txt = " ".join([f"{k}={float(v):.3f}" for (k, v) in imu_rates if isinstance(v, (int, float))])
             imu_value = f"{imu_rates_txt} rad/s" if imu_rates_txt else I18N.NA
             rows.append(("imu", I18N.bidi("IMU", "ИМУ"), imu_value, imu, False, imu_status))
 
@@ -2294,20 +2337,64 @@ class OrionApp(App):
                     x = float(field.get("x"))
                     y = float(field.get("y"))
                     z = float(field.get("z"))
-                    mag_value = f"|B|={math.sqrt(x*x + y*y + z*z):.2f} µT"
+                    mag_value = f"|B|={math.sqrt(x * x + y * y + z * z):.2f} µT"
                 except Exception:
                     mag_value = I18N.INVALID
-            rows.append(("magnetometer", I18N.bidi("Magnetometer", "Магнитометр"), mag_value, mag, mag_value == I18N.INVALID, None))
+            rows.append(
+                (
+                    "magnetometer",
+                    I18N.bidi("Magnetometer", "Магнитометр"),
+                    mag_value,
+                    mag,
+                    mag_value == I18N.INVALID,
+                    None,
+                )
+            )
         else:
             imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
             imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
             rows.extend(
                 [
-                    ("imu_enabled", I18N.bidi("IMU enabled", "ИМУ включено"), I18N.yes_no(bool(imu.get("enabled"))), imu.get("enabled"), False, None),
-                    ("imu_ok", I18N.bidi("IMU ok", "ИМУ ок"), I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA, imu.get("ok"), bool(imu.get("ok") is False), imu_status),
-                    ("imu_roll_rate", I18N.bidi("Roll rate", "Скор. крена"), I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("roll_rate_rps"), False, imu_status),
-                    ("imu_pitch_rate", I18N.bidi("Pitch rate", "Скор. тангажа"), I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("pitch_rate_rps"), False, imu_status),
-                    ("imu_yaw_rate", I18N.bidi("Yaw rate", "Скор. рыск"), I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3), imu.get("yaw_rate_rps"), False, imu_status),
+                    (
+                        "imu_enabled",
+                        I18N.bidi("IMU enabled", "ИМУ включено"),
+                        I18N.yes_no(bool(imu.get("enabled"))),
+                        imu.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "imu_ok",
+                        I18N.bidi("IMU ok", "ИМУ ок"),
+                        I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA,
+                        imu.get("ok"),
+                        bool(imu.get("ok") is False),
+                        imu_status,
+                    ),
+                    (
+                        "imu_roll_rate",
+                        I18N.bidi("Roll rate", "Скор. крена"),
+                        I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu.get("roll_rate_rps"),
+                        False,
+                        imu_status,
+                    ),
+                    (
+                        "imu_pitch_rate",
+                        I18N.bidi("Pitch rate", "Скор. тангажа"),
+                        I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu.get("pitch_rate_rps"),
+                        False,
+                        imu_status,
+                    ),
+                    (
+                        "imu_yaw_rate",
+                        I18N.bidi("Yaw rate", "Скор. рыск"),
+                        I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu.get("yaw_rate_rps"),
+                        False,
+                        imu_status,
+                    ),
                 ]
             )
 
@@ -2315,26 +2402,82 @@ class OrionApp(App):
             rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
             rows.extend(
                 [
-                    ("rad_enabled", I18N.bidi("Radiation enabled", "Радиация вкл"), I18N.yes_no(bool(rad.get("enabled"))), rad.get("enabled"), False, None),
-                    ("rad_background", I18N.bidi("Background", "Фон"), I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2), rad.get("background_usvh"), False, rad_status),
-                    ("rad_dose", I18N.bidi("Dose total", "Доза сумм"), I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3), rad.get("dose_total_usv"), False, None),
+                    (
+                        "rad_enabled",
+                        I18N.bidi("Radiation enabled", "Радиация вкл"),
+                        I18N.yes_no(bool(rad.get("enabled"))),
+                        rad.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "rad_background",
+                        I18N.bidi("Background", "Фон"),
+                        I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2),
+                        rad.get("background_usvh"),
+                        False,
+                        rad_status,
+                    ),
+                    (
+                        "rad_dose",
+                        I18N.bidi("Dose total", "Доза сумм"),
+                        I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3),
+                        rad.get("dose_total_usv"),
+                        False,
+                        None,
+                    ),
                 ]
             )
 
             prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
             rows.extend(
                 [
-                    ("prox_enabled", I18N.bidi("Proximity enabled", "Близость вкл"), I18N.yes_no(bool(prox.get("enabled"))), prox.get("enabled"), False, None),
-                    ("prox_min", I18N.bidi("Min range", "Мин. дальн"), I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2), prox.get("min_range_m"), False, None),
-                    ("prox_contacts", I18N.bidi("Contacts", "Контакты"), I18N.fmt_na(prox.get("contacts")), prox.get("contacts"), False, None),
+                    (
+                        "prox_enabled",
+                        I18N.bidi("Proximity enabled", "Близость вкл"),
+                        I18N.yes_no(bool(prox.get("enabled"))),
+                        prox.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "prox_min",
+                        I18N.bidi("Min range", "Мин. дальн"),
+                        I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2),
+                        prox.get("min_range_m"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "prox_contacts",
+                        I18N.bidi("Contacts", "Контакты"),
+                        I18N.fmt_na(prox.get("contacts")),
+                        prox.get("contacts"),
+                        False,
+                        None,
+                    ),
                 ]
             )
 
             solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
             rows.extend(
                 [
-                    ("solar_enabled", I18N.bidi("Solar enabled", "Солнце вкл"), I18N.yes_no(bool(solar.get("enabled"))), solar.get("enabled"), False, None),
-                    ("solar_illum", I18N.bidi("Illumination", "Освещённ"), I18N.pct(solar.get("illumination_pct"), digits=1), solar.get("illumination_pct"), False, None),
+                    (
+                        "solar_enabled",
+                        I18N.bidi("Solar enabled", "Солнце вкл"),
+                        I18N.yes_no(bool(solar.get("enabled"))),
+                        solar.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "solar_illum",
+                        I18N.bidi("Illumination", "Освещённ"),
+                        I18N.pct(solar.get("illumination_pct"), digits=1),
+                        solar.get("illumination_pct"),
+                        False,
+                        None,
+                    ),
                 ]
             )
 
@@ -2342,9 +2485,30 @@ class OrionApp(App):
             st_status = st.get("status") if isinstance(st.get("status"), str) else None
             rows.extend(
                 [
-                    ("st_enabled", I18N.bidi("Star tracker enabled", "Звёздн. трекер"), I18N.yes_no(bool(st.get("enabled"))), st.get("enabled"), False, None),
-                    ("st_locked", I18N.bidi("Star lock", "Звёзд. захват"), I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA, st.get("locked"), bool(st.get("locked") is False), st_status),
-                    ("st_err", I18N.bidi("Att err", "Ошибка атт"), I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2), st.get("attitude_err_deg"), False, st_status),
+                    (
+                        "st_enabled",
+                        I18N.bidi("Star tracker enabled", "Звёздн. трекер"),
+                        I18N.yes_no(bool(st.get("enabled"))),
+                        st.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "st_locked",
+                        I18N.bidi("Star lock", "Звёзд. захват"),
+                        I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA,
+                        st.get("locked"),
+                        bool(st.get("locked") is False),
+                        st_status,
+                    ),
+                    (
+                        "st_err",
+                        I18N.bidi("Att err", "Ошибка атт"),
+                        I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2),
+                        st.get("attitude_err_deg"),
+                        False,
+                        st_status,
+                    ),
                 ]
             )
 
@@ -2353,13 +2517,29 @@ class OrionApp(App):
             field_txt = I18N.NA
             if isinstance(field, dict):
                 try:
-                    field_txt = f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
+                    field_txt = (
+                        f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
+                    )
                 except Exception:
                     field_txt = I18N.INVALID
             rows.extend(
                 [
-                    ("mag_enabled", I18N.bidi("Magnetometer enabled", "Магнитометр"), I18N.yes_no(bool(mag.get("enabled"))), mag.get("enabled"), False, None),
-                    ("mag_field", I18N.bidi("Mag field", "Поле магн"), field_txt, field, field_txt == I18N.INVALID, None),
+                    (
+                        "mag_enabled",
+                        I18N.bidi("Magnetometer enabled", "Магнитометр"),
+                        I18N.yes_no(bool(mag.get("enabled"))),
+                        mag.get("enabled"),
+                        False,
+                        None,
+                    ),
+                    (
+                        "mag_field",
+                        I18N.bidi("Mag field", "Поле магн"),
+                        field_txt,
+                        field,
+                        field_txt == I18N.INVALID,
+                        None,
+                    ),
                 ]
             )
 
@@ -2429,8 +2609,14 @@ class OrionApp(App):
             return I18N.NA
 
         system_env = self._snapshots.get_last_by_key("system", "system") or self._snapshots.get_last("system")
-        system_payload = system_env.payload if isinstance(system_env, EventEnvelope) and isinstance(system_env.payload, dict) else {}
-        nats_connected = bool(system_payload.get("nats_connected")) if isinstance(system_payload, dict) else bool(self.nats_connected)
+        system_payload = (
+            system_env.payload if isinstance(system_env, EventEnvelope) and isinstance(system_env.payload, dict) else {}
+        )
+        nats_connected = (
+            bool(system_payload.get("nats_connected"))
+            if isinstance(system_payload, dict)
+            else bool(self.nats_connected)
+        )
         events_filter_type = system_payload.get("events_filter_type") if isinstance(system_payload, dict) else None
         events_filter_text = system_payload.get("events_filter_text") if isinstance(system_payload, dict) else None
 
@@ -2488,7 +2674,9 @@ class OrionApp(App):
                 if isinstance(pw, dict):
                     faults = pw.get("faults")
                     if isinstance(faults, list):
-                        thermal_faults = {str(x) for x in faults if isinstance(x, str) and x.startswith("THERMAL_TRIP:")}
+                        thermal_faults = {
+                            str(x) for x in faults if isinstance(x, str) and x.startswith("THERMAL_TRIP:")
+                        }
 
         blocks: list[SystemStateBlock] = [
             SystemStateBlock(
@@ -2716,7 +2904,9 @@ class OrionApp(App):
                     kind="metric",
                     source="diagnostics",
                     created_at_epoch=created_at_epoch,
-                    payload=env.payload if isinstance(env, EventEnvelope) else self._diagnostics_by_key.get(first_key, {}),
+                    payload=env.payload
+                    if isinstance(env, EventEnvelope)
+                    else self._diagnostics_by_key.get(first_key, {}),
                     ids=(first_key,),
                 )
             )
@@ -3383,8 +3573,7 @@ class OrionApp(App):
                 self._incident_rules = config
                 self._incident_store = IncidentStore(config, max_incidents=self._max_event_incidents)
                 self._console_log(
-                    f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: "
-                    f"{len(config.rules)}",
+                    f"{I18N.bidi('Incident rules loaded', 'Правила инцидентов загружены')}: {len(config.rules)}",
                     level="info",
                 )
                 return
@@ -3963,9 +4152,7 @@ class OrionApp(App):
             await self.nats_client.subscribe_tracks(self.handle_track_data)
             self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('radar tracks', 'радар треки')}")
         except Exception as e:
-            self._log_msg(
-                f"{I18N.bidi('Radar tracks subscribe failed', 'Подписка треков радара не удалась')}: {e}"
-            )
+            self._log_msg(f"{I18N.bidi('Radar tracks subscribe failed', 'Подписка треков радара не удалась')}: {e}")
 
         try:
             await self.nats_client.subscribe_events(self.handle_event_data)
@@ -3975,7 +4162,9 @@ class OrionApp(App):
 
         try:
             await self.nats_client.subscribe_control_responses(self.handle_control_response)
-            self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('control responses', 'ответы управления')}")
+            self._log_msg(
+                f"{I18N.bidi('Subscribed', 'Подписка')}: {I18N.bidi('control responses', 'ответы управления')}"
+            )
         except Exception as e:
             self._log_msg(
                 f"{I18N.bidi('Control responses subscribe failed', 'Подписка ответов управления не удалась')}: {e}"
@@ -4174,7 +4363,10 @@ class OrionApp(App):
                         [
                             (I18N.bidi("Op", "Операция"), I18N.fmt_na(getattr(th, "op", None))),
                             (I18N.bidi("Value", "Значение"), I18N.fmt_na(getattr(th, "value", None))),
-                            (I18N.bidi("Min duration", "Мин длительность"), I18N.fmt_na(getattr(th, "min_duration_s", None))),
+                            (
+                                I18N.bidi("Min duration", "Мин длительность"),
+                                I18N.fmt_na(getattr(th, "min_duration_s", None)),
+                            ),
                             (I18N.bidi("Cooldown", "Кулдаун"), I18N.fmt_na(getattr(th, "cooldown_s", None))),
                         ]
                     )
@@ -4433,7 +4625,9 @@ class OrionApp(App):
         else:
             for inc in matched_incidents:
                 try:
-                    self._events_unread_incident_ids.add(str(getattr(inc, "incident_id", "")) or str(getattr(inc, "key", "")))
+                    self._events_unread_incident_ids.add(
+                        str(getattr(inc, "incident_id", "")) or str(getattr(inc, "key", ""))
+                    )
                 except Exception:
                     continue
             self._events_unread_count = len(self._events_unread_incident_ids)
@@ -4571,10 +4765,7 @@ class OrionApp(App):
             self._console_log(f"{I18N.bidi('Already acknowledged', 'Уже подтверждено')}: {key}", level="info")
             return
 
-        prompt = (
-            f"{I18N.bidi('Acknowledge incident?', 'Подтвердить инцидент?')} {key} "
-            f"({I18N.bidi('Y/N', 'Да/Нет')})"
-        )
+        prompt = f"{I18N.bidi('Acknowledge incident?', 'Подтвердить инцидент?')} {key} ({I18N.bidi('Y/N', 'Да/Нет')})"
 
         def after(decision: bool) -> None:
             if decision:
@@ -4785,17 +4976,13 @@ class OrionApp(App):
             loc = ".".join(str(x) for x in first.get("loc", []))
             msg = first.get("msg", "invalid")
             detail = f"{loc}: {msg}" if loc else str(msg)
-            self._console_log(
-                f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request})"
-            )
+            self._console_log(f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request})")
             self._calm_log(f"QIKI schema error: {detail}")
             return
         except Exception:
             kind = payload.get("kind") or payload.get("type") or "response"
             request = I18N.NA if raw_req_id is None else str(raw_req_id)
-            self._console_log(
-                f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request}) {payload}".strip()
-            )
+            self._console_log(f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request}) {payload}".strip())
             return
 
         req_id = str(resp.request_id)
@@ -4873,6 +5060,7 @@ class OrionApp(App):
 
         if screen == "events":
             self._render_events_table()
+
             # Make selection/Inspector discoverable: focus + initial highlight.
             def _focus_events() -> None:
                 try:
@@ -5442,20 +5630,16 @@ class OrionApp(App):
                 return I18N.NA
             return "|".join(aliases)
 
-        apps = " | ".join(
-            f"{app.hotkey_label} {app.title} ({display_aliases(app)})" for app in ORION_APPS
-        )
+        apps = " | ".join(f"{app.hotkey_label} {app.title} ({display_aliases(app)})" for app in ORION_APPS)
         screens = ", ".join(app.screen for app in ORION_APPS)
         self._console_log(f"{I18N.bidi('Applications', 'Приложения')}: {apps}", level="info")
         self._console_log(
             f"{I18N.bidi('Commands', 'Команды')}: "
-            f"help/помощь | screen/экран <{screens}> | {I18N.bidi('or type a screen alias', 'или введите алиас экрана')}"
-            ,
+            f"help/помощь | screen/экран <{screens}> | {I18N.bidi('or type a screen alias', 'или введите алиас экрана')}",
             level="info",
         )
         self._console_log(
-            f"{I18N.bidi('Rules', 'Правила')}: "
-            f"{I18N.bidi('reload rules', 'перезагрузить правила')}",
+            f"{I18N.bidi('Rules', 'Правила')}: {I18N.bidi('reload rules', 'перезагрузить правила')}",
             level="info",
         )
         self._console_log(
@@ -5500,10 +5684,14 @@ class OrionApp(App):
         self._console_log(f"- Upd/Обн: {I18N.bidi('Updated', 'Обновлено')}", level="info")
         self._console_log(f"- SoC/Заряд: {I18N.bidi('State of charge', 'Уровень заряда')}", level="info")
         self._console_log(f"- P in/Вх мощн: {I18N.bidi('Power input', 'Входная мощность')}", level="info")
-        self._console_log(f"- P out/Вых мощн: {I18N.bidi('Power output/consumption', 'Выходная/потребляемая мощность')}", level="info")
+        self._console_log(
+            f"- P out/Вых мощн: {I18N.bidi('Power output/consumption', 'Выходная/потребляемая мощность')}", level="info"
+        )
         self._console_log(f"- Bus V/Шина В: {I18N.bidi('Bus voltage', 'Напряжение шины')}", level="info")
         self._console_log(f"- Bus A/Шина А: {I18N.bidi('Bus current', 'Ток шины')}", level="info")
-        self._console_log(f"- Ext temp/Нар темп: {I18N.bidi('External temperature', 'Наружная температура')}", level="info")
+        self._console_log(
+            f"- Ext temp/Нар темп: {I18N.bidi('External temperature', 'Наружная температура')}", level="info"
+        )
         self._console_log(f"- Core temp/Темп ядра: {I18N.bidi('Core temperature', 'Температура ядра')}", level="info")
         self._console_log(f"- CPU/ЦП: {I18N.bidi('CPU usage', 'Загрузка процессора')}", level="info")
         self._console_log(f"- Mem/Пам: {I18N.bidi('Memory usage', 'Загрузка памяти')}", level="info")
@@ -5709,7 +5897,9 @@ class OrionApp(App):
             token = tail.strip().lower()
             if not token:
                 current = self._events_filter_type or I18N.NA
-                self._console_log(f"{I18N.bidi('Events type filter', 'Фильтр событий по типу')}: {current}", level="info")
+                self._console_log(
+                    f"{I18N.bidi('Events type filter', 'Фильтр событий по типу')}: {current}", level="info"
+                )
                 return
             if token in {"off", "none", "all", "*"}:
                 self._events_filter_type = None
@@ -5753,7 +5943,9 @@ class OrionApp(App):
             expr = tail.strip()
             if not expr:
                 current = self._events_filter_text or I18N.NA
-                self._console_log(f"{I18N.bidi('Events text filter', 'Фильтр событий по тексту')}: {current}", level="info")
+                self._console_log(
+                    f"{I18N.bidi('Events text filter', 'Фильтр событий по тексту')}: {current}", level="info"
+                )
                 return
             if expr.lower().startswith("type="):
                 token = expr.split("=", 1)[1].strip().lower()
@@ -5765,7 +5957,9 @@ class OrionApp(App):
                     )
                 else:
                     self._events_filter_type = token
-                    self._console_log(f"{I18N.bidi('Events type filter', 'Фильтр событий по типу')}: {token}", level="info")
+                    self._console_log(
+                        f"{I18N.bidi('Events type filter', 'Фильтр событий по типу')}: {token}", level="info"
+                    )
                 self._update_system_snapshot()
                 self._render_events_table()
                 if self.active_screen == "summary":
@@ -6192,9 +6386,7 @@ class OrionApp(App):
                 level="warn",
             )
 
-    async def _publish_sim_command(
-        self, cmd_name: str, *, parameters: Optional[dict[str, Any]] = None
-    ) -> None:
+    async def _publish_sim_command(self, cmd_name: str, *, parameters: Optional[dict[str, Any]] = None) -> None:
         if not self.nats_client:
             self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
