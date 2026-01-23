@@ -21,8 +21,9 @@ class BiosHandler(IBiosHandler):
         updated_bios_status = BiosStatus(
             bios_version=bios_status.bios_version,
             firmware_version=bios_status.firmware_version,
-            post_results=list(bios_status.post_results), # Create a mutable copy
-            timestamp=bios_status.timestamp
+            hardware_profile_hash=bios_status.hardware_profile_hash,
+            post_results=list(bios_status.post_results),  # Create a mutable copy
+            timestamp=bios_status.timestamp,
         )
 
         hardware_profile = self.bot_core.get_property("hardware_profile")
