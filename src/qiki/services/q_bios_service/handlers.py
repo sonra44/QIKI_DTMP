@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
+from urllib.parse import unquote
 from typing import Any, Callable
 
 
@@ -15,9 +16,13 @@ class BiosHttpHandler(BaseHTTPRequestHandler):
         self,
         *args: Any,
         get_status_payload: Callable[[], dict[str, Any]],
+        get_component_payload: Callable[[str], dict[str, Any]],
+        reload_config: Callable[[], dict[str, Any]],
         **kwargs: Any,
     ) -> None:
         self._get_status_payload = get_status_payload
+        self._get_component_payload = get_component_payload
+        self._reload_config = reload_config
         super().__init__(*args, **kwargs)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
@@ -39,5 +44,21 @@ class BiosHttpHandler(BaseHTTPRequestHandler):
         if self.path == "/bios/status":
             self._send_json(HTTPStatus.OK, self._get_status_payload())
             return
+        if self.path.startswith("/bios/component/"):
+            raw = self.path.removeprefix("/bios/component/")
+            device_id = unquote(raw).strip()
+            if not device_id:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "missing_component_id"})
+                return
+            payload = self._get_component_payload(device_id)
+            status = HTTPStatus.OK if payload.get("ok") else HTTPStatus.NOT_FOUND
+            self._send_json(status, payload)
+            return
         self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
 
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/bios/reload":
+            payload = self._reload_config()
+            self._send_json(HTTPStatus.OK, payload)
+            return
+        self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})

@@ -43,6 +43,8 @@ BIOS предоставляет gRPC или простой HTTP API для вз�
 MVP HTTP API (реально сейчас):
 - `GET /healthz`
 - `GET /bios/status`
+- `GET /bios/component/<id>`
+- `POST /bios/reload`
 
 ## 4. Модели Данных
 

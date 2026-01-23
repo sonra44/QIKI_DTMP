@@ -50,6 +50,27 @@ class BiosService:
             self._last_payload = dict(payload)
         return payload
 
+    def get_component_payload(self, device_id: str) -> dict[str, Any]:
+        payload = self.get_status_payload()
+        rows = payload.get("post_results")
+        if not isinstance(rows, list):
+            return {"ok": False, "error": "bios_status_missing_post_results"}
+        for row in rows:
+            if isinstance(row, dict) and row.get("device_id") == device_id:
+                return {
+                    "ok": True,
+                    "device": row,
+                    "timestamp": payload.get("timestamp"),
+                    "bios_version": payload.get("bios_version"),
+                    "hardware_profile_hash": payload.get("hardware_profile_hash"),
+                }
+        return {"ok": False, "error": "component_not_found", "device_id": device_id}
+
+    def reload_config(self) -> dict[str, Any]:
+        with self._lock:
+            self._last_payload = None
+        return {"ok": True, "reloaded": True}
+
     async def _publisher_loop(self) -> None:
         interval = max(0.2, float(self._cfg.publish_interval_s))
         publisher = NatsJsonPublisher(nats_url=self._cfg.nats_url)
@@ -102,7 +123,12 @@ def main() -> None:
     svc = BiosService(cfg)
     svc.start_publisher()
 
-    handler_factory = partial(BiosHttpHandler, get_status_payload=svc.get_status_payload)
+    handler_factory = partial(
+        BiosHttpHandler,
+        get_status_payload=svc.get_status_payload,
+        get_component_payload=svc.get_component_payload,
+        reload_config=svc.reload_config,
+    )
     server = ThreadingHTTPServer((cfg.listen_host, cfg.listen_port), handler_factory)
     try:
         server.serve_forever(poll_interval=0.5)
