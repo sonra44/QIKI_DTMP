@@ -55,6 +55,10 @@
   - QIKI intents require a prefix: `q:` or `//`.
   - Placeholder hints prefixes and never suggests a “mode toggle”.
 
+- ✅ Active pause visibility: — состояние симуляции видно в хедере
+  - Send `simulation.pause` and confirm header shows `Sim/Сим Paused/Пауза`.
+  - Send `simulation.start` and confirm header shows `Sim/Сим Running/Работает`.
+
 ---
 
 ## 3) Events/События — incidents workflow (no endless log)

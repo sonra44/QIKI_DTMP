@@ -658,6 +658,7 @@ class OrionHeader(Container):
     age = reactive(I18N.NA)
     freshness = reactive(I18N.NA)
     mode = reactive(I18N.NA)
+    sim = reactive(I18N.NA)
 
     def compose(self) -> ComposeResult:
         with Container(id="orion-header-grid"):
@@ -670,6 +671,7 @@ class OrionHeader(Container):
             yield OrionHeaderCell(id="hdr-age")
             yield OrionHeaderCell(id="hdr-freshness")
             yield OrionHeaderCell(id="hdr-mode")
+            yield OrionHeaderCell(id="hdr-sim")
 
     def _refresh_cells(self) -> None:
         def set_cell(cell_id: str, value: str, tooltip: str) -> None:
@@ -724,6 +726,11 @@ class OrionHeader(Container):
             f"{I18N.bidi('Mode', 'Режим')} {self.mode}",
             tooltip=f"{I18N.bidi('System mode', 'Режим системы')}: {self.mode}",
         )
+        set_cell(
+            "hdr-sim",
+            f"{I18N.bidi('Sim', 'Сим')} {self.sim}",
+            tooltip=f"{I18N.bidi('Simulation state', 'Состояние симуляции')}: {self.sim}",
+        )
 
     def update_mode(self, mode: str) -> None:
         value = (mode or "").strip() or I18N.NA
@@ -760,6 +767,20 @@ class OrionHeader(Container):
         self.t_core = I18N.num_unit(normalized.get("temp_core_c"), "°C", "°C", digits=1)
         self.age = I18N.fmt_age_compact(telemetry_age_s)
         self.freshness = telemetry_freshness_label
+
+        self.sim = I18N.NA
+        sim_state = normalized.get("sim_state")
+        if isinstance(sim_state, dict):
+            fsm_state = sim_state.get("fsm_state")
+            running = sim_state.get("running")
+            paused = sim_state.get("paused")
+            state_norm = str(fsm_state).strip().upper() if isinstance(fsm_state, str) else ""
+            if paused is True or state_norm == "PAUSED":
+                self.sim = I18N.bidi("Paused", "Пауза")
+            elif running is True or state_norm == "RUNNING":
+                self.sim = I18N.bidi("Running", "Работает")
+            elif running is False or state_norm == "STOPPED":
+                self.sim = I18N.bidi("Stopped", "Остановлено")
 
         # Online is a function of connectivity + freshness (no magic).
         self.online = bool(nats_connected and telemetry_freshness_kind == "fresh")
@@ -5756,6 +5777,10 @@ class OrionApp(App):
         )
         self._console_log(
             f"- {I18N.bidi('Fresh', 'Свеж')}: {I18N.bidi('Telemetry freshness', 'Свежесть телеметрии')}",
+            level="info",
+        )
+        self._console_log(
+            f"- {I18N.bidi('Sim', 'Сим')}: {I18N.bidi('Simulation state', 'Состояние симуляции')}",
             level="info",
         )
         self._console_log(
