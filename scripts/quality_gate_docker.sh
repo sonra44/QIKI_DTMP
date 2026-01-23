@@ -81,6 +81,15 @@ fi
 echo "[quality-gate] Pytest"
 dc exec -T qiki-dev pytest -q ${QUALITY_GATE_PYTEST_PATHS:-}
 
+echo "[quality-gate] Integration tests"
+if [[ "${QUALITY_GATE_RUN_INTEGRATION:-0}" == "1" ]]; then
+  # NOTE: integration tests are deselected by default via pytest.ini addopts.
+  # This script forces the correct invocation.
+  bash scripts/run_integration_tests_docker.sh ${QUALITY_GATE_INTEGRATION_PATHS:-tests/integration}
+else
+  echo "[quality-gate] Integration disabled (set QUALITY_GATE_RUN_INTEGRATION=1 or run scripts/run_integration_tests_docker.sh)"
+fi
+
 echo "[quality-gate] Mypy"
 if [[ "${QUALITY_GATE_RUN_MYPY:-0}" == "1" ]]; then
   dc exec -T qiki-dev mypy --config-file mypy.ini ${QUALITY_GATE_MYPY_PATHS:-src}

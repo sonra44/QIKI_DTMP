@@ -111,9 +111,12 @@ docker compose exec q-sim-service python -c "import grpc; from generated.q_sim_a
 Эти команды проверяют, что данные от радара корректно проходят через NATS JetStream и что LR/SR-разделение работает.
 
 ```bash
-docker compose exec qiki-dev pytest -v tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
+# NOTE: pytest.ini disables integration tests by default.
+# Use the wrapper to run integration-marked tests.
 
-docker compose exec qiki-dev pytest -v tests/integration/test_radar_lr_sr_topics.py
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
+
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_lr_sr_topics.py
 ```
 
 #### Smoke-тесты Stage 0

@@ -7,8 +7,8 @@
 - `docker compose -f docker-compose.phase1.yml up -d --build`
 - `docker compose -f docker-compose.phase1.yml ps`
 - `curl -sf http://localhost:8222/healthz` — ожидаем `{ "status": "ok" }`
-- `docker logs q-sim-phase1 | tail -n 20` — gRPC сервер поднят
-- `docker logs qiki-sim-radar-phase1 | tail -n 20` — публикация кадров в JetStream
+- `docker compose -f docker-compose.phase1.yml logs --tail=20 q-sim-service` — gRPC сервер поднят
+- `docker compose -f docker-compose.phase1.yml logs --tail=20 faststream-bridge | rg -n "Radar frame received"` — кадры доходят через JetStream
 
 ## 3) gRPC health-check
 ```bash
@@ -24,13 +24,11 @@ PY
 
 ## 4) Радарный пайплайн (JetStream)
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
-  pytest -q tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
 ```
 
 ```bash
-docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
-  pytest -q tests/integration/test_radar_lr_sr_topics.py
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_lr_sr_topics.py
 ```
 
 ## 5) FastStream / NATS раунд-трип (управляющие топики)
@@ -39,7 +37,7 @@ docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'
 import asyncio, json, uuid, nats
 
 async def main():
-    nc = await nats.connect('nats://qiki-nats-phase1:4222')
+    nc = await nats.connect('nats://nats:4222')
     fut = asyncio.get_running_loop().create_future()
 
     async def handler(msg):

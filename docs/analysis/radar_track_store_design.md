@@ -103,7 +103,7 @@ NATS JetStream (qiki.radar.v1.frames)
 ## 7. Тестовая стратегия
 - Unit: ассоциация (с/без соответствий), miss-count, quality. Используем фиктивные данные с фиксированным seed.
 - Property-based (fast-check): генерация случайных детекций → проверка устойчивости TrackStore.
-- Integration: расширить docker-compose Phase 1, прогнать `pytest -q tests/integration/test_radar_tracks_flow.py` с новыми кейсами.
+- Integration: расширить docker-compose Phase 1, прогнать `./scripts/run_integration_tests_docker.sh tests/integration/test_radar_tracks_flow.py` с новыми кейсами.
 - Нагрузочный сценарий (запланировать): скрипт `tools/radar_load_test.py` — имитирует 5× FPS.
 
 ## 8. Открытые вопросы / TODO

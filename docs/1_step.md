@@ -320,9 +320,9 @@ make proto
 Интеграции:
 
 docker compose -f docker-compose.phase1.yml up -d
-pytest tests/integration/test_radar_lr_sr_topics.py -q
-pytest tests/integration/test_radar_sr_entry_events.py -q
-pytest tests/integration/test_guard_lr_no_idiff.py -q
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_lr_sr_topics.py
+./scripts/run_integration_tests_docker.sh tests/integration/test_radar_sr_entry_events.py
+./scripts/run_integration_tests_docker.sh tests/integration/test_guard_lr_no_idiff.py
 
 
 Если есть pre-commit — добавь ruff, mypy, pytest -q -k unit.

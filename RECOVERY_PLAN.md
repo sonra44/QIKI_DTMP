@@ -38,7 +38,7 @@
 
 **Шаг 4: Интеграционное Тестирование**
    - Запустить написанный нами интеграционный тест, чтобы проверить взаимодействие сервисов через NATS.
-     ```bash
-     docker compose -f docker-compose.phase1.yml run --rm qiki-dev pytest tests/integration/test_faststream_bridge.py
-     ```
-   - Ожидаемый результат: Все тесты успешно проходят.
+      ```bash
+      ./scripts/run_integration_tests_docker.sh tests/integration/test_faststream_bridge.py
+      ```
+    - Ожидаемый результат: Все тесты успешно проходят.
