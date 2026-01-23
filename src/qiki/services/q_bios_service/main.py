@@ -12,7 +12,7 @@ from qiki.services.q_bios_service.bios_engine import BiosPostInputs, build_bios_
 from qiki.services.q_bios_service.config import BiosConfig
 from qiki.services.q_bios_service.handlers import BiosHttpHandler
 from qiki.services.q_bios_service.health_checker import check_qsim_health
-from qiki.services.q_bios_service.nats_publisher import publish_json
+from qiki.services.q_bios_service.nats_publisher import NatsJsonPublisher
 
 
 logger = logging.getLogger("q_bios_service")
@@ -49,31 +49,42 @@ class BiosService:
             self._last_payload = dict(payload)
         return payload
 
-    def start_publisher(self) -> None:
-        if not self._cfg.publish_enabled:
-            logger.info("BIOS publisher disabled (BIOS_PUBLISH_ENABLED=0)")
-            return
-
-        def _run() -> None:
-            interval = max(0.2, float(self._cfg.publish_interval_s))
+    async def _publisher_loop(self) -> None:
+        interval = max(0.2, float(self._cfg.publish_interval_s))
+        publisher = NatsJsonPublisher(nats_url=self._cfg.nats_url)
+        had_errors = False
+        try:
             while not self._stop.is_set():
                 try:
                     payload = self._compute_payload()
                     with self._lock:
                         self._last_payload = dict(payload)
                     try:
-                        asyncio.run(
-                            publish_json(
-                                nats_url=self._cfg.nats_url,
-                                subject=self._cfg.nats_subject,
-                                payload=payload,
-                            )
-                        )
+                        await publisher.publish_json(subject=self._cfg.nats_subject, payload=payload)
+                        if had_errors:
+                            logger.info("NATS publish recovered (url=%s)", self._cfg.nats_url)
+                        had_errors = False
                     except Exception as e:
-                        logger.warning("NATS publish failed: %s", e)
+                        had_errors = True
+                        logger.warning(
+                            "NATS publish failed (url=%s subject=%s): %s",
+                            self._cfg.nats_url,
+                            self._cfg.nats_subject,
+                            e,
+                        )
                 except Exception as e:
                     logger.warning("BIOS compute failed: %s", e)
-                self._stop.wait(interval)
+                await asyncio.sleep(interval)
+        finally:
+            await publisher.close()
+
+    def start_publisher(self) -> None:
+        if not self._cfg.publish_enabled:
+            logger.info("BIOS publisher disabled (BIOS_PUBLISH_ENABLED=0)")
+            return
+
+        def _run() -> None:
+            asyncio.run(self._publisher_loop())
 
         self._publisher_thread = threading.Thread(target=_run, name="bios-publisher", daemon=True)
         self._publisher_thread.start()
@@ -108,4 +119,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
