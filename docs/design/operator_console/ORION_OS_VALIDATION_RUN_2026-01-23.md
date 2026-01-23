@@ -12,18 +12,32 @@ Goal: validate “active pause” end-to-end (sim loop freezes + operator sees i
 
 ### `docker compose ... ps`
 
-Observed running + healthy services (excerpt):
+Command:
 
-- `qiki-nats-phase1` — `Up ... (healthy)`
-- `qiki-sim-phase1` — `Up ... (healthy)`
-- `qiki-operator-console` — `Up ... (healthy)`
+`docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml ps`
+
+Output (excerpt):
+
+```text
+NAME                            IMAGE                         COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+qiki-nats-phase1                qiki_dtmp-nats                "docker-entrypoint.s…"   nats                16 hours ago     Up 16 hours (healthy)     0.0.0.0:4222->4222/tcp, :::4222->4222/tcp, 0.0.0.0:8222->8222/tcp, :::8222->8222/tcp, 6222/tcp
+qiki-sim-phase1                 qiki_dtmp-q-sim-service       "python -m qiki.serv…"   q-sim-service       12 minutes ago   Up 12 minutes (healthy)
+qiki-operator-console           qiki_dtmp-operator-console    "python main_orion.py"   operator-console    2 minutes ago    Up 2 minutes (healthy)
+```
 
 ### Active pause (NATS + sim loop)
 
 Integration proof (Docker):
 
-- `NATS_URL=nats://nats:4222 pytest -q -m integration tests/integration/test_sim_pause_effects.py`
-  - Result: `1 passed`
+Command:
+
+`NATS_URL=nats://nats:4222 pytest -q -m integration tests/integration/test_sim_pause_effects.py`
+
+Output:
+
+```text
+.                                                                        [100%]
+```
 
 ### Active pause visibility (ORION chrome)
 
@@ -33,9 +47,11 @@ Attach:
 
 Observed via tmux (header line):
 
-- `Sim/Сим Running/Работает`
-- After `simulation.pause`: `Sim/Сим Paused/Пауза`
-- After `simulation.stop`: `Sim/Сим Stopped/Остановлено`
+```text
+Sim/Сим Running/Работает
+Sim/Сим Paused/Пауза
+Sim/Сим Stopped/Остановлено
+```
 
 ## Checklist summary (✅/❌)
 
