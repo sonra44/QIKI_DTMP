@@ -53,9 +53,7 @@ class _StubShipCore:
         return _ComputingStatus()
 
     def get_sensor_status(self) -> _SensorStatus:
-        return _SensorStatus(
-            active_sensors=["long_range_radar", "navigation_computer"]
-        )
+        return _SensorStatus(active_sensors=["long_range_radar", "navigation_computer"])
 
     def get_propulsion_status(self) -> _PropulsionStatus:
         return _PropulsionStatus()
@@ -116,10 +114,7 @@ def test_docking_approach_returns_to_maneuvering_when_target_lost() -> None:
     current = _snapshot_with_ship_state(ShipState.DOCKING_APPROACH.value)
     next_state = handler.process_fsm_state(current)
 
-    assert (
-        next_state.context_data["ship_state_name"]
-        == ShipState.FLIGHT_MANEUVERING.value
-    )
+    assert next_state.context_data["ship_state_name"] == ShipState.FLIGHT_MANEUVERING.value
     assert next_state.current_state == FSMStateEnum.ACTIVE
     assert len(next_state.history) == 1
     assert next_state.history[0].trigger_event == "DOCKING_TARGET_LOST"
