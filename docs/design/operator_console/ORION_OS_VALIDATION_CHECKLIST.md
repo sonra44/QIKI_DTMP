@@ -12,6 +12,7 @@
   - `docker attach qiki-operator-console` (detach: `Ctrl+P` then `Ctrl+Q`)
 - ✅ Confirm health: `docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml ps` shows `healthy` for `nats`, `q-sim-service`, `operator-console`. — подтверждено
 - ✅ If validating BIOS block: start `q-bios-service` and confirm it becomes `healthy` (otherwise BIOS will be `Not available/Нет данных` by design). — `q-bios-service` healthy
+- ✅ BIOS “loaded” confirmation is visible inside ORION (not only in `docker logs`): open Console (`F4`) and confirm the console history contains `BIOS loaded/BIOS загрузился: ...` after cold boot. — подтверждено
 
 ---
 

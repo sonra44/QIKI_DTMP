@@ -645,6 +645,7 @@ class OrionHeader(Container):
     t_core = reactive(I18N.NA)
     age = reactive(I18N.NA)
     freshness = reactive(I18N.NA)
+    mode = reactive(I18N.NA)
 
     def compose(self) -> ComposeResult:
         with Container(id="orion-header-grid"):
@@ -656,6 +657,7 @@ class OrionHeader(Container):
             yield OrionHeaderCell(id="hdr-t-core")
             yield OrionHeaderCell(id="hdr-age")
             yield OrionHeaderCell(id="hdr-freshness")
+            yield OrionHeaderCell(id="hdr-mode")
 
     def _refresh_cells(self) -> None:
         def set_cell(cell_id: str, value: str, tooltip: str) -> None:
@@ -705,6 +707,19 @@ class OrionHeader(Container):
             f"{I18N.bidi('Fresh', 'Свеж')} {self.freshness}",
             tooltip=f"{I18N.bidi('Freshness', 'Свежесть')}: {self.freshness}",
         )
+        set_cell(
+            "hdr-mode",
+            f"{I18N.bidi('Mode', 'Режим')} {self.mode}",
+            tooltip=f"{I18N.bidi('System mode', 'Режим системы')}: {self.mode}",
+        )
+
+    def update_mode(self, mode: str) -> None:
+        value = (mode or "").strip() or I18N.NA
+        if value == self.mode:
+            return
+        self.mode = value
+        self._refresh_cells()
+
 
     def update_from_telemetry(
         self,
@@ -995,8 +1010,8 @@ class OrionApp(App):
     #orion-root { padding: 1; }
     #orion-workspace { height: 1fr; }
     #orion-header { dock: top; height: 2; overflow: hidden; padding: 0 1; color: #ffb000; background: #050505; }
-    #orion-header-grid { layout: grid; grid-size: 4 2; grid-gutter: 0 2; }
-    #orion-header-grid.header-2x4 { grid-size: 2 4; grid-gutter: 0 2; }
+    #orion-header-grid { layout: grid; grid-size:  5 2; grid-gutter: 0 2; }
+    #orion-header-grid.header-2x4 { grid-size:  2 5; grid-gutter: 0 2; }
     #orion-sidebar { dock: left; width: 28; border: round #303030; padding: 1; color: #e0e0e0; background: #050505; }
     #bottom-bar { dock: bottom; height: 12; }
     #command-output-log { height: 8; padding: 0 1; color: #e0e0e0; background: #050505; border: round #303030; }
@@ -1085,6 +1100,9 @@ class OrionApp(App):
         self._console_by_key: dict[str, dict[str, Any]] = {}
         self._qiki_by_key: dict[str, dict[str, Any]] = {}
         self._qiki_last_response: Optional[QikiChatResponseV1] = None
+        self._qiki_mode: str = I18N.NA
+        self._bios_loaded_announced: bool = False
+        self._bios_first_status_ts_epoch: Optional[float] = None
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
         self._sensors_by_key: dict[str, dict[str, Any]] = {}
@@ -3970,11 +3988,16 @@ class OrionApp(App):
             self._log_msg(f"{I18N.bidi('QIKI subscribe failed', 'Подписка QIKI не удалась')}: {e}")
 
     def _refresh_header(self) -> None:
+        try:
+            header = self.query_one("#orion-header", OrionHeader)
+            header.update_mode(self._qiki_mode)
+        except Exception:
+            return
+
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
             return
         try:
-            header = self.query_one("#orion-header", OrionHeader)
             header.update_from_telemetry(
                 telemetry_env.payload,
                 nats_connected=self.nats_connected,
@@ -4354,7 +4377,33 @@ class OrionApp(App):
         normalized_level = self._normalize_level(severity)
         ts_epoch = time.time()
         subj = str(subject or "")
+        if subj == "qiki.events.v1.system_mode" and isinstance(payload, dict):
+            mode = payload.get("mode")
+            if isinstance(mode, str) and mode.strip():
+                self._qiki_mode = mode.strip()
+                try:
+                    self.query_one("#orion-header", OrionHeader).update_mode(self._qiki_mode)
+                except Exception:
+                    pass
+
         etype = "bios" if subj == "qiki.events.v1.bios_status" else self._derive_event_type(subject, payload)
+        if etype == "bios" and not self._bios_loaded_announced:
+            self._bios_loaded_announced = True
+            self._bios_first_status_ts_epoch = ts_epoch
+            status_label = I18N.bidi("Unknown", "Неизвестно")
+            components_count: Optional[int] = None
+            if isinstance(payload, dict):
+                all_go = payload.get("all_systems_go")
+                if isinstance(all_go, bool):
+                    status_label = I18N.bidi("OK", "ОК") if all_go else I18N.bidi("FAIL", "СБОЙ")
+                components = payload.get("components")
+                if isinstance(components, list):
+                    components_count = len(components)
+            msg = f"{I18N.bidi('BIOS loaded', 'BIOS загрузился')}: {status_label}"
+            if components_count is not None:
+                msg = f"{msg} ({I18N.bidi('components', 'компоненты')}: {components_count})"
+            self._calm_log(msg, level="info")
+            self._log_msg(msg)
         env = EventEnvelope(
             event_id=str(subject or ""),
             type=etype,
@@ -4782,6 +4831,13 @@ class OrionApp(App):
             self._console_log(f"  {idx}) {I18N.bidi(p.title.en, p.title.ru)}")
         if proposals > 3:
             self._console_log(f"  … {I18N.bidi('more proposals', 'ещё предложений')}: {proposals - 3}")
+
+        if resp.mode:
+            self._qiki_mode = str(resp.mode)
+            try:
+                self.query_one("#orion-header", OrionHeader).update_mode(self._qiki_mode)
+            except Exception:
+                pass
 
         self._qiki_last_response = resp
         self._render_qiki_table()
