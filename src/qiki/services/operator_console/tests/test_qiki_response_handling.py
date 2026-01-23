@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import pytest
 import time
 from uuid import uuid4
 
 from qiki.services.operator_console.main_orion import OrionApp
 
 
+@pytest.mark.asyncio
 async def test_handle_qiki_response_invalid_payload_does_not_crash() -> None:
     app = OrionApp()
     logs: list[str] = []
@@ -18,6 +20,7 @@ async def test_handle_qiki_response_invalid_payload_does_not_crash() -> None:
     assert any("QIKI: invalid" in line for line in logs)
 
 
+@pytest.mark.asyncio
 async def test_handle_qiki_response_error_logs_and_clears_pending() -> None:
     app = OrionApp()
     logs: list[str] = []
@@ -46,3 +49,5 @@ async def test_handle_qiki_response_error_logs_and_clears_pending() -> None:
     assert str(req_id) not in app._qiki_pending
     assert any("INVALID_REQUEST" in line for line in logs)
 
+
+import pytest

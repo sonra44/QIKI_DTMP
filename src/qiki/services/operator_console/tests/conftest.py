@@ -9,16 +9,11 @@ import shutil
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock
 from pathlib import Path
-import os
-import sys
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import components for fixtures
-from clients.metrics_client import MetricsClient
-from clients.grpc_client import QSimGrpcClient, QAgentGrpcClient
-from core.i18n import I18n
+from qiki.services.operator_console.clients.metrics_client import MetricsClient
+from qiki.services.operator_console.clients.grpc_client import QSimGrpcClient, QAgentGrpcClient
+from qiki.services.operator_console.core.i18n import I18n
 
 
 @pytest.fixture(scope="session")
@@ -41,7 +36,7 @@ def temp_dir():
 def mock_metrics_client():
     """Create a mock metrics client with sample data."""
     client = MetricsClient(max_points=100)
-    
+
     # Add sample metrics
     now = datetime.now()
     for i in range(10):
@@ -51,7 +46,7 @@ def mock_metrics_client():
         client.add_metric("disk.usage", float(70 + i % 10), timestamp, "%", "Disk Usage")
         client.add_metric("network.rx", float(100 + i * 10), timestamp, "KB/s", "Network RX")
         client.add_metric("network.tx", float(80 + i * 8), timestamp, "KB/s", "Network TX")
-    
+
     return client
 
 
@@ -60,41 +55,30 @@ def mock_simulation_client():
     """Create a mock simulation gRPC client."""
     client = QSimGrpcClient("localhost", 50051)
     client.connected = True
-    
+
     # Mock real methods from QSimGrpcClient
-    client.send_command = AsyncMock(return_value={
-        "success": True,
-        "message": "Simulation started",
-        "command": "start",
-        "timestamp": "2023-01-01T12:00:00Z",
-        "sim_state": {
-            "running": True,
-            "paused": False,
-            "speed": 1.0,
-            "fsm_state": "RUNNING"
+    client.send_command = AsyncMock(
+        return_value={
+            "success": True,
+            "message": "Simulation started",
+            "command": "start",
+            "timestamp": "2023-01-01T12:00:00Z",
+            "sim_state": {"running": True, "paused": False, "speed": 1.0, "fsm_state": "RUNNING"},
         }
-    })
-    
-    client.health_check = AsyncMock(return_value={
-        "status": "OK",
-        "message": "Service is healthy",
-        "timestamp": "2023-01-01T12:00:00Z"
-    })
-    
-    client.get_simulation_state = MagicMock(return_value={
-        "running": True,
-        "paused": False,
-        "speed": 1.0,
-        "last_health_check": None,
-        "fsm_state": "RUNNING"
-    })
-    
-    client.set_simulation_speed = AsyncMock(return_value={
-        "success": True,
-        "speed": 2.0,
-        "message": "Speed set to 2.0x"
-    })
-    
+    )
+
+    client.health_check = AsyncMock(
+        return_value={"status": "OK", "message": "Service is healthy", "timestamp": "2023-01-01T12:00:00Z"}
+    )
+
+    client.get_simulation_state = MagicMock(
+        return_value={"running": True, "paused": False, "speed": 1.0, "last_health_check": None, "fsm_state": "RUNNING"}
+    )
+
+    client.set_simulation_speed = AsyncMock(
+        return_value={"success": True, "speed": 2.0, "message": "Speed set to 2.0x"}
+    )
+
     return client
 
 
@@ -103,32 +87,36 @@ def mock_chat_client():
     """Create a mock chat gRPC client."""
     client = QAgentGrpcClient("localhost", 50052)
     client.connected = True
-    
+
     # Mock real methods from QAgentGrpcClient
     client.send_message = AsyncMock(return_value="Hello! System is operational. How can I help you?")
-    
-    client.get_fsm_state = AsyncMock(return_value={
-        "current_state": "OPERATIONAL",
-        "previous_state": "INIT",
-        "transitions_count": 5,
-        "last_transition": "2023-01-01T12:00:00Z"
-    })
-    
-    client.get_proposals = AsyncMock(return_value=[
-        {
-            "id": "prop_001",
-            "action": "start_simulation",
-            "description": "Start simulation with default parameters",
-            "confidence": 0.95
-        },
-        {
-            "id": "prop_002", 
-            "action": "check_system_status",
-            "description": "Perform system health check",
-            "confidence": 0.85
+
+    client.get_fsm_state = AsyncMock(
+        return_value={
+            "current_state": "OPERATIONAL",
+            "previous_state": "INIT",
+            "transitions_count": 5,
+            "last_transition": "2023-01-01T12:00:00Z",
         }
-    ])
-    
+    )
+
+    client.get_proposals = AsyncMock(
+        return_value=[
+            {
+                "id": "prop_001",
+                "action": "start_simulation",
+                "description": "Start simulation with default parameters",
+                "confidence": 0.95,
+            },
+            {
+                "id": "prop_002",
+                "action": "check_system_status",
+                "description": "Perform system health check",
+                "confidence": 0.85,
+            },
+        ]
+    )
+
     return client
 
 
@@ -140,13 +128,13 @@ def mock_nats_client():
     client.messages_received = 150
     client.messages_processed = 145
     client.subjects = ["sim.commands", "sim.status", "chat.messages"]
-    
+
     # Async methods
     client.connect = AsyncMock()
     client.disconnect = AsyncMock()
     client.publish = AsyncMock()
     client.subscribe = AsyncMock()
-    
+
     return client
 
 
@@ -166,7 +154,7 @@ def sample_i18n_ru():
 def mock_textual_app():
     """Create a mock Textual app for widget testing."""
     from textual.app import App
-    
+
     class MockApp(App):
         def __init__(self):
             super().__init__()
@@ -175,7 +163,7 @@ def mock_textual_app():
             self.chat_client = None
             self.nats_client = None
             self.i18n = I18n()
-    
+
     return MockApp()
 
 
@@ -190,25 +178,17 @@ def sample_simulation_data():
                 "status": "RUNNING",
                 "progress": 45.5,
                 "start_time": "2023-01-01T12:00:00Z",
-                "parameters": {
-                    "duration": 300,
-                    "agents": 10,
-                    "environment": "urban"
-                }
+                "parameters": {"duration": 300, "agents": 10, "environment": "urban"},
             },
             {
-                "simulation_id": "sim_002", 
+                "simulation_id": "sim_002",
                 "scenario": "test_scenario_2",
                 "status": "COMPLETED",
                 "progress": 100.0,
                 "start_time": "2023-01-01T11:00:00Z",
                 "end_time": "2023-01-01T11:15:00Z",
-                "parameters": {
-                    "duration": 900,
-                    "agents": 25,
-                    "environment": "highway"
-                }
-            }
+                "parameters": {"duration": 900, "agents": 25, "environment": "highway"},
+            },
         ]
     }
 
@@ -223,15 +203,15 @@ def sample_chat_data():
                 "user_id": "operator_001",
                 "created_at": "2023-01-01T10:00:00Z",
                 "last_message_at": "2023-01-01T12:30:00Z",
-                "message_count": 15
+                "message_count": 15,
             },
             {
                 "session_id": "session_002",
-                "user_id": "operator_002", 
+                "user_id": "operator_002",
                 "created_at": "2023-01-01T09:00:00Z",
                 "last_message_at": "2023-01-01T11:45:00Z",
-                "message_count": 8
-            }
+                "message_count": 8,
+            },
         ],
         "messages": [
             {
@@ -240,25 +220,25 @@ def sample_chat_data():
                 "sender_id": "operator_001",
                 "content": "Start simulation scenario_alpha",
                 "timestamp": "2023-01-01T12:00:00Z",
-                "type": "command"
+                "type": "command",
             },
             {
                 "message_id": "msg_002",
-                "session_id": "session_001", 
+                "session_id": "session_001",
                 "sender_id": "agent",
                 "content": "Simulation scenario_alpha has been started with ID sim_alpha_001",
                 "timestamp": "2023-01-01T12:00:15Z",
-                "type": "response"
+                "type": "response",
             },
             {
                 "message_id": "msg_003",
                 "session_id": "session_001",
-                "sender_id": "operator_001", 
+                "sender_id": "operator_001",
                 "content": "What is the current status?",
                 "timestamp": "2023-01-01T12:30:00Z",
-                "type": "question"
-            }
-        ]
+                "type": "question",
+            },
+        ],
     }
 
 
@@ -266,42 +246,25 @@ def sample_chat_data():
 def sample_metrics_data():
     """Sample metrics data for testing."""
     base_time = datetime.now()
-    
+
     return {
         "system": {
-            "cpu_usage": [
-                {"timestamp": base_time + timedelta(seconds=i), "value": 50.0 + i * 2.5}
-                for i in range(20)
-            ],
+            "cpu_usage": [{"timestamp": base_time + timedelta(seconds=i), "value": 50.0 + i * 2.5} for i in range(20)],
             "memory_usage": [
-                {"timestamp": base_time + timedelta(seconds=i), "value": 65.0 + i * 1.2}
-                for i in range(20)
+                {"timestamp": base_time + timedelta(seconds=i), "value": 65.0 + i * 1.2} for i in range(20)
             ],
-            "disk_usage": [
-                {"timestamp": base_time + timedelta(seconds=i), "value": 75.0 + (i % 5)}
-                for i in range(20)
-            ]
+            "disk_usage": [{"timestamp": base_time + timedelta(seconds=i), "value": 75.0 + (i % 5)} for i in range(20)],
         },
         "application": {
             "uptime": 3600,  # 1 hour
             "active_connections": 5,
             "processed_commands": 150,
-            "error_count": 2
+            "error_count": 2,
         },
         "grpc": {
-            "simulation_service": {
-                "status": "connected",
-                "requests_sent": 25,
-                "responses_received": 24,
-                "errors": 1
-            },
-            "chat_service": {
-                "status": "connected", 
-                "requests_sent": 45,
-                "responses_received": 45,
-                "errors": 0
-            }
-        }
+            "simulation_service": {"status": "connected", "requests_sent": 25, "responses_received": 24, "errors": 1},
+            "chat_service": {"status": "connected", "requests_sent": 45, "responses_received": 45, "errors": 0},
+        },
     }
 
 
@@ -336,7 +299,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.metrics)
         if "widget" in str(item.fspath) or "panel" in str(item.fspath):
             item.add_marker(pytest.mark.ui)
-        
+
         # Mark async tests
         if asyncio.iscoroutinefunction(item.function):
             item.add_marker(pytest.mark.asyncio)

@@ -5,20 +5,15 @@ Important: tests may call compose() directly without a running Textual App.
 Panels must not crash with NoActiveAppError.
 """
 
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 
-# Add service directory to sys.path for `from main import ...` imports (same pattern as operator_console tests).
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from main import ShellOSApp  # noqa: E402
-from ui.resources_panel import ResourcesPanel  # noqa: E402
-from ui.services_panel import ServicesPanel  # noqa: E402
-from ui.system_panel import SystemPanel  # noqa: E402
+from qiki.services.shell_os.main import ShellOSApp
+from qiki.services.shell_os.ui.resources_panel import ResourcesPanel
+from qiki.services.shell_os.ui.services_panel import ServicesPanel
+from qiki.services.shell_os.ui.system_panel import SystemPanel
 
 
 class TestPanels:
@@ -64,4 +59,3 @@ class TestApp:
                         mock_pane.return_value = MagicMock()
                         widgets = list(app.compose())
                         assert len(widgets) >= 2
-
