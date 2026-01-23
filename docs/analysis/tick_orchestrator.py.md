@@ -5,7 +5,7 @@
 - **Итог**: Обзор оркестратора циклов обработки агента
 
 ## Сбор контекста
-- **Исходник**: /home/sonra44/QIKI_DTMP/services/q_core_agent/core/tick_orchestrator.py
+- **Исходник**: src/qiki/services/q_core_agent/core/tick_orchestrator.py
 - **Связанные файлы**:
   - services/q_core_agent/core/agent.py (основной агент)
   - services/q_core_agent/core/interfaces.py (интерфейсы)
@@ -18,7 +18,7 @@
 **[Факт]**: Файл реализует оркестратор выполнения циклов обработки агента с поддержкой как синхронного, так и асинхронного режимов.
 
 ## Локализация артефакта
-- **Точный путь**: /home/sonra44/QIKI_DTMP/services/q_core_agent/core/tick_orchestrator.py
+- **Точный путь**: src/qiki/services/q_core_agent/core/tick_orchestrator.py
 - **Окружение**: Python 3.x, asyncio, typing
 
 ## Фактический разбор
@@ -64,7 +64,7 @@ async def run_tick_async(self, data_provider: IDataProvider):
     if not self.use_state_store or not self.state_store:
         # Fallback на синхронный метод с предупреждением
         logger.warning("StateStore not available, falling back to sync mode")
-        self.run_tick(data_provider)
+        await asyncio.to_thread(self.run_tick, data_provider)
         return
 
     # Остальной код метода...
