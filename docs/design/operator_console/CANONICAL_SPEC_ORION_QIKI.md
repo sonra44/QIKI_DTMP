@@ -12,7 +12,8 @@
 - **QIKI**: headless service/daemon that interprets intent, produces proposals, later (optionally) executes approved actions.
 - **Intent**: operator free-text + UI context.
 - **Proposal**: structured, bilingual recommendation set produced by QIKI.
-- **Action**: typed command request (MVP: always empty).
+- **Decision**: explicit operator approval step for a proposal (accept/reject), published as a follow-up intent referencing `proposal_id`.
+- **Action**: typed command request for execution (future; always empty in MVP).
 
 ---
 
@@ -71,6 +72,7 @@ Correlation: `request_id` is the join key between request and response.
 
 - QIKI has full **read** access to telemetry/state.
 - **Write** access is represented only as *typed actions*, and in MVP actions are **always empty**.
+- Operator decisions (accept/reject proposals) publish follow-up intents; they do not execute anything by themselves.
 - Any future execution must be behind policy + explicit operator approval (outside this MVP spec).
 
 ---
@@ -186,7 +188,7 @@ When an operator selects a QIKI reply/proposal row, inspector must show:
 1) `Summary/Сводка`
 2) `Fields/Поля` (typed fields, bilingual formatted)
 3) `Raw JSON/Сырой JSON` (safe preview)
-4) `Actions/Действия` (future; empty in MVP)
+4) `Actions/Действия` (MVP: proposal decisions `Accept/Принять` + `Reject/Отклонить` with confirmation; otherwise empty)
 
 ---
 
@@ -207,4 +209,4 @@ When an operator selects a QIKI reply/proposal row, inspector must show:
 2) QIKI: minimal handler: subscribe `qiki.intents` and publish deterministic stub responses to `qiki.responses.qiki` (no LLM).
 3) ORION: render QIKI replies + proposal list + inspector view.
 4) QIKI: add `NeuralEngine` (LLM) behind strict schema validation + fallback.
-5) Later (separate spec): approvals + typed actions + sim pause/time control.
+5) Later (separate spec): typed actions + sim pause/time control.
