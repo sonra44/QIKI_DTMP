@@ -4,8 +4,7 @@
 
 ## Контейнеры и роли
 - **qiki-nats-phase1** — брокер сообщений NATS + JetStream (Порты: 4222, 8222). Хранит поток `QIKI_RADAR_V1`.
-- **q-sim-service** — gRPC сервис симуляции (порт 50051). RPC: `HealthCheck`, `GetSensorData`, `SendActuatorCommand`, `GetRadarFrame`.
-- **q-sim-radar** — генератор радарных кадров; публикует `RadarFrame` в `qiki.radar.v1.frames.lr`, `qiki.radar.v1.tracks.sr` и совместимый `qiki.radar.v1.frames`.
+- **q-sim-service** — единственный источник “мира”: gRPC сервис симуляции (порт 50051) + тикер; публикует Radar v1 кадры в `qiki.radar.v1.frames.lr`, `qiki.radar.v1.tracks.sr` и совместимый `qiki.radar.v1.frames`.
 - **faststream-bridge** — FastStream приложение. Подписки: `qiki.radar.v1.frames.lr`, `qiki.radar.v1.tracks.sr`, `qiki.radar.v1.frames`, `qiki.commands.control`. Публикации: `qiki.radar.v1.tracks`, `qiki.responses.control`.
 - **qiki-dev** — Q-Core Agent (`python -m qiki.services.q_core_agent.main --grpc`). Потребляет gRPC/NATS потоки.
 - **nats-js-init** (one-shot) — утилита инициализации JetStream: создаёт stream `QIKI_RADAR_V1`, durable-консьюмеры `radar_frames_pull` / `radar_tracks_pull`.
@@ -14,7 +13,7 @@
 - NATS стартует первым; health-check: `GET /healthz` на `http://localhost:8222/healthz`.
 - `nats-js-init` выполняется после здоровья NATS → создаёт JetStream stream/consumers.
 - `q-sim-service` стартует после NATS; health-check через gRPC `HealthCheck`.
-- `q-sim-radar` подключается к NATS и публикует кадры (логирует `Connected to NATS…`).
+- `q-sim-service` публикует radar frames в NATS (при `RADAR_ENABLED=1` и `RADAR_NATS_ENABLED=1`).
 - `faststream-bridge` подписывается на NATS (кадры/команды) и публикует ответы/треки.
 - `qiki-dev` стартует последним (ожидает health `q-sim-service`).
 
@@ -40,7 +39,6 @@
 sequenceDiagram
     participant Dev as qiki-dev (Agent)
     participant Sim as q-sim-service (gRPC)
-    participant Radar as q-sim-radar
     participant NATS as NATS JetStream
     participant Bridge as FastStream Bridge
 
@@ -56,7 +54,7 @@ sequenceDiagram
         end
     end
 
-    Radar->>NATS: Publish RadarFrame (qiki.radar.v1.frames.lr / qiki.radar.v1.tracks.sr / qiki.radar.v1.frames)
+    Sim->>NATS: Publish RadarFrame (qiki.radar.v1.frames.lr / qiki.radar.v1.tracks.sr / qiki.radar.v1.frames)
     Bridge->>NATS: Subscribe frames (LR/SR + union)
     NATS-->>Bridge: Deliver RadarFrame
     Bridge->>NATS: Publish RadarTrack (qiki.radar.v1.tracks)
@@ -66,7 +64,7 @@ sequenceDiagram
 
 ## Radar v1 — поток данных
 
-1. `q-sim-radar` генерирует `RadarFrameModel` (Pydantic) → конвертирует в proto → отправляет JSON-пэйлоад в `qiki.radar.v1.frames.lr` (кадры без ID/IFF), `qiki.radar.v1.tracks.sr` (SR-объекты с транспондером) и совместимый `qiki.radar.v1.frames`; заголовки включают `Nats-Msg-Id` и `x-range-band`.
+1. `q-sim-service` генерирует `RadarFrameModel` (Pydantic) → отправляет JSON-пэйлоад в `qiki.radar.v1.frames.lr` (кадры без ID/IFF), `qiki.radar.v1.tracks.sr` (SR-объекты с транспондером) и совместимый `qiki.radar.v1.frames`; заголовки включают `Nats-Msg-Id` и `x-range-band`.
 2. JetStream (`QIKI_RADAR_V1`) сохраняет сообщения с deduplication окном 120 с; durable `radar_frames_pull` гарантирует чтение FastStream Bridge.
 3. FastStream Bridge (`handle_radar_frame`) валидирует кадр, формирует минимальный `RadarTrackModel`, учитывая `range_band`, и публикует в `qiki.radar.v1.tracks`.
 4. `radar_tracks_pull` потребитель доступен для подписчиков; `qiki-dev` и другие сервисы могут слушать тему и принимать решения с использованием `x-range-band`.
@@ -74,7 +72,7 @@ sequenceDiagram
 
 ## Health/Recovery и наблюдаемость
 - docker-compose healthchecks: `q-sim-service` (gRPC HealthCheck), `qiki-dev` (waits for dependency), `nats` (`/healthz`).
-- `q-sim-radar` логирует подключение к NATS; при ошибке публикации выводит предупреждения.
+- Публикация радара логируется в `q-sim-service` (при ошибке публикации выводит предупреждения).
 - В логах FastStream Bridge фиксируются принятые кадры (frame_id, detections).
 - Агент: при исключении в фазе тика — SAFE MODE, пауза `recovery_delay`, повтор.
 - Логи: структурированы по фазам тика; рекомендуется унифицировать JSON‑формат и пробрасывать `correlation_id`.

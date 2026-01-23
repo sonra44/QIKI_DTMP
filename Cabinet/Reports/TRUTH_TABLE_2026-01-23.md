@@ -20,7 +20,7 @@
 - `nats` (JetStream, monitoring `:8222`)
 - `nats-js-init` (инициализация JetStream streams + durables)
 - `q-sim-service` (gRPC `:50051`, simulation + telemetry publish)
-- `q-sim-radar` (radar frame generation/publish)
+- `q-sim-service` (radar frame generation/publish; single source of world ticks)
 - `faststream-bridge` (FastStream/NATS: bridge + radar processing + intents)
 - `q-bios-service` (HTTP `:8080` + NATS publish bios_status)
 - `qiki-dev` (Q-Core agent)
@@ -35,7 +35,6 @@
 - `qiki-nats-phase1` (healthy), порты `4222`, `8222`
 - `qiki-nats-js-init` (completed/ran ранее)
 - `qiki-sim-phase1` (q-sim-service, healthy)
-- `qiki-sim-radar-phase1` (q-sim-radar, running)
 - `qiki-faststream-bridge-phase1` (running)
 - `qiki-bios-phase1` (healthy), проброс `127.0.0.1:8080->8080`
 - `qiki-dev-phase1` (running)
@@ -175,7 +174,7 @@ PDF-идея “boot → kernel → services/drivers → modules → UI” мо�
 - “Kernel” (реальность): `qiki-dev` (Q-Core agent) с tick loop:
   - `src/qiki/services/q_core_agent/core/tick_orchestrator.py`: update_context → handle_bios → handle_fsm → evaluate_proposals → make_decision.
 - “Drivers/Services” (реальность): `q-bios-service`, `q-sim-service`, `faststream-bridge`, `registrar`.
-- “Modules” (реальность): radar publisher (`q-sim-radar`), rule/neural modules внутри Q-Core (см. `docs/analysis/*`).
+- “Modules” (реальность): radar publisher (`q-sim-service`), rule/neural modules внутри Q-Core (см. `docs/analysis/*`).
 - “UI” (реальность): `operator-console` (ORION TUI).
 
 ## 6) Gaps / риски (то, что стоит улучшать дальше)
@@ -193,4 +192,3 @@ PDF-идея “boot → kernel → services/drivers → modules → UI” мо�
 ## 7) Next action (привязка к плану)
 
 Дальше: выбрать 1 gap (лучший кандидат сейчас — BIOS NATS publish reliability, потому что это “факт‑симптом”) и открыть отдельную задачу/PR с чётким DoD и evidence.
-
