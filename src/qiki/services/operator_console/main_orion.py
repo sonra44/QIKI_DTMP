@@ -1310,10 +1310,14 @@ class OrionApp(App):
             "ORION_TELEMETRY_DICTIONARY_PATH",
             "docs/design/operator_console/TELEMETRY_DICTIONARY.yaml",
         ).strip()
-        try:
-            repo_root = Path(__file__).resolve().parents[4]
-        except Exception:
-            repo_root = Path.cwd()
+        repo_root_env = os.getenv("QIKI_REPO_ROOT", "").strip()
+        if repo_root_env:
+            repo_root = Path(repo_root_env).expanduser().resolve()
+        else:
+            try:
+                repo_root = Path(__file__).resolve().parents[4]
+            except Exception:
+                repo_root = Path.cwd()
         dict_path = (repo_root / rel) if rel and not Path(rel).is_absolute() else Path(rel)
         try:
             stat = dict_path.stat()
@@ -4830,7 +4834,7 @@ class OrionApp(App):
             return capped
 
         summary_rows = _cap_rows(summary_rows, 8 if compact else 16)
-        fields_rows = _cap_rows(fields_rows, 8 if compact else 28)
+        fields_rows = _cap_rows(fields_rows, 10 if compact else 28)
         actions = _cap_actions(actions, 6 if compact else 20)
 
         outer = Table.grid(expand=True)
