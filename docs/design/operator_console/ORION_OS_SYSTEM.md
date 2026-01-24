@@ -55,6 +55,26 @@ Canonical names are defined in `src/qiki/shared/nats_subjects.py`:
 
 - `qiki.telemetry` (`SYSTEM_TELEMETRY`)
 
+### Telemetry semantics (operator dictionary)
+
+ORION uses a canonical, operator-facing telemetry dictionary (no-mocks, no placeholders):
+
+- `docs/design/operator_console/TELEMETRY_DICTIONARY.yaml`
+
+Purpose:
+- Make every value explainable: what it means, its unit/type, and where it appears in ORION.
+- Prevent “UI drift”: the dictionary is validated by unit tests against real payloads.
+
+Presence semantics:
+- Some fields are **state-dependent** (e.g. `propulsion.rcs.thrusters[*]` exists only when RCS is active). In the dictionary those fields must be marked `presence: state-dependent`.
+
+Validation:
+- `tests/unit/test_telemetry_dictionary.py` builds a real payload via `q_sim_service` and asserts every documented `path` exists.
+- `tests/unit/test_telemetry_dictionary.py` also asserts that ORION Inspector provenance keys (Power/Thermal/Sensors/Propulsion) are covered by the dictionary (after canonicalizing dynamic selectors like `thrusters[index=*]`).
+
+Runtime audit (real NATS payload):
+- Use `tools/telemetry_smoke.py --audit-dictionary` to compare a live `qiki.telemetry` message against the dictionary for the core operator subsystems.
+
 ### Events
 
 - `qiki.events.v1.>` (`EVENTS_V1_WILDCARD`)
@@ -123,8 +143,15 @@ Screens (current set):
 - `Console/Консоль` (F4)
 - `Summary/Сводка` (F5)
 - `Power systems/Система питания` (F6)
+- `Sensors/Сенсоры` (F7)
+- `Propulsion/Двигатели` (F8)
+- `QIKI` (F9)
+- `Profile/Профиль` (F10)
 - `Diagnostics/Диагностика` (F7)
 - `Mission control/Управление миссией` (F8)
+
+Notes:
+- Exact screen set is defined in `src/qiki/services/operator_console/main_orion.py` (`ORION_APPS`).
 
 ---
 
@@ -144,6 +171,18 @@ Commands are parsed in `OrionApp._run_command()`:
 - `filter <text>` / `filter off` / `filter` (clears) — events text filter
 - `type <name>` / `type off` — events type filter
 - `simulation.*` or `симуляция.*` — canonicalized and published to control bus (`sim.*` internally)
+
+### 6.4 Inspector provenance (no-mocks)
+
+For telemetry-backed screens (Power/Thermal/Sensors/Propulsion), Inspector shows `Source keys/Ключи источника`:
+
+- the exact telemetry paths that produced the selected row (e.g. `power.soc_pct`).
+
+Inspector meaning (dictionary-backed):
+- For telemetry selections, Inspector also shows `Meaning/Смысл` resolved from `docs/design/operator_console/TELEMETRY_DICTIONARY.yaml` (label + unit/type per source key).
+
+Optional operator guidance (dictionary-backed):
+- If a field in the dictionary defines `why_operator` and/or `actions_hint`, Inspector shows `Why/Зачем` and `Actions hint/Подсказка действий`.
 
 ### 6.3 Where command output goes
 

@@ -29,6 +29,7 @@ References:
 - System logic and screen model: `docs/design/operator_console/ORION_OS_SYSTEM.md`
 - Integration overview: `docs/design/operator_console/QIKI_INTEGRATION_PLAN.md`
 - Simulation control contract: `docs/design/operator_console/SIMULATION_CONTROL_CONTRACT.md`
+- Telemetry meaning (operator-facing dictionary, no-mocks): `docs/design/operator_console/TELEMETRY_DICTIONARY.yaml`
 
 ---
 
@@ -124,6 +125,18 @@ All human-facing strings are bilingual objects; ORION formats them as `en/ru`.
 Notes:
 - `mode_hint` is a hint only; QIKI must reply with the authoritative mode.
 - `system_context.summary` is intentionally tiny for MVP; QIKI can request more via `suggested_questions`.
+
+### 4.4 Operator semantics (dictionary)
+
+ORION maintains an operator-facing **Telemetry Dictionary** (machine-readable) that maps:
+
+- telemetry path (e.g. `power.soc_pct`) → bilingual label → unit/type → where it appears in ORION
+
+Canonical file:
+- `docs/design/operator_console/TELEMETRY_DICTIONARY.yaml`
+
+Quality gate:
+- `tests/unit/test_telemetry_dictionary.py` validates that dictionary paths exist in real telemetry payloads built by `q_sim_service`.
 
 ### 4.3 Response: `QikiChatResponse.v1`
 

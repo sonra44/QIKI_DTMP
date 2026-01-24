@@ -1,0 +1,645 @@
+schema_version: 1
+
+# This dictionary is an operator-facing, machine-readable map of what telemetry
+# exists, what it means, and where it comes from.
+#
+# Rules:
+# - No placeholders: only document fields that exist in real payloads or files.
+# - Labels are bilingual as EN/RU.
+# - Paths refer to keys in `qiki.telemetry` JSON unless otherwise stated.
+# - `presence` tells whether a field is always present in telemetry or may appear only in certain states.
+# - Optional operator semantics:
+#   - `why_operator`: why this matters to the operator/why to care
+#   - `actions_hint`: safe next checks/actions available in ORION (no auto-actions)
+#
+# Notes:
+# - These fields are guidance only. They must not imply auto-execution.
+#
+# Audit (live NATS payload):
+# - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc "NATS_URL=nats://nats:4222 python tools/telemetry_smoke.py --audit-dictionary"`
+
+sources:
+  telemetry_subject: qiki.telemetry
+  profile_files:
+    - shared/specs/BotSpec.yaml
+    - src/qiki/services/q_core_agent/config/bot_config.json
+    - config/propulsion/thrusters.json
+    - docs/design/hardware_and_physics/bot_source_of_truth.md
+
+subsystems:
+  system:
+    description: System/Система
+    fields:
+      - path: sim_state.running
+        label: Sim running/Сим запущена
+        unit: bool
+        type: boolean
+        orion:
+          screen: header
+          row_key: sim_running
+      - path: sim_state.paused
+        label: Sim paused/Сим на паузе
+        unit: bool
+        type: boolean
+        orion:
+          screen: header
+          row_key: sim_paused
+      - path: sim_state.fsm_state
+        label: Sim state/Состояние сим
+        unit: enum
+        type: string
+        why_operator: World ticks affect decisions/Тики мира влияют на решения
+        actions_hint: Use simulation.pause for decision windows/Используйте simulation.pause для окна решения
+        orion:
+          screen: header
+          row_key: sim_state
+      - path: sim_state.speed
+        label: Sim speed/Скорость сим
+        unit: multiplier
+        type: number
+        orion:
+          screen: header
+          row_key: sim_speed
+      - path: hardware_profile_hash
+        label: Hardware profile hash/Хеш профиля железа
+        unit: string
+        type: string
+        orion:
+          screen: diagnostics
+          row_key: hardware_profile_hash
+
+  docking:
+    description: Docking/Стыковка
+    fields:
+      - path: docking.enabled
+        label: Docking enabled/Стыковка включена
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: docking_enabled
+      - path: docking.connected
+        label: Dock connected/Док подключен
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: docking_connected
+      - path: docking.state
+        label: Dock state/Состояние дока
+        unit: enum
+        type: string
+        orion:
+          screen: power
+          row_key: docking_state
+      - path: docking.port
+        label: Dock port/Порт дока
+        unit: enum
+        type: string
+        orion:
+          screen: power
+          row_key: docking_port
+      - path: docking.ports
+        label: Dock ports/Порты дока
+        unit: list
+        type: array
+        orion:
+          screen: profile
+          row_key: dock_ports
+
+  comms:
+    description: Comms/Связь
+    fields:
+      - path: comms.enabled
+        label: Comms enabled/Связь включена
+        unit: bool
+        type: boolean
+        orion:
+          screen: diagnostics
+          row_key: comms_enabled
+      - path: comms.xpdr.mode
+        label: XPDR mode/Режим XPDR
+        unit: enum
+        type: string
+        orion:
+          screen: diagnostics
+          row_key: xpdr_mode
+      - path: comms.xpdr.active
+        label: XPDR active/XPDR активно
+        unit: bool
+        type: boolean
+        orion:
+          screen: diagnostics
+          row_key: xpdr_active
+      - path: comms.xpdr.allowed
+        label: XPDR allowed/XPDR разрешено
+        unit: bool
+        type: boolean
+        orion:
+          screen: diagnostics
+          row_key: xpdr_allowed
+      - path: comms.xpdr.id
+        label: XPDR id/Идентификатор XPDR
+        unit: string
+        type: string
+        orion:
+          screen: diagnostics
+          row_key: xpdr_id
+
+  power:
+    description: Power systems/Система питания
+    fields:
+      - path: battery
+        label: Battery level/Уровень батареи
+        unit: percent
+        type: number
+        orion:
+          screen: power
+          row_key: battery_level
+      - path: power.soc_pct
+        label: SoC/Заряд
+        unit: percent
+        type: number
+        why_operator: Energy reserve for safe operation/Резерв энергии для безопасной работы
+        actions_hint: Check load shedding and faults; reduce loads if needed/Проверьте сброс нагрузки и аварии; снизьте нагрузки при необходимости
+        orion:
+          screen: power
+          row_key: state_of_charge
+      - path: power.load_shedding
+        label: Load shedding/Сброс нагрузки
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: load_shedding
+      - path: power.shed_reasons
+        label: Shed reasons/Причины сброса
+        unit: list
+        type: array
+        orion:
+          screen: power
+          row_key: shed_reasons
+      - path: power.shed_loads
+        label: Shed loads/Сброшенные нагрузки
+        unit: list
+        type: array
+        orion:
+          screen: power
+          row_key: shed_loads
+      - path: power.faults
+        label: Faults/Аварии
+        unit: list
+        type: array
+        why_operator: Explains why subsystems are blocked or throttled/Объясняет почему подсистемы заблокированы или троттлены
+        actions_hint: Open Events and Diagnostics; resolve root cause before proceeding/Откройте События и Диагностику; устраните причину до продолжения
+        orion:
+          screen: power
+          row_key: faults
+      - path: power.pdu_limit_w
+        label: PDU limit/Лимит PDU
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: pdu_limit
+      - path: power.pdu_throttled
+        label: PDU throttled/PDU троттлинг
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: pdu_throttled
+      - path: power.throttled_loads
+        label: Throttled loads/Троттленные нагрузки
+        unit: list
+        type: array
+        orion:
+          screen: power
+          row_key: throttled_loads
+      - path: power.supercap_soc_pct
+        label: Supercap SoC/Суперкап заряд
+        unit: percent
+        type: number
+        orion:
+          screen: power
+          row_key: supercap_soc
+      - path: power.supercap_charge_w
+        label: Supercap charge/Заряд суперкапа
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: supercap_charge
+      - path: power.supercap_discharge_w
+        label: Supercap discharge/Разряд суперкапа
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: supercap_discharge
+      - path: power.power_in_w
+        label: Input power/Входная мощность
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: power_input
+      - path: power.power_out_w
+        label: Output power/Выходная мощность
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: power_consumption
+      - path: power.bus_v
+        label: Bus voltage/Напряжение шины
+        unit: volt
+        type: number
+        orion:
+          screen: power
+          row_key: bus_voltage
+      - path: power.bus_a
+        label: Bus current/Ток шины
+        unit: amp
+        type: number
+        orion:
+          screen: power
+          row_key: bus_current
+      - path: power.nbl_active
+        label: NBL active/NBL активно
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: nbl_active
+      - path: power.nbl_allowed
+        label: NBL allowed/NBL разрешено
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: nbl_allowed
+      - path: power.nbl_budget_w
+        label: NBL budget/Бюджет NBL
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: nbl_budget
+      - path: power.nbl_power_w
+        label: NBL power/Мощность NBL
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: nbl_power
+      - path: power.dock_connected
+        label: Dock connected/Стыковка подключена
+        unit: bool
+        type: boolean
+        orion:
+          screen: power
+          row_key: dock_connected
+      - path: power.dock_soft_start_pct
+        label: Dock ramp/Разгон дока
+        unit: percent
+        type: number
+        orion:
+          screen: power
+          row_key: dock_soft_start
+      - path: power.dock_power_w
+        label: Dock power/Мощность стыковки
+        unit: watt
+        type: number
+        orion:
+          screen: power
+          row_key: dock_power
+      - path: power.dock_v
+        label: Dock voltage/Напряжение стыковки
+        unit: volt
+        type: number
+        orion:
+          screen: power
+          row_key: dock_v
+      - path: power.dock_a
+        label: Dock current/Ток стыковки
+        unit: amp
+        type: number
+        orion:
+          screen: power
+          row_key: dock_a
+      - path: power.dock_temp_c
+        label: Dock temperature/Температура стыковки
+        unit: celsius
+        type: number
+        orion:
+          screen: power
+          row_key: dock_temp
+
+  thermal:
+    description: Thermal/Тепло
+    fields:
+      - path: thermal.nodes[*].temp_c
+        label: Thermal node temperature/Температура узла
+        unit: celsius
+        type: number
+        dimensions:
+          key: thermal.nodes[*].id
+        related:
+          - power.faults
+        orion:
+          screen: thermal
+          row_key: thermal_node
+
+  propulsion:
+    description: Propulsion/Двигатели
+    fields:
+      - path: propulsion.rcs.enabled
+        label: RCS enabled/РДС включено
+        unit: bool
+        type: boolean
+        orion:
+          screen: propulsion
+          row_key: rcs_enabled
+      - path: propulsion.rcs.active
+        label: RCS active/РДС активно
+        unit: bool
+        type: boolean
+        orion:
+          screen: propulsion
+          row_key: rcs_active
+      - path: propulsion.rcs.axis
+        label: Axis/Ось
+        unit: enum
+        type: string
+        orion:
+          screen: propulsion
+          row_key: rcs_axis
+      - path: propulsion.rcs.command_pct
+        label: Command/Команда
+        unit: percent
+        type: number
+        orion:
+          screen: propulsion
+          row_key: rcs_command
+      - path: propulsion.rcs.time_left_s
+        label: Time left/Осталось
+        unit: second
+        type: number
+        orion:
+          screen: propulsion
+          row_key: rcs_time_left
+      - path: propulsion.rcs.propellant_kg
+        label: Propellant/Топливо
+        unit: kilogram
+        type: number
+        orion:
+          screen: propulsion
+          row_key: rcs_propellant
+      - path: propulsion.rcs.power_w
+        label: RCS power/Мощность РДС
+        unit: watt
+        type: number
+        orion:
+          screen: propulsion
+          row_key: rcs_power
+      - path: propulsion.rcs.net_force_n
+        label: Net force/Суммарная сила
+        unit: newton
+        type: vector3
+        orion:
+          screen: propulsion
+          row_key: rcs_net_force
+      - path: propulsion.rcs.net_torque_nm
+        label: Net torque/Суммарный момент
+        unit: newton_meter
+        type: vector3
+        orion:
+          screen: propulsion
+          row_key: rcs_net_torque
+      - path: propulsion.rcs.throttled
+        label: RCS throttled/РДС троттлено
+        unit: bool
+        type: boolean
+        orion:
+          screen: propulsion
+          row_key: rcs_active
+      - path: propulsion.rcs.thrusters[*].duty_pct
+        label: Thruster duty/ШИМ сопла
+        unit: percent
+        type: number
+        presence: state-dependent
+        dimensions:
+          key: propulsion.rcs.thrusters[*].index
+        related:
+          - propulsion.rcs.thrusters[*].valve_open
+        orion:
+          screen: propulsion
+          row_key: thruster_*
+
+  sensors:
+    description: Sensors/Сенсоры
+    fields:
+      - path: sensor_plane.enabled
+        label: Sensor plane enabled/Сенсоры включены
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: sensors_enabled
+      - path: sensor_plane.imu.enabled
+        label: IMU enabled/ИМУ включено
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: imu_enabled
+      - path: sensor_plane.imu.ok
+        label: IMU ok/ИМУ ок
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: imu_ok
+      - path: sensor_plane.imu.roll_rate_rps
+        label: Roll rate/Скорость крена
+        unit: rad_per_s
+        type: number
+        orion:
+          screen: sensors
+          row_key: imu_roll_rate
+      - path: sensor_plane.imu.pitch_rate_rps
+        label: Pitch rate/Скорость тангажа
+        unit: rad_per_s
+        type: number
+        orion:
+          screen: sensors
+          row_key: imu_pitch_rate
+      - path: sensor_plane.imu.yaw_rate_rps
+        label: Yaw rate/Скорость рыскания
+        unit: rad_per_s
+        type: number
+        orion:
+          screen: sensors
+          row_key: imu_yaw_rate
+      - path: sensor_plane.imu.status
+        label: IMU status/Статус ИМУ
+        unit: enum
+        type: string
+        orion:
+          screen: sensors
+          row_key: imu
+      - path: sensor_plane.imu.reason
+        label: IMU reason/Причина ИМУ
+        unit: string
+        type: string
+        orion:
+          screen: sensors
+          row_key: imu_reason
+
+      - path: sensor_plane.radiation.enabled
+        label: Radiation enabled/Радиация включена
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: rad_enabled
+      - path: sensor_plane.radiation.background_usvh
+        label: Background/Фон
+        unit: uSv_per_h
+        type: number
+        orion:
+          screen: sensors
+          row_key: rad_background
+      - path: sensor_plane.radiation.dose_total_usv
+        label: Total dose/Суммарная доза
+        unit: uSv
+        type: number
+        orion:
+          screen: sensors
+          row_key: rad_dose
+      - path: sensor_plane.radiation.status
+        label: Radiation status/Статус радиации
+        unit: enum
+        type: string
+        why_operator: Safety gate for operations near objects/Гейт безопасности для операций рядом с объектами
+        actions_hint: Compare against limits and follow mission SOP/Сверьте с лимитами и действуйте по процедурам миссии
+        orion:
+          screen: sensors
+          row_key: radiation
+      - path: sensor_plane.radiation.reason
+        label: Radiation reason/Причина радиации
+        unit: string
+        type: string
+        orion:
+          screen: sensors
+          row_key: rad_reason
+      - path: sensor_plane.radiation.limits
+        label: Radiation limits/Лимиты радиации
+        unit: object
+        type: object
+        orion:
+          screen: sensors
+          row_key: rad_limits
+      - path: sensor_plane.radiation.limits.warn_usvh
+        label: Radiation warn/Порог предупреждения
+        unit: uSv_per_h
+        type: number
+        orion:
+          screen: sensors
+          row_key: rad_warn
+      - path: sensor_plane.radiation.limits.crit_usvh
+        label: Radiation crit/Порог аварии
+        unit: uSv_per_h
+        type: number
+        orion:
+          screen: sensors
+          row_key: rad_crit
+
+      - path: sensor_plane.proximity.enabled
+        label: Proximity enabled/Близость включена
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: prox_enabled
+      - path: sensor_plane.proximity.min_range_m
+        label: Min range/Мин. дальность
+        unit: meter
+        type: number
+        orion:
+          screen: sensors
+          row_key: prox_min
+      - path: sensor_plane.proximity.contacts
+        label: Contacts/Контакты
+        unit: list
+        type: array
+        orion:
+          screen: sensors
+          row_key: prox_contacts
+
+      - path: sensor_plane.solar.enabled
+        label: Solar enabled/Солнце включено
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: solar_enabled
+      - path: sensor_plane.solar.illumination_pct
+        label: Illumination/Освещенность
+        unit: percent
+        type: number
+        orion:
+          screen: sensors
+          row_key: solar_illum
+
+      - path: sensor_plane.star_tracker.enabled
+        label: Star tracker enabled/Звездный трекер включен
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: st_enabled
+      - path: sensor_plane.star_tracker.locked
+        label: Star lock/Звездный захват
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: st_locked
+      - path: sensor_plane.star_tracker.attitude_err_deg
+        label: Attitude error/Ошибка ориентации
+        unit: degree
+        type: number
+        orion:
+          screen: sensors
+          row_key: st_err
+      - path: sensor_plane.star_tracker.status
+        label: Star tracker status/Статус звездного трекера
+        unit: enum
+        type: string
+        orion:
+          screen: sensors
+          row_key: star_tracker
+      - path: sensor_plane.star_tracker.reason
+        label: Star tracker reason/Причина звездного трекера
+        unit: string
+        type: string
+        orion:
+          screen: sensors
+          row_key: st_reason
+
+      - path: sensor_plane.magnetometer.enabled
+        label: Magnetometer enabled/Магнитометр включен
+        unit: bool
+        type: boolean
+        orion:
+          screen: sensors
+          row_key: mag_enabled
+      - path: sensor_plane.magnetometer.field_ut
+        label: Magnetic field/Магнитное поле
+        unit: microtesla
+        type: object
+        orion:
+          screen: sensors
+          row_key: mag_field
