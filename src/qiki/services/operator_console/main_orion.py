@@ -5378,6 +5378,13 @@ class OrionApp(App):
             f"({I18N.bidi('ok', 'ок')}={ok}, {I18N.bidi('proposals', 'предложений')}={proposals}, "
             f"{I18N.bidi('request', 'запрос')}={resp.request_id})"
         )
+        if resp.warnings:
+            for warning in resp.warnings:
+                msg = I18N.bidi(warning.en, warning.ru)
+                self._console_log(
+                    f"QIKI: {I18N.bidi('warning', 'предупреждение')}: {msg}",
+                    level="warning",
+                )
         for idx, p in enumerate(resp.proposals[:3], start=1):
             self._console_log(f"  {idx}) {I18N.bidi(p.title.en, p.title.ru)}")
         if proposals > 3:

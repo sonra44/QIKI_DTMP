@@ -12,7 +12,7 @@ from pydantic import ValidationError
 # Важно, чтобы PYTHONPATH был настроен правильно, чтобы найти shared
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
 from qiki.shared.models.radar import RadarFrameModel
-from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1, QikiMode
+from qiki.shared.models.qiki_chat import BilingualText, QikiChatRequestV1, QikiChatResponseV1, QikiMode
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.nats_subjects import COMMANDS_CONTROL, EVENTS_AUDIT
 from qiki.shared.nats_subjects import (
@@ -100,6 +100,18 @@ def _proposal_store_gc(now_epoch: float) -> None:
         _proposal_store.pop(pid, None)
 
 
+_DOCKING_ACTION_PREFIXES = ("sim.dock.", "power.dock.")
+
+
+def _is_docking_action(name: str) -> bool:
+    low = str(name or "").lower()
+    return any(low.startswith(prefix) for prefix in _DOCKING_ACTION_PREFIXES)
+
+
+def _docking_actions_allowed(mode: QikiMode) -> bool:
+    return mode == QikiMode.FACTORY
+
+
 _track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
 _lag_monitor = JetStreamLagMonitor(
     nats_url=NATS_URL,
@@ -163,6 +175,7 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
             )
         except Exception as exc:  # pragma: no cover
             logger.warning("Failed to publish system mode event: %s", exc)
+    current_mode = get_mode()
     # Handle proposal decisions: execute stored actions on ACCEPT.
     if req.decision is not None:
         pid = str(req.decision.proposal_id)
@@ -173,11 +186,13 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
         stored = _proposal_store.get(pid)
         if decision == "REJECT":
             _proposal_store.pop(pid, None)
-            resp = handle_chat_request(req, current_mode=get_mode())
+            resp = handle_chat_request(req, current_mode=current_mode)
             return resp.model_dump(mode="json")
 
         # ACCEPT
         executed: list[str] = []
+        blocked: list[str] = []
+        blocked_reason: str | None = None
         if stored is not None:
             for action in stored.actions:
                 try:
@@ -189,6 +204,10 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
                     if dry_run:
                         continue
                     if subject != COMMANDS_CONTROL or not name:
+                        continue
+                    if _is_docking_action(name) and not _docking_actions_allowed(current_mode):
+                        blocked.append(name)
+                        blocked_reason = "mode_mission"
                         continue
 
                     cmd = CommandMessage(
@@ -217,17 +236,27 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
                         "proposal_id": pid,
                         "request_id": str(req.request_id),
                         "executed": executed,
+                        "blocked": blocked,
+                        "blocked_reason": blocked_reason,
+                        "mode": current_mode.value,
                     },
                     subject=EVENTS_AUDIT,
                 )
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to publish audit event: %s", exc)
 
-        resp = handle_chat_request(req, current_mode=get_mode())
+        resp = handle_chat_request(req, current_mode=current_mode)
+        if blocked:
+            resp.warnings.append(
+                BilingualText(
+                    en="Docking commands are blocked in MISSION mode.",
+                    ru="Команды стыковки заблокированы в режиме МИССИЯ.",
+                )
+            )
         return resp.model_dump(mode="json")
 
     # Regular intents: generate proposals and store their actions for later decisions.
-    resp: QikiChatResponseV1 = handle_chat_request(req, current_mode=get_mode())
+    resp: QikiChatResponseV1 = handle_chat_request(req, current_mode=current_mode)
     now_epoch = time.time()
     _proposal_store_gc(now_epoch)
     for p in resp.proposals:
