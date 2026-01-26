@@ -1,4 +1,8 @@
 # CLAUDE MEMORY - Полная Память Проекта QIKI_DTMP
+> HISTORICAL/REFERENCE ONLY (NOT CANON)
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.
+> Update (2026-01-26): `q-sim-radar` удалён; `q-sim-service` публикует radar frames.
+
 ## Сохраненное состояние работы над QIKI_DTMP
 
 ---

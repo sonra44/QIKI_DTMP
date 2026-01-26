@@ -3,6 +3,8 @@
 Status: done
 Date: 2026-01-23
 
+Note (2026-01-26): evidence below was captured when `q-sim-radar` still existed; it was removed later.
+
 ## Goal
 
 Make ORION able to deterministically accept/reject a selected QIKI proposal (no auto-actions) and publish a follow-up intent referencing `proposal_id`.

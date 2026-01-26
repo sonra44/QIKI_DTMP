@@ -4,6 +4,7 @@
 > Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
 > Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
 > Marked: 2026-01-22
+> Update (2026-01-26): `q-sim-radar` удалён; `q-sim-service` публикует radar frames; docker-compose без `q-sim-radar`.
 
 ## 0. Метаданные
 - **Дата создания:** 2025-07-30  
@@ -22,7 +23,7 @@
 |-----------|------------|--------|------------|
 | Protocol Buffers | 100% | ✅ Radar v1 (`SensorType.RADAR`, `GetRadarFrame`). | Контракты синхронизированы с кодом. |
 | Generated Stubs & Shim | 100% | ✅ Работают в docker-образах. | `generated/`, `radar/`, `*_pb2.py` shim. |
-| Services (q-sim-service, q-sim-radar, faststream-bridge) | 88% | ⚠️ Требуется продвинутый трекинг/визуализация. | LR/SR-разделение внедрено, union-топик сохранён. |
+| Services (q-sim-service, faststream-bridge) | 88% | ⚠️ Требуется продвинутый трекинг/визуализация. | LR/SR-разделение внедрено, union-топик сохранён. |
 | Q-Core Agent | 85% | ⚠️ Tick-цикл стабилен, UI/алерты отсутствуют. | |
 | Scripts & Automation | 92% | ✅ docker-compose Phase 1 + `nats-js-init` (фиксы 2025-09-18 исключают падения при инициализации). | |
 | Testing | 80% | ⚠️ Unit + integration (radar + Stage 0) зелёные; нет нагрузочных сценариев. | |
@@ -55,7 +56,7 @@
 
 ### Phase 1 — Базовая интеграция (ЗАВЕРШЕНО)
 - ✔ Исправлены generated imports, настроены скрипты и CI.
-- ✔ docker-compose.phase1.yml включает `nats`, `q-sim-service`, `q-sim-radar`, `faststream-bridge`, `qiki-dev`, `nats-js-init`.
+- ✔ docker-compose.phase1.yml включает `nats`, `q-sim-service`, `faststream-bridge`, `qiki-dev`, `nats-js-init`.
 - ✔ gRPC `GetRadarFrame` реализован, Pydantic модели и конвертеры обновлены.
 - ✔ JetStream stream `QIKI_RADAR_V1`, durable consumers (`radar_frames_pull`, `radar_tracks_pull`).
 - ✔ Интеграционные тесты радара проходят внутри контейнера `qiki-dev`.

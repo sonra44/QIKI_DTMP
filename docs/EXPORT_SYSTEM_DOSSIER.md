@@ -41,8 +41,7 @@ Source: `docs/ARCHITECTURE.md`, `docs/RESTART_CHECKLIST.md`
 ### 2.1 Containers (Phase1)
 
 - `qiki-nats-phase1` — NATS + JetStream (ports `4222`, `8222`)
-- `q-sim-service` / `qiki-sim-phase1` — simulation gRPC (port `50051`)
-- `qiki-sim-radar-phase1` — radar frame generator (publishes to NATS/JetStream)
+- `q-sim-service` / `qiki-sim-phase1` — simulation gRPC (port `50051`), также публикует radar frames в NATS/JetStream
 - `qiki-faststream-bridge-phase1` — NATS bridge/handlers for radar + control topics
 - `qiki-dev-phase1` — QCore Agent runtime (`qiki.services.q_core_agent`)
 - `qiki-operator-console` — ORION console (`src/qiki/services/operator_console/main_orion.py`)
