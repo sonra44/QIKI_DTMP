@@ -1,4 +1,8 @@
 # QIKI_DTMP - Стратегический План Развития 2025
+> HISTORICAL/REFERENCE ONLY (NOT CANON)
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+> Update (2026-01-26): CURRENT_STATE.md — snapshot, не канон приоритетов.
+
 ## Дальнейший путь от MVP к Production-Ready системе
 
 ---
