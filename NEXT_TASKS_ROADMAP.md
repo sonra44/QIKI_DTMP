@@ -50,7 +50,7 @@
 
 **Файлы для обновления:**
 - `CLAUDE_MEMORY.md` - новые показатели готовности (87%)
-- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% success rate)  
+- `CONTEXT/CURRENT_STATE.md` (snapshot) - статус тестирования (68% success rate)  
 - `TASKS/TASK_20250806_FIX_CRITICAL_SCHEMA_BUGS.md` - завершение и результаты
 
 ---

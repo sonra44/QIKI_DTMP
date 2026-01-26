@@ -1,3 +1,7 @@
+> HISTORICAL/REFERENCE ONLY (NOT CANON)
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+> CURRENT_STATE.md — snapshot, не канон приоритетов.
+
 # Авторство изменений Stage 0
 
 ## Общая информация

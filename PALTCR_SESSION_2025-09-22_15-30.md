@@ -1,3 +1,7 @@
+> HISTORICAL/REFERENCE ONLY (NOT CANON)
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+> CURRENT_STATE.md — snapshot, не канон приоритетов.
+
 # PRIMARY ACTUAL LONG TERM CONTEXT RECALL (PALTCR)
 # Критические находки сессии глубокого анализа проекта
 

@@ -1,3 +1,7 @@
+> HISTORICAL/REFERENCE ONLY (NOT CANON)
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+> CURRENT_STATE.md — snapshot, не канон приоритетов.
+
 # DOCUMENT AUDIT REPORT - 31 ИЮЛЯ 2025
 **Аудитор:** Claude Sonnet 4  
 **Дата:** 2025-07-31  
