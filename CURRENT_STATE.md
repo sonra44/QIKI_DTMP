@@ -1,5 +1,8 @@
 # QIKI_DTMP - Текущее Состояние Проекта
 
+> SNAPSHOT / НЕ КАНОН ПРИОРИТЕТОВ
+> Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+
 **Дата обновления:** 2026-01-23  
 **Статус:** Production Ready (93-95%)  
 **Последние изменения:** Ship FSM handler: убраны fallback mocks; переход на реальный `FsmStateSnapshot` (protobuf `generated/fsm_state_pb2`), чтобы FSM логика опиралась только на “truth” из generated/симуляции; commit `168433b`. ORION BIOS one-shot confirm line + checklist update; commit `6cea609`  
