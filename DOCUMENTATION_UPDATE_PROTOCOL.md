@@ -4,9 +4,10 @@
 ---
 
 **Каноны (Source of Truth):**  
+- канон приоритетов (Now/Next) — `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`  
+- состояние проекта (snapshot, не канон приоритетов) — `CURRENT_STATE.md` (в `CONTEXT/` — архив)  
 - docgen шаблоны — `tools/qiki_docgen/templates/*` (файлы в `roadmap/*.template` не редактировать)  
 - аналитика — `docs/analysis/*` (`analysis/*` — заглушки)  
-- текущее состояние — `CURRENT_STATE.md` (в `CONTEXT/` — архив)  
 - радара shim `radar.*` — устаревший, использовать `qiki.radar.*`
 
 **Дата создания:** 2025-08-06  
@@ -35,7 +36,7 @@
 
 1. **CLAUDE_MEMORY.md** - секция готовности компонентов
 2. **CURRENT_STATE.md** - конкретные статусы
-3. **Соответствующий TASK документ** - реальные результаты
+3. **Task‑досье в `TASKS/`** - реальные результаты
 
 ### ПРАВИЛО #2: Последовательность действий
 
