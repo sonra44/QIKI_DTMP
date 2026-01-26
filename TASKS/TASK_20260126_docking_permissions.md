@@ -1,5 +1,5 @@
 **ID:** TASK_20260126_docking_permissions  
-**Status:** in_progress  
+**Status:** done  
 **Owner:** OpenCode  
 **Date created:** 2026-01-26  
 
@@ -42,7 +42,7 @@
 - [x] Audit event содержит `blocked` и `blocked_reason`.
 - [x] Docs обновлены по `DOCUMENTATION_UPDATE_PROTOCOL.md`.
 - [x] Docker-first checks выполнены (команды + вывод сохранены).
-- [ ] Repo clean (`git status --porcelain` пуст).
+- [x] Repo clean (`git status --porcelain` пуст).
 
 ## Evidence (commands → output)
 
@@ -64,4 +64,4 @@
 
 ## Next
 
-1) Обновить evidence и закрыть DoD.
+1) Перейти к следующему приоритету из `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.
