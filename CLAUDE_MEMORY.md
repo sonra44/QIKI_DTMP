@@ -458,7 +458,7 @@ ruff check "$q_core_agent_path"  # ПЕРЕМЕННАЯ ИСПРАВЛЕНА
 
 **Практические документы:**
 - **TASK_EXECUTION_SYSTEM.md** - методология с шаблонами Task документов
-- **CONTEXT/** папка с CURRENT_STATE.md, DECISIONS_LOG.md, LESSONS_LEARNED.md
+- **CONTEXT/** папка с CURRENT_STATE.md (snapshot), DECISIONS_LOG.md, LESSONS_LEARNED.md
 - **TASKS/** папка для детального трекинга каждой задачи
 
 **Ключевые принципы:**
@@ -479,7 +479,7 @@ TASK Document Template:
 **Решение - многоуровневая система:**
 ```
 CLAUDE_MEMORY.md           # Общее состояние проекта  
-CURRENT_STATE.md           # Snapshot состояния компонентов (не канон приоритетов)
+CURRENT_STATE.md (snapshot)           # Snapshot состояния компонентов (не канон приоритетов)
 DECISIONS_LOG.md           # Все технические решения
 LESSONS_LEARNED.md         # База знаний ошибок
 TASK_*.md                  # Детальная история каждой задачи
@@ -514,7 +514,7 @@ TASK_*.md                  # Детальная история каждой за
 - Проверить существующие TASK документы
 - Прочитать DECISIONS_LOG.md  
 - Проверить LESSONS_LEARNED.md
-- Обновить CURRENT_STATE.md
+- Обновить CURRENT_STATE.md (snapshot)
 
 ### 10.7 Практические Next Steps
 
@@ -625,7 +625,7 @@ TASK_*.md                  # Детальная история каждой за
 ### ОБНАРУЖЕННАЯ СИСТЕМНАЯ ПРОБЛЕМА
 **Документооборот не синхронизировался с техническими изменениями:**
 - CLAUDE_MEMORY.md показывал 80% готовность (устарел на неделю)
-- CURRENT_STATE.md заявлял 100% готовность (неверно)  
+- CURRENT_STATE.md (snapshot) заявлял 100% готовность (неверно)  
 - Реальность: protobuf импорты сломаны, 50% тестов падают
 
 ### ПРИНЯТЫЕ МЕРЫ
