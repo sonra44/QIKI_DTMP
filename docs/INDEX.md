@@ -37,9 +37,9 @@
 
 ## 5) Планирование и задачи
 
-- `TASK_LIST.md` — список задач.
-- `TASK_DETAILS.md` — детали/критерии.
-- `UPDATED_PRIORITIES_2025.md` — приоритеты.
+- Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+- Задачи по исполнению (dossier): `TASKS/`
+- Исторические справки (не канон): `TASK_LIST.md`, `TASK_DETAILS.md`, `UPDATED_PRIORITIES_2025.md`
 
 ## 6) Много документов: как не утонуть
 
