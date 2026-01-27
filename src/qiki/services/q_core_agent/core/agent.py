@@ -172,9 +172,9 @@ class QCoreAgent:
                 self.bot_core.send_actuator_command(action)
                 logger.info(f"Sent actuator command: {action.actuator_id} - {action.command_type.name}")
             except ValueError as e:
-                logger.error(f"Failed to send actuator command {action.actuator_id.value}: {e}")
+                logger.error(f"Failed to send actuator command {action.actuator_id}: {e}")
             except Exception as e:
-                logger.error(f"Unexpected error sending command {action.actuator_id.value}: {e}")
+                logger.error(f"Unexpected error sending command {action.actuator_id}: {e}")
 
     def _switch_to_safe_mode(self):
         logger.warning("Switched to SAFE MODE due to an error.")
