@@ -6339,6 +6339,9 @@ class OrionApp(App):
                 return
 
             low_cmd = cmd.lower()
+            # Allow both `openai.key` and `openai key` spelling.
+            if low_cmd.startswith("openai") and " " in low_cmd and "." not in low_cmd:
+                low_cmd = low_cmd.replace(" ", ".")
             if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"}:
                 prompt = I18N.bidi(
                     "Paste OpenAI API key. Stored only in backend memory until restart.",
