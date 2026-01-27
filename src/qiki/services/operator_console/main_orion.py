@@ -150,6 +150,7 @@ class ConfirmDialog(ModalScreen[bool]):
 
 
 class SecretInputDialog(ModalScreen[str | None]):
+    AUTO_FOCUS = "#secret-input"
     DEFAULT_CSS = """
     SecretInputDialog {
         align: center middle;
@@ -182,7 +183,6 @@ class SecretInputDialog(ModalScreen[str | None]):
         Binding("escape", "cancel", "Cancel/Отмена", show=False),
         Binding("enter", "submit", "Submit/Отправить", show=False),
         Binding("ctrl+w", "cancel", "Cancel/Отмена", show=False),
-        Binding("ctrl+s", "submit", "Submit/Отправить", show=False),
         Binding("tab", "focus_next", "Next field/Далее", show=False),
         Binding("shift+tab", "focus_previous", "Prev field/Назад", show=False),
     ]
@@ -198,8 +198,8 @@ class SecretInputDialog(ModalScreen[str | None]):
             yield Static(self._prompt, id="secret-prompt")
             yield Static(
                 I18N.bidi(
-                    "Esc/Ctrl+W to cancel; Enter/Ctrl+S to save",
-                    "Esc/Ctrl+W — отмена; Enter/Ctrl+S — сохранить",
+                    "Esc/Ctrl+W to cancel; Enter to save",
+                    "Esc/Ctrl+W — отмена; Enter — сохранить",
                 )
             )
             yield Input(placeholder="sk-...", password=True, id="secret-input")
@@ -209,10 +209,13 @@ class SecretInputDialog(ModalScreen[str | None]):
 
     def on_mount(self) -> None:
         # Ensure the secret input is focused; otherwise typing appears to do nothing.
-        try:
-            self.set_focus(self.query_one("#secret-input", Input))
-        except Exception:
-            pass
+        def _focus() -> None:
+            try:
+                self.set_focus(self.query_one("#secret-input", Input))
+            except Exception:
+                return
+
+        self.call_after_refresh(_focus)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -3817,6 +3820,13 @@ class OrionApp(App):
                 yield OrionKeybar(id="orion-keybar")
 
     async def on_mount(self) -> None:
+        # Capture any stray print() output from dependencies.
+        # Direct stdout/stderr writes can corrupt full-screen TUIs in some terminals.
+        try:
+            self.begin_capture_print(self, stdout=True, stderr=True)
+        except Exception:
+            pass
+
         # Cold-boot splash (no-mocks): it will render only proven statuses (NATS, BIOS event).
         self.push_screen(BootScreen(), callback=self._on_boot_complete)
         self.action_show_screen("system")
@@ -3838,6 +3848,7 @@ class OrionApp(App):
         self._update_system_snapshot()
         self._update_command_placeholder()
         self._apply_output_layout()
+
         self._refresh_inspector()
         self._apply_responsive_chrome()
         await self._init_nats()
@@ -3852,6 +3863,16 @@ class OrionApp(App):
             pass
         except Exception:
             pass
+
+    def on_print(self, event: events.Print) -> None:
+        # Default: drop captured print output to avoid redraw jitter.
+        # If needed for debugging, set ORION_PRINT_TO_CONSOLE=1.
+        if os.getenv("ORION_PRINT_TO_CONSOLE", "0") != "1":
+            return
+        text = (event.text or "").rstrip("\n")
+        if text:
+            prefix = "STDERR" if event.stderr else "STDOUT"
+            self._console_log(f"{prefix}> {text}", level="warning" if event.stderr else "info")
 
     def _on_boot_complete(self, result: bool) -> None:
         # Boot screen is informational; even on failure we proceed (no-mocks: values will stay N/A).
@@ -6351,7 +6372,48 @@ class OrionApp(App):
             # Allow both `openai.key` and `openai key` spelling.
             if low_cmd.startswith("openai") and " " in low_cmd and "." not in low_cmd:
                 low_cmd = low_cmd.replace(" ", ".")
-            if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"}:
+            key_inline: str | None = None
+            if (
+                low_cmd.startswith("openai.key")
+                or low_cmd.startswith("openai.api_key")
+                or low_cmd.startswith("openai.apikey")
+            ):
+                # Support: `S: openai.key <key>`
+                parts = cmd.split(maxsplit=1)
+                if len(parts) == 2 and parts[1].strip():
+                    key_inline = parts[1].strip()
+
+            if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"} or key_inline is not None:
+                api_key_inline = key_inline
+                if api_key_inline is not None:
+                    # Set key from command line; do not echo the key.
+                    payload = {"op": "set_key", "api_key": api_key_inline, "ts_epoch_ms": int(time.time() * 1000)}
+                    try:
+                        acked = False
+                        if self.nats_client.nc is not None:
+                            try:
+                                msg = await self.nats_client.nc.request(
+                                    OPENAI_API_KEY_UPDATE,
+                                    json.dumps(payload).encode("utf-8"),
+                                    timeout=1.5,
+                                )
+                                data = json.loads(msg.data.decode("utf-8"))
+                                acked = bool(isinstance(data, dict) and data.get("ok"))
+                            except Exception:
+                                acked = False
+                        else:
+                            await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
+                        self._console_log(
+                            f"{I18N.bidi('OpenAI key set', 'OpenAI ключ установлен')}{' (ACK)' if acked else ''}",
+                            level="info" if acked else "warning",
+                        )
+                    except Exception as exc:
+                        self._console_log(
+                            f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
+                            level="warning",
+                        )
+                    return
+
                 prompt = I18N.bidi(
                     "Paste OpenAI API key. Stored only in backend memory until restart.",
                     "Вставьте OpenAI API ключ. Хранится только в памяти backend до перезапуска.",

@@ -19,7 +19,7 @@ services:
       - GRPC_PORT=50051
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
-      - TERM=xterm-256color
+      - TERM=${TERM:-xterm-256color}
       - OPERATOR_CONSOLE_COMMAND_MAX_CHARS=1024
       # BootScreen tuning (no-mocks): visual delay only (no fake OK/%).
       # Set higher (e.g. 10–20s) when you want the boot sequence to be observable in tmux.
