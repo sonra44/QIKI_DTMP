@@ -4100,7 +4100,10 @@ class OrionApp(App):
         power_rows = [
             (I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
             (I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
-            (I18N.bidi("Power output", "Выходная мощность"), I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1)),
+            (
+                I18N.bidi("Power output", "Выходная мощность"),
+                I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
+            ),
             (I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
             (I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
             (I18N.bidi("Battery", "Батарея"), I18N.pct(get("battery"), digits=2)),
@@ -4120,8 +4123,14 @@ class OrionApp(App):
             (I18N.bidi("Bus", "Шина"), I18N.num_unit(thermal_node("bus"), "°C", "°C", digits=1)),
             (I18N.bidi("Battery", "Батарея"), I18N.num_unit(thermal_node("battery"), "°C", "°C", digits=1)),
             (I18N.bidi("Radiator", "Радиатор"), I18N.num_unit(thermal_node("radiator"), "°C", "°C", digits=1)),
-            (I18N.bidi("External temperature", "Наружная температура"), I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1)),
-            (I18N.bidi("Core temperature", "Температура ядра"), I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1)),
+            (
+                I18N.bidi("External temperature", "Наружная температура"),
+                I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1),
+            ),
+            (
+                I18N.bidi("Core temperature", "Температура ядра"),
+                I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1),
+            ),
         ]
 
         struct_rows = [
@@ -4130,7 +4139,10 @@ class OrionApp(App):
                 I18N.bidi("Radiation", "Радиация"),
                 I18N.num_unit(get("radiation_usvh"), "µSv/h", "мкЗв/ч", digits=2),
             ),
-            (I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"), I18N.pct(get("cpu_usage"), digits=1)),
+            (
+                I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"),
+                I18N.pct(get("cpu_usage"), digits=1),
+            ),
             (I18N.bidi("Memory usage", "Загрузка памяти"), I18N.pct(get("memory_usage"), digits=1)),
         ]
 
