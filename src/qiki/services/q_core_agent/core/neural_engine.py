@@ -1,5 +1,7 @@
 import os
 from typing import Any, Dict, List, Literal, TYPE_CHECKING
+
+import logging
 from .interfaces import INeuralEngine
 from .agent_logger import logger
 
@@ -133,6 +135,14 @@ class NeuralEngine(INeuralEngine):
             return proposals
 
         for llm_proposal in response_model.proposals:
+            try:
+                proposal_type = ProposalTypeEnum[llm_proposal.type]
+            except KeyError:
+                logging.getLogger(__name__).warning(
+                    "Unknown proposal type '%s' from LLM, defaulting to PLANNING",
+                    llm_proposal.type,
+                )
+                proposal_type = ProposalTypeEnum.PLANNING
             proposals.append(
                 Proposal(
                     proposal_id=uuid4(),
@@ -141,7 +151,7 @@ class NeuralEngine(INeuralEngine):
                     justification=f"{llm_proposal.title}: {llm_proposal.justification}",
                     priority=llm_proposal.priority,
                     confidence=llm_proposal.confidence,
-                    type=getattr(ProposalTypeEnum, llm_proposal.type, ProposalTypeEnum.PLANNING),
+                    type=proposal_type,
                 )
             )
 

@@ -6318,7 +6318,7 @@ class OrionApp(App):
                         {"api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)},
                     )
                     self._console_log(
-                        f"{I18N.bidi('OpenAI key sent', 'OpenAI ключ отправлен')}: len={len(api_key)}",
+                        f"{I18N.bidi('OpenAI key sent', 'OpenAI ключ отправлен')}",
                         level="info",
                     )
                 except Exception as exc:
