@@ -33,6 +33,9 @@ RESPONSES_CONTROL = "qiki.responses.control"
 QIKI_INTENTS = "qiki.intents"
 QIKI_RESPONSES = "qiki.responses.qiki"
 
+# Secrets / runtime configuration subjects
+OPENAI_API_KEY_UPDATE = "qiki.secrets.v1.openai_api_key"
+
 # Events subjects
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"
 EVENTS_AUDIT = "qiki.events.v1.audit"

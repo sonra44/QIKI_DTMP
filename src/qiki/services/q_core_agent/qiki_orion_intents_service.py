@@ -23,6 +23,7 @@ from qiki.shared.models.qiki_chat import (
     QikiReplyV1,
 )
 from qiki.shared.nats_subjects import QIKI_INTENTS, QIKI_RESPONSES
+from qiki.shared.nats_subjects import OPENAI_API_KEY_UPDATE
 
 
 def _now_iso() -> str:
@@ -100,6 +101,21 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
         max_reconnect_attempts=-1,
     )
     logger.info("QIKI intents listener connected: %s", nats_url)
+
+    async def secrets_handler(msg) -> None:
+        # Runtime secret update. Do not log the key.
+        try:
+            payload = json.loads(msg.data.decode("utf-8"))
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        key = payload.get("api_key")
+        if isinstance(key, str):
+            os.environ["OPENAI_API_KEY"] = key.strip()
+            logger.info("Received OpenAI API key update (len=%d)", len(os.environ.get("OPENAI_API_KEY", "")))
+
+    await nc.subscribe(OPENAI_API_KEY_UPDATE, cb=secrets_handler)
 
     async def handler(msg) -> None:
         payload: Any

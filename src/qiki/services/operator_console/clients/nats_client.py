@@ -30,11 +30,11 @@ from qiki.shared.nats_subjects import (
 
 class NATSClient:
     """Async NATS client for telemetry subscription."""
-    
+
     def __init__(self, url: Optional[str] = None):
         """
         Initialize NATS client.
-        
+
         Args:
             url: NATS server URL, defaults to env var NATS_URL
         """
@@ -44,7 +44,7 @@ class NATSClient:
         self.js: Optional[JetStreamContext] = None
         self.subscriptions: Dict[str, Any] = {}
         self.callbacks: Dict[str, Callable[[Dict[str, Any]], Any]] = {}
-        
+
     async def connect(self) -> None:
         """Connect to NATS server and initialize JetStream."""
         try:
@@ -59,127 +59,106 @@ class NATSClient:
         except (NoServersError, TimeoutError) as e:
             print(f"Failed to connect to NATS: {e}")
             raise
-            
+
     async def disconnect(self) -> None:
         """Disconnect from NATS server."""
         if self.nc:
             await self.nc.drain()
             await self.nc.close()
             print("Disconnected from NATS")
-            
+
     async def subscribe_radar_sr(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to short-range radar stream.
-        
+
         Args:
             callback: Function to call with radar data
         """
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
-            
+
         self.callbacks["RADAR_SR"] = callback
-        
+
         async def message_handler(msg):
             """Handle incoming radar messages."""
             try:
                 data = json.loads(msg.data.decode())
-                await callback({
-                    "stream": "RADAR_SR",
-                    "timestamp": datetime.now().isoformat(),
-                    "data": data
-                })
+                await callback({"stream": "RADAR_SR", "timestamp": datetime.now().isoformat(), "data": data})
                 await msg.ack()
             except Exception as e:
                 print(f"Error processing RADAR_SR message: {e}")
-                
+
         # Subscribe to the stream
         try:
             subject = os.getenv("RADAR_SR_SUBJECT", RADAR_TRACKS_SR)
             sub = await self.js.subscribe(
-                subject,
-                cb=message_handler,
-                durable=OPERATOR_CONSOLE_RADAR_SR_DURABLE,
-                manual_ack=True
+                subject, cb=message_handler, durable=OPERATOR_CONSOLE_RADAR_SR_DURABLE, manual_ack=True
             )
             self.subscriptions["RADAR_SR"] = sub
             print(f"Subscribed to RADAR_SR stream: {subject}")
         except Exception as e:
             print(f"Failed to subscribe to RADAR_SR: {e}")
             raise
-            
+
     async def subscribe_radar_lr(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to long-range radar stream.
-        
+
         Args:
             callback: Function to call with radar data
         """
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
-            
+
         self.callbacks["RADAR_LR"] = callback
-        
+
         async def message_handler(msg):
             """Handle incoming radar messages."""
             try:
                 data = json.loads(msg.data.decode())
-                await callback({
-                    "stream": "RADAR_LR",
-                    "timestamp": datetime.now().isoformat(),
-                    "data": data
-                })
+                await callback({"stream": "RADAR_LR", "timestamp": datetime.now().isoformat(), "data": data})
                 await msg.ack()
             except Exception as e:
                 print(f"Error processing RADAR_LR message: {e}")
-                
+
         # Subscribe to the stream
         try:
             subject = os.getenv("RADAR_LR_SUBJECT", RADAR_FRAMES_LR)
             sub = await self.js.subscribe(
-                subject,
-                cb=message_handler,
-                durable=OPERATOR_CONSOLE_RADAR_LR_DURABLE,
-                manual_ack=True
+                subject, cb=message_handler, durable=OPERATOR_CONSOLE_RADAR_LR_DURABLE, manual_ack=True
             )
             self.subscriptions["RADAR_LR"] = sub
             print(f"Subscribed to RADAR_LR stream: {subject}")
         except Exception as e:
             print(f"Failed to subscribe to RADAR_LR: {e}")
             raise
-            
+
     async def subscribe_tracks(self, callback: Callable[[Dict], Awaitable[None]]) -> None:
         """
         Subscribe to radar tracks stream.
-        
+
         Args:
             callback: Function to call with track data
         """
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
-            
+
         self.callbacks["TRACKS"] = callback
-        
+
         async def message_handler(msg):
             """Handle incoming track messages."""
             try:
                 data = json.loads(msg.data.decode())
-                await callback({
-                    "stream": "TRACKS",
-                    "timestamp": datetime.now().isoformat(),
-                    "data": data
-                })
+                await callback({"stream": "TRACKS", "timestamp": datetime.now().isoformat(), "data": data})
                 await msg.ack()
             except Exception as e:
                 print(f"Error processing TRACKS message: {e}")
-                
+
         # Subscribe to the stream
         try:
             subject = os.getenv("RADAR_TRACKS_SUBJECT", RADAR_TRACKS)
             sub = await self.js.subscribe(
-                subject,
-                cb=message_handler,
-                durable=OPERATOR_CONSOLE_TRACKS_DURABLE,
-                manual_ack=True
+                subject, cb=message_handler, durable=OPERATOR_CONSOLE_TRACKS_DURABLE, manual_ack=True
             )
             self.subscriptions["TRACKS"] = sub
             print(f"Subscribed to TRACKS stream: {subject}")
@@ -247,23 +226,24 @@ class NATSClient:
         except Exception as e:
             print(f"Failed to subscribe to EVENTS: {e}")
             raise
-            
+
     async def publish_command(self, subject: str, command: Dict[str, Any]) -> None:
         """
         Publish command to NATS.
-        
+
         Args:
             subject: NATS subject to publish to
             command: Command data to publish
         """
         if not self.nc:
             raise RuntimeError("Not connected to NATS")
-            
+
         try:
             # `command` can include UUID/datetime values from Pydantic models.
             payload = json.dumps(command, default=str).encode()
             await self.nc.publish(subject, payload)
-            print(f"Published command to {subject}: {command}")
+            # Never print full payloads here: may include secrets.
+            print(f"Published command to {subject}")
         except Exception as e:
             print(f"Failed to publish command: {e}")
             raise
@@ -329,19 +309,19 @@ class NATSClient:
         except Exception as e:
             print(f"Failed to subscribe to QIKI_RESPONSES: {e}")
             raise
-            
+
     async def get_jetstream_info(self) -> Dict[str, Any]:
         """Get JetStream account info."""
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
-            
+
         try:
             info = await self.js.account_info()
             return {
                 "memory": info.memory,
                 "storage": info.storage,
                 "streams": info.streams,
-                "consumers": info.consumers
+                "consumers": info.consumers,
             }
         except Exception as e:
             print(f"Error getting JetStream info: {e}")
@@ -352,27 +332,27 @@ class NATSClient:
 async def test_client():
     """Test NATS client functionality."""
     client = NATSClient()
-    
+
     async def radar_callback(data):
         print(f"Received radar data: {data}")
-        
+
     async def track_callback(data):
         print(f"Received track data: {data}")
-        
+
     try:
         await client.connect()
-        
+
         # Get JetStream info
         info = await client.get_jetstream_info()
         print(f"JetStream info: {info}")
-        
+
         # Subscribe to streams
         await client.subscribe_radar_sr(radar_callback)
         await client.subscribe_tracks(track_callback)
-        
+
         # Keep running for a while
         await asyncio.sleep(10)
-        
+
     finally:
         await client.disconnect()
 

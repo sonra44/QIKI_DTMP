@@ -65,23 +65,27 @@ class NeuralEngine(INeuralEngine):
 
         self._openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self._openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
-        self._openai_base_url = os.getenv(
-            "OPENAI_BASE_URL", "https://api.openai.com/v1"
-        ).strip()
+        self._openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
         self._openai_timeout_s = float(os.getenv("OPENAI_TIMEOUT_S", "20"))
-        self._openai_max_output_tokens = int(
-            os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "500")
-        )
+        self._openai_max_output_tokens = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "500"))
         self._openai_max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "3"))
         self._openai_temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
 
-        logger.info(
-            f"NeuralEngine initialized. Mock proposals enabled: {self.mock_neural_proposals_enabled}"
-        )
+        logger.info(f"NeuralEngine initialized. Mock proposals enabled: {self.mock_neural_proposals_enabled}")
 
     def generate_proposals(self, context: "AgentContext") -> List[Proposal]:
         logger.debug("Generating proposals from Neural Engine.")
         proposals: List[Proposal] = []
+
+        # Read OpenAI config from environment on each call so it can be updated at runtime
+        # (e.g. operator sets API key from ORION).
+        self._openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        self._openai_model = os.getenv("OPENAI_MODEL", self._openai_model).strip()
+        self._openai_base_url = os.getenv("OPENAI_BASE_URL", self._openai_base_url).strip()
+        self._openai_timeout_s = float(os.getenv("OPENAI_TIMEOUT_S", str(self._openai_timeout_s)))
+        self._openai_max_output_tokens = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", str(self._openai_max_output_tokens)))
+        self._openai_max_retries = int(os.getenv("OPENAI_MAX_RETRIES", str(self._openai_max_retries)))
+        self._openai_temperature = float(os.getenv("OPENAI_TEMPERATURE", str(self._openai_temperature)))
 
         if self.mock_neural_proposals_enabled:
             mock_proposal = Proposal(
@@ -137,17 +141,13 @@ class NeuralEngine(INeuralEngine):
                     justification=f"{llm_proposal.title}: {llm_proposal.justification}",
                     priority=llm_proposal.priority,
                     confidence=llm_proposal.confidence,
-                    type=getattr(
-                        ProposalTypeEnum, llm_proposal.type, ProposalTypeEnum.PLANNING
-                    ),
+                    type=getattr(ProposalTypeEnum, llm_proposal.type, ProposalTypeEnum.PLANNING),
                 )
             )
 
         return proposals
 
-    def _generate_openai_proposals(
-        self, context: "AgentContext"
-    ) -> _LLMProposalsResponseV1:
+    def _generate_openai_proposals(self, context: "AgentContext") -> _LLMProposalsResponseV1:
         client = OpenAIResponsesClient(
             api_key=self._openai_api_key,
             model=self._openai_model,
@@ -195,9 +195,6 @@ class NeuralEngine(INeuralEngine):
         return {
             "bios_status": _dump(getattr(context, "bios_status", None)),
             "fsm_state": _dump(getattr(context, "fsm_state", None)),
-            "guard_events": [
-                _dump(event)
-                for event in (getattr(context, "guard_events", None) or [])[:20]
-            ],
+            "guard_events": [_dump(event) for event in (getattr(context, "guard_events", None) or [])[:20]],
             "world_snapshot": _dump(getattr(context, "world_snapshot", None)),
         }

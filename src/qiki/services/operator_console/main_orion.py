@@ -32,7 +32,7 @@ from qiki.services.operator_console.ui.profile_panel import ProfilePanel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, QIKI_INTENTS
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, OPENAI_API_KEY_UPDATE, QIKI_INTENTS
 
 try:
     import yaml
@@ -147,6 +147,69 @@ class ConfirmDialog(ModalScreen[bool]):
             self.dismiss(True)
         elif event.button.id == "confirm-no":
             self.dismiss(False)
+
+
+class SecretInputDialog(ModalScreen[str | None]):
+    DEFAULT_CSS = """
+    SecretInputDialog {
+        align: center middle;
+    }
+    #secret-dialog {
+        width: 78;
+        padding: 1 2;
+        border: round #ffb000;
+        background: #050505;
+    }
+    #secret-title {
+        padding: 0 0 1 0;
+        color: #ffb000;
+    }
+    #secret-prompt {
+        padding: 0 0 1 0;
+        color: #ffffff;
+    }
+    #secret-actions {
+        height: 3;
+        align: center middle;
+    }
+    #secret-actions Button {
+        margin: 0 1;
+        width: 16;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel/Отмена", show=False),
+        Binding("enter", "submit", "Submit/Отправить", show=False),
+    ]
+
+    def __init__(self, *, title: str, prompt: str) -> None:
+        super().__init__()
+        self._title = title
+        self._prompt = prompt
+
+    def compose(self) -> ComposeResult:
+        with Container(id="secret-dialog"):
+            yield Static(self._title, id="secret-title")
+            yield Static(self._prompt, id="secret-prompt")
+            yield Input(placeholder="sk-...", password=True, id="secret-input")
+            with Horizontal(id="secret-actions"):
+                yield Button(I18N.bidi("Save", "Сохранить"), id="secret-ok", variant="primary")
+                yield Button(I18N.bidi("Cancel", "Отмена"), id="secret-cancel")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_submit(self) -> None:
+        value = (self.query_one("#secret-input", Input).value or "").strip()
+        self.dismiss(value or None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "secret-cancel":
+            self.dismiss(None)
+        elif event.button.id == "secret-ok":
+            value = (self.query_one("#secret-input", Input).value or "").strip()
+            self.dismiss(value or None)
 
 
 class BootLog(Static):
@@ -6222,6 +6285,47 @@ class OrionApp(App):
                     f"{I18N.bidi('System command', 'Системная команда')}: {I18N.bidi('empty', 'пусто')}",
                     level="info",
                 )
+                return
+
+            low_cmd = cmd.lower()
+            if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"}:
+                prompt = I18N.bidi(
+                    "Paste OpenAI API key (not saved to disk)",
+                    "Вставьте OpenAI API ключ (не сохраняется на диск)",
+                )
+
+                done: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
+
+                def after(value: str | None) -> None:
+                    if not done.done():
+                        done.set_result(value)
+
+                self.push_screen(
+                    SecretInputDialog(
+                        title=I18N.bidi("OpenAI API Key", "OpenAI API ключ"),
+                        prompt=prompt,
+                    ),
+                    after,
+                )
+
+                api_key = await done
+                if not api_key:
+                    self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
+                    return
+                try:
+                    await self.nats_client.publish_command(
+                        OPENAI_API_KEY_UPDATE,
+                        {"api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)},
+                    )
+                    self._console_log(
+                        f"{I18N.bidi('OpenAI key sent', 'OpenAI ключ отправлен')}: len={len(api_key)}",
+                        level="info",
+                    )
+                except Exception as exc:
+                    self._console_log(
+                        f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
+                        level="warning",
+                    )
                 return
 
         is_qiki, qiki_text = self._parse_qiki_intent(cmd)
