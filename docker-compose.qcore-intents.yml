@@ -1,0 +1,38 @@
+services:
+  # Q-Core intent handler (ORION QIKI protocol) - proposals-only.
+  # Run together with phase1 compose:
+  #   docker compose -f docker-compose.phase1.yml -f docker-compose.qcore-intents.yml up -d --build
+  q-core-intents:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-qcore-intents-phase1
+    volumes:
+      - .:/workspace
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+      q-sim-service:
+        condition: service_healthy
+      q-bios-service:
+        condition: service_healthy
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - NATS_URL=nats://nats:4222
+      - QIKI_INTENTS_SUBJECT=qiki.intents
+      - QIKI_RESPONSES_SUBJECT=qiki.responses.qiki
+      # Optional OpenAI config (disabled unless OPENAI_API_KEY is set)
+      - OPENAI_MODEL=openai/gpt-5.2
+    command: python -m qiki.services.q_core_agent.qiki_orion_intents_service
+    restart: on-failure
+
+  # Disable QIKI intent handling in faststream-bridge to avoid double replies.
+  faststream-bridge:
+    environment:
+      - QIKI_INTENTS_SUBJECT=qiki.intents.faststream_disabled

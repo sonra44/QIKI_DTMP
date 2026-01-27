@@ -142,8 +142,12 @@ def _parse_mode_change(text: str) -> QikiMode | None:
     return None
 
 
-@broker.subscriber(QIKI_INTENTS)
-@broker.publisher(QIKI_RESPONSES)
+_QIKI_INTENTS_SUBJECT = os.getenv("QIKI_INTENTS_SUBJECT", QIKI_INTENTS)
+_QIKI_RESPONSES_SUBJECT = os.getenv("QIKI_RESPONSES_SUBJECT", QIKI_RESPONSES)
+
+
+@broker.subscriber(_QIKI_INTENTS_SUBJECT)
+@broker.publisher(_QIKI_RESPONSES_SUBJECT)
 async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
     """Handle operator intent and return a strictly validated QikiChatResponseV1."""
     payload = msg if isinstance(msg, dict) else {}

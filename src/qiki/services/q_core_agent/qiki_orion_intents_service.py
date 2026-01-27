@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 from qiki.services.q_core_agent.core.agent import QCoreAgent
 from qiki.services.q_core_agent.core.agent_logger import logger, setup_logging
 from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
-from qiki.services.q_core_agent.core.tick_orchestrator import TickOrchestrator
 from qiki.shared.config_models import QCoreAgentConfig, load_config
 from qiki.shared.models.core import Proposal
 from qiki.shared.models.qiki_chat import (
@@ -72,14 +71,16 @@ def _build_invalid_request_response(*, raw_request_id: str | None, mode: QikiMod
     )
 
 
-async def _run_tick_loop(*, agent: QCoreAgent, orchestrator: TickOrchestrator, data_provider: GrpcDataProvider) -> None:
-    tick_s = float(agent.config.tick_interval)
-    while True:
-        await orchestrator.run_tick_async(data_provider)
-        await asyncio.sleep(tick_s)
+def _refresh_agent_snapshot(*, agent: QCoreAgent, data_provider: GrpcDataProvider) -> None:
+    """Refresh context and proposals without executing actuator actions."""
+    agent.context.update_from_provider(data_provider)
+    agent._ingest_sensor_data(data_provider)
+    agent._handle_bios()
+    agent._handle_fsm()
+    agent._evaluate_proposals()
 
 
-async def _run_orion_intents_loop(*, agent: QCoreAgent) -> None:
+async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataProvider) -> None:
     try:
         import nats
     except Exception as exc:  # pragma: no cover
@@ -89,6 +90,8 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent) -> None:
     intents_subject = os.getenv("QIKI_INTENTS_SUBJECT", QIKI_INTENTS)
     responses_subject = os.getenv("QIKI_RESPONSES_SUBJECT", QIKI_RESPONSES)
     mode = QikiMode(os.getenv("QIKI_MODE", QikiMode.FACTORY.value))
+
+    snapshot_lock = asyncio.Lock()
 
     nc = await nats.connect(
         servers=[nats_url],
@@ -115,7 +118,13 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent) -> None:
             await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
             return
 
-        # Ensure the agent context is reasonably fresh at the time we answer.
+        # Best-effort: refresh context right before answering.
+        async with snapshot_lock:
+            try:
+                _refresh_agent_snapshot(agent=agent, data_provider=data_provider)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to refresh agent snapshot: %s", exc)
+
         proposals = list(agent.context.proposals or [])
         top = [_proposal_to_qiki(p) for p in proposals[:3]]
 
@@ -155,12 +164,7 @@ async def main_async() -> None:
     config = load_config(config_path, QCoreAgentConfig)
     agent = QCoreAgent(config)
     data_provider = GrpcDataProvider(config.grpc_server_address)
-    orchestrator = TickOrchestrator(agent, config, state_store=None)
-
-    await asyncio.gather(
-        _run_tick_loop(agent=agent, orchestrator=orchestrator, data_provider=data_provider),
-        _run_orion_intents_loop(agent=agent),
-    )
+    await _run_orion_intents_loop(agent=agent, data_provider=data_provider)
 
 
 def main() -> None:
