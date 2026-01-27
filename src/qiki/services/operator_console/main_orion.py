@@ -1191,6 +1191,9 @@ class OrionApp(App):
         *(Binding(app.hotkey, f"show_screen('{app.screen}')", app.title) for app in ORION_APPS),
         Binding("tab", "cycle_focus", I18N.bidi("Tab focus", "Таб фокус")),
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
+        Binding("ctrl+up", "output_grow", I18N.bidi("Output +", "Вывод +"), show=False),
+        Binding("ctrl+down", "output_shrink", I18N.bidi("Output -", "Вывод -"), show=False),
+        Binding("ctrl+0", "output_reset", I18N.bidi("Output reset", "Вывод сброс"), show=False),
         Binding("ctrl+y", "toggle_events_live", "Events live or pause/События живое или пауза"),
         Binding("ctrl+i", "toggle_inspector", "Inspector toggle/Инспектор вкл/выкл"),
         Binding(
@@ -1258,6 +1261,7 @@ class OrionApp(App):
         self._qiki_mode: str = I18N.NA
         self._bios_loaded_announced: bool = False
         self._bios_first_status_ts_epoch: Optional[float] = None
+
         self._summary_by_key: dict[str, dict[str, Any]] = {}
         self._power_by_key: dict[str, dict[str, Any]] = {}
         self._sensors_by_key: dict[str, dict[str, Any]] = {}
@@ -1315,6 +1319,12 @@ class OrionApp(App):
                 self._bottom_bar_height_override = max(7, int(raw_bottom_bar_height))
         except Exception:
             self._bottom_bar_height_override = None
+
+        # Output zone sizing (user-adjustable). Start from env override (if set), else CSS default (8).
+        base_out = self._output_height_override if self._output_height_override is not None else 8
+        self._output_height_rows = int(max(3, min(40, base_out)))
+        self._output_height_default_rows = int(self._output_height_rows)
+
         self._ppi_renderer = (
             None
             if PpiScopeRenderer is None
@@ -1326,6 +1336,38 @@ class OrionApp(App):
         )
         self._update_system_snapshot()
         self._load_incident_rules(initial=True)
+
+    def _apply_output_layout(self) -> None:
+        """Apply current output height to the bottom bar.
+
+        Bottom bar height = output + command input (3) + keybar (1).
+        """
+        try:
+            output = self.query_one("#command-output-log", RichLog)
+            bottom = self.query_one("#bottom-bar", Vertical)
+        except Exception:
+            return
+
+        term_h = int(getattr(getattr(self, "size", None), "height", 0) or 0)
+        max_out = 40
+        if term_h:
+            max_out = max(3, min(40, int(term_h * 0.6)))
+
+        self._output_height_rows = max(3, min(max_out, int(self._output_height_rows)))
+        output.styles.height = int(self._output_height_rows)
+        bottom.styles.height = int(self._output_height_rows + 4)
+
+    def action_output_grow(self) -> None:
+        self._output_height_rows += 1
+        self._apply_output_layout()
+
+    def action_output_shrink(self) -> None:
+        self._output_height_rows -= 1
+        self._apply_output_layout()
+
+    def action_output_reset(self) -> None:
+        self._output_height_rows = int(self._output_height_default_rows)
+        self._apply_output_layout()
 
     def _update_system_snapshot(self) -> None:
         now = time.time()
@@ -3778,6 +3820,7 @@ class OrionApp(App):
         self._seed_rules_table()
         self._update_system_snapshot()
         self._update_command_placeholder()
+        self._apply_output_layout()
         self._refresh_inspector()
         self._apply_responsive_chrome()
         await self._init_nats()
