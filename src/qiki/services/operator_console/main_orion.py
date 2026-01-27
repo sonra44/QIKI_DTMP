@@ -6414,62 +6414,15 @@ class OrionApp(App):
                         )
                     return
 
-                prompt = I18N.bidi(
-                    "Paste OpenAI API key. Stored only in backend memory until restart.",
-                    "Вставьте OpenAI API ключ. Хранится только в памяти backend до перезапуска.",
-                )
-
-                done: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
-
-                def after(value: str | None) -> None:
-                    if not done.done():
-                        done.set_result(value)
-
-                self.push_screen(
-                    SecretInputDialog(
-                        title=I18N.bidi("OpenAI API Key", "OpenAI API ключ"),
-                        prompt=prompt,
+                # Dialog-based entry is unreliable in some terminal clients.
+                # Default to a simple, paste-friendly inline form.
+                self._console_log(
+                    I18N.bidi(
+                        "Usage: S: openai.key <api_key> (recommended). Example: S: openai.key sk-...",
+                        "Использование: S: openai.key <api_key> (рекомендуется). Пример: S: openai.key sk-...",
                     ),
-                    after,
+                    level="info",
                 )
-
-                api_key = await done
-                if not api_key:
-                    self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
-                    return
-                try:
-                    payload = {"op": "set_key", "api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)}
-
-                    acked = False
-                    if self.nats_client.nc is not None:
-                        try:
-                            msg = await self.nats_client.nc.request(
-                                OPENAI_API_KEY_UPDATE,
-                                json.dumps(payload).encode("utf-8"),
-                                timeout=1.5,
-                            )
-                            data = json.loads(msg.data.decode("utf-8"))
-                            acked = bool(isinstance(data, dict) and data.get("ok"))
-                        except Exception:
-                            acked = False
-                    else:
-                        await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
-
-                    if acked:
-                        self._console_log(
-                            f"{I18N.bidi('OpenAI key set (ACK)', 'OpenAI ключ установлен (ACK)')}",
-                            level="info",
-                        )
-                    else:
-                        self._console_log(
-                            f"{I18N.bidi('OpenAI key sent (no ACK)', 'OpenAI ключ отправлен (без ACK)')}",
-                            level="warning",
-                        )
-                except Exception as exc:
-                    self._console_log(
-                        f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
-                        level="warning",
-                    )
                 return
 
             if low_cmd in {"openai.status", "openai.check", "openai.ping"}:
