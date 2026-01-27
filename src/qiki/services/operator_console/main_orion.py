@@ -183,6 +183,8 @@ class SecretInputDialog(ModalScreen[str | None]):
         Binding("enter", "submit", "Submit/Отправить", show=False),
         Binding("ctrl+w", "cancel", "Cancel/Отмена", show=False),
         Binding("ctrl+s", "submit", "Submit/Отправить", show=False),
+        Binding("tab", "focus_next", "Next field/Далее", show=False),
+        Binding("shift+tab", "focus_previous", "Prev field/Назад", show=False),
     ]
 
     def __init__(self, *, title: str, prompt: str) -> None:
