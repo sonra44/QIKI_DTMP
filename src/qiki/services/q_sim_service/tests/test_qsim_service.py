@@ -8,6 +8,8 @@ from qiki.shared.models.core import CommandMessage, MessageMetadata
 from generated.q_sim_api_pb2 import HealthCheckRequest, HealthCheckResponse
 from generated.sensor_raw_in_pb2 import SensorReading
 
+RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
+
 
 class _DummyCtx:
     """Mock context for gRPC servicer."""
@@ -71,7 +73,7 @@ def test_actuator_command_queue_is_cleared_each_tick() -> None:
     from generated.common_types_pb2 import Unit
 
     cmd = ActuatorCommand()
-    cmd.actuator_id.value = "rcs_port"
+    cmd.actuator_id.value = RCS_PORT_ID
     cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
     cmd.float_value = 10.0
     cmd.unit = Unit.PERCENT

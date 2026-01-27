@@ -165,6 +165,9 @@ class WorldModel:
         self._rcs_net_torque_nm: list[float] = [0.0, 0.0, 0.0]
         self._rcs_last_axis: str | None = None
 
+        self._actuator_role_by_id: dict[str, str] = {}
+        self._actuator_id_by_role: dict[str, str] = {}
+
         # Apply runtime profile from bot_config (single SoT).
         self._apply_bot_config(bot_config)
 
@@ -187,6 +190,22 @@ class WorldModel:
         hw = bot_config.get("hardware_profile")
         if not isinstance(hw, dict):
             return
+
+        self._actuator_role_by_id.clear()
+        self._actuator_id_by_role.clear()
+        actuators = hw.get("actuators")
+        if isinstance(actuators, list):
+            for item in actuators:
+                if not isinstance(item, dict):
+                    continue
+                raw_id = str(item.get("id") or "").strip()
+                role = str(item.get("role") or "").strip()
+                if not role:
+                    role = raw_id
+                if raw_id:
+                    self._actuator_role_by_id[raw_id] = role
+                    if role and role not in self._actuator_id_by_role:
+                        self._actuator_id_by_role[role] = raw_id
 
         if "power_capacity_wh" in hw:
             try:
@@ -310,13 +329,17 @@ class WorldModel:
         prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
         try:
             self._proximity_min_range_m = (
-                float(prox.get("min_range_m_init")) if self._proximity_enabled and prox.get("min_range_m_init") is not None else None
+                float(prox.get("min_range_m_init"))
+                if self._proximity_enabled and prox.get("min_range_m_init") is not None
+                else None
             )
         except Exception:
             self._proximity_min_range_m = None
         try:
             self._proximity_contacts = (
-                int(prox.get("contacts_init")) if self._proximity_enabled and prox.get("contacts_init") is not None else None
+                int(prox.get("contacts_init"))
+                if self._proximity_enabled and prox.get("contacts_init") is not None
+                else None
             )
         except Exception:
             self._proximity_contacts = None
@@ -324,7 +347,9 @@ class WorldModel:
         solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
         try:
             self._solar_illumination_pct = (
-                float(solar.get("illumination_pct_init")) if self._solar_enabled and solar.get("illumination_pct_init") is not None else None
+                float(solar.get("illumination_pct_init"))
+                if self._solar_enabled and solar.get("illumination_pct_init") is not None
+                else None
             )
         except Exception:
             self._solar_illumination_pct = None
@@ -476,9 +501,7 @@ class WorldModel:
             except Exception:
                 self._rcs_power_w_at_100pct = 0.0
             try:
-                self._rcs_heat_fraction_to_hull = max(
-                    0.0, min(1.0, float(pr.get("heat_fraction_to_hull", 0.0)))
-                )
+                self._rcs_heat_fraction_to_hull = max(0.0, min(1.0, float(pr.get("heat_fraction_to_hull", 0.0))))
             except Exception:
                 self._rcs_heat_fraction_to_hull = 0.0
             try:
@@ -673,11 +696,10 @@ class WorldModel:
         """
         Applies an actuator command to the world model, changing its state.
         """
-        logger.debug(
-            f"Applying command to WorldModel: {command.command_type} for {command.actuator_id.value}"
-        )
+        logger.debug(f"Applying command to WorldModel: {command.command_type} for {command.actuator_id.value}")
 
         actuator_id = getattr(getattr(command, "actuator_id", None), "value", "")
+        role = self._actuator_role_by_id.get(str(actuator_id), str(actuator_id))
         cmd_type = getattr(command, "command_type", None)
         which_value = None
         try:
@@ -698,7 +720,7 @@ class WorldModel:
                     return None
             return None
 
-        if actuator_id in ("motor_left", "motor_right"):
+        if role in ("motor_left", "motor_right"):
             if cmd_type in (ActuatorCommand.CommandType.SET_VELOCITY, "set_velocity_percent"):
                 pct = _as_pct()
                 if pct is None:
@@ -725,7 +747,7 @@ class WorldModel:
             "rcs_up": "up",
             "rcs_down": "down",
         }
-        axis = axis_map.get(str(actuator_id))
+        axis = axis_map.get(str(role))
         if axis and cmd_type == ActuatorCommand.CommandType.SET_VELOCITY:
             pct = _as_pct()
             if pct is None:
@@ -768,9 +790,7 @@ class WorldModel:
 
             self.position.x += dx
             self.position.y += dy
-            logger.debug(
-                f"WorldModel moved to ({self.position.x:.2f}, {self.position.y:.2f})"
-            )
+            logger.debug(f"WorldModel moved to ({self.position.x:.2f}, {self.position.y:.2f})")
 
         # Simple attitude model (6DOF): small oscillations + yaw follows heading.
         prev_roll = float(self.roll_rad)
@@ -813,7 +833,11 @@ class WorldModel:
         self.memory_usage = float(self._mcqpu.state.memory_usage_pct)
 
         # Power Plane (Supervisor + PDU + Supercaps) — deterministic, no-mocks.
-        self.power_faults = [f for f in self.power_faults if f.endswith("_MISSING") or f.endswith("_INVALID") or f.startswith("POWER_PLANE_PARAM_INVALID")]
+        self.power_faults = [
+            f
+            for f in self.power_faults
+            if f.endswith("_MISSING") or f.endswith("_INVALID") or f.startswith("POWER_PLANE_PARAM_INVALID")
+        ]
         self.power_shed_loads = []
         self.power_shed_reasons = []
         self.power_pdu_throttled = False
@@ -866,11 +890,7 @@ class WorldModel:
         motion_out = abs(self.speed) * self._motion_power_w_per_mps
         mcqpu_out = (float(self.cpu_usage) / 100.0) * self._mcqpu_power_w_at_100pct
         radar_out = self._radar_power_w if (self._radar_enabled and self.radar_allowed) else 0.0
-        xpdr_out = (
-            self._transponder_power_w
-            if (self._transponder_active and self.transponder_allowed)
-            else 0.0
-        )
+        xpdr_out = self._transponder_power_w if (self._transponder_active and self.transponder_allowed) else 0.0
         # RCS (thrusters) electrical load — simulation truth.
         rcs_out = self._rcs_step(delta_time)
 
@@ -893,13 +913,7 @@ class WorldModel:
                 self.power_shed_reasons.append("nbl_budget")
 
         power_out_wo_supercap = (
-            self._base_power_out_w
-            + motion_out
-            + mcqpu_out
-            + radar_out
-            + xpdr_out
-            + nbl_out
-            + rcs_out
+            self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out + rcs_out
         )
         power_in = self._base_power_in_w
 
@@ -943,13 +957,7 @@ class WorldModel:
                 self.power_shed_reasons.append("pdu_overcurrent")
 
             power_out_wo_supercap = (
-                self._base_power_out_w
-                + motion_out
-                + mcqpu_out
-                + radar_out
-                + xpdr_out
-                + nbl_out
-                + rcs_out
+                self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out + rcs_out
             )
             if power_out_wo_supercap > pdu_limit_w and motion_out > 0.0:
                 excess = power_out_wo_supercap - pdu_limit_w
@@ -958,13 +966,7 @@ class WorldModel:
                 self.power_pdu_throttled = True
                 self.power_throttled_loads.append("motion")
                 power_out_wo_supercap = (
-                    self._base_power_out_w
-                    + motion_out
-                    + mcqpu_out
-                    + radar_out
-                    + xpdr_out
-                    + nbl_out
-                    + rcs_out
+                    self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out + rcs_out
                 )
 
             # If still overcurrent, throttle RCS (virtual thrusters) before declaring fault.
@@ -979,13 +981,7 @@ class WorldModel:
                     self.power_pdu_throttled = True
                     self.power_throttled_loads.append("rcs")
                     power_out_wo_supercap = (
-                        self._base_power_out_w
-                        + motion_out
-                        + mcqpu_out
-                        + radar_out
-                        + xpdr_out
-                        + nbl_out
-                        + rcs_out
+                        self._base_power_out_w + motion_out + mcqpu_out + radar_out + xpdr_out + nbl_out + rcs_out
                     )
 
             if power_out_wo_supercap > pdu_limit_w:
@@ -1016,7 +1012,11 @@ class WorldModel:
                 self.power_in_w += float(discharge_w)
 
             self._supercap_energy_wh = max(0.0, min(self._supercap_capacity_wh, self._supercap_energy_wh))
-            self.supercap_soc_pct = 0.0 if self._supercap_capacity_wh <= 0.0 else (self._supercap_energy_wh / self._supercap_capacity_wh) * 100.0
+            self.supercap_soc_pct = (
+                0.0
+                if self._supercap_capacity_wh <= 0.0
+                else (self._supercap_energy_wh / self._supercap_capacity_wh) * 100.0
+            )
         else:
             self.supercap_soc_pct = 0.0
 
@@ -1105,7 +1105,11 @@ class WorldModel:
         for t in self._rcs_thrusters:
             d = t.direction.as_list()
             pos = t.position_m.as_list()
-            f = [float(d[0]) * float(t.f_max_newton), float(d[1]) * float(t.f_max_newton), float(d[2]) * float(t.f_max_newton)]
+            f = [
+                float(d[0]) * float(t.f_max_newton),
+                float(d[1]) * float(t.f_max_newton),
+                float(d[2]) * float(t.f_max_newton),
+            ]
             forces.append(f)
             torques.append(self._cross(pos, f))
 
@@ -1211,7 +1215,11 @@ class WorldModel:
             d = t.direction.as_list()
             pos = t.position_m.as_list()
             duty = duty_by_idx[idx]
-            f = [float(d[0]) * float(t.f_max_newton) * duty, float(d[1]) * float(t.f_max_newton) * duty, float(d[2]) * float(t.f_max_newton) * duty]
+            f = [
+                float(d[0]) * float(t.f_max_newton) * duty,
+                float(d[1]) * float(t.f_max_newton) * duty,
+                float(d[2]) * float(t.f_max_newton) * duty,
+            ]
             tau = self._cross(pos, f)
             net_f_avg[0] += f[0]
             net_f_avg[1] += f[1]
@@ -1296,6 +1304,7 @@ class WorldModel:
         """
         Returns the current state of the world model.
         """
+
         def _status_from_bool(ok: bool | None, *, enabled: bool, warn_on_false: bool = False) -> tuple[str, str]:
             if not enabled:
                 return ("na", "disabled")
@@ -1305,7 +1314,9 @@ class WorldModel:
                 return ("ok", "ok")
             return ("warn" if warn_on_false else "crit", "not ok")
 
-        def _status_from_limits(value: float | None, *, enabled: bool, warn: float | None, crit: float | None) -> tuple[str, str, dict | None]:
+        def _status_from_limits(
+            value: float | None, *, enabled: bool, warn: float | None, crit: float | None
+        ) -> tuple[str, str, dict | None]:
             if not enabled:
                 return ("na", "disabled", None)
             if value is None:
@@ -1442,8 +1453,12 @@ class WorldModel:
                 },
                 "star_tracker": {
                     "enabled": bool(self._star_tracker_enabled),
-                    "status": _status_from_bool(self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True)[0],
-                    "reason": _status_from_bool(self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True)[1],
+                    "status": _status_from_bool(
+                        self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True
+                    )[0],
+                    "reason": _status_from_bool(
+                        self._star_tracker_locked, enabled=bool(self._star_tracker_enabled), warn_on_false=True
+                    )[1],
                     "locked": self._star_tracker_locked,
                     "attitude_err_deg": self._star_tracker_attitude_err_deg,
                 },

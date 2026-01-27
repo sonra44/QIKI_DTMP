@@ -9,6 +9,9 @@ from qiki.shared.config.loaders import load_thrusters_config, thruster_allocatio
 from qiki.shared.config_models import QSimServiceConfig
 
 
+RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
+
+
 def test_thrusters_config_rank_is_6() -> None:
     thrusters = load_thrusters_config()
     assert len(thrusters) == 16
@@ -26,7 +29,7 @@ def test_rcs_command_consumes_propellant_and_emits_telemetry() -> None:
     assert propellant0 > 0.0
 
     cmd = ActuatorCommand()
-    cmd.actuator_id.value = "rcs_port"
+    cmd.actuator_id.value = RCS_PORT_ID
     cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
     cmd.float_value = 60.0
     cmd.unit = Unit.PERCENT
@@ -56,7 +59,7 @@ def test_rcs_timeout_zero_stops_immediately() -> None:
     propellant0 = float(prop0.get("propellant_kg", 0.0))
 
     cmd = ActuatorCommand()
-    cmd.actuator_id.value = "rcs_port"
+    cmd.actuator_id.value = RCS_PORT_ID
     cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
     cmd.float_value = 60.0
     cmd.unit = Unit.PERCENT

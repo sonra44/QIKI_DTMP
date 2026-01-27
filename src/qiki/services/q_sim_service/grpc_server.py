@@ -15,7 +15,12 @@ from generated.q_sim_api_pb2 import (
     GetSensorDataResponse,
     HealthCheckRequest,
     HealthCheckResponse,
+    SendActuatorCommandRequest,
+    SendActuatorCommandResponse,
+    GetRadarFrameRequest,
+    GetRadarFrameResponse,
 )
+from qiki.shared.converters.radar_proto_pydantic import model_frame_to_proto
 from generated.q_sim_api_pb2_grpc import (
     QSimAPIServiceServicer,
     add_QSimAPIServiceServicer_to_server,
@@ -38,6 +43,27 @@ class QSimAPIService(QSimAPIServiceServicer):
     ) -> GetSensorDataResponse:
         sensor_data = await self.sim_service.get_sensor_data()
         return GetSensorDataResponse(reading=sensor_data)
+
+    async def SendActuatorCommand(
+        self, request: SendActuatorCommandRequest, context: grpc.aio.ServicerContext
+    ) -> SendActuatorCommandResponse:
+        try:
+            self.sim_service.receive_actuator_command(request.command)
+            return SendActuatorCommandResponse(accepted=True, message="ok")
+        except Exception as exc:
+            return SendActuatorCommandResponse(accepted=False, message=str(exc))
+
+    async def GetRadarFrame(
+        self, request: GetRadarFrameRequest, context: grpc.aio.ServicerContext
+    ) -> GetRadarFrameResponse:
+        try:
+            frame = self.sim_service.generate_radar_frame()
+            proto_frame = model_frame_to_proto(frame)
+            return GetRadarFrameResponse(frame=proto_frame)
+        except Exception as exc:
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(exc))
+            return GetRadarFrameResponse()
 
 
 async def sim_service_loop(sim_service: QSimService) -> None:

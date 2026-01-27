@@ -24,6 +24,11 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
+RCS_FORWARD_ID = "e6b718f2-769c-527c-a931-d2d7bb2cad82"
+RCS_AFT_ID = "aad7ce7d-9ee6-5949-9c45-c3baf309ca44"
+RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
+RCS_STARBOARD_ID = "3ceca74a-2a9e-5aec-a308-4c24c9102324"
+
 try:
     from .ship_core import ShipCore
     from .agent_logger import logger
@@ -211,10 +216,10 @@ class ShipActuatorController:
         try:
             # Map axis to thruster ID
             thruster_map = {
-                ThrusterAxis.FORWARD: "rcs_forward",
-                ThrusterAxis.BACKWARD: "rcs_aft",
-                ThrusterAxis.PORT: "rcs_port",
-                ThrusterAxis.STARBOARD: "rcs_starboard",
+                ThrusterAxis.FORWARD: RCS_FORWARD_ID,
+                ThrusterAxis.BACKWARD: RCS_AFT_ID,
+                ThrusterAxis.PORT: RCS_PORT_ID,
+                ThrusterAxis.STARBOARD: RCS_STARBOARD_ID,
             }
 
             thruster_id = thruster_map.get(thruster_axis)

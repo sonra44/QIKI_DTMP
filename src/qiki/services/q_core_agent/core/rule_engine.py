@@ -15,6 +15,8 @@ from qiki.shared.models.core import (
 from generated.fsm_state_pb2 import FSMStateEnum
 from uuid import UUID as PyUUID, uuid4  # For Pydantic UUID and proposal IDs
 
+SYSTEM_CONTROLLER_ID = "c0648061-af84-5c8a-a383-71218ba92082"
+
 
 class RuleEngine(IRuleEngine):
     """
@@ -94,7 +96,7 @@ class RuleEngine(IRuleEngine):
             )
 
         safe_mode_command = ActuatorCommand(
-            actuator_id=PyUUID("00000000-0000-0000-0000-000000000001"),
+            actuator_id=PyUUID(SYSTEM_CONTROLLER_ID),
             command_type=CommandTypeEnum.SET_MODE,
             int_value=FSMStateEnum.ERROR_STATE,
             unit=UnitEnum.UNIT_UNSPECIFIED,

@@ -129,9 +129,15 @@
       "xpdr_mode_init": "ON"
     },
     "actuators": [
-      {"id": "motor_left", "type": "wheel_motor"},
-      {"id": "motor_right", "type": "wheel_motor"},
-      {"id": "system_controller", "type": "main_controller"}
+      {"id": "37dcb32c-ae13-5156-ae80-0f4c663824de", "role": "motor_left", "type": "wheel_motor"},
+      {"id": "2b2c711f-0e36-5e6b-85fc-d8737fd5e1da", "role": "motor_right", "type": "wheel_motor"},
+      {"id": "c0648061-af84-5c8a-a383-71218ba92082", "role": "system_controller", "type": "main_controller"},
+      {"id": "e6b718f2-769c-527c-a931-d2d7bb2cad82", "role": "rcs_forward", "type": "rcs_thruster"},
+      {"id": "aad7ce7d-9ee6-5949-9c45-c3baf309ca44", "role": "rcs_aft", "type": "rcs_thruster"},
+      {"id": "e03efa3e-5735-5a82-8f5c-9a9d9dfff351", "role": "rcs_port", "type": "rcs_thruster"},
+      {"id": "3ceca74a-2a9e-5aec-a308-4c24c9102324", "role": "rcs_starboard", "type": "rcs_thruster"},
+      {"id": "6c880f45-ec7b-5762-aacd-4b5e2aca2a1b", "role": "rcs_up", "type": "rcs_thruster"},
+      {"id": "e85d5fc3-7dbb-5530-a767-282a16d14e25", "role": "rcs_down", "type": "rcs_thruster"}
     ],
     "sensors": [
       {"id": "lidar_front", "type": "lidar"},

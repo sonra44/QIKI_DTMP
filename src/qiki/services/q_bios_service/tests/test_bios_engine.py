@@ -8,6 +8,8 @@ from qiki.services.q_bios_service.health_checker import SimHealthResult
 from qiki.shared.config.hardware_profile_hash import compute_hardware_profile_hash
 from qiki.shared.models.core import DeviceStatusEnum
 
+MOTOR_LEFT_ID = "37dcb32c-ae13-5156-ae80-0f4c663824de"
+
 
 def _write_bot_config(tmp_path: Path, payload: dict) -> str:
     p = tmp_path / "bot_config.json"
@@ -32,7 +34,7 @@ def test_bios_engine_devices_ok(tmp_path: Path) -> None:
         "schema_version": "1.0",
         "hardware_profile": {
             "sensors": [{"id": "imu_main", "type": "imu"}],
-            "actuators": [{"id": "motor_left", "type": "wheel_motor"}],
+            "actuators": [{"id": MOTOR_LEFT_ID, "type": "wheel_motor"}],
         },
         "hardware_manifest": {"mcqpu": {"id": "mcqpu", "type": "mcqpu"}},
     }
@@ -47,7 +49,7 @@ def test_bios_engine_devices_ok(tmp_path: Path) -> None:
         )
     )
     assert status.all_systems_go is True
-    assert {d.device_id for d in status.post_results} >= {"imu_main", "motor_left", "mcqpu"}
+    assert {d.device_id for d in status.post_results} >= {"imu_main", MOTOR_LEFT_ID, "mcqpu"}
     assert all(d.status == DeviceStatusEnum.OK for d in status.post_results)
     assert status.hardware_profile_hash == compute_hardware_profile_hash(payload)
 

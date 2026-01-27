@@ -8,6 +8,8 @@ from http.server import ThreadingHTTPServer
 
 from qiki.services.q_bios_service.handlers import BiosHttpHandler
 
+MOTOR_LEFT_ID = "37dcb32c-ae13-5156-ae80-0f4c663824de"
+
 
 def _request_json(host: str, port: int, method: str, path: str) -> tuple[int, dict]:
     conn = HTTPConnection(host, port, timeout=3)
@@ -27,7 +29,7 @@ def test_bios_http_endpoints_status_component_reload() -> None:
         "hardware_profile_hash": "sha256:test",
         "timestamp": "2026-01-01T00:00:00Z",
         "post_results": [
-            {"device_id": "motor_left", "device_name": "wheel_motor", "status": 1, "status_message": "OK"},
+            {"device_id": MOTOR_LEFT_ID, "device_name": "wheel_motor", "status": 1, "status_message": "OK"},
         ],
     }
 
@@ -67,10 +69,10 @@ def test_bios_http_endpoints_status_component_reload() -> None:
         assert status == 200
         assert body.get("bios_version") == "1.0"
 
-        status, body = _request_json(host, port, "GET", "/bios/component/motor_left")
+        status, body = _request_json(host, port, "GET", f"/bios/component/{MOTOR_LEFT_ID}")
         assert status == 200
         assert body.get("ok") is True
-        assert body.get("device", {}).get("device_id") == "motor_left"
+        assert body.get("device", {}).get("device_id") == MOTOR_LEFT_ID
 
         status, body = _request_json(host, port, "GET", "/bios/component/does_not_exist")
         assert status == 404
@@ -83,4 +85,3 @@ def test_bios_http_endpoints_status_component_reload() -> None:
     finally:
         server.shutdown()
         server.server_close()
-

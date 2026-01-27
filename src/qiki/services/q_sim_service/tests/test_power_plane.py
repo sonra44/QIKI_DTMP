@@ -8,6 +8,8 @@ from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
+RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
+
 
 def test_power_telemetry_includes_power_plane_fields() -> None:
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
@@ -128,6 +130,9 @@ def test_pdu_overcurrent_throttles_rcs_and_marks_load() -> None:
                 "radar_power_w": 0.0,
                 "transponder_power_w": 0.0,
             },
+            "actuators": [
+                {"id": RCS_PORT_ID, "role": "rcs_port", "type": "rcs_thruster"},
+            ],
             "propulsion_plane": {
                 "enabled": True,
                 "thrusters_path": "config/propulsion/thrusters.json",
@@ -142,7 +147,7 @@ def test_pdu_overcurrent_throttles_rcs_and_marks_load() -> None:
     }
     wm = WorldModel(bot_config=bot_config)
     cmd = ActuatorCommand()
-    cmd.actuator_id.value = "rcs_port"
+    cmd.actuator_id.value = RCS_PORT_ID
     cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
     cmd.float_value = 100.0
     cmd.unit = ProtoUnit.PERCENT

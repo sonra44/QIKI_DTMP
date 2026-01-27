@@ -30,6 +30,10 @@ from qiki.shared.models.core import (
 from uuid import uuid4
 from datetime import datetime, UTC
 
+MOTOR_LEFT_ID = "37dcb32c-ae13-5156-ae80-0f4c663824de"
+MOTOR_RIGHT_ID = "2b2c711f-0e36-5e6b-85fc-d8737fd5e1da"
+SYSTEM_CONTROLLER_ID = "c0648061-af84-5c8a-a383-71218ba92082"
+
 
 # --- Mock данные для MockDataProvider ---
 # Создаём реалистичный BIOS статус для тестирования
@@ -44,9 +48,9 @@ def _create_mock_bios_status():
 
     # Добавляем POST результаты для всех устройств из bot_config.json
     typical_devices = [
-        ("motor_left", "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
-        ("motor_right", "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
-        ("system_controller", "System Controller", DeviceStatusEnum.OK, "System controller operational"),
+        (MOTOR_LEFT_ID, "Left Motor", DeviceStatusEnum.OK, "Motor left operational"),
+        (MOTOR_RIGHT_ID, "Right Motor", DeviceStatusEnum.OK, "Motor right operational"),
+        (SYSTEM_CONTROLLER_ID, "System Controller", DeviceStatusEnum.OK, "System controller operational"),
         ("lidar_front", "Front LIDAR", DeviceStatusEnum.OK, "LIDAR sensor operational"),
         ("imu_main", "Main IMU", DeviceStatusEnum.OK, "IMU sensor operational"),
         ("sensor_imu", "IMU Sensor", DeviceStatusEnum.OK, "IMU sensor operational"),

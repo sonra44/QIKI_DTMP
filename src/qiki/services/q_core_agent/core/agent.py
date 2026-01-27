@@ -155,7 +155,7 @@ class QCoreAgent:
             logger.error(f"Proposal evaluator failed: {e}")
             self._switch_to_safe_mode()
 
-    def _make_decision(self):
+    def _make_decision(self, data_provider: Optional[IDataProvider] = None):
         logger.debug("Making final decision and generating actuator commands...")
         if not self.context.proposals:
             logger.debug("No accepted proposals to make a decision from.")
@@ -170,6 +170,8 @@ class QCoreAgent:
         for action in chosen_proposal.proposed_actions:
             try:
                 self.bot_core.send_actuator_command(action)
+                if data_provider is not None:
+                    data_provider.send_actuator_command(action)
                 logger.info(f"Sent actuator command: {action.actuator_id} - {action.command_type.name}")
             except ValueError as e:
                 logger.error(f"Failed to send actuator command {action.actuator_id}: {e}")

@@ -11,6 +11,8 @@ from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
+RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
+
 
 DICT_PATH = Path("docs/design/operator_console/TELEMETRY_DICTIONARY.yaml")
 ORION_PATH = Path("src/qiki/services/operator_console/main_orion.py")
@@ -144,12 +146,15 @@ def _build_payload_thrusters_active() -> dict[str, Any]:
                 "pulse_window_s": 0.25,
                 "ztt_torque_tol_nm": 25.0,
             },
+            "actuators": [
+                {"id": RCS_PORT_ID, "role": "rcs_port", "type": "rcs_thruster"},
+            ],
         }
     }
 
     wm = WorldModel(bot_config=bot_config)
     cmd = ActuatorCommand()
-    cmd.actuator_id.value = "rcs_port"
+    cmd.actuator_id.value = RCS_PORT_ID
     cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
     cmd.float_value = 100.0
     cmd.unit = ProtoUnit.PERCENT

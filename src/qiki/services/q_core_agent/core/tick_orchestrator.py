@@ -68,7 +68,7 @@ class TickOrchestrator:
 
             # Phase 5: Make Decision
             make_decision_start = time.time()
-            self.agent._make_decision()
+            self.agent._make_decision(data_provider)
             make_decision_duration = time.time() - make_decision_start
 
             tick_duration = time.time() - start_time
@@ -155,7 +155,7 @@ class TickOrchestrator:
 
             # Phase 5: Make Decision
             make_decision_start = time.time()
-            self.agent._make_decision()
+            self.agent._make_decision(data_provider)
             make_decision_duration = time.time() - make_decision_start
 
             tick_duration = time.time() - start_time
