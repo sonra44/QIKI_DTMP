@@ -1291,6 +1291,10 @@ class OrionApp(App):
         self._mission_by_key: dict[str, dict[str, Any]] = {}
         self._selection_by_app: dict[str, SelectionContext] = {}
         self._snapshots = SnapshotStore()
+
+        # Secret entry mode (avoid modal dialogs; use the main input as a password field).
+        self._secret_entry_mode: str | None = None
+        self._secret_entry_prev_password: bool | None = None
         # Boot UI coordination flags (no-mocks).
         self._boot_nats_init_done: bool = False
         self._boot_nats_error: str = ""
@@ -6353,6 +6357,48 @@ class OrionApp(App):
         if not cmd:
             return
 
+        # Secret entry mode: treat the next non-system line as the secret value.
+        if self._secret_entry_mode == "openai_api_key" and cmd[:2].lower() != "s:":
+            api_key = cmd
+            try:
+                payload = {"op": "set_key", "api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)}
+                acked = False
+                if self.nats_client.nc is not None:
+                    try:
+                        msg = await self.nats_client.nc.request(
+                            OPENAI_API_KEY_UPDATE,
+                            json.dumps(payload).encode("utf-8"),
+                            timeout=1.5,
+                        )
+                        data = json.loads(msg.data.decode("utf-8"))
+                        acked = bool(isinstance(data, dict) and data.get("ok"))
+                    except Exception:
+                        acked = False
+                else:
+                    await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
+
+                self._console_log(
+                    f"{I18N.bidi('OpenAI key set', 'OpenAI ключ установлен')}{' (ACK)' if acked else ''}",
+                    level="info" if acked else "warning",
+                )
+            except Exception as exc:
+                self._console_log(
+                    f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
+                    level="warning",
+                )
+
+            # Exit secret mode and restore input behavior.
+            self._secret_entry_mode = None
+            try:
+                dock = self.query_one("#command-dock", Input)
+                if self._secret_entry_prev_password is not None:
+                    dock.password = self._secret_entry_prev_password
+                dock.value = ""
+            except Exception:
+                pass
+            self._update_command_placeholder()
+            return
+
         # Default input mode: QIKI intent.
         # Use explicit prefixes to force routing:
         # - `q:` / `//` => QIKI
@@ -6414,15 +6460,37 @@ class OrionApp(App):
                         )
                     return
 
-                # Dialog-based entry is unreliable in some terminal clients.
-                # Default to a simple, paste-friendly inline form.
+                # Enter secret mode: the next line will be treated as the key.
+                self._secret_entry_mode = "openai_api_key"
+                try:
+                    dock = self.query_one("#command-dock", Input)
+                    self._secret_entry_prev_password = bool(getattr(dock, "password", False))
+                    dock.password = True
+                    dock.value = ""
+                    dock.focus()
+                except Exception:
+                    pass
                 self._console_log(
                     I18N.bidi(
-                        "Usage: S: openai.key <api_key> (recommended). Example: S: openai.key sk-...",
-                        "Использование: S: openai.key <api_key> (рекомендуется). Пример: S: openai.key sk-...",
+                        "OpenAI key entry: paste key and press Enter.",
+                        "Ввод OpenAI ключа: вставьте ключ и нажмите Enter.",
                     ),
                     level="info",
                 )
+                self._update_command_placeholder()
+                return
+
+            if low_cmd in {"openai.cancel", "openai.abort"}:
+                self._secret_entry_mode = None
+                try:
+                    dock = self.query_one("#command-dock", Input)
+                    if self._secret_entry_prev_password is not None:
+                        dock.password = self._secret_entry_prev_password
+                    dock.value = ""
+                except Exception:
+                    pass
+                self._update_command_placeholder()
+                self._console_log(I18N.bidi("Canceled", "Отменено"), level="info")
                 return
 
             if low_cmd in {"openai.status", "openai.check", "openai.ping"}:
@@ -6985,6 +7053,8 @@ class OrionApp(App):
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
         sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
+        if self._secret_entry_mode == "openai_api_key":
+            sys_part = I18N.bidi("OpenAI key: paste and Enter", "OpenAI ключ: вставьте и Enter")
 
         # Keep the command line readable in tmux splits: show less on narrow/tiny.
         if density == "tiny":
