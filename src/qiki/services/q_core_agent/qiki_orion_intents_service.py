@@ -103,17 +103,36 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
     logger.info("QIKI intents listener connected: %s", nats_url)
 
     async def secrets_handler(msg) -> None:
-        # Runtime secret update. Do not log the key.
+        """Runtime secret update/status.
+
+        Supported payload:
+        - {"op": "set_key", "api_key": "..."}
+        - {"op": "status"}
+
+        If msg.reply is set, responds with JSON ack/status.
+        """
         try:
             payload = json.loads(msg.data.decode("utf-8"))
         except Exception:
             return
         if not isinstance(payload, dict):
             return
-        key = payload.get("api_key")
-        if isinstance(key, str):
-            os.environ["OPENAI_API_KEY"] = key.strip()
-            logger.info("Received OpenAI API key update (len=%d)", len(os.environ.get("OPENAI_API_KEY", "")))
+
+        op = str(payload.get("op") or "set_key")
+        if op == "set_key":
+            key = payload.get("api_key")
+            if isinstance(key, str) and key.strip():
+                os.environ["OPENAI_API_KEY"] = key.strip()
+                logger.info("Received OpenAI API key update")
+
+        if getattr(msg, "reply", ""):
+            key_set = bool(os.getenv("OPENAI_API_KEY", "").strip())
+            model = os.getenv("OPENAI_MODEL", "").strip() or None
+            resp = {"ok": True, "op": op, "key_set": key_set, "model": model}
+            try:
+                await nc.publish(msg.reply, json.dumps(resp).encode("utf-8"))
+            except Exception:
+                return
 
     await nc.subscribe(OPENAI_API_KEY_UPDATE, cb=secrets_handler)
 

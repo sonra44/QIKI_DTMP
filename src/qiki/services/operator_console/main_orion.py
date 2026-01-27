@@ -6290,8 +6290,8 @@ class OrionApp(App):
             low_cmd = cmd.lower()
             if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"}:
                 prompt = I18N.bidi(
-                    "Paste OpenAI API key (not saved to disk)",
-                    "Вставьте OpenAI API ключ (не сохраняется на диск)",
+                    "Paste OpenAI API key. Stored only in backend memory until restart.",
+                    "Вставьте OpenAI API ключ. Хранится только в памяти backend до перезапуска.",
                 )
 
                 done: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
@@ -6313,17 +6313,64 @@ class OrionApp(App):
                     self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                     return
                 try:
-                    await self.nats_client.publish_command(
-                        OPENAI_API_KEY_UPDATE,
-                        {"api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)},
-                    )
-                    self._console_log(
-                        f"{I18N.bidi('OpenAI key sent', 'OpenAI ключ отправлен')}",
-                        level="info",
-                    )
+                    payload = {"op": "set_key", "api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)}
+
+                    acked = False
+                    if self.nats_client.nc is not None:
+                        try:
+                            msg = await self.nats_client.nc.request(
+                                OPENAI_API_KEY_UPDATE,
+                                json.dumps(payload).encode("utf-8"),
+                                timeout=1.5,
+                            )
+                            data = json.loads(msg.data.decode("utf-8"))
+                            acked = bool(isinstance(data, dict) and data.get("ok"))
+                        except Exception:
+                            acked = False
+                    else:
+                        await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
+
+                    if acked:
+                        self._console_log(
+                            f"{I18N.bidi('OpenAI key set (ACK)', 'OpenAI ключ установлен (ACK)')}",
+                            level="info",
+                        )
+                    else:
+                        self._console_log(
+                            f"{I18N.bidi('OpenAI key sent (no ACK)', 'OpenAI ключ отправлен (без ACK)')}",
+                            level="warning",
+                        )
                 except Exception as exc:
                     self._console_log(
                         f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
+                        level="warning",
+                    )
+                return
+
+            if low_cmd in {"openai.status", "openai.check", "openai.ping"}:
+                if self.nats_client.nc is None:
+                    self._console_log(
+                        f"{I18N.bidi('NATS not connected', 'NATS не подключен')}",
+                        level="warning",
+                    )
+                    return
+                try:
+                    msg = await self.nats_client.nc.request(
+                        OPENAI_API_KEY_UPDATE,
+                        json.dumps({"op": "status"}).encode("utf-8"),
+                        timeout=1.5,
+                    )
+                    data = json.loads(msg.data.decode("utf-8"))
+                    key_set = bool(isinstance(data, dict) and data.get("key_set"))
+                    model = data.get("model") if isinstance(data, dict) else None
+                    self._console_log(
+                        f"OpenAI: {I18N.bidi('ready', 'готово') if key_set else I18N.bidi('not set', 'не задано')}"
+                        f" (model={model or 'n/a'})",
+                        level="info" if key_set else "warning",
+                    )
+                except Exception as exc:
+                    self._console_log(
+                        f"OpenAI: {I18N.bidi('status failed', 'ошибка статуса')}: {exc}",
                         level="warning",
                     )
                 return
