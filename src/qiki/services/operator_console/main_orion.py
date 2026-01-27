@@ -181,6 +181,8 @@ class SecretInputDialog(ModalScreen[str | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel/Отмена", show=False),
         Binding("enter", "submit", "Submit/Отправить", show=False),
+        Binding("ctrl+w", "cancel", "Cancel/Отмена", show=False),
+        Binding("ctrl+s", "submit", "Submit/Отправить", show=False),
     ]
 
     def __init__(self, *, title: str, prompt: str) -> None:
@@ -192,7 +194,12 @@ class SecretInputDialog(ModalScreen[str | None]):
         with Container(id="secret-dialog"):
             yield Static(self._title, id="secret-title")
             yield Static(self._prompt, id="secret-prompt")
-            yield Static(I18N.bidi("Esc to cancel, Enter to save", "Esc — отмена, Enter — сохранить"))
+            yield Static(
+                I18N.bidi(
+                    "Esc/Ctrl+W to cancel; Enter/Ctrl+S to save",
+                    "Esc/Ctrl+W — отмена; Enter/Ctrl+S — сохранить",
+                )
+            )
             yield Input(placeholder="sk-...", password=True, id="secret-input")
             with Horizontal(id="secret-actions"):
                 yield Button(I18N.bidi("Save", "Сохранить"), id="secret-ok", variant="primary")
@@ -201,7 +208,7 @@ class SecretInputDialog(ModalScreen[str | None]):
     def on_mount(self) -> None:
         # Ensure the secret input is focused; otherwise typing appears to do nothing.
         try:
-            self.query_one("#secret-input", Input).focus()
+            self.set_focus(self.query_one("#secret-input", Input))
         except Exception:
             pass
 
