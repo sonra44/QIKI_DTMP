@@ -192,10 +192,18 @@ class SecretInputDialog(ModalScreen[str | None]):
         with Container(id="secret-dialog"):
             yield Static(self._title, id="secret-title")
             yield Static(self._prompt, id="secret-prompt")
+            yield Static(I18N.bidi("Esc to cancel, Enter to save", "Esc — отмена, Enter — сохранить"))
             yield Input(placeholder="sk-...", password=True, id="secret-input")
             with Horizontal(id="secret-actions"):
                 yield Button(I18N.bidi("Save", "Сохранить"), id="secret-ok", variant="primary")
                 yield Button(I18N.bidi("Cancel", "Отмена"), id="secret-cancel")
+
+    def on_mount(self) -> None:
+        # Ensure the secret input is focused; otherwise typing appears to do nothing.
+        try:
+            self.query_one("#secret-input", Input).focus()
+        except Exception:
+            pass
 
     def action_cancel(self) -> None:
         self.dismiss(None)
