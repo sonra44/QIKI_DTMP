@@ -6209,6 +6209,21 @@ class OrionApp(App):
         if not cmd:
             return
 
+        # Default input mode: QIKI intent.
+        # Use explicit prefixes to force routing:
+        # - `q:` / `//` => QIKI
+        # - `s:`        => system/console command (bypass default-QIKI)
+        forced_command = False
+        if cmd[:2].lower() == "s:":
+            forced_command = True
+            cmd = cmd[2:].strip()
+            if not cmd:
+                self._console_log(
+                    f"{I18N.bidi('System command', 'Системная команда')}: {I18N.bidi('empty', 'пусто')}",
+                    level="info",
+                )
+                return
+
         is_qiki, qiki_text = self._parse_qiki_intent(cmd)
         if is_qiki:
             if not qiki_text:
@@ -6219,6 +6234,31 @@ class OrionApp(App):
                 return
             await self._publish_qiki_intent(qiki_text)
             return
+
+        # If this isn't an explicit system command, we treat unknown inputs as QIKI.
+        # Known console commands still work without a prefix.
+        low = cmd.lower()
+        if not forced_command:
+            known = {
+                "help",
+                "помощь",
+                "?",
+                "h",
+                "events",
+                "события",
+            }
+            if low not in known and not (
+                low.startswith("events ")
+                or low.startswith("events.")
+                or low.startswith("события ")
+                or low.startswith("события.")
+                or low == "ack"
+                or low.startswith("ack ")
+                or low == "acknowledge"
+                or low.startswith("acknowledge ")
+            ):
+                await self._publish_qiki_intent(cmd)
+                return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
 
@@ -6714,13 +6754,14 @@ class OrionApp(App):
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
-        qiki_part = f"{I18N.bidi('QIKI', 'QIKI')} q: <text>"
+        qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
+        sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
 
         # Keep the command line readable in tmux splits: show less on narrow/tiny.
         if density == "tiny":
             parts = [help_part, screen_part]
         elif density == "narrow":
-            parts = [help_part, screen_part, sim_part, qiki_part]
+            parts = [help_part, screen_part, sim_part, sys_part, qiki_part]
         elif density == "normal":
             docking_parts: list[str] = []
             if getattr(self, "_dev_docking_commands_enabled", False):
@@ -6732,6 +6773,7 @@ class OrionApp(App):
                 help_part,
                 screen_part,
                 sim_part,
+                sys_part,
                 *docking_parts,
                 "xpdr.mode <on|off|silent|spoof>",
                 "rcs.<axis> <pct> <dur>",
@@ -6750,6 +6792,7 @@ class OrionApp(App):
                 help_part,
                 screen_part,
                 sim_part,
+                sys_part,
                 *docking_parts,
                 "nbl.on/off",
                 "nbl.max <W>",
