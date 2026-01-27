@@ -48,7 +48,7 @@ python3 services/q_core_agent/main.py --grpc
 
 ### 4. **Поиск edge cases**
 - Что происходит при ОШИБКАХ BIOS?
-- FSM должен оставаться в BOOTING если BIOS failed
+- FSM должен переходить в ERROR_STATE если BIOS failed
 - Работает ли это?
 
 ### 5. **Архитектурная проблема**

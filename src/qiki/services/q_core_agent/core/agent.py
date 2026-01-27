@@ -48,7 +48,8 @@ class AgentContext:
 
     def update_from_provider(self, data_provider: IDataProvider):
         self.bios_status = data_provider.get_bios_status()
-        self.fsm_state = data_provider.get_fsm_state()
+        if self.fsm_state is None:
+            self.fsm_state = data_provider.get_fsm_state()
         self.proposals = data_provider.get_proposals()
         logger.debug("AgentContext updated from data provider.")
 

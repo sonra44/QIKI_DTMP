@@ -19,7 +19,7 @@
 ## 1) Global invariants (must always hold)
 
 - ✅ Every visible label/value is bilingual `EN/RU` (no spaces around `/`). — наблюдалось на System/Events
-- ❌ No abbreviations by default (see allowed exceptions + glossary requirements in `docs/design/operator_console/ABBREVIATIONS_POLICY.md`). — видны `Rad/Рад`, `Vr/Ско`; глоссарий не подтверждён
+- ✅ No abbreviations by default (see allowed exceptions + glossary requirements in `docs/design/operator_console/ABBREVIATIONS_POLICY.md`). — labels expanded; tmux evidence 2026-01-27
 - ✅ Missing data is shown as `N/A/—` (no invented zeros). — Events таблица
 - ✅ UI structure (chrome) is stable across screens: header + sidebar + inspector + bottom bar. — видно на Events при tmux 160x40
 

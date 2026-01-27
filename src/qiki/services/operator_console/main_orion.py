@@ -706,7 +706,7 @@ class OrionHeader(Container):
         )
         set_cell(
             "hdr-battery",
-            f"{I18N.bidi('Bat', 'Бат')} {self.battery}",
+            f"{I18N.bidi('Battery', 'Батарея')} {self.battery}",
             tooltip=f"{I18N.bidi('Battery level', 'Уровень батареи')}: {self.battery}",
         )
         set_cell(
@@ -716,17 +716,17 @@ class OrionHeader(Container):
         )
         set_cell(
             "hdr-radiation",
-            f"{I18N.bidi('Rad', 'Рад')} {self.rad}",
+            f"{I18N.bidi('Radiation', 'Радиация')} {self.rad}",
             tooltip=f"{I18N.bidi('Radiation dose rate', 'Мощность дозы радиации')}: {self.rad}",
         )
         set_cell(
             "hdr-t-ext",
-            f"{I18N.bidi('Ext temp', 'Нар темп')} {self.t_ext}",
+            f"{I18N.bidi('External temperature', 'Наружная температура')} {self.t_ext}",
             tooltip=f"{I18N.bidi('External temperature', 'Наружная температура')}: {self.t_ext}",
         )
         set_cell(
             "hdr-t-core",
-            f"{I18N.bidi('Core temp', 'Темп ядра')} {self.t_core}",
+            f"{I18N.bidi('Core temperature', 'Температура ядра')} {self.t_core}",
             tooltip=f"{I18N.bidi('Core temperature', 'Температура ядра')}: {self.t_core}",
         )
         set_cell(
@@ -736,7 +736,7 @@ class OrionHeader(Container):
         )
         set_cell(
             "hdr-freshness",
-            f"{I18N.bidi('Fresh', 'Свеж')} {self.freshness}",
+            f"{I18N.bidi('Freshness', 'Свежесть')} {self.freshness}",
             tooltip=f"{I18N.bidi('Freshness', 'Свежесть')}: {self.freshness}",
         )
         set_cell(
@@ -746,7 +746,7 @@ class OrionHeader(Container):
         )
         set_cell(
             "hdr-sim",
-            f"{I18N.bidi('Sim', 'Сим')} {self.sim}",
+            f"{I18N.bidi('Simulation', 'Симуляция')} {self.sim}",
             tooltip=f"{I18N.bidi('Simulation state', 'Состояние симуляции')}: {self.sim}",
         )
 
@@ -1662,7 +1662,7 @@ class OrionApp(App):
         blocks.append(
             SystemStateBlock(
                 block_id="cpu_usage",
-                title=I18N.bidi("CPU", "ЦП"),
+                title=I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"),
                 status=cpu_status,
                 value=cpu_value,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
@@ -1672,7 +1672,7 @@ class OrionApp(App):
         blocks.append(
             SystemStateBlock(
                 block_id="memory_usage",
-                title=I18N.bidi("Memory", "Пам"),
+                title=I18N.bidi("Memory usage", "Загрузка памяти"),
                 status=mem_status,
                 value=mem_value,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
@@ -1894,7 +1894,7 @@ class OrionApp(App):
             ),
             mk_row(
                 "state_of_charge",
-                I18N.bidi("SoC", "Заряд"),
+                I18N.bidi("State of charge", "Уровень заряда"),
                 "power.soc_pct",
                 lambda v: I18N.pct(v, digits=1),
             ),
@@ -1912,25 +1912,25 @@ class OrionApp(App):
             ),
             mk_row(
                 "nbl_active",
-                I18N.bidi("NBL", "NBL"),
+                I18N.bidi("Neutrino Burst Link", "Нейтринный канал"),
                 "power.nbl_active",
                 lambda v: I18N.yes_no(bool(v)) if v is not None else I18N.NA,
             ),
             mk_row(
                 "nbl_allowed",
-                I18N.bidi("NBL ok", "NBL ок"),
+                I18N.bidi("Neutrino Burst Link allowed", "Нейтринный канал разрешен"),
                 "power.nbl_allowed",
                 lambda v: I18N.yes_no(bool(v)) if v is not None else I18N.NA,
             ),
             mk_row(
                 "nbl_budget",
-                I18N.bidi("NBL budget", "Бюджет NBL"),
+                I18N.bidi("Neutrino Burst Link budget", "Бюджет нейтринного канала"),
                 "power.nbl_budget_w",
                 lambda v: I18N.num_unit(v, "W", "Вт", digits=1),
             ),
             (
                 "nbl_power",
-                I18N.bidi("NBL P", "NBL P"),
+                I18N.bidi("Neutrino Burst Link power", "Мощность нейтринного канала"),
                 I18N.num_unit(get("power.nbl_power_w"), "W", "Вт", digits=1),
                 get("power.nbl_power_w"),
                 ("power.nbl_power_w",),
@@ -1951,14 +1951,14 @@ class OrionApp(App):
             ),
             (
                 "pdu_limit",
-                I18N.bidi("PDU limit", "Лимит PDU"),
+                I18N.bidi("Power distribution unit limit", "Лимит распределителя питания"),
                 I18N.num_unit(get("power.pdu_limit_w"), "W", "Вт", digits=1),
                 get("power.pdu_limit_w"),
                 ("power.pdu_limit_w",),
             ),
             (
                 "pdu_throttled",
-                I18N.bidi("PDU throttled", "PDU троттл"),
+                I18N.bidi("Power distribution unit throttled", "Ограничение распределителя питания"),
                 I18N.yes_no(bool(get("power.pdu_throttled"))) if get("power.pdu_throttled") is not None else I18N.NA,
                 get("power.pdu_throttled"),
                 ("power.pdu_throttled",),
@@ -1972,7 +1972,7 @@ class OrionApp(App):
             ),
             (
                 "supercap_soc",
-                I18N.bidi("SC SoC", "Суперкап"),
+                I18N.bidi("Supercap state of charge", "Уровень заряда суперкап"),
                 I18N.pct(get("power.supercap_soc_pct"), digits=1),
                 get("power.supercap_soc_pct"),
                 ("power.supercap_soc_pct",),
@@ -2028,49 +2028,49 @@ class OrionApp(App):
             ),
             (
                 "power_input",
-                I18N.bidi("P in", "Вх мощн"),
+                I18N.bidi("Power input", "Входная мощность"),
                 I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
                 get("power.power_in_w"),
                 ("power.power_in_w",),
             ),
             (
                 "power_consumption",
-                I18N.bidi("P out", "Вых мощн"),
+                I18N.bidi("Power output", "Выходная мощность"),
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
                 get("power.power_out_w"),
                 ("power.power_out_w",),
             ),
             (
                 "dock_temp",
-                I18N.bidi("Dock temp", "Темп стыковки"),
+                I18N.bidi("Dock temperature", "Температура стыковки"),
                 I18N.num_unit(get("power.dock_temp_c"), "C", "°C", digits=1),
                 get("power.dock_temp_c"),
                 ("power.dock_temp_c",),
             ),
             (
                 "supercap_charge",
-                I18N.bidi("SC charge", "Заряд СК"),
+                I18N.bidi("Supercap charge", "Заряд суперкап"),
                 I18N.num_unit(get("power.supercap_charge_w"), "W", "Вт", digits=1),
                 get("power.supercap_charge_w"),
                 ("power.supercap_charge_w",),
             ),
             (
                 "supercap_discharge",
-                I18N.bidi("SC discharge", "Разряд СК"),
+                I18N.bidi("Supercap discharge", "Разряд суперкап"),
                 I18N.num_unit(get("power.supercap_discharge_w"), "W", "Вт", digits=1),
                 get("power.supercap_discharge_w"),
                 ("power.supercap_discharge_w",),
             ),
             (
                 "bus_voltage",
-                I18N.bidi("Bus V", "Шина В"),
+                I18N.bidi("Bus voltage", "Напряжение шины"),
                 I18N.num_unit(get("power.bus_v"), "V", "В", digits=2),
                 get("power.bus_v"),
                 ("power.bus_v",),
             ),
             (
                 "bus_current",
-                I18N.bidi("Bus A", "Шина А"),
+                I18N.bidi("Bus current", "Ток шины"),
                 I18N.num_unit(get("power.bus_a"), "A", "А", digits=2),
                 get("power.bus_a"),
                 ("power.bus_a",),
@@ -3624,7 +3624,7 @@ class OrionApp(App):
                     thermal_table: OrionDataTable = OrionDataTable(id="thermal-table")
                     thermal_table.add_column(I18N.bidi("Node", "Узел"), width=26)
                     thermal_table.add_column(I18N.bidi("Status", "Статус"), width=16)
-                    thermal_table.add_column(I18N.bidi("Temp", "Темп"), width=18)
+                    thermal_table.add_column(I18N.bidi("Temperature", "Температура"), width=18)
                     thermal_table.add_column(I18N.bidi("Age", "Возраст"), width=24)
                     thermal_table.add_column(I18N.bidi("Source", "Источник"), width=20)
                     yield thermal_table
@@ -4083,9 +4083,9 @@ class OrionApp(App):
 
         nav_rows = [
             (I18N.bidi("Link", "Связь"), I18N.online_offline(online)),
-            (I18N.bidi("Upd", "Обн"), updated),
+            (I18N.bidi("Updated", "Обновлено"), updated),
             (I18N.bidi("Age", "Возраст"), age_value),
-            (I18N.bidi("Pos", "Поз"), fmt_pos()),
+            (I18N.bidi("Position", "Позиция"), fmt_pos()),
             (
                 I18N.bidi("Velocity", "Скорость"),
                 I18N.num_unit(get("velocity"), "m/s", "м/с", digits=2),
@@ -4098,12 +4098,12 @@ class OrionApp(App):
 
         # Power panel height may be small in tmux; keep the first rows as the most important.
         power_rows = [
-            (I18N.bidi("SoC", "Заряд"), I18N.pct(get("power.soc_pct"), digits=2)),
-            (I18N.bidi("P in", "Вх мощн"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
-            (I18N.bidi("P out", "Вых мощн"), I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1)),
-            (I18N.bidi("Bus V", "Шина В"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
-            (I18N.bidi("Bus A", "Шина А"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
-            (I18N.bidi("Bat", "Бат"), I18N.pct(get("battery"), digits=2)),
+            (I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
+            (I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
+            (I18N.bidi("Power output", "Выходная мощность"), I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1)),
+            (I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
+            (I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
+            (I18N.bidi("Battery", "Батарея"), I18N.pct(get("battery"), digits=2)),
         ]
 
         def thermal_node(node_id: str) -> Any:
@@ -4120,8 +4120,8 @@ class OrionApp(App):
             (I18N.bidi("Bus", "Шина"), I18N.num_unit(thermal_node("bus"), "°C", "°C", digits=1)),
             (I18N.bidi("Battery", "Батарея"), I18N.num_unit(thermal_node("battery"), "°C", "°C", digits=1)),
             (I18N.bidi("Radiator", "Радиатор"), I18N.num_unit(thermal_node("radiator"), "°C", "°C", digits=1)),
-            (I18N.bidi("Ext temp", "Нар темп"), I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1)),
-            (I18N.bidi("Core temp", "Темп ядра"), I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1)),
+            (I18N.bidi("External temperature", "Наружная температура"), I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1)),
+            (I18N.bidi("Core temperature", "Температура ядра"), I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1)),
         ]
 
         struct_rows = [
@@ -4130,8 +4130,8 @@ class OrionApp(App):
                 I18N.bidi("Radiation", "Радиация"),
                 I18N.num_unit(get("radiation_usvh"), "µSv/h", "мкЗв/ч", digits=2),
             ),
-            (I18N.bidi("CPU", "ЦП"), I18N.pct(get("cpu_usage"), digits=1)),
-            (I18N.bidi("Mem", "Пам"), I18N.pct(get("memory_usage"), digits=1)),
+            (I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"), I18N.pct(get("cpu_usage"), digits=1)),
+            (I18N.bidi("Memory usage", "Загрузка памяти"), I18N.pct(get("memory_usage"), digits=1)),
         ]
 
         for panel_id, rows in (
@@ -5167,7 +5167,7 @@ class OrionApp(App):
             title = I18N.bidi("Dock", "Стыковка")
         else:
             cmd = "power.nbl.off" if is_on else "power.nbl.on"
-            title = I18N.bidi("NBL", "NBL")
+            title = I18N.bidi("Neutrino Burst Link", "Нейтринный канал")
 
         prompt = (
             f"{I18N.bidi('Send command?', 'Отправить команду?')} "
@@ -6068,33 +6068,51 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(f"{I18N.bidi('Menu glossary', 'Глоссарий меню')}: ", level="info")
-        self._console_log(f"- Sys/Систем: {I18N.bidi('System', 'Система')}", level="info")
-        self._console_log(f"- Events/Событ: {I18N.bidi('Events', 'События')}", level="info")
-        self._console_log(f"- Power/Пит: {I18N.bidi('Power systems', 'Система питания')}", level="info")
-        self._console_log(f"- Diag/Диагн: {I18N.bidi('Diagnostics', 'Диагностика')}", level="info")
-        self._console_log(f"- Mission/Миссия: {I18N.bidi('Mission control', 'Управление миссией')}", level="info")
+        self._console_log(f"- System/Система: {I18N.bidi('System', 'Система')}", level="info")
+        self._console_log(f"- Events/События: {I18N.bidi('Events', 'События')}", level="info")
+        self._console_log(
+            f"- Power systems/Система питания: {I18N.bidi('Power systems', 'Система питания')}",
+            level="info",
+        )
+        self._console_log(f"- Diagnostics/Диагностика: {I18N.bidi('Diagnostics', 'Диагностика')}", level="info")
+        self._console_log(
+            f"- Mission control/Управление миссией: {I18N.bidi('Mission control', 'Управление миссией')}", level="info"
+        )
         self._console_log(f"{I18N.bidi('Panels glossary', 'Глоссарий панелей')}: ", level="info")
-        self._console_log(f"- Upd/Обн: {I18N.bidi('Updated', 'Обновлено')}", level="info")
-        self._console_log(f"- SoC/Заряд: {I18N.bidi('State of charge', 'Уровень заряда')}", level="info")
-        self._console_log(f"- P in/Вх мощн: {I18N.bidi('Power input', 'Входная мощность')}", level="info")
+        self._console_log(f"- Updated/Обновлено: {I18N.bidi('Updated', 'Обновлено')}", level="info")
         self._console_log(
-            f"- P out/Вых мощн: {I18N.bidi('Power output/consumption', 'Выходная/потребляемая мощность')}", level="info"
+            f"- State of charge/Уровень заряда: {I18N.bidi('State of charge', 'Уровень заряда')}", level="info"
         )
-        self._console_log(f"- Bus V/Шина В: {I18N.bidi('Bus voltage', 'Напряжение шины')}", level="info")
-        self._console_log(f"- Bus A/Шина А: {I18N.bidi('Bus current', 'Ток шины')}", level="info")
         self._console_log(
-            f"- Ext temp/Нар темп: {I18N.bidi('External temperature', 'Наружная температура')}", level="info"
+            f"- Power input/Входная мощность: {I18N.bidi('Power input', 'Входная мощность')}", level="info"
         )
-        self._console_log(f"- Core temp/Темп ядра: {I18N.bidi('Core temperature', 'Температура ядра')}", level="info")
-        self._console_log(f"- CPU/ЦП: {I18N.bidi('CPU usage', 'Загрузка процессора')}", level="info")
-        self._console_log(f"- Mem/Пам: {I18N.bidi('Memory usage', 'Загрузка памяти')}", level="info")
+        self._console_log(
+            f"- Power output/Выходная мощность: {I18N.bidi('Power output/consumption', 'Выходная/потребляемая мощность')}",
+            level="info",
+        )
+        self._console_log(f"- Bus voltage/Напряжение шины: {I18N.bidi('Bus voltage', 'Напряжение шины')}", level="info")
+        self._console_log(f"- Bus current/Ток шины: {I18N.bidi('Bus current', 'Ток шины')}", level="info")
+        self._console_log(
+            f"- External temperature/Наружная температура: {I18N.bidi('External temperature', 'Наружная температура')}",
+            level="info",
+        )
+        self._console_log(
+            f"- Core temperature/Температура ядра: {I18N.bidi('Core temperature', 'Температура ядра')}",
+            level="info",
+        )
+        self._console_log(
+            f"- CPU usage/Загрузка процессора: {I18N.bidi('CPU usage', 'Загрузка процессора')}", level="info"
+        )
+        self._console_log(
+            f"- Memory usage/Загрузка памяти: {I18N.bidi('Memory usage', 'Загрузка памяти')}", level="info"
+        )
         self._console_log(f"{I18N.bidi('Header glossary', 'Глоссарий хедера')}: ", level="info")
         self._console_log(
             f"- {I18N.bidi('Link', 'Связь')}: {I18N.bidi('Link status', 'Состояние связи')}",
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Bat', 'Бат')}: {I18N.bidi('Battery level', 'Уровень батареи')}",
+            f"- {I18N.bidi('Battery', 'Батарея')}: {I18N.bidi('Battery level', 'Уровень батареи')}",
             level="info",
         )
         self._console_log(
@@ -6102,15 +6120,17 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Rad', 'Рад')}: {I18N.bidi('Radiation dose rate', 'Мощность дозы радиации')}",
+            f"- {I18N.bidi('Radiation', 'Радиация')}: {I18N.bidi('Radiation dose rate', 'Мощность дозы радиации')}",
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Ext temp', 'Нар темп')}: {I18N.bidi('External temperature', 'Наружная температура')}",
+            f"- {I18N.bidi('External temperature', 'Наружная температура')}: "
+            f"{I18N.bidi('External temperature', 'Наружная температура')}",
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Core temp', 'Темп ядра')}: {I18N.bidi('Core temperature', 'Температура ядра')}",
+            f"- {I18N.bidi('Core temperature', 'Температура ядра')}: "
+            f"{I18N.bidi('Core temperature', 'Температура ядра')}",
             level="info",
         )
         self._console_log(
@@ -6118,24 +6138,24 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Fresh', 'Свеж')}: {I18N.bidi('Telemetry freshness', 'Свежесть телеметрии')}",
+            f"- {I18N.bidi('Freshness', 'Свежесть')}: {I18N.bidi('Telemetry freshness', 'Свежесть телеметрии')}",
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Sim', 'Сим')}: {I18N.bidi('Simulation state', 'Состояние симуляции')}",
+            f"- {I18N.bidi('Simulation', 'Симуляция')}: {I18N.bidi('Simulation state', 'Состояние симуляции')}",
             level="info",
         )
         self._console_log(
-            f"- {I18N.bidi('Pos', 'Поз')}: {I18N.bidi('Position', 'Позиция')} ({I18N.bidi('meters', 'метры')}: m/м)",
+            f"- {I18N.bidi('Position', 'Позиция')}: {I18N.bidi('Position', 'Позиция')} ({I18N.bidi('meters', 'метры')}: m/м)",
             level="info",
         )
         self._console_log(f"{I18N.bidi('Tables glossary', 'Глоссарий таблиц')}: ", level="info")
         self._console_log(
-            f"- Ack/Подтв: {I18N.bidi('Acknowledged', 'Подтверждено')}",
+            f"- Acknowledged/Подтверждено: {I18N.bidi('Acknowledged', 'Подтверждено')}",
             level="info",
         )
         self._console_log(
-            f"- Vr/Скорость: {I18N.bidi('Radial velocity', 'Радиальная скорость')}",
+            f"- Radial velocity/Радиальная скорость: {I18N.bidi('Radial velocity', 'Радиальная скорость')}",
             level="info",
         )
         self._console_log(f"{I18N.bidi('Units glossary', 'Глоссарий единиц')}: ", level="info")

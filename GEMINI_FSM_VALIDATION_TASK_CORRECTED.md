@@ -35,7 +35,7 @@ logger.info(f"FSM: {MessageToDict(agent.context.fsm_state)}")
 **Вопрос:** Это исправляет логи, но исправляет ли КОРНЕВУЮ проблему с DataProvider?
 
 ### 4. **Edge case: сломанный BIOS**
-Теоретически: если BIOS fails → FSM должен остаться в BOOTING
+Теоретически: если BIOS fails → FSM должен перейти в ERROR_STATE
 **Вопрос:** Как это можно протестировать? Есть ли способ сломать BIOS?
 
 ---
