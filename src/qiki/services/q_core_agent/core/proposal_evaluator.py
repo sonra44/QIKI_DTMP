@@ -1,6 +1,6 @@
 from typing import List
-from .interfaces import IProposalEvaluator
-from .agent_logger import logger
+from qiki.services.q_core_agent.core.interfaces import IProposalEvaluator
+from qiki.services.q_core_agent.core.agent_logger import logger
 from qiki.shared.models.core import Proposal
 from qiki.shared.config_models import QCoreAgentConfig
 
@@ -14,9 +14,7 @@ class ProposalEvaluator(IProposalEvaluator):
     def __init__(self, config: QCoreAgentConfig):
         self.config = config
         self.confidence_threshold = config.proposal_confidence_threshold
-        logger.info(
-            f"ProposalEvaluator initialized with confidence_threshold: {self.confidence_threshold}"
-        )
+        logger.info(f"ProposalEvaluator initialized with confidence_threshold: {self.confidence_threshold}")
 
     def evaluate_proposals(self, proposals: List[Proposal]) -> List[Proposal]:
         logger.debug(f"Evaluating {len(proposals)} proposals.")
@@ -34,12 +32,8 @@ class ProposalEvaluator(IProposalEvaluator):
 
         for proposal in sorted_proposals:
             # Basic validation: check confidence
-            if (
-                proposal.confidence < self.confidence_threshold
-            ):  # Configurable threshold
-                logger.debug(
-                    f"Rejected proposal {proposal.proposal_id} (Confidence too low: {proposal.confidence})"
-                )
+            if proposal.confidence < self.confidence_threshold:  # Configurable threshold
+                logger.debug(f"Rejected proposal {proposal.proposal_id} (Confidence too low: {proposal.confidence})")
                 continue
 
             # For MVP, select the highest priority/confidence proposal
@@ -47,10 +41,7 @@ class ProposalEvaluator(IProposalEvaluator):
             if (
                 best_proposal is None
                 or (proposal.type < best_proposal.type)
-                or (
-                    proposal.type == best_proposal.type
-                    and proposal.priority > best_proposal.priority
-                )
+                or (proposal.type == best_proposal.type and proposal.priority > best_proposal.priority)
                 or (
                     proposal.type == best_proposal.type
                     and proposal.priority == best_proposal.priority

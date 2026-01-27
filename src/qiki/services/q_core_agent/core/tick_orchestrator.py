@@ -2,14 +2,13 @@ from typing import TYPE_CHECKING, Optional
 import time
 import os
 import asyncio
-from .agent_logger import logger
-from .interfaces import IDataProvider
+from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.interfaces import IDataProvider
 
 if TYPE_CHECKING:
-    from .agent import QCoreAgent
-    from q_core_agent.state.store import AsyncStateStore
+    from qiki.services.q_core_agent.core.agent import QCoreAgent
+    from qiki.services.q_core_agent.state.store import AsyncStateStore
     from qiki.shared.config_models import QCoreAgentConfig
-
 
 
 class TickOrchestrator:
@@ -28,9 +27,7 @@ class TickOrchestrator:
         self.config = config
         self.state_store = state_store
         self.errors_count = 0
-        self.use_state_store = (
-            os.getenv("QIKI_USE_STATESTORE", "false").lower() == "true"
-        )
+        self.use_state_store = os.getenv("QIKI_USE_STATESTORE", "false").lower() == "true"
         logger.info(
             f"TickOrchestrator initialized with StateStore: {self.state_store is not None}, enabled: {self.use_state_store}"
         )
@@ -92,9 +89,7 @@ class TickOrchestrator:
                         "update_context": round(update_context_duration * 1000, 2),
                         "handle_bios": round(handle_bios_duration * 1000, 2),
                         "handle_fsm": round(handle_fsm_duration * 1000, 2),
-                        "evaluate_proposals": round(
-                            evaluate_proposals_duration * 1000, 2
-                        ),
+                        "evaluate_proposals": round(evaluate_proposals_duration * 1000, 2),
                         "make_decision": round(make_decision_duration * 1000, 2),
                     },
                 },
@@ -122,9 +117,7 @@ class TickOrchestrator:
             # Сохраняем обновленное состояние в StateStore
             await self.state_store.set(updated_dto)
 
-            logger.debug(
-                f"FSM processed: v={updated_dto.version}, state={updated_dto.state.name}"
-            )
+            logger.debug(f"FSM processed: v={updated_dto.version}, state={updated_dto.state.name}")
 
         except Exception as e:
             logger.error(f"FSM StateStore processing failed: {e}")
@@ -137,9 +130,7 @@ class TickOrchestrator:
         """
         start_time = time.time()
         self.agent.tick_id += 1
-        logger.info(
-            "--- Tick Start (Legacy) ---", extra={"tick_id": self.agent.tick_id}
-        )
+        logger.info("--- Tick Start (Legacy) ---", extra={"tick_id": self.agent.tick_id})
 
         try:
             # Phase 1: Update Context
@@ -185,9 +176,7 @@ class TickOrchestrator:
                         "update_context": round(update_context_duration * 1000, 2),
                         "handle_bios": round(handle_bios_duration * 1000, 2),
                         "handle_fsm": round(handle_fsm_duration * 1000, 2),
-                        "evaluate_proposals": round(
-                            evaluate_proposals_duration * 1000, 2
-                        ),
+                        "evaluate_proposals": round(evaluate_proposals_duration * 1000, 2),
                         "make_decision": round(make_decision_duration * 1000, 2),
                     },
                 },

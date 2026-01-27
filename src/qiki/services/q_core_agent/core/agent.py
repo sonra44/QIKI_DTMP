@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
-from .agent_logger import logger
-from .interfaces import (
+from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.interfaces import (
     IDataProvider,
     IBiosHandler,
     IFSMHandler,
@@ -8,7 +8,7 @@ from .interfaces import (
     IRuleEngine,
     INeuralEngine,
 )
-from .bot_core import BotCore
+from qiki.services.q_core_agent.core.bot_core import BotCore
 
 # Импортируем сгенерированные Protobuf классы
 from qiki.shared.models.core import (
@@ -19,14 +19,14 @@ from qiki.shared.models.core import (
 )
 
 import os
-from .bios_handler import BiosHandler
-from .fsm_handler import FSMHandler
-from .proposal_evaluator import ProposalEvaluator
-from .tick_orchestrator import TickOrchestrator
-from .rule_engine import RuleEngine
-from .neural_engine import NeuralEngine
-from .guard_table import GuardEvaluationResult, load_guard_table
-from .world_model import WorldModel
+from qiki.services.q_core_agent.core.bios_handler import BiosHandler
+from qiki.services.q_core_agent.core.fsm_handler import FSMHandler
+from qiki.services.q_core_agent.core.proposal_evaluator import ProposalEvaluator
+from qiki.services.q_core_agent.core.tick_orchestrator import TickOrchestrator
+from qiki.services.q_core_agent.core.rule_engine import RuleEngine
+from qiki.services.q_core_agent.core.neural_engine import NeuralEngine
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, load_guard_table
+from qiki.services.q_core_agent.core.world_model import WorldModel
 
 if TYPE_CHECKING:
     from qiki.shared.config_models import QCoreAgentConfig
@@ -74,9 +74,7 @@ class QCoreAgent:
         self.tick_id = 0
 
         # Initialize BotCore (assuming base_path is the q_core_agent directory)
-        q_core_agent_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
+        q_core_agent_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.bot_core = BotCore(base_path=q_core_agent_root)
 
         self.guard_table = load_guard_table()
@@ -84,9 +82,7 @@ class QCoreAgent:
 
         # Initialize handlers
         self.bios_handler: IBiosHandler = BiosHandler(self.bot_core)
-        self.fsm_handler: IFSMHandler = FSMHandler(
-            self.context, world_model=self.world_model
-        )
+        self.fsm_handler: IFSMHandler = FSMHandler(self.context, world_model=self.world_model)
         self.proposal_evaluator: IProposalEvaluator = ProposalEvaluator(config)
         self.rule_engine: IRuleEngine = RuleEngine(self.context, config)
         self.neural_engine: INeuralEngine = NeuralEngine(self.context, config)
@@ -131,9 +127,7 @@ class QCoreAgent:
     def _handle_bios(self):
         try:
             # Process BIOS status using the handler
-            self.context.bios_status = self.bios_handler.process_bios_status(
-                self.context.bios_status
-            )
+            self.context.bios_status = self.bios_handler.process_bios_status(self.context.bios_status)
             logger.debug(f"Handling BIOS status: {self.context.bios_status}")
         except Exception as e:
             logger.error(f"BIOS handler failed: {e}")
@@ -141,9 +135,7 @@ class QCoreAgent:
 
     def _handle_fsm(self):
         try:
-            self.context.fsm_state = self.fsm_handler.process_fsm_state(
-                self.context.fsm_state
-            )
+            self.context.fsm_state = self.fsm_handler.process_fsm_state(self.context.fsm_state)
             logger.debug(f"Handling FSM state: {self.context.fsm_state}")
         except Exception as e:
             logger.error(f"FSM handler failed: {e}")
@@ -157,9 +149,7 @@ class QCoreAgent:
 
             all_proposals = rule_proposals + neural_proposals
 
-            self.context.proposals = self.proposal_evaluator.evaluate_proposals(
-                all_proposals
-            )
+            self.context.proposals = self.proposal_evaluator.evaluate_proposals(all_proposals)
             logger.debug(f"Evaluating {len(self.context.proposals)} proposals.")
         except Exception as e:
             logger.error(f"Proposal evaluator failed: {e}")
@@ -180,17 +170,11 @@ class QCoreAgent:
         for action in chosen_proposal.proposed_actions:
             try:
                 self.bot_core.send_actuator_command(action)
-                logger.info(
-                    f"Sent actuator command: {action.actuator_id} - {action.command_type.name}"
-                )
+                logger.info(f"Sent actuator command: {action.actuator_id} - {action.command_type.name}")
             except ValueError as e:
-                logger.error(
-                    f"Failed to send actuator command {action.actuator_id.value}: {e}"
-                )
+                logger.error(f"Failed to send actuator command {action.actuator_id.value}: {e}")
             except Exception as e:
-                logger.error(
-                    f"Unexpected error sending command {action.actuator_id.value}: {e}"
-                )
+                logger.error(f"Unexpected error sending command {action.actuator_id.value}: {e}")
 
     def _switch_to_safe_mode(self):
         logger.warning("Switched to SAFE MODE due to an error.")
@@ -200,8 +184,6 @@ class QCoreAgent:
         return {
             "tick_id": self.tick_id,
             "bios_ok": self.context.is_bios_ok(),
-            "fsm_state": self.context.fsm_state.current_state.name
-            if self.context.fsm_state
-            else None,
+            "fsm_state": self.context.fsm_state.current_state.name if self.context.fsm_state else None,
             "proposals_count": len(self.context.proposals),
         }

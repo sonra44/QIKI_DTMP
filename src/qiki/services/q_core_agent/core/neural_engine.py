@@ -1,9 +1,9 @@
 from typing import List, TYPE_CHECKING
-from .interfaces import INeuralEngine
-from .agent_logger import logger
+from qiki.services.q_core_agent.core.interfaces import INeuralEngine
+from qiki.services.q_core_agent.core.agent_logger import logger
 
 if TYPE_CHECKING:
-    from .agent import AgentContext
+    from qiki.services.q_core_agent.core.agent import AgentContext
     from qiki.shared.config_models import QCoreAgentConfig
 from qiki.shared.models.core import Proposal, ProposalTypeEnum
 from uuid import UUID as PyUUID
@@ -19,9 +19,7 @@ class NeuralEngine(INeuralEngine):
         self.context = context
         self.config = config
         self.mock_neural_proposals_enabled = config.mock_neural_proposals_enabled
-        logger.info(
-            f"NeuralEngine initialized. Mock proposals enabled: {self.mock_neural_proposals_enabled}"
-        )
+        logger.info(f"NeuralEngine initialized. Mock proposals enabled: {self.mock_neural_proposals_enabled}")
 
     def generate_proposals(self, context: "AgentContext") -> List[Proposal]:
         logger.debug("Generating proposals from Neural Engine (placeholder).")

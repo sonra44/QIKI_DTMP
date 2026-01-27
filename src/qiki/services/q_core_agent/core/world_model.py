@@ -7,8 +7,8 @@ from typing import Dict, List, Optional, Set, Tuple
 from qiki.shared.models.core import SensorData, SensorTypeEnum
 from qiki.shared.models.radar import RadarTrackModel, RadarTrackStatusEnum
 
-from .guard_table import GuardEvaluationResult, GuardTable
-from .metrics import publish_world_model_metrics
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, GuardTable
+from qiki.services.q_core_agent.core.metrics import publish_world_model_metrics
 
 
 class WorldModel:
@@ -58,9 +58,7 @@ class WorldModel:
         self._guard_results = guard_results
 
         active_keys = set(deduped.keys())
-        warning_keys = {
-            key for key, value in deduped.items() if value.severity == "warning"
-        }
+        warning_keys = {key for key, value in deduped.items() if value.severity == "warning"}
         new_warning_events = len(warning_keys - self._active_warning_keys)
 
         publish_world_model_metrics(
@@ -81,12 +79,8 @@ class WorldModel:
     def snapshot(self) -> dict:
         return {
             "active_track_count": len(self._radar_tracks),
-            "critical_guard_count": sum(
-                1 for result in self._guard_results if result.severity == "critical"
-            ),
-            "warning_guard_count": sum(
-                1 for result in self._guard_results if result.severity == "warning"
-            ),
+            "critical_guard_count": sum(1 for result in self._guard_results if result.severity == "critical"),
+            "warning_guard_count": sum(1 for result in self._guard_results if result.severity == "warning"),
             "radar_tracks": [track.model_dump() for track in self._radar_tracks.values()],
             "guard_results": [result.model_dump() for result in self._guard_results],
         }

@@ -1,10 +1,10 @@
 from typing import Dict, List, TYPE_CHECKING, Tuple
-from .interfaces import IRuleEngine
-from .agent_logger import logger
-from .guard_table import GuardEvaluationResult
+from qiki.services.q_core_agent.core.interfaces import IRuleEngine
+from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult
 
 if TYPE_CHECKING:
-    from .agent import AgentContext
+    from qiki.services.q_core_agent.core.agent import AgentContext
 from qiki.shared.models.core import (
     Proposal,
     ActuatorCommand,
@@ -86,14 +86,11 @@ class RuleEngine(IRuleEngine):
 
         return proposals
 
-    def _build_safe_mode_proposal(
-        self, guard_event: GuardEvaluationResult | None = None
-    ) -> Proposal:
+    def _build_safe_mode_proposal(self, guard_event: GuardEvaluationResult | None = None) -> Proposal:
         justification = "BIOS reported critical errors. Entering safe mode."
         if guard_event is not None:
             justification = (
-                f"Guard {guard_event.rule_id} triggered ({guard_event.severity}). "
-                "Transitioning to SAFE_MODE."
+                f"Guard {guard_event.rule_id} triggered ({guard_event.severity}). Transitioning to SAFE_MODE."
             )
 
         safe_mode_command = ActuatorCommand(
@@ -113,9 +110,7 @@ class RuleEngine(IRuleEngine):
             type=ProposalTypeEnum.SAFETY,
         )
 
-    def _build_warning_proposal(
-        self, guard_event: GuardEvaluationResult | None = None
-    ) -> Proposal | None:
+    def _build_warning_proposal(self, guard_event: GuardEvaluationResult | None = None) -> Proposal | None:
         if guard_event is None:
             return None
 
@@ -123,9 +118,7 @@ class RuleEngine(IRuleEngine):
             proposal_id=uuid4(),
             source_module_id="rule_engine",
             proposed_actions=[],
-            justification=(
-                f"Guard {guard_event.rule_id} warning for track {guard_event.track_id}."
-            ),
+            justification=(f"Guard {guard_event.rule_id} warning for track {guard_event.track_id}."),
             priority=0.5,
             confidence=0.6,
             type=ProposalTypeEnum.DIAGNOSTICS,

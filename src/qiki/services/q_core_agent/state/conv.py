@@ -9,7 +9,7 @@ from typing import Optional
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from .types import (
+from qiki.services.q_core_agent.state.types import (
     FsmSnapshotDTO,
     TransitionDTO,
     FsmState,
@@ -51,9 +51,7 @@ TRANSITION_STATUS_DTO_TO_PROTO = {
     TransitionStatus.PENDING: FSMTransitionStatus.PENDING,
 }
 
-TRANSITION_STATUS_PROTO_TO_DTO = {
-    v: k for k, v in TRANSITION_STATUS_DTO_TO_PROTO.items()
-}
+TRANSITION_STATUS_PROTO_TO_DTO = {v: k for k, v in TRANSITION_STATUS_DTO_TO_PROTO.items()}
 
 
 def _create_uuid_proto(uuid_str: str) -> UUID:
@@ -99,12 +97,8 @@ def transition_dto_to_proto(dto: TransitionDTO) -> StateTransition:
         proto = StateTransition()
 
         # Конвертируем enum'ы
-        proto.from_state = FSM_STATE_DTO_TO_PROTO.get(
-            dto.from_state, FSMStateEnum.FSM_STATE_UNSPECIFIED
-        )
-        proto.to_state = FSM_STATE_DTO_TO_PROTO.get(
-            dto.to_state, FSMStateEnum.FSM_STATE_UNSPECIFIED
-        )
+        proto.from_state = FSM_STATE_DTO_TO_PROTO.get(dto.from_state, FSMStateEnum.FSM_STATE_UNSPECIFIED)
+        proto.to_state = FSM_STATE_DTO_TO_PROTO.get(dto.to_state, FSMStateEnum.FSM_STATE_UNSPECIFIED)
         proto.status = TRANSITION_STATUS_DTO_TO_PROTO.get(
             dto.status, FSMTransitionStatus.FSM_TRANSITION_STATUS_UNSPECIFIED
         )
@@ -127,14 +121,10 @@ def transition_proto_to_dto(proto: StateTransition) -> TransitionDTO:
     """Конвертировать protobuf StateTransition в TransitionDTO"""
     try:
         return TransitionDTO(
-            from_state=FSM_STATE_PROTO_TO_DTO.get(
-                proto.from_state, FsmState.UNSPECIFIED
-            ),
+            from_state=FSM_STATE_PROTO_TO_DTO.get(proto.from_state, FsmState.UNSPECIFIED),
             to_state=FSM_STATE_PROTO_TO_DTO.get(proto.to_state, FsmState.UNSPECIFIED),
             trigger_event=proto.trigger_event or "",
-            status=TRANSITION_STATUS_PROTO_TO_DTO.get(
-                proto.status, TransitionStatus.UNSPECIFIED
-            ),
+            status=TRANSITION_STATUS_PROTO_TO_DTO.get(proto.status, TransitionStatus.UNSPECIFIED),
             error_message=proto.error_message or "",
             ts_wall=_timestamp_to_float(proto.timestamp),
             ts_mono=0.0,  # не храним в protobuf, только wall time
@@ -162,9 +152,7 @@ def dto_to_proto(dto: FsmSnapshotDTO) -> FsmStateSnapshot:
             proto.timestamp.CopyFrom(_float_to_timestamp(dto.ts_wall))
 
         # Основное состояние
-        proto.current_state = FSM_STATE_DTO_TO_PROTO.get(
-            dto.state, FSMStateEnum.FSM_STATE_UNSPECIFIED
-        )
+        proto.current_state = FSM_STATE_DTO_TO_PROTO.get(dto.state, FSMStateEnum.FSM_STATE_UNSPECIFIED)
 
         # Строковые поля
         proto.source_module = dto.source_module or ""
@@ -213,9 +201,7 @@ def proto_to_dto(proto: FsmStateSnapshot) -> FsmSnapshotDTO:
         ts_wall = _timestamp_to_float(proto.timestamp)
 
         # Основное состояние
-        current_state = FSM_STATE_PROTO_TO_DTO.get(
-            proto.current_state, FsmState.UNSPECIFIED
-        )
+        current_state = FSM_STATE_PROTO_TO_DTO.get(proto.current_state, FsmState.UNSPECIFIED)
 
         # История переходов
         history = []
@@ -294,9 +280,7 @@ def dto_to_protobuf_json(dto: FsmSnapshotDTO) -> dict:
 
 
 # Удобные функции для быстрого использования
-def create_proto_snapshot(
-    state: FsmState, reason: str, version: int = 1
-) -> FsmStateSnapshot:
+def create_proto_snapshot(state: FsmState, reason: str, version: int = 1) -> FsmStateSnapshot:
     """Создать protobuf снапшот из основных параметров"""
     dto = FsmSnapshotDTO(version=version, state=state, reason=reason)
     return dto_to_proto(dto)

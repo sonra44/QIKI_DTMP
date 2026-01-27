@@ -9,7 +9,7 @@ import logging
 import time
 from dataclasses import replace
 
-from .types import FsmSnapshotDTO, initial_snapshot
+from qiki.services.q_core_agent.state.types import FsmSnapshotDTO, initial_snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -75,9 +75,7 @@ class AsyncStateStore:
             }
             return self._snap, meta
 
-    async def set(
-        self, new_snap: FsmSnapshotDTO, enforce_version: bool = False
-    ) -> FsmSnapshotDTO:
+    async def set(self, new_snap: FsmSnapshotDTO, enforce_version: bool = False) -> FsmSnapshotDTO:
         """
         Установить новое состояние.
 
@@ -99,9 +97,7 @@ class AsyncStateStore:
             if enforce_version and self._snap is not None:
                 if new_snap.version <= self._snap.version:
                     self._metrics["version_conflicts"] += 1
-                    raise StateVersionError(
-                        f"Версия {new_snap.version} не больше текущей {self._snap.version}"
-                    )
+                    raise StateVersionError(f"Версия {new_snap.version} не больше текущей {self._snap.version}")
 
             # Автоинкремент версии если нужно
             if self._snap is not None and new_snap.version <= self._snap.version:
@@ -144,9 +140,7 @@ class AsyncStateStore:
                 except asyncio.QueueFull:
                     logger.warning(f"Queue full for new subscriber {subscriber_id}")
 
-            logger.debug(
-                f"New subscriber: {subscriber_id}, total: {len(self._subscribers)}"
-            )
+            logger.debug(f"New subscriber: {subscriber_id}, total: {len(self._subscribers)}")
 
         return queue
 
@@ -158,9 +152,7 @@ class AsyncStateStore:
                 queue_id = id(queue)
                 subscriber_id = self._subscriber_ids.pop(queue_id, "unknown")
                 self._metrics["subscriber_count"] = len(self._subscribers)
-                logger.debug(
-                    f"Unsubscribed: {subscriber_id}, remaining: {len(self._subscribers)}"
-                )
+                logger.debug(f"Unsubscribed: {subscriber_id}, remaining: {len(self._subscribers)}")
 
     async def _notify_subscribers(self, snap: FsmSnapshotDTO):
         """Уведомить всех подписчиков о новом состоянии"""
@@ -173,9 +165,7 @@ class AsyncStateStore:
                 # Очередь переполнена - логируем но не блокируем
                 queue_id = id(queue)
                 subscriber_id = self._subscriber_ids.get(queue_id, "unknown")
-                logger.warning(
-                    f"Subscriber {subscriber_id} queue full, skipping update"
-                )
+                logger.warning(f"Subscriber {subscriber_id} queue full, skipping update")
             except Exception as e:
                 # Очередь мертва - помечаем для удаления
                 queue_id = id(queue)
@@ -214,9 +204,7 @@ class AsyncStateStore:
         """Получить метрики работы StateStore"""
         async with self._lock:
             uptime = time.time() - self._metrics["creation_ts"]
-            current_state_name = (
-                self._snap.state.name if self._snap else "UNINITIALIZED"
-            )
+            current_state_name = self._snap.state.name if self._snap else "UNINITIALIZED"
             return {
                 **self._metrics,
                 "uptime_seconds": uptime,

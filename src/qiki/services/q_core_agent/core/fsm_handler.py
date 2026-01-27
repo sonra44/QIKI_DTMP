@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-from .interfaces import IFSMHandler
-from .agent_logger import logger
-from .guard_table import GuardEvaluationResult
+from qiki.services.q_core_agent.core.interfaces import IFSMHandler
+from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult
 
 if TYPE_CHECKING:
-    from .agent import AgentContext
-    from .world_model import WorldModel
+    from qiki.services.q_core_agent.core.agent import AgentContext
+    from qiki.services.q_core_agent.core.world_model import WorldModel
 
 from qiki.services.q_core_agent.state.types import (
     FsmState,
@@ -26,16 +26,12 @@ from qiki.shared.models.core import (
 
 
 class FSMHandler(IFSMHandler):
-    def __init__(
-        self, context: "AgentContext", world_model: Optional["WorldModel"] = None
-    ):
+    def __init__(self, context: "AgentContext", world_model: Optional["WorldModel"] = None):
         self.context = context
         self.world_model = world_model
         logger.info("FSMHandler initialized.")
 
-    async def process_fsm_dto(
-        self, current_fsm_state_dto: FsmSnapshotDTO
-    ) -> FsmSnapshotDTO:
+    async def process_fsm_dto(self, current_fsm_state_dto: FsmSnapshotDTO) -> FsmSnapshotDTO:
         """
         Обработка FSM перехода напрямую с использованием DTO.
         """
@@ -46,13 +42,9 @@ class FSMHandler(IFSMHandler):
 
         guard_event = self._select_guard_event()
         if guard_event:
-            next_state, trigger_event = self._apply_guard_event(
-                guard_event, current_fsm_state_dto.state
-            )
+            next_state, trigger_event = self._apply_guard_event(guard_event, current_fsm_state_dto.state)
         else:
-            next_state, trigger_event = self._apply_standard_rules(
-                current_fsm_state_dto.state
-            )
+            next_state, trigger_event = self._apply_standard_rules(current_fsm_state_dto.state)
 
         transition_dto = create_transition(
             from_state=current_fsm_state_dto.state,
@@ -61,22 +53,18 @@ class FSMHandler(IFSMHandler):
             status=TransitionStatus.SUCCESS,
         )
 
-        new_snapshot_dto = next_snapshot(
-            current_fsm_state_dto, next_state, trigger_event, transition_dto
-        )
+        new_snapshot_dto = next_snapshot(current_fsm_state_dto, next_state, trigger_event, transition_dto)
 
         logger.debug(
             "FSM transitioned from %s to %s (Trigger: %s)",
             current_fsm_state_dto.state.name,
             new_snapshot_dto.state.name,
-            trigger_event
+            trigger_event,
         )
 
         return new_snapshot_dto
 
-    def process_fsm_state(
-        self, current_fsm_state: PydanticFsmStateSnapshot
-    ) -> PydanticFsmStateSnapshot:
+    def process_fsm_state(self, current_fsm_state: PydanticFsmStateSnapshot) -> PydanticFsmStateSnapshot:
         try:
             state = current_fsm_state
             if state is None:
@@ -107,9 +95,7 @@ class FSMHandler(IFSMHandler):
             logger.error(f"FSMHandler.process_fsm_state failed: {exc}")
             raise
 
-    def _apply_standard_rules(
-        self, current_state: FsmState | FsmStateEnum
-    ) -> tuple[FsmState | FsmStateEnum, str]:
+    def _apply_standard_rules(self, current_state: FsmState | FsmStateEnum) -> tuple[FsmState | FsmStateEnum, str]:
         if current_state == FsmState.BOOTING and self.context.is_bios_ok():
             return FsmState.IDLE, "BOOT_COMPLETE"
 

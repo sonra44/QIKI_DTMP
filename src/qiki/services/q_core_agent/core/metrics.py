@@ -20,7 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
     Counter = Gauge = _noop_metric_factory  # type: ignore
 
-from .guard_table import GuardEvaluationResult
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult
 
 
 _WORLD_MODEL_ACTIVE_TRACKS = Gauge(

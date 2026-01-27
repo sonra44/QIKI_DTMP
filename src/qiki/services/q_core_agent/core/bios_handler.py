@@ -1,6 +1,6 @@
-from .interfaces import IBiosHandler
-from .agent_logger import logger
-from .bot_core import BotCore
+from qiki.services.q_core_agent.core.interfaces import IBiosHandler
+from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.bot_core import BotCore
 from qiki.shared.models.core import BiosStatus, DeviceStatus, DeviceStatusEnum
 
 
@@ -49,9 +49,7 @@ class BiosHandler(IBiosHandler):
             # Check for missing devices
             for expected_device_id, expected_device_type in expected_devices.items():
                 if expected_device_id not in current_devices:
-                    logger.warning(
-                        f"Device {expected_device_id} from hardware profile not found in BIOS report."
-                    )
+                    logger.warning(f"Device {expected_device_id} from hardware profile not found in BIOS report.")
                     missing_device_status = DeviceStatus(
                         device_id=expected_device_id,
                         device_name=expected_device_type,
@@ -63,18 +61,12 @@ class BiosHandler(IBiosHandler):
             # Check status of reported devices
             for device_status in updated_bios_status.post_results:
                 if device_status.status != DeviceStatusEnum.OK:
-                    logger.warning(
-                        f"Device {device_status.device_id} reported status {device_status.status.name}"
-                    )
+                    logger.warning(f"Device {device_status.device_id} reported status {device_status.status.name}")
         else:
-            logger.warning(
-                "No hardware profile found in bot_config. Assuming all systems go for minimal mode."
-            )
+            logger.warning("No hardware profile found in bot_config. Assuming all systems go for minimal mode.")
 
         # The all_systems_go computed field will handle this
-        # updated_bios_status.all_systems_go = all_systems_go 
+        # updated_bios_status.all_systems_go = all_systems_go
 
-        logger.info(
-            f"BIOS processing complete. All systems go: {updated_bios_status.all_systems_go}"
-        )
+        logger.info(f"BIOS processing complete. All systems go: {updated_bios_status.all_systems_go}")
         return updated_bios_status
