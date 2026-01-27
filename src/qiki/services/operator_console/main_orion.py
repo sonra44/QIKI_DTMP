@@ -5484,6 +5484,7 @@ class OrionApp(App):
         )
 
     async def handle_qiki_response(self, data: dict) -> None:
+        verbose = os.getenv("ORION_QIKI_VERBOSE", "0") == "1"
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
             payload = {}
@@ -5528,6 +5529,18 @@ class OrionApp(App):
                 f"{msg}".strip(),
                 level="warning",
             )
+
+        if not verbose:
+            if resp.ok:
+                body_en = resp.reply.body.en if resp.reply and resp.reply.body else ""
+                body_ru = resp.reply.body.ru if resp.reply and resp.reply.body else ""
+                body = I18N.bidi(body_en or "QIKI", body_ru or "QIKI")
+            else:
+                body = I18N.bidi("QIKI error", "Ошибка QIKI")
+            self._calm_log(body)
+            self._qiki_last_response = resp
+            self._render_qiki_table()
+            return
 
         title = resp.reply.title.en if resp.reply else "QIKI"
         ru_title = resp.reply.title.ru if resp.reply else "QIKI"
@@ -6470,13 +6483,6 @@ class OrionApp(App):
                     dock.focus()
                 except Exception:
                     pass
-                self._console_log(
-                    I18N.bidi(
-                        "OpenAI key entry: paste key and press Enter.",
-                        "Ввод OpenAI ключа: вставьте ключ и нажмите Enter.",
-                    ),
-                    level="info",
-                )
                 self._update_command_placeholder()
                 return
 
@@ -6902,7 +6908,12 @@ class OrionApp(App):
     async def _publish_qiki_intent(self, text: str) -> None:
         if not text:
             return
-        self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
+        verbose = os.getenv("ORION_QIKI_VERBOSE", "0") == "1"
+        if verbose:
+            self._console_log(f"{I18N.bidi('QIKI intent', 'Намерение QIKI')}> {text}", level="info")
+        else:
+            # Chat-style: keep it quiet and avoid transport noise.
+            self._calm_log(f"> {text}")
         if not self.nats_client:
             self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
@@ -6916,11 +6927,12 @@ class OrionApp(App):
             self._qiki_pending[req_id] = (time.time(), text)
             self._qiki_last_request_id = req_id
             asyncio.create_task(self._qiki_watch_timeout(req_id))
-            self._console_log(
-                f"{I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
-                f"({I18N.bidi('request', 'запрос')}={req.request_id})",
-                level="info",
-            )
+            if verbose:
+                self._console_log(
+                    f"{I18N.bidi('Sent to QIKI', 'Отправлено в QIKI')}: {QIKI_INTENTS} "
+                    f"({I18N.bidi('request', 'запрос')}={req.request_id})",
+                    level="info",
+                )
         except Exception as e:
             self._console_log(
                 f"{I18N.bidi('Failed to send', 'Не удалось отправить')}: {e}",

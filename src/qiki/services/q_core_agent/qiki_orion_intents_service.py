@@ -30,6 +30,18 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _reply_body_for_text(*, text: str) -> BilingualText:
+    t = (text or "").strip()
+    low = t.lower()
+    if low in {"ping", "пинг"}:
+        return BilingualText(en="pong", ru="понг")
+    if not t:
+        return BilingualText(en="OK", ru="ОК")
+    # Keep it compact; ORION output is a small strip.
+    compact = t if len(t) <= 160 else (t[:157] + "...")
+    return BilingualText(en=f"OK: {compact}", ru=f"ОК: {compact}")
+
+
 def _proposal_to_qiki(p: Proposal) -> QikiProposalV1:
     title = BilingualText(en=f"{p.type.name}", ru=f"{p.type.name}")
     justification = BilingualText(en=p.justification, ru=p.justification)
@@ -165,13 +177,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
 
         reply = QikiReplyV1(
             title=BilingualText(en="QIKI", ru="QIKI"),
-            body=BilingualText(
-                en=f"mode={mode.value} proposals={len(top)} ts={_now_iso()}",
-                ru=(
-                    f"режим={('ЗАВОД' if mode == QikiMode.FACTORY else 'МИССИЯ')} "
-                    f"предложений={len(top)} время={_now_iso()}"
-                ),
-            ),
+            body=_reply_body_for_text(text=req.input.text),
         )
         resp = QikiChatResponseV1(
             request_id=req.request_id,
