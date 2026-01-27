@@ -540,8 +540,8 @@ ORION_APPS: tuple[OrionAppSpec, ...] = (
     OrionAppSpec(
         screen="propulsion",
         title=I18N.bidi("Propulsion", "Двигатели"),
-        hotkey="ctrl+p",
-        hotkey_label="Ctrl+P",
+        hotkey="ctrl+q",
+        hotkey_label="Ctrl+Q",
         aliases=("propulsion", "двигатели", "rcs", "рдс", "prop", "двиг"),
     ),
     OrionAppSpec(
