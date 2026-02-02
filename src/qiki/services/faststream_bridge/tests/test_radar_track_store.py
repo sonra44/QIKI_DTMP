@@ -8,6 +8,7 @@ from qiki.shared.models.radar import (
     RadarDetectionModel,
     RadarFrameModel,
     RadarTrackStatusEnum,
+    RangeBand,
     TransponderModeEnum,
 )
 
@@ -20,6 +21,11 @@ def _frame_with_detection(
     vr_mps: float,
     snr_db: float,
     timestamp: datetime,
+    range_band: RangeBand = RangeBand.RR_UNSPECIFIED,
+    transponder_on: bool = False,
+    transponder_mode: TransponderModeEnum = TransponderModeEnum.OFF,
+    transponder_id: str | None = None,
+    id_present: bool | None = None,
 ):
     detection = RadarDetectionModel(
         range_m=range_m,
@@ -28,9 +34,11 @@ def _frame_with_detection(
         vr_mps=vr_mps,
         snr_db=snr_db,
         rcs_dbsm=1.0,
-        transponder_on=False,
-        transponder_mode=TransponderModeEnum.OFF,
-        transponder_id=None,
+        transponder_on=transponder_on,
+        transponder_mode=transponder_mode,
+        transponder_id=transponder_id,
+        range_band=range_band,
+        id_present=id_present,
     )
     return RadarFrameModel(
         sensor_id=uuid4(),
@@ -166,3 +174,83 @@ def test_track_store_coasts_confirmed_tracks():
     )
     tracks = store.process_frame(miss_3)
     assert len(tracks) == 0
+
+
+def test_track_store_fuses_lr_and_sr_same_contact():
+    store = RadarTrackStore()
+    start = datetime.now(UTC)
+
+    lr = RadarDetectionModel(
+        range_m=200.0,
+        bearing_deg=12.0,
+        elev_deg=2.0,
+        vr_mps=-1.0,
+        snr_db=10.0,
+        rcs_dbsm=1.0,
+        range_band=RangeBand.RR_LR,
+        transponder_on=False,
+        transponder_mode=TransponderModeEnum.OFF,
+        transponder_id=None,
+        id_present=False,
+    )
+    sr = RadarDetectionModel(
+        range_m=40.0,
+        bearing_deg=12.0,
+        elev_deg=2.0,
+        vr_mps=-1.0,
+        snr_db=18.0,
+        rcs_dbsm=1.0,
+        range_band=RangeBand.RR_SR,
+        transponder_on=True,
+        transponder_mode=TransponderModeEnum.ON,
+        transponder_id="ALLY-001",
+        id_present=True,
+    )
+    frame = RadarFrameModel(sensor_id=uuid4(), timestamp=start, detections=[lr, sr])
+    tracks = store.process_frame(frame)
+    assert len(tracks) == 1
+    assert tracks[0].range_band == RangeBand.RR_SR
+    assert tracks[0].transponder_id == "ALLY-001"
+    assert tracks[0].id_present is True
+
+
+def test_track_store_keeps_sr_id_when_only_lr_is_visible():
+    store = RadarTrackStore()
+    start = datetime.now(UTC)
+
+    sr_frame = _frame_with_detection(
+        range_m=40.0,
+        bearing_deg=12.0,
+        elev_deg=2.0,
+        vr_mps=-1.0,
+        snr_db=18.0,
+        timestamp=start,
+        range_band=RangeBand.RR_SR,
+        transponder_on=True,
+        transponder_mode=TransponderModeEnum.ON,
+        transponder_id="ALLY-001",
+        id_present=True,
+    )
+    tracks = store.process_frame(sr_frame)
+    assert len(tracks) == 1
+    track_id = tracks[0].track_id
+
+    lr_frame = _frame_with_detection(
+        range_m=200.0,
+        bearing_deg=12.0,
+        elev_deg=2.0,
+        vr_mps=-1.0,
+        snr_db=10.0,
+        timestamp=start + timedelta(milliseconds=200),
+        range_band=RangeBand.RR_LR,
+        transponder_on=False,
+        transponder_mode=TransponderModeEnum.OFF,
+        transponder_id=None,
+        id_present=False,
+    )
+    tracks = store.process_frame(lr_frame)
+    assert len(tracks) == 1
+    assert tracks[0].track_id == track_id
+    assert tracks[0].transponder_id == "ALLY-001"
+    assert tracks[0].id_present is True
+    assert tracks[0].range_band == RangeBand.RR_UNSPECIFIED

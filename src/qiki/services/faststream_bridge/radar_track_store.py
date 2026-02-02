@@ -15,6 +15,7 @@ from qiki.shared.models.radar import (
     RadarTrackStatusEnum,
     FriendFoeEnum,
     ObjectTypeEnum,
+    RangeBand,
     TransponderModeEnum,
     Vector3Model,
 )
@@ -46,6 +47,8 @@ class _TrackState:
     snr_db: float
     rcs_dbsm: float
     transponder_on: bool
+    range_band: RangeBand = RangeBand.RR_UNSPECIFIED
+    id_present: Optional[bool] = None
     transponder_mode: TransponderModeEnum = TransponderModeEnum.OFF
     transponder_id: Optional[str] = None
     hits: int = 0
@@ -85,13 +88,73 @@ class RadarTrackStore:
         frame_ts = (
             getattr(frame, "ts_event", None) or frame.timestamp or datetime.now(UTC)
         )
-        associations = self._associate(frame.detections, frame_ts)
+        detections = self._fuse_lr_sr_detections(frame.detections)
+        associations = self._associate(detections, frame_ts)
         self._update_associated_tracks(associations, frame_ts)
         updated_ids = {state.track_id for _, state in associations if state}
         self._update_missed_tracks(updated_ids)
-        self._spawn_new_tracks(frame.detections, associations, frame_ts)
+        self._spawn_new_tracks(detections, associations, frame_ts)
         self._prune_lost_tracks()
         return self._serialize_tracks(frame_ts, ingest_ts)
+
+    def _fuse_lr_sr_detections(
+        self, detections: List[RadarDetectionModel]
+    ) -> List[RadarDetectionModel]:
+        sr_indices = [
+            idx
+            for idx, det in enumerate(detections)
+            if det.range_band == RangeBand.RR_SR
+        ]
+        lr_indices = [
+            idx
+            for idx, det in enumerate(detections)
+            if det.range_band == RangeBand.RR_LR
+        ]
+        if not sr_indices or not lr_indices:
+            return detections
+
+        def bearing_delta_deg(a: float, b: float) -> float:
+            d = abs(a - b) % 360.0
+            return min(d, 360.0 - d)
+
+        bearing_tol_deg = 0.5
+        elev_tol_deg = 0.5
+        vr_tol_mps = 1.0
+
+        consumed_lr: set[int] = set()
+        for sr_idx in sr_indices:
+            sr = detections[sr_idx]
+            best_lr_idx: Optional[int] = None
+            best_score: tuple[float, float, int] = (float("inf"), float("inf"), 0)
+            for lr_idx in lr_indices:
+                if lr_idx in consumed_lr:
+                    continue
+                lr = detections[lr_idx]
+                bd = bearing_delta_deg(sr.bearing_deg, lr.bearing_deg)
+                if bd > bearing_tol_deg:
+                    continue
+                ed = abs(sr.elev_deg - lr.elev_deg)
+                if ed > elev_tol_deg:
+                    continue
+                vd = abs(sr.vr_mps - lr.vr_mps)
+                if vd > vr_tol_mps:
+                    continue
+                score = (bd + ed, vd, lr_idx)
+                if score < best_score:
+                    best_score = score
+                    best_lr_idx = lr_idx
+            if best_lr_idx is not None:
+                consumed_lr.add(best_lr_idx)
+
+        if not consumed_lr:
+            return detections
+
+        fused: List[RadarDetectionModel] = []
+        for idx, det in enumerate(detections):
+            if idx in consumed_lr:
+                continue
+            fused.append(det)
+        return fused
 
     def _associate(
         self, detections: List[RadarDetectionModel], frame_ts: datetime
@@ -162,9 +225,15 @@ class RadarTrackStore:
             )
             state.snr_db = (state.snr_db + detection.snr_db) / 2.0
             state.rcs_dbsm = detection.rcs_dbsm
-            state.transponder_on = detection.transponder_on
-            state.transponder_mode = detection.transponder_mode
-            state.transponder_id = detection.transponder_id
+            state.range_band = detection.range_band
+            if detection.range_band == RangeBand.RR_SR:
+                state.transponder_on = detection.transponder_on
+                state.transponder_mode = detection.transponder_mode
+                state.transponder_id = detection.transponder_id
+                if detection.id_present is not None:
+                    state.id_present = bool(detection.id_present)
+                else:
+                    state.id_present = bool(detection.transponder_id)
             state.last_update = frame_ts
             state.hits += 1
             state.miss_count = 0
@@ -189,6 +258,21 @@ class RadarTrackStore:
             )
             velocity = _unit_vector(position).scale(detection.vr_mps)
             track_id = uuid4()
+            id_present: Optional[bool] = None
+            transponder_on = False
+            transponder_mode = TransponderModeEnum.OFF
+            transponder_id = None
+            if detection.range_band == RangeBand.RR_SR:
+                transponder_on = detection.transponder_on
+                transponder_mode = detection.transponder_mode
+                transponder_id = detection.transponder_id
+                id_present = (
+                    bool(detection.id_present)
+                    if detection.id_present is not None
+                    else bool(detection.transponder_id)
+                )
+            elif detection.range_band == RangeBand.RR_LR:
+                id_present = False
             self._tracks[track_id] = _TrackState(
                 track_id=track_id,
                 position=position,
@@ -197,9 +281,11 @@ class RadarTrackStore:
                 last_update=frame_ts,
                 snr_db=detection.snr_db,
                 rcs_dbsm=detection.rcs_dbsm,
-                transponder_on=detection.transponder_on,
-                transponder_mode=detection.transponder_mode,
-                transponder_id=detection.transponder_id,
+                range_band=detection.range_band,
+                id_present=id_present,
+                transponder_on=transponder_on,
+                transponder_mode=transponder_mode,
+                transponder_id=transponder_id,
                 hits=1,
                 miss_count=0,
             )
@@ -235,6 +321,14 @@ class RadarTrackStore:
 
             age = state.age_seconds(frame_ts)
             quality = self._compute_quality(state)
+            range_band = state.range_band
+            id_present = state.id_present
+            if range_band == RangeBand.RR_LR and (
+                state.transponder_id
+                or (id_present is True)
+                or state.transponder_mode != TransponderModeEnum.OFF
+            ):
+                range_band = RangeBand.RR_UNSPECIFIED
             tracks.append(
                 RadarTrackModel(
                     track_id=state.track_id,
@@ -264,6 +358,8 @@ class RadarTrackStore:
                     timestamp=frame_ts,
                     ts_event=frame_ts,
                     ts_ingest=ingest_ts,
+                    range_band=range_band,
+                    id_present=id_present,
                 )
             )
         return tracks
