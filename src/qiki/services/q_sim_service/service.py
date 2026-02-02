@@ -42,6 +42,13 @@ class QSimService:
     def __init__(self, config: QSimServiceConfig):
         self.config = config
         self._bot_config = self._load_bot_config()
+        self._comms_enabled = True
+        if isinstance(self._bot_config, dict):
+            hp = self._bot_config.get("hardware_profile")
+            if isinstance(hp, dict):
+                comms_plane = hp.get("comms_plane")
+                if isinstance(comms_plane, dict):
+                    self._comms_enabled = bool(comms_plane.get("enabled", True))
         self._hardware_profile_hash: str | None = None
         if isinstance(self._bot_config, dict):
             try:
@@ -82,6 +89,10 @@ class QSimService:
                 mode_str = str(comms.get("xpdr_mode_init") or "").strip().upper()
         if not mode_str:
             mode_str = "ON"
+        if not self._comms_enabled:
+            # Canonical: if comms plane is disabled in bot_config.json, XPDR is forced OFF
+            # (env override is ignored to keep sim truth deterministic and operator-explainable).
+            mode_str = "OFF"
         self.transponder_mode = self._parse_transponder_mode(mode_str)
         default_transponder_id = f"ALLY-{uuid4().hex[:6].upper()}"
         self.transponder_id = os.getenv("RADAR_TRANSPONDER_ID", default_transponder_id)
@@ -220,6 +231,8 @@ class QSimService:
 
         # Comms/XPDR operator control (no new proto): set transponder mode.
         if name == "sim.xpdr.mode":
+            if not self._comms_enabled:
+                return False
             params = cmd.parameters or {}
             raw_mode = str(params.get("mode") or "").strip().upper()
             if raw_mode not in {"ON", "OFF", "SILENT", "SPOOF"}:
@@ -513,6 +526,8 @@ class QSimService:
         return mapping.get(raw.upper(), TransponderModeEnum.ON)
 
     def _is_transponder_active(self) -> bool:
+        if not self._comms_enabled:
+            return False
         if not getattr(self.world_model, "transponder_allowed", True):
             return False
         return self.transponder_mode in (TransponderModeEnum.ON, TransponderModeEnum.SPOOF)
