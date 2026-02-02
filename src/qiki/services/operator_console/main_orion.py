@@ -33,7 +33,14 @@ from qiki.services.operator_console.ui.profile_panel import ProfilePanel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, OPENAI_API_KEY_UPDATE, OPERATOR_ACTIONS, QIKI_INTENTS
+from qiki.shared.nats_subjects import (
+    COMMANDS_CONTROL,
+    EVENTS_STREAM_NAME,
+    OPENAI_API_KEY_UPDATE,
+    OPERATOR_ACTIONS,
+    QIKI_INTENTS,
+    SYSTEM_MODE_EVENT,
+)
 
 try:
     import yaml
@@ -4829,6 +4836,33 @@ class OrionApp(App):
             self._log_msg(f"{I18N.bidi('Subscribed', 'Подписка')}: QIKI")
         except Exception as e:
             self._log_msg(f"{I18N.bidi('QIKI subscribe failed', 'Подписка QIKI не удалась')}: {e}")
+
+        await self._hydrate_qiki_mode_from_jetstream()
+
+    async def _hydrate_qiki_mode_from_jetstream(self) -> None:
+        """Hydrate QIKI mode from JetStream (no-mocks, no new contracts).
+
+        Core-NATS events are not persistent; if `qiki.events.v1.system_mode` is published
+        before ORION subscribes, the header may remain `N/A/—` until the next mode change.
+
+        If the events stream is enabled, we can fetch the last-known mode from JetStream
+        and render it immediately.
+        """
+        if not self.nats_client:
+            return
+        try:
+            data = await self.nats_client.fetch_last_event_json(stream=EVENTS_STREAM_NAME, subject=SYSTEM_MODE_EVENT)
+        except Exception:
+            return
+        if not isinstance(data, dict):
+            return
+        mode = data.get("mode")
+        if isinstance(mode, str) and mode.strip():
+            self._qiki_mode = mode.strip()
+            try:
+                self.query_one("#orion-header", OrionHeader).update_mode(self._qiki_mode)
+            except Exception:
+                return
 
     def _refresh_header(self) -> None:
         try:

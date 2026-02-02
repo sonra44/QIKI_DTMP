@@ -316,6 +316,22 @@ class NATSClient:
         except Exception:
             return {}
 
+    async def fetch_last_event_json(self, *, stream: str, subject: str) -> Dict[str, Any] | None:
+        """Fetch the last JetStream message for a subject and decode JSON.
+
+        This is used for boot-time hydration of operator UI state (no mocks): for example, to
+        render the last-known system mode even if the core-NATS event was published before
+        ORION subscribed.
+        """
+        if not self.js:
+            raise RuntimeError("Not connected to JetStream")
+        msg = await self.js.get_last_msg(stream, subject)
+        try:
+            data = json.loads(msg.data.decode("utf-8"))
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+
 
 # Example usage for testing
 async def test_client():

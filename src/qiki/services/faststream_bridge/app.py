@@ -182,6 +182,7 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
                     "source": "faststream_bridge",
                     "subject": SYSTEM_MODE_EVENT,
                     "timestamp": now,
+                    "ts_epoch": float(time.time()),
                     "mode": new_mode.value,
                 },
                 subject=SYSTEM_MODE_EVENT,
@@ -287,6 +288,28 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
 async def on_startup():
     logger.info("FastStream bridge service has started.")
     await _lag_monitor.start()
+
+
+@app.after_startup
+async def after_startup() -> None:
+    # Publish the initial system mode once at boot so operator UIs don't show N/A
+    # until the first explicit mode-change intent arrives (no new subjects/contracts).
+    current_mode = get_mode()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        await broker.publish(
+            {
+                "event_schema_version": 1,
+                "source": "faststream_bridge",
+                "subject": SYSTEM_MODE_EVENT,
+                "timestamp": now,
+                "ts_epoch": float(time.time()),
+                "mode": current_mode.value,
+            },
+            subject=SYSTEM_MODE_EVENT,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to publish initial system mode event: %s", exc)
 
 
 @app.on_shutdown
