@@ -104,3 +104,21 @@ rules:
     severity: "A"
     require_ack: true
     auto_clear: false
+
+  - id: POWER_PDU_OVERCURRENT
+    enabled: true
+    title: "PDU overcurrent"
+    description: "Power Distribution Unit reported overcurrent condition"
+    match:
+      type: "power"
+      source: "pdu"
+      subject: "main"
+      field: "overcurrent"
+    threshold:
+      op: "="
+      value: 1
+      min_duration_s: 1
+      cooldown_s: 60
+    severity: "A"
+    require_ack: true
+    auto_clear: false

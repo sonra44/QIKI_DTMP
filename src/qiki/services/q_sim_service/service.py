@@ -37,7 +37,7 @@ from qiki.shared.models.radar import (
 )
 from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
+from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_POWER_PDU, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
 
 
 class QSimService:
@@ -529,6 +529,27 @@ class QSimService:
                 "unit": "A",
             },
             event_type="qiki.events.v1.PowerBusReading",
+            source="urn:qiki:q-sim-service:power",
+        )
+        faults = getattr(self.world_model, "power_faults", [])
+        overcurrent = 1 if isinstance(faults, list) and ("PDU_OVERCURRENT" in faults) else 0
+        self._events_publisher.publish_event(
+            SIM_POWER_PDU,
+            {
+                "schema_version": 1,
+                "category": "power",
+                "source": "pdu",
+                "subject": "main",
+                "overcurrent": int(overcurrent),
+                "pdu_limit_w": float(getattr(self.world_model, "_max_bus_a", 0.0)) * float(
+                    getattr(self.world_model, "power_bus_v", 0.0)
+                ),
+                "power_out_w": float(getattr(self.world_model, "power_out_w", 0.0)),
+                "bus_a": float(getattr(self.world_model, "power_bus_a", 0.0)),
+                "bus_v": float(getattr(self.world_model, "power_bus_v", 0.0)),
+                "ts_epoch": ts_epoch,
+            },
+            event_type="qiki.events.v1.PowerPduStatus",
             source="urn:qiki:q-sim-service:power",
         )
 
