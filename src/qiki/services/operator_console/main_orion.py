@@ -1428,6 +1428,56 @@ class OrionApp(App):
         return str(round(float(value), digits))
 
     @staticmethod
+    def _radar_status_code(payload: dict[str, Any]) -> str:
+        raw = payload.get("status")
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.RadarTrackStatusEnum (aligned with proto):
+            # 0 UNSPECIFIED, 1 NEW, 2 TRACKED, 3 LOST, 4 COASTING
+            return {0: "—", 1: "NEW", 2: "TRK", 3: "LOST", 4: "CST"}.get(raw, str(raw))
+        if isinstance(raw, str) and raw:
+            for token, label in (
+                ("COAST", "CST"),
+                ("TRACK", "TRK"),
+                ("LOST", "LOST"),
+                ("NEW", "NEW"),
+            ):
+                if token in raw:
+                    return label
+            return raw
+        return "—"
+
+    @staticmethod
+    def _radar_range_band_code(payload: dict[str, Any]) -> str:
+        raw = payload.get("range_band", payload.get("rangeBand"))
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.RangeBand: 0 UNSPEC, 1 LR, 2 SR
+            return {0: "—", 1: "LR", 2: "SR"}.get(raw, str(raw))
+        if isinstance(raw, str) and raw:
+            for token in ("LR", "SR"):
+                if token in raw:
+                    return token
+            return raw
+        return "—"
+
+    @staticmethod
     def _fmt_age_s(seconds: Optional[float]) -> str:
         return I18N.fmt_age(seconds)
 
@@ -1634,7 +1684,17 @@ class OrionApp(App):
             self._selection_by_app.pop("radar", None)
             self._sync_datatable_rows(
                 table,
-                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)],
+                rows=[
+                    (
+                        "seed",
+                        "—",
+                        I18N.NA,
+                        I18N.NA,
+                        I18N.NA,
+                        I18N.NA,
+                        I18N.NO_TRACKS_YET,
+                    )
+                ],
             )
             return
 
@@ -1667,6 +1727,18 @@ class OrionApp(App):
             freshness = f"{age_s:.1f}s"
             if ttl > 0 and age_s > ttl:
                 freshness = I18N.stale(freshness)
+            status = OrionApp._radar_status_code(payload)
+            quality = self._fmt_num(payload.get("quality"), digits=2)
+            band = OrionApp._radar_range_band_code(payload)
+            id_present = payload.get("id_present", payload.get("idPresent"))
+            miss_count = payload.get("miss_count", payload.get("missCount"))
+            id_flag = ""
+            if isinstance(id_present, bool) and id_present:
+                id_flag = "/ID"
+            miss_flag = ""
+            if isinstance(miss_count, int) and miss_count > 0:
+                miss_flag = f" m{miss_count}"
+            info = f"{band}{id_flag}{miss_flag} ({freshness})"
             rows.append(
                 (
                     track_id,
@@ -1674,7 +1746,9 @@ class OrionApp(App):
                     self._fmt_num(payload.get("range_m")),
                     self._fmt_num(payload.get("bearing_deg"), digits=1),
                     self._fmt_num(payload.get("vr_mps"), digits=2),
-                    f"{payload.get('object_type', I18N.NA)} ({freshness})",
+                    status,
+                    quality,
+                    info,
                 )
             )
 
@@ -3809,10 +3883,12 @@ class OrionApp(App):
                         radar_table: OrionDataTable = OrionDataTable(id="radar-table")
                         radar_table.add_columns(
                             I18N.bidi("Track", "Трек"),
+                            I18N.bidi("Status", "Статус"),
                             I18N.bidi("Range", "Дальность"),
                             I18N.bidi("Bearing", "Пеленг"),
                             I18N.bidi("Vr", "Скорость"),
-                            I18N.bidi("Object", "Объект"),
+                            I18N.bidi("Q", "Кач"),
+                            I18N.bidi("Info", "Инфо"),
                         )
                         yield radar_table
 
@@ -4227,7 +4303,7 @@ class OrionApp(App):
             set_widths("mission-table", [22, 10, 34])
             set_widths("events-table", [8, 14, 14, 22, 10, 8, 6])
             set_widths("console-table", [12, 9, 40])
-            set_widths("radar-table", [10, 12, 12, 12, 20])
+            set_widths("radar-table", [10, 8, 12, 12, 12, 6, 18])
         elif density == "normal":
             set_widths("summary-table", [36, 14, 26, 18])
             set_widths("power-table", [32, 14, 20, 18, 16])
@@ -4238,7 +4314,7 @@ class OrionApp(App):
             set_widths("mission-table", [28, 14, 52])
             set_widths("events-table", [10, 18, 16, 28, 12, 10, 6])
             set_widths("console-table", [14, 10, 64])
-            set_widths("radar-table", [12, 14, 14, 14, 26])
+            set_widths("radar-table", [12, 10, 14, 14, 14, 8, 26])
         else:
             # Keep the original compose-time widths on wide screens.
             return
@@ -4501,7 +4577,7 @@ class OrionApp(App):
             return
         self._selection_by_app.pop("radar", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
+        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
 
     def _seed_radar_ppi(self) -> None:
         try:
@@ -5131,10 +5207,19 @@ class OrionApp(App):
                 bearing_deg = payload.get("bearing_deg", payload.get("bearing"))
                 vr_mps = payload.get("vr_mps", payload.get("velocity"))
                 object_type = payload.get("object_type", payload.get("type"))
+                status = OrionApp._radar_status_code(payload)
+                quality = payload.get("quality")
+                miss_count = payload.get("miss_count", payload.get("missCount"))
+                range_band = OrionApp._radar_range_band_code(payload)
+                id_present = payload.get("id_present", payload.get("idPresent"))
+                ts_event = payload.get("ts_event", payload.get("tsEvent", payload.get("timestamp")))
+                ts_ingest = payload.get("ts_ingest", payload.get("tsIngest"))
                 summary_rows.extend(
                     [
                         (I18N.bidi("Range", "Дальность"), I18N.num_unit(range_m, "m", "м", digits=1)),
                         (I18N.bidi("Bearing", "Пеленг"), I18N.num_unit(bearing_deg, "°", "°", digits=1)),
+                        (I18N.bidi("Status", "Статус"), I18N.fmt_na(status)),
+                        (I18N.bidi("Quality", "Качество"), I18N.fmt_na(self._fmt_num(quality, digits=2))),
                     ]
                 )
                 fields_rows.extend(
@@ -5146,6 +5231,13 @@ class OrionApp(App):
                             I18N.num_unit(vr_mps, "meters per second", "метры в секунду", digits=2),
                         ),
                         (I18N.bidi("Object type", "Тип объекта"), I18N.fmt_na(object_type)),
+                        (I18N.bidi("Status", "Статус"), I18N.fmt_na(status)),
+                        (I18N.bidi("Quality", "Качество"), I18N.fmt_na(self._fmt_num(quality, digits=2))),
+                        (I18N.bidi("Range band", "Диапазон"), I18N.fmt_na(range_band)),
+                        (I18N.bidi("ID present", "IFF/ID"), I18N.fmt_na(id_present)),
+                        (I18N.bidi("Miss count", "Пропуски"), I18N.fmt_na(miss_count)),
+                        (I18N.bidi("ts_event", "ts_event"), I18N.fmt_na(ts_event)),
+                        (I18N.bidi("ts_ingest", "ts_ingest"), I18N.fmt_na(ts_ingest)),
                     ]
                 )
             if ctx.app_id == "console" and isinstance(ctx.payload, dict):
