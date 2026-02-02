@@ -6,7 +6,7 @@
   "hardware_profile": {
     "max_speed_mps": 1.0,
     "power_capacity_wh": 500,
-    "battery_soc_init_pct": 100.0,
+    "battery_soc_init_pct": 80.0,
     "power_plane": {
       "bus_v_nominal": 28.0,
       "bus_v_min": 22.0,
