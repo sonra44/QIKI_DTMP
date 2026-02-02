@@ -7,6 +7,7 @@ from generated.common_types_pb2 import Unit
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config.loaders import load_thrusters_config, thruster_allocation_rank
 from qiki.shared.config_models import QSimServiceConfig
+from qiki.shared.models.core import CommandMessage, MessageMetadata
 
 
 RCS_PORT_ID = "e03efa3e-5735-5a82-8f5c-9a9d9dfff351"
@@ -74,3 +75,36 @@ def test_rcs_timeout_zero_stops_immediately() -> None:
     assert float(rcs.get("time_left_s", 0.0)) == 0.0
     propellant1 = float(rcs.get("propellant_kg", 0.0))
     assert propellant1 == propellant0
+
+
+def test_sim_rcs_fire_control_command_emits_thrusters_block() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
+    fire = CommandMessage(
+        command_name="sim.rcs.fire",
+        parameters={"axis": "forward", "pct": 60.0, "duration_s": 2.0},
+        metadata=meta,
+    )
+    assert qsim.apply_control_command(fire) is True
+
+    qsim.step(delta_time=1.0)
+
+    state = qsim.world_model.get_state()
+    rcs = ((state.get("propulsion") or {}).get("rcs") or {})
+    assert rcs.get("enabled") is True
+    assert rcs.get("active") is True
+    assert rcs.get("axis") == "forward"
+
+    thrusters = rcs.get("thrusters")
+    assert isinstance(thrusters, list) and thrusters
+    t0 = thrusters[0]
+    assert isinstance(t0, dict)
+    assert isinstance(t0.get("index"), int)
+    assert isinstance(t0.get("cluster_id"), str)
+    assert isinstance(t0.get("duty_pct"), (int, float))
+    assert isinstance(t0.get("valve_open"), bool)
+
+    stop = CommandMessage(command_name="sim.rcs.stop", parameters={}, metadata=meta)
+    assert qsim.apply_control_command(stop) is True
