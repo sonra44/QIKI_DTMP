@@ -364,6 +364,10 @@ class QSimService:
         self.world_model.update(command)
 
     def generate_radar_frame(self) -> RadarFrameModel:
+        frame_ts = datetime.fromtimestamp(
+            self.world_model.sim_time_epoch_ts(),
+            tz=timezone.utc,
+        )
         state = self.world_model.get_state()
         x = float(state["position"]["x"])
         y = float(state["position"]["y"])
@@ -404,7 +408,11 @@ class QSimService:
             transponder_id=self._resolve_transponder_id(),
         )
 
-        frame = RadarFrameModel(sensor_id=uuid4(), detections=[lr_detection, sr_detection])
+        frame = RadarFrameModel(
+            sensor_id=uuid4(),
+            timestamp=frame_ts,
+            detections=[lr_detection, sr_detection],
+        )
         return frame
 
     def _read_sr_threshold_m(self) -> float:

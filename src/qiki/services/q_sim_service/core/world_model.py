@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Sequence
 
 import math
+import time
 
 from qiki.services.q_sim_service.logger import logger
 from generated.actuator_raw_out_pb2 import ActuatorCommand
@@ -198,6 +199,9 @@ class WorldModel:
         }
 
         self._sim_time_s = 0.0
+        # Simulation-truth epoch base (used to derive deterministic event timestamps from sim time).
+        # Captured once at boot to avoid per-tick wall-clock jitter.
+        self._sim_epoch_start_ts = float(time.time())
 
         # Virtual MCQPU utilization (simulation-truth).
         self._mcqpu = MCQPUTelemetry()
@@ -208,6 +212,15 @@ class WorldModel:
         self._actuator_queue_depth = 0
         self._transponder_active = False
         logger.info("WorldModel initialized.")
+
+    def sim_time_s(self) -> float:
+        return float(self._sim_time_s)
+
+    def sim_epoch_start_ts(self) -> float:
+        return float(self._sim_epoch_start_ts)
+
+    def sim_time_epoch_ts(self) -> float:
+        return float(self._sim_epoch_start_ts + self._sim_time_s)
 
     def _apply_bot_config(self, bot_config: dict | None) -> None:
         if not isinstance(bot_config, dict):

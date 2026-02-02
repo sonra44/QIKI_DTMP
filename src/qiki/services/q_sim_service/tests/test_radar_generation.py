@@ -34,6 +34,7 @@ def test_generate_radar_frame_basic():
 
     rf = sim.radar_frames[-1]
     assert isinstance(rf, RadarFrameModel)
+    assert rf.ts_event == rf.timestamp
     # Validate generated UUIDs
     assert isinstance(rf.frame_id, PyUUID)
     assert isinstance(rf.sensor_id, PyUUID)
@@ -62,6 +63,18 @@ def test_generate_radar_frame_basic():
     assert sr_det.transponder_mode == TransponderModeEnum.ON
     assert sr_det.transponder_on is True
     assert sr_det.transponder_id is not None
+
+
+def test_radar_frame_timestamp_is_sim_deterministic():
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    sim = QSimService(cfg)
+
+    sim.step()
+    t1 = sim.radar_frames[-1].timestamp
+    sim.step()
+    t2 = sim.radar_frames[-1].timestamp
+
+    assert (t2 - t1).total_seconds() == pytest.approx(float(cfg.sim_tick_interval))
 
 
 def test_radar_sr_threshold_env_override(monkeypatch):
