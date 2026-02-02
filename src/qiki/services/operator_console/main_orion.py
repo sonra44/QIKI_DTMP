@@ -19,6 +19,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.coordinate import Coordinate
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, RichLog, Static
@@ -1289,6 +1290,8 @@ class OrionApp(App):
         self._thermal_by_key: dict[str, dict[str, Any]] = {}
         self._diagnostics_by_key: dict[str, dict[str, Any]] = {}
         self._mission_by_key: dict[str, dict[str, Any]] = {}
+        # Keep a stable rendered row order per table id to avoid cursor jumps.
+        self._datatable_row_keys: dict[str, list[str]] = {}
         self._selection_by_app: dict[str, SelectionContext] = {}
         self._snapshots = SnapshotStore()
 
@@ -1619,48 +1622,84 @@ class OrionApp(App):
         except Exception:
             return
 
-        table.clear()
         items = self._active_tracks_sorted()
         if not items:
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
+            self._selection_by_app.pop("radar", None)
+            self._sync_datatable_rows(
+                table,
+                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)],
+            )
             return
 
-        selected_row: Optional[int] = None
         selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
-        for track_id, payload, _seen in items:
-            age_s = max(0.0, time.time() - _seen)
+
+        by_track_id: dict[str, tuple[dict[str, Any], float]] = {
+            str(track_id): (payload, float(seen)) for track_id, payload, seen in items
+        }
+
+        table_id = str(getattr(table, "id", "") or "")
+        prev_keys = self._datatable_row_keys.get(table_id)
+
+        ordered_track_ids: list[str] = []
+        if prev_keys:
+            for key in prev_keys:
+                if key in by_track_id:
+                    ordered_track_ids.append(key)
+
+        for track_id, _payload, _seen in items:
+            tid = str(track_id)
+            if tid not in by_track_id or tid in ordered_track_ids:
+                continue
+            ordered_track_ids.append(tid)
+
+        rows: list[tuple[Any, ...]] = []
+        for track_id in ordered_track_ids:
+            payload, seen = by_track_id[track_id]
+            age_s = max(0.0, time.time() - seen)
             ttl = self._track_ttl_sec
             freshness = f"{age_s:.1f}s"
             if ttl > 0 and age_s > ttl:
                 freshness = I18N.stale(freshness)
-            table.add_row(
-                track_id,
-                self._fmt_num(payload.get("range_m")),
-                self._fmt_num(payload.get("bearing_deg"), digits=1),
-                self._fmt_num(payload.get("vr_mps"), digits=2),
-                f"{payload.get('object_type', I18N.NA)} ({freshness})",
+            rows.append(
+                (
+                    track_id,
+                    track_id,
+                    self._fmt_num(payload.get("range_m")),
+                    self._fmt_num(payload.get("bearing_deg"), digits=1),
+                    self._fmt_num(payload.get("vr_mps"), digits=2),
+                    f"{payload.get('object_type', I18N.NA)} ({freshness})",
+                )
             )
-            if selected_track_id is not None and track_id == selected_track_id:
-                selected_row = table.row_count - 1
 
-        if selected_track_id is None and items:
+        self._sync_datatable_rows(table, rows=rows)
+
+        if selected_track_id is None or str(selected_track_id) not in by_track_id:
             track_id, payload, seen = items[0]
             self._set_selection(
                 SelectionContext(
                     app_id="radar",
-                    key=track_id,
+                    key=str(track_id),
                     kind="track",
                     source="radar",
                     created_at_epoch=float(seen),
                     payload=payload,
-                    ids=(track_id,),
+                    ids=(str(track_id),),
                 )
             )
-            selected_row = 0
+            selected_track_id = str(track_id)
 
-        if selected_row is not None:
+        if selected_track_id is not None and selected_track_id in ordered_track_ids:
             try:
-                table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+                cursor_row = getattr(table, "cursor_row", None)
+                keys = self._datatable_row_keys.get(table_id) or []
+                cursor_key = keys[cursor_row] if isinstance(cursor_row, int) and 0 <= cursor_row < len(keys) else None
+                if cursor_key != selected_track_id:
+                    table.move_cursor(
+                        row=ordered_track_ids.index(selected_track_id),
+                        column=0,
+                        animate=False,
+                        scroll=False,
+                    )
             except Exception:
                 pass
 
@@ -1890,24 +1929,93 @@ class OrionApp(App):
 
         return blocks
 
+    def _sync_datatable_rows(self, table: DataTable, *, rows: list[tuple[Any, ...]]) -> None:
+        """
+        Update a DataTable with minimal redraw to avoid cursor jumps.
+
+        Contract:
+        - Each row tuple MUST be: (row_key, col0, col1, ...).
+        - Column count must match the DataTable's existing columns.
+        """
+
+        table_id = str(getattr(table, "id", "") or "")
+        if not table_id:
+            table_id = str(id(table))
+
+        desired_keys: list[str] = []
+        for row in rows:
+            if not row:
+                continue
+            desired_keys.append(str(row[0]))
+
+        prev_keys = self._datatable_row_keys.get(table_id)
+        cursor_key: str | None = None
+        if prev_keys is not None:
+            try:
+                cr = getattr(table, "cursor_row", None)
+                if isinstance(cr, int) and 0 <= cr < len(prev_keys):
+                    cursor_key = prev_keys[cr]
+            except Exception:
+                cursor_key = None
+
+        def rebuild() -> None:
+            try:
+                table.clear()
+            except Exception:
+                return
+            for row in rows:
+                if not row:
+                    continue
+                row_key = str(row[0])
+                cells = list(row[1:])
+                try:
+                    table.add_row(*cells, key=row_key)
+                except Exception:
+                    # If adding fails (bad columns), bail out without crashing the UI loop.
+                    return
+            self._datatable_row_keys[table_id] = desired_keys
+
+            # Preserve cursor only if it was previously set and still exists.
+            if cursor_key is not None and cursor_key in desired_keys:
+                try:
+                    table.move_cursor(row=desired_keys.index(cursor_key), column=0, animate=False, scroll=False)
+                except Exception:
+                    pass
+
+        if prev_keys != desired_keys:
+            rebuild()
+            return
+
+        # Fast path: same row keys → update cells in place.
+        try:
+            for row in rows:
+                if not row:
+                    continue
+                row_key = str(row[0])
+                cells = list(row[1:])
+                row_index = table.get_row_index(row_key)
+                for col_index, value in enumerate(cells):
+                    table.update_cell_at(Coordinate(row_index, col_index), value)
+            self._datatable_row_keys[table_id] = desired_keys
+        except Exception:
+            rebuild()
+
     def _render_summary_table(self) -> None:
         try:
             table = self.query_one("#summary-table", DataTable)
         except Exception:
             return
 
-        table.clear()
         now = time.time()
         blocks = self._build_summary_blocks()
 
         self._summary_by_key = {}
         current = self._selection_by_app.get("summary")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        rows: list[tuple[Any, ...]] = []
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status_label = self._block_status_label(block.status)
-            table.add_row(block.title, status_label, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
+            rows.append((block.block_id, block.title, status_label, block.value, I18N.fmt_age_compact(age_s)))
             self._summary_by_key[block.block_id] = {
                 "block_id": block.block_id,
                 "title": block.title,
@@ -1916,8 +2024,10 @@ class OrionApp(App):
                 "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
-            if selected_key is not None and block.block_id == selected_key:
-                selected_row = table.row_count - 1
+        if not rows:
+            rows = [("seed", "—", I18N.NA, I18N.NA, I18N.NA)]
+
+        self._sync_datatable_rows(table, rows=rows)
 
         # Keep an always-valid selection on Summary.
         first_key = blocks[0].block_id if blocks else "seed"
@@ -1936,14 +2046,6 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
         if self.active_screen == "events" and not isinstance(self.focused, Input):
             try:
                 self.set_focus(table)
@@ -1959,11 +2061,7 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._power_by_key = {}
             self._selection_by_app.pop("power", None)
-            try:
-                table.clear()
-            except Exception:
-                return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)])
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -2287,12 +2385,6 @@ class OrionApp(App):
             ),
         ]
 
-        self._power_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         now = time.time()
         age_s = max(0.0, now - float(telemetry_env.ts_epoch))
         age = I18N.fmt_age_compact(age_s)
@@ -2305,12 +2397,12 @@ class OrionApp(App):
                 return I18N.bidi("Abnormal", "Не норма")
             return I18N.bidi("Normal", "Норма")
 
+        self._power_by_key = {}
         current = self._selection_by_app.get("power")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
         for row_key, label, value, raw, source_keys in rows:
             status = status_label(raw, value)
-            table.add_row(label, status, value, age, source, key=row_key)
+            table_rows.append((row_key, label, status, value, age, source))
             self._power_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
@@ -2322,8 +2414,11 @@ class OrionApp(App):
                 "raw": raw,
                 "envelope": telemetry_env,
             }
-            if selected_key is not None and row_key == selected_key:
-                selected_row = table.row_count - 1
+
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)]
+
+        self._sync_datatable_rows(table, rows=table_rows)
 
         if current is None or current.key not in self._power_by_key:
             first_key = rows[0][0]
@@ -2340,14 +2435,6 @@ class OrionApp(App):
                     ids=first_source_keys,
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _render_thermal_table(self) -> None:
         try:
@@ -2358,11 +2445,7 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._thermal_by_key = {}
             self._selection_by_app.pop("thermal", None)
-            try:
-                table.clear()
-            except Exception:
-                return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)])
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -2397,14 +2480,8 @@ class OrionApp(App):
         source = I18N.bidi("telemetry", "телеметрия")
 
         self._thermal_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         current = self._selection_by_app.get("thermal")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
 
         def status_label(node_id: str, temp: Any, *, tripped: Any) -> str:
             if temp is None:
@@ -2436,7 +2513,7 @@ class OrionApp(App):
                 f"thermal.nodes[id={nid}].hys_c",
                 "power.faults",
             )
-            table.add_row(nid, status, value, age, source, key=nid)
+            table_rows.append((nid, nid, status, value, age, source))
             self._thermal_by_key[nid] = {
                 "node_id": nid,
                 "status": status,
@@ -2450,8 +2527,10 @@ class OrionApp(App):
                 "source_keys": source_keys,
                 "envelope": telemetry_env,
             }
-            if selected_key is not None and nid == selected_key:
-                selected_row = table.row_count - 1
+
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)]
+        self._sync_datatable_rows(table, rows=table_rows)
 
         if current is None or current.key not in self._thermal_by_key:
             first_key = next(iter(self._thermal_by_key.keys()), "seed")
@@ -2471,14 +2550,6 @@ class OrionApp(App):
                     ids=first_source_keys,
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _render_propulsion_table(self) -> None:
         try:
@@ -2489,11 +2560,7 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._propulsion_by_key = {}
             self._selection_by_app.pop("propulsion", None)
-            try:
-                table.clear()
-            except Exception:
-                return
-            table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)])
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -2630,17 +2697,11 @@ class OrionApp(App):
                 )
 
         self._propulsion_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         current = self._selection_by_app.get("propulsion")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
         for row_key, label, value, raw, warn, source_keys in rows:
             status = status_label(raw, value, warning=warn)
-            table.add_row(label, status, value, age, source, key=row_key)
+            table_rows.append((row_key, label, status, value, age, source))
             self._propulsion_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
@@ -2652,8 +2713,11 @@ class OrionApp(App):
                 "raw": raw,
                 "envelope": telemetry_env,
             }
-            if selected_key is not None and row_key == selected_key:
-                selected_row = table.row_count - 1
+
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA)]
+
+        self._sync_datatable_rows(table, rows=table_rows)
 
         if current is None or current.key not in self._propulsion_by_key:
             first_key = rows[0][0] if rows else "seed"
@@ -2671,14 +2735,6 @@ class OrionApp(App):
                     ids=first_source_keys,
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _render_sensors_table(self) -> None:
         try:
@@ -2701,11 +2757,7 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._sensors_by_key = {}
             self._selection_by_app.pop("sensors", None)
-            try:
-                table.clear()
-            except Exception:
-                return
-            table.add_row("—", I18N.NA, I18N.NA, key="seed")
+            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA)])
 
         telemetry_env = self._snapshots.get_last("telemetry")
         if telemetry_env is None or not isinstance(telemetry_env.payload, dict):
@@ -3072,17 +3124,11 @@ class OrionApp(App):
             )
 
         self._sensors_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         current = self._selection_by_app.get("sensors")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
         for row_key, label, value, raw, warn, status_kind, source_keys in rows:
             status = status_label(raw, value, warning=warn, status_kind=status_kind)
-            table.add_row(label, style_status(status, status_kind), value, key=row_key)
+            table_rows.append((row_key, label, style_status(status, status_kind), value))
             self._sensors_by_key[row_key] = {
                 "component_id": row_key,
                 "component": label,
@@ -3094,8 +3140,10 @@ class OrionApp(App):
                 "raw": raw,
                 "envelope": telemetry_env,
             }
-            if selected_key is not None and row_key == selected_key:
-                selected_row = table.row_count - 1
+
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA)]
+        self._sync_datatable_rows(table, rows=table_rows)
 
         if current is None or current.key not in self._sensors_by_key:
             first_key = rows[0][0] if rows else "seed"
@@ -3113,14 +3161,6 @@ class OrionApp(App):
                     ids=first_source_keys,
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _render_diagnostics_table(self) -> None:
         try:
@@ -3400,18 +3440,12 @@ class OrionApp(App):
                 )
 
         self._diagnostics_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         current = self._selection_by_app.get("diagnostics")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status = status_label(block.status)
-            table.add_row(block.title, status, block.value, I18N.fmt_age_compact(age_s), key=block.block_id)
+            table_rows.append((block.block_id, block.title, status, block.value, I18N.fmt_age_compact(age_s)))
             self._diagnostics_by_key[block.block_id] = {
                 "block_id": block.block_id,
                 "title": block.title,
@@ -3420,8 +3454,9 @@ class OrionApp(App):
                 "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
-            if selected_key is not None and block.block_id == selected_key:
-                selected_row = table.row_count - 1
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA, I18N.NA)]
+        self._sync_datatable_rows(table, rows=table_rows)
 
         first_key = blocks[0].block_id if blocks else "seed"
         if current is None or current.key not in self._diagnostics_by_key:
@@ -3442,14 +3477,6 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _render_mission_table(self) -> None:
         try:
@@ -3460,11 +3487,7 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._mission_by_key = {}
             self._selection_by_app.pop("mission", None)
-            try:
-                table.clear()
-            except Exception:
-                return
-            table.add_row("—", I18N.NA, I18N.NA, key="seed")
+            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA)])
 
         def mission_env() -> Optional[EventEnvelope]:
             for t in ("mission", "task"):
@@ -3495,21 +3518,12 @@ class OrionApp(App):
         steps: list[Any] = steps_raw if isinstance(steps_raw, list) else []
 
         self._mission_by_key = {}
-        try:
-            table.clear()
-        except Exception:
-            return
-
         current = self._selection_by_app.get("mission")
-        selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+        table_rows: list[tuple[Any, ...]] = []
 
         def row(key: str, item: str, status: str, value: str, *, record: dict[str, Any]) -> None:
-            table.add_row(item, status, value, key=key)
+            table_rows.append((key, item, status, value))
             self._mission_by_key[key] = record
-            nonlocal selected_row
-            if selected_key is not None and key == selected_key:
-                selected_row = table.row_count - 1
 
         row(
             "mission-designator",
@@ -3582,6 +3596,10 @@ class OrionApp(App):
                 record={"kind": "mission_step", "index": idx, "step": step, "envelope": env},
             )
 
+        if not table_rows:
+            table_rows = [("seed", "—", I18N.NA, I18N.NA)]
+        self._sync_datatable_rows(table, rows=table_rows)
+
         if current is None or current.key not in self._mission_by_key:
             self._set_selection(
                 SelectionContext(
@@ -3594,14 +3612,6 @@ class OrionApp(App):
                     ids=("mission-designator", env.type),
                 )
             )
-            selected_row = 0
-
-        if selected_row is not None:
-            try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
-            except Exception:
-                pass
 
     def _events_filtered_sorted(self) -> list[Any]:
         if self._incident_store is None:
@@ -3673,62 +3683,71 @@ class OrionApp(App):
         except Exception:
             return
 
-        table.clear()
         if self._incident_store is None:
-            table.add_row(
-                "—",
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                key="seed",
-            )
             self._selection_by_app.pop("events", None)
+            self._sync_datatable_rows(
+                table,
+                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
+            )
             return
 
         incidents_sorted = self._events_filtered_sorted()
         if not incidents_sorted:
-            table.add_row(
-                "—",
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                I18N.NA,
-                key="seed",
-            )
             self._selection_by_app.pop("events", None)
+            self._sync_datatable_rows(
+                table,
+                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
+            )
             return
+
         current = self._selection_by_app.get("events")
         selected_key = current.key if current is not None else None
-        selected_row: Optional[int] = None
+
+        by_incident_id = {str(inc.incident_id): inc for inc in incidents_sorted}
+
+        table_id = str(getattr(table, "id", "") or "")
+        prev_keys = self._datatable_row_keys.get(table_id)
+
+        ordered_incident_ids: list[str] = []
+        if prev_keys:
+            for key in prev_keys:
+                if key in by_incident_id:
+                    ordered_incident_ids.append(key)
+
+        for inc in incidents_sorted:
+            inc_id = str(inc.incident_id)
+            if inc_id in ordered_incident_ids:
+                continue
+            ordered_incident_ids.append(inc_id)
+
+        rows: list[tuple[Any, ...]] = []
         now = time.time()
-        for inc in incidents_sorted[: self._max_events_table_rows]:
+        for incident_id in ordered_incident_ids[: self._max_events_table_rows]:
+            inc = by_incident_id[incident_id]
             age_s = max(0.0, now - float(inc.last_seen))
             age_text = I18N.fmt_age_compact(age_s)
             acked_text = I18N.yes_no(bool(inc.acked))
-            table.add_row(
-                inc.severity,
-                self._event_type_label(inc.type),
-                I18N.fmt_na(inc.source),
-                I18N.fmt_na(inc.subject),
-                age_text,
-                str(int(inc.count)) if isinstance(inc.count, int) else I18N.NA,
-                acked_text,
-                key=inc.incident_id,
+            rows.append(
+                (
+                    incident_id,
+                    inc.severity,
+                    self._event_type_label(inc.type),
+                    I18N.fmt_na(inc.source),
+                    I18N.fmt_na(inc.subject),
+                    age_text,
+                    str(int(inc.count)) if isinstance(inc.count, int) else I18N.NA,
+                    acked_text,
+                )
             )
-            if selected_key is not None and inc.incident_id == selected_key:
-                selected_row = table.row_count - 1
 
-        if current is None or current.key not in {inc.incident_id for inc in incidents_sorted}:
+        self._sync_datatable_rows(table, rows=rows)
+
+        if selected_key is None or str(selected_key) not in by_incident_id:
             selected = incidents_sorted[0]
             self._set_selection(
                 SelectionContext(
                     app_id="events",
-                    key=selected.incident_id,
+                    key=str(selected.incident_id),
                     kind="incident",
                     source=selected.source,
                     created_at_epoch=selected.first_seen,
@@ -3736,12 +3755,20 @@ class OrionApp(App):
                     ids=(selected.rule_id, selected.type, selected.subject),
                 )
             )
-            selected_row = 0
+            selected_key = str(selected.incident_id)
 
-        if selected_row is not None:
+        if selected_key is not None and selected_key in ordered_incident_ids:
             try:
-                if getattr(table, "cursor_row", None) != selected_row:
-                    table.move_cursor(row=selected_row, column=0, animate=False, scroll=False)
+                cursor_row = getattr(table, "cursor_row", None)
+                keys = self._datatable_row_keys.get(table_id) or []
+                cursor_key = keys[cursor_row] if isinstance(cursor_row, int) and 0 <= cursor_row < len(keys) else None
+                if cursor_key != selected_key:
+                    table.move_cursor(
+                        row=ordered_incident_ids.index(selected_key),
+                        column=0,
+                        animate=False,
+                        scroll=False,
+                    )
             except Exception:
                 pass
 
@@ -4230,12 +4257,22 @@ class OrionApp(App):
             table = self.query_one("#console-table", DataTable)
         except Exception:
             return
+
         key = f"con-{int(time.time() * 1000)}"
+
         try:
             if table.row_count == 1:
                 table.clear()
         except Exception:
             pass
+
+        console_active = self.active_screen == "console"
+        cursor_row_before = getattr(table, "cursor_row", None)
+        was_at_bottom = (
+            isinstance(cursor_row_before, int) and table.row_count > 0 and cursor_row_before == table.row_count - 1
+        )
+        current_selection = self._selection_by_app.get("console")
+
         try:
             table.add_row(ts, str(level_label), msg, key=key)
             self._console_by_key[key] = {
@@ -4245,7 +4282,8 @@ class OrionApp(App):
                 "level": normalized_level,
                 "message": msg,
             }
-            if "console" not in self._selection_by_app:
+
+            if current_selection is None:
                 self._set_selection(
                     SelectionContext(
                         app_id="console",
@@ -4257,7 +4295,14 @@ class OrionApp(App):
                         ids=(key,),
                     )
                 )
-            table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
+
+            # Avoid cursor jumps while other screens are active.
+            if console_active and (was_at_bottom or current_selection is None):
+                try:
+                    table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
+                except Exception:
+                    pass
+
             if self._max_console_rows > 0:
                 try:
                     while table.row_count > self._max_console_rows:
@@ -4266,7 +4311,8 @@ class OrionApp(App):
                     pass
         except Exception:
             pass
-        if self.active_screen == "console":
+
+        if console_active:
             self._refresh_inspector()
 
     def _log_msg(self, msg: str) -> None:
@@ -4484,22 +4530,22 @@ class OrionApp(App):
             return
 
         resp = self._qiki_last_response
-        table.clear()
         self._qiki_by_key = {}
-        self._selection_by_app.pop("qiki", None)
 
         if resp is None or not resp.proposals:
-            table.add_row(I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+            self._selection_by_app.pop("qiki", None)
+            self._sync_datatable_rows(table, rows=[("seed", I18N.NA, I18N.NA, I18N.NA, I18N.NA)])
             return
 
+        rows_by_key: dict[str, tuple[Any, ...]] = {}
         for p in resp.proposals:
             key = str(p.proposal_id)
-            table.add_row(
+            rows_by_key[key] = (
+                key,
                 str(p.priority),
                 f"{p.confidence:.2f}",
                 I18N.bidi(p.title.en, p.title.ru),
                 I18N.bidi(p.justification.en, p.justification.ru),
-                key=key,
             )
             self._qiki_by_key[key] = {
                 "kind": "qiki_proposal",
@@ -4509,8 +4555,24 @@ class OrionApp(App):
                 "ok": bool(resp.ok),
             }
 
-        first_key = next(iter(self._qiki_by_key.keys()), None)
-        if first_key is not None:
+        table_id = str(getattr(table, "id", "") or "")
+        prev_keys = self._datatable_row_keys.get(table_id) or []
+
+        ordered_keys: list[str] = []
+        for key in prev_keys:
+            if key in rows_by_key:
+                ordered_keys.append(key)
+        for key in rows_by_key:
+            if key not in ordered_keys:
+                ordered_keys.append(key)
+
+        rows: list[tuple[Any, ...]] = [rows_by_key[key] for key in ordered_keys]
+        self._sync_datatable_rows(table, rows=rows)
+
+        current = self._selection_by_app.get("qiki")
+        selected_key = current.key if current is not None else None
+        if selected_key is None or str(selected_key) not in self._qiki_by_key:
+            first_key = ordered_keys[0]
             self._set_selection(
                 SelectionContext(
                     app_id="qiki",
@@ -4522,8 +4584,10 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
+
+        if self.active_screen == "qiki":
             try:
-                table.move_cursor(row=0, column=0, animate=False, scroll=False)
+                self.set_focus(table)
             except Exception:
                 pass
 
