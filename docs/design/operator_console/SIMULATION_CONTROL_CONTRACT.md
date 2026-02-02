@@ -83,6 +83,37 @@ Destination routing:
 
 - `sim.*` and `power.*` commands target `q_sim_service`.
 
+### Control ACK envelope (P0, backward-compatible)
+
+`q_sim_service` publishes a control ACK JSON to:
+
+- subject: `qiki.responses.control`
+
+Contract goals:
+- Keep **both** legacy and new aliases in the same message (no `v2`, no new subjects).
+- Make UI parsing deterministic and replay-friendly.
+
+Required top-level fields:
+- `version`: `1`
+- `kind`: `"<command_name>"`
+- `timestamp`: RFC3339/ISO string (UTC)
+- `requestId` and `request_id`: same UUID (aliases)
+- `success` and `ok`: same bool (aliases)
+- `payload`: dict with at least:
+  - `command_name`
+  - `status` (e.g. `applied`, `rejected`, `exception: ...`)
+
+Error fields (only when `ok=false`):
+- `error`: legacy string code (fallback)
+- `error_detail`: structured dict:
+  - `code`
+  - `message`
+  - `details` (dict)
+
+Deterministic evidence:
+- Unit: `src/qiki/services/q_sim_service/tests/test_control_responses.py`
+- Integration (NATS): `tests/integration/test_control_ack_envelope.py`
+
 ## Telemetry and UI rendering
 
 `q_sim_service` publishes telemetry snapshots to:
