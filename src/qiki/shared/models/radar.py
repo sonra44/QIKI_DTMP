@@ -38,9 +38,12 @@ class RangeBand(IntEnum):
 
 
 class RadarTrackStatusEnum(IntEnum):
-    NEW = 0
-    TRACKED = 1
-    LOST = 2
+    # Keep numeric alignment with `protos/radar/v1/radar.proto` (no v2).
+    UNSPECIFIED = 0
+    NEW = 1
+    TRACKED = 2
+    LOST = 3
+    COASTING = 4
 
 
 class Vector3Model(BaseModel):
@@ -97,7 +100,20 @@ class RadarFrameModel(BaseModel):
     frame_id: UUID = Field(default_factory=uuid4)
     sensor_id: UUID
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # New (P0 trust): split times. `timestamp` is the legacy event time alias.
+    ts_event: Optional[datetime] = None
+    ts_ingest: Optional[datetime] = None
     detections: List[RadarDetectionModel] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _normalize_frame_times(self) -> Self:
+        # Backward compatibility: `timestamp` remains the canonical on-wire event time.
+        if self.ts_event is None:
+            self.ts_event = self.timestamp
+        # Avoid dual sources of truth: keep them identical if both are present.
+        if self.ts_event != self.timestamp:
+            self.ts_event = self.timestamp
+        return self
 
 
 class RadarTrackModel(BaseModel):
@@ -128,6 +144,9 @@ class RadarTrackModel(BaseModel):
     miss_count: int = Field(ge=0, default=0)
 
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # New (P0 trust): split times. `timestamp` is the legacy event time alias.
+    ts_event: Optional[datetime] = None
+    ts_ingest: Optional[datetime] = None
     range_band: RangeBand = RangeBand.RR_UNSPECIFIED
     id_present: Optional[bool] = None
 
@@ -165,4 +184,8 @@ class RadarTrackModel(BaseModel):
                 raise ValueError("LR band must not carry id_present")
             if self.transponder_mode not in (TransponderModeEnum.OFF,):
                 raise ValueError("LR band must not carry transponder_mode")
+        if self.ts_event is None:
+            self.ts_event = self.timestamp
+        if self.ts_event != self.timestamp:
+            self.ts_event = self.timestamp
         return self

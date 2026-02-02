@@ -33,7 +33,7 @@ class WorldModel:
 
         track_id = str(track.track_id)
 
-        if track.status == RadarTrackStatusEnum.LOST or track.miss_count > 0:
+        if track.status == RadarTrackStatusEnum.LOST:
             self._radar_tracks.pop(track_id, None)
         else:
             self._radar_tracks[track_id] = track

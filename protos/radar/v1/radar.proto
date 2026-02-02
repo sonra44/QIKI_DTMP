@@ -43,6 +43,7 @@ enum RadarTrackStatus {
   RADAR_TRACK_STATUS_NEW = 1;
   RADAR_TRACK_STATUS_TRACKED = 2;
   RADAR_TRACK_STATUS_LOST = 3;
+  RADAR_TRACK_STATUS_COASTING = 4;
 }
 
 // Одна отметка радара

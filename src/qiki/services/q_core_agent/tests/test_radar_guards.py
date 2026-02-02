@@ -87,6 +87,15 @@ def test_guard_table_triggers_on_unknown_contact():
     assert results[0].fsm_event == "RADAR_ALERT_UNKNOWN_CLOSE"
 
 
+def test_guard_table_ignores_new_tracks():
+    guard_table = _default_guard_table()
+    track = _build_track(range_m=30.0, status=RadarTrackStatusEnum.NEW)
+
+    results = guard_table.evaluate_track(track)
+
+    assert results == []
+
+
 def test_world_model_records_guard_event():
     guard_table = _default_guard_table()
     world_model = WorldModel(guard_table)

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import threading
+from datetime import UTC, datetime
 from typing import Optional, List
 
 from qiki.shared.events import build_cloudevent_headers
@@ -90,6 +91,9 @@ class RadarNatsPublisher:
         self._ensure_connection()
         if self._loop is None or self._nc is None:
             return
+
+        # P0 trust: stamp ingest time at the point the frame is emitted.
+        frame.ts_ingest = datetime.now(UTC)
 
         lr_dets: List[RadarDetectionModel] = []
         sr_dets: List[RadarDetectionModel] = []

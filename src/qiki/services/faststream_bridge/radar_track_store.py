@@ -81,14 +81,17 @@ class RadarTrackStore:
     def process_frame(self, frame: RadarFrameModel) -> List[RadarTrackModel]:
         """Process frame and return current set of tracks."""
 
-        frame_ts = frame.timestamp or datetime.now(UTC)
+        ingest_ts = datetime.now(UTC)
+        frame_ts = (
+            getattr(frame, "ts_event", None) or frame.timestamp or datetime.now(UTC)
+        )
         associations = self._associate(frame.detections, frame_ts)
         self._update_associated_tracks(associations, frame_ts)
         updated_ids = {state.track_id for _, state in associations if state}
         self._update_missed_tracks(updated_ids)
         self._spawn_new_tracks(frame.detections, associations, frame_ts)
         self._prune_lost_tracks()
-        return self._serialize_tracks(frame_ts)
+        return self._serialize_tracks(frame_ts, ingest_ts)
 
     def _associate(
         self, detections: List[RadarDetectionModel], frame_ts: datetime
@@ -210,16 +213,25 @@ class RadarTrackStore:
         for track_id in to_delete:
             del self._tracks[track_id]
 
-    def _serialize_tracks(self, frame_ts: datetime) -> List[RadarTrackModel]:
+    def _serialize_tracks(
+        self, frame_ts: datetime, ingest_ts: datetime
+    ) -> List[RadarTrackModel]:
         tracks: List[RadarTrackModel] = []
         for state in self._tracks.values():
-            status = (
-                RadarTrackStatusEnum.TRACKED
-                if state.hits >= self._min_hits_to_confirm and state.miss_count == 0
-                else RadarTrackStatusEnum.NEW
-            )
-            if state.miss_count > 0:
-                status = RadarTrackStatusEnum.LOST
+            confirmed = state.hits >= self._min_hits_to_confirm
+            if not confirmed:
+                status = (
+                    RadarTrackStatusEnum.NEW
+                    if state.miss_count == 0
+                    else RadarTrackStatusEnum.LOST
+                )
+            else:
+                if state.miss_count == 0:
+                    status = RadarTrackStatusEnum.TRACKED
+                elif state.miss_count <= self._max_misses:
+                    status = RadarTrackStatusEnum.COASTING
+                else:
+                    status = RadarTrackStatusEnum.LOST
 
             age = state.age_seconds(frame_ts)
             quality = self._compute_quality(state)
@@ -250,6 +262,8 @@ class RadarTrackStore:
                     age_s=age,
                     miss_count=state.miss_count,
                     timestamp=frame_ts,
+                    ts_event=frame_ts,
+                    ts_ingest=ingest_ts,
                 )
             )
         return tracks

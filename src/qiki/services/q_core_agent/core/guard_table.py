@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 from qiki.shared.models.radar import (
     FriendFoeEnum,
     RadarTrackModel,
+    RadarTrackStatusEnum,
     TransponderModeEnum,
 )
 
@@ -66,6 +67,14 @@ class GuardRule(BaseModel):
         return self
 
     def evaluate(self, track: RadarTrackModel) -> Optional[GuardEvaluationResult]:
+        # P0 trust: guard rules operate on stabilized tracks only.
+        # NEW/UNSPECIFIED tracks are too noisy and cause operator-facing flapping.
+        if track.status not in {
+            RadarTrackStatusEnum.TRACKED,
+            RadarTrackStatusEnum.COASTING,
+        }:
+            return None
+
         if self.iff is not None and track.iff != self.iff:
             return None
 

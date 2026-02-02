@@ -46,7 +46,7 @@ def _select_best_track(tracks: List[RadarTrackModel]) -> RadarTrackModel:
         tracks,
         key=lambda track: (
             track.quality,
-            int(track.status != RadarTrackStatusEnum.LOST),
+            int(track.status in {RadarTrackStatusEnum.TRACKED, RadarTrackStatusEnum.COASTING}),
             -track.range_m,
         ),
     )
@@ -74,4 +74,6 @@ def _empty_track() -> RadarTrackModel:
         age_s=0.0,
         miss_count=0,
         timestamp=now,
+        ts_event=now,
+        ts_ingest=now,
     )
