@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from concurrent import futures
 from pathlib import Path
 
@@ -28,7 +29,47 @@ from generated.q_sim_api_pb2_grpc import (
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig, load_config
 from qiki.shared.models.core import CommandMessage
-from qiki.shared.nats_subjects import COMMANDS_CONTROL
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, RESPONSES_CONTROL
+
+
+def _build_control_response_payload(
+    cmd: CommandMessage,
+    *,
+    success: bool,
+    status: str,
+    error: str | None = None,
+) -> dict:
+    request_id = cmd.metadata.correlation_id or cmd.metadata.message_id
+    payload: dict = {
+        "success": bool(success),
+        "requestId": str(request_id),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "payload": {
+            "command_name": cmd.command_name,
+            "status": status,
+        },
+    }
+    if error:
+        payload["error"] = str(error)
+    return payload
+
+
+def _describe_control_command_result(cmd: CommandMessage, *, success: bool, sim_service: QSimService) -> tuple[str, str | None]:
+    if success:
+        return ("applied", None)
+
+    name = cmd.command_name
+    if name == "sim.xpdr.mode" and not sim_service.comms_enabled:
+        return (
+            "comms disabled by hardware profile / связь отключена профилем железа",
+            "comms_disabled",
+        )
+    if name == "sim.xpdr.mode":
+        raw_mode = str((cmd.parameters or {}).get("mode") or "").strip().upper()
+        if raw_mode and raw_mode not in {"ON", "OFF", "SILENT", "SPOOF"}:
+            return (f"invalid mode: {raw_mode}", "invalid_mode")
+
+    return ("rejected", "rejected")
 
 
 class QSimAPIService(QSimAPIServiceServicer):
@@ -102,12 +143,26 @@ async def control_commands_loop(sim_service: QSimService) -> None:
             logging.warning("Invalid control command payload: %s", exc)
             return
 
+        success = False
+        status = "rejected"
+        error: str | None = "rejected"
         try:
             handled = sim_service.apply_control_command(cmd)
-            if handled:
+            success = bool(handled)
+            status, error = _describe_control_command_result(cmd, success=success, sim_service=sim_service)
+            if success:
                 logging.info("Applied control command: %s", cmd.command_name)
         except Exception as exc:
             logging.warning("Failed applying control command %s: %s", cmd.command_name, exc)
+            success = False
+            status = f"exception: {exc}"
+            error = "exception"
+
+        try:
+            resp = _build_control_response_payload(cmd, success=success, status=status, error=error)
+            await nc.publish(RESPONSES_CONTROL, json.dumps(resp, default=str).encode("utf-8"))
+        except Exception as exc:
+            logging.warning("Failed publishing control response for %s: %s", cmd.command_name, exc)
 
     stop = asyncio.Event()
     sub = await nc.subscribe(COMMANDS_CONTROL, cb=handler)

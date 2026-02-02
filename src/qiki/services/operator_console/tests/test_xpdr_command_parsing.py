@@ -13,8 +13,18 @@ def test_parse_xpdr_mode_case_insensitive() -> None:
     assert parsed == {"mode": "SPOOF"}
 
 
+def test_parse_xpdr_mode_ru_alias() -> None:
+    parsed = OrionApp._parse_xpdr_cli_command("ответчик.режим on")
+    assert parsed == {"mode": "ON"}
+
+
+def test_parse_xpdr_mode_ru_head_variant() -> None:
+    parsed = OrionApp._parse_xpdr_cli_command("xpdr.режим off")
+    assert parsed == {"mode": "OFF"}
+
+
 def test_parse_xpdr_invalid() -> None:
     assert OrionApp._parse_xpdr_cli_command("xpdr") is None
     assert OrionApp._parse_xpdr_cli_command("xpdr.mode") is None
     assert OrionApp._parse_xpdr_cli_command("xpdr.mode maybe") is None
-
+    assert OrionApp._parse_xpdr_cli_command("ответчик.режим maybe") is None

@@ -115,6 +115,10 @@ class QSimService:
         self._sim_paused = False
         self._sim_speed = 1.0
 
+    @property
+    def comms_enabled(self) -> bool:
+        return bool(self._comms_enabled)
+
     def get_sim_state(self) -> dict:
         fsm_state = "STOPPED"
         if self._sim_running and self._sim_paused:

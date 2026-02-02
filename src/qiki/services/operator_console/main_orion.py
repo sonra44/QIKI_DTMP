@@ -6902,11 +6902,30 @@ class OrionApp(App):
             return
 
         # xpdr.mode <on|off|silent|spoof> (Comms/XPDR runtime control; no mocks).
-        if low.startswith("xpdr.mode"):
+        # Alias (RU): ответчик.режим <on|off|silent|spoof>
+        if low.startswith(("xpdr.mode", "xpdr.режим", "ответчик.режим")):
             parsed = self._parse_xpdr_cli_command(cmd)
             if parsed is None:
                 self._console_log(
                     f"{I18N.bidi('Invalid XPDR command', 'Некорректная команда XPDR')}: {cmd}",
+                    level="warn",
+                )
+                return
+            # Pre-check: if telemetry already proves comms is disabled, deny locally with a clear message.
+            comms_enabled: bool | None = None
+            telemetry_env = self._snapshots.get_last("telemetry")
+            if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
+                comms = telemetry_env.payload.get("comms")
+                if isinstance(comms, dict):
+                    enabled_raw = comms.get("enabled")
+                    if isinstance(enabled_raw, bool):
+                        comms_enabled = enabled_raw
+            if comms_enabled is False:
+                self._console_log(
+                    I18N.bidi(
+                        "XPDR rejected: comms is disabled by hardware profile",
+                        "XPDR отклонён: связь отключена профилем железа",
+                    ),
                     level="warn",
                 )
                 return
@@ -7190,6 +7209,7 @@ class OrionApp(App):
                 sys_part,
                 *docking_parts,
                 "xpdr.mode <on|off|silent|spoof>",
+                "ответчик.режим <on|off|silent|spoof>",
                 "rcs.<axis> <pct> <dur>",
                 "rcs.stop",
                 qiki_part,
@@ -7211,6 +7231,7 @@ class OrionApp(App):
                 "nbl.on/off",
                 "nbl.max <W>",
                 "xpdr.mode <on|off|silent|spoof>",
+                "ответчик.режим <on|off|silent|spoof>",
                 "rcs.<axis> <pct> <dur>",
                 "rcs.stop",
                 qiki_part,
@@ -7319,13 +7340,14 @@ class OrionApp(App):
 
         Supported:
         - xpdr.mode <on|off|silent|spoof>
+        - ответчик.режим <on|off|silent|spoof>
         """
         text = (raw or "").strip()
         parts = text.split()
         if len(parts) < 2:
             return None
         head = parts[0].strip().lower()
-        if head != "xpdr.mode":
+        if head not in {"xpdr.mode", "xpdr.режим", "ответчик.режим"}:
             return None
         mode = parts[1].strip().lower()
         if mode not in {"on", "off", "silent", "spoof"}:
@@ -7414,10 +7436,12 @@ class OrionApp(App):
             return
 
         destination = "q_sim_service" if cmd_name.startswith(("sim.", "power.")) else "faststream_bridge"
+        request_id = uuid4()
         cmd = CommandMessage(
             command_name=cmd_name,
             parameters=parameters or {},
             metadata=MessageMetadata(
+                correlation_id=request_id,
                 message_type="control_command",
                 source="operator_console.orion",
                 destination=destination,
@@ -7425,7 +7449,11 @@ class OrionApp(App):
         )
         try:
             await self.nats_client.publish_command(COMMANDS_CONTROL, cmd.model_dump(mode="json"))
-            self._console_log(f"{I18N.bidi('Published', 'Отправлено')}: {cmd_name}", level="info")
+            self._console_log(
+                f"{I18N.bidi('Published', 'Отправлено')}: {cmd_name} "
+                f"({I18N.bidi('request', 'запрос')}={request_id})",
+                level="info",
+            )
         except Exception as e:
             self._console_log(
                 f"{I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}",
