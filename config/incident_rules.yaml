@@ -18,6 +18,23 @@ rules:
     require_ack: true
     auto_clear: true
 
+  - id: TEMP_CORE_TRIP
+    enabled: true
+    title: "Core thermal trip"
+    description: "Thermal plane reported a TRIP edge for the core node"
+    match:
+      type: "sensor"
+      source: "thermal"
+      subject: "core"
+      field: "tripped"
+    threshold:
+      op: "="
+      value: 1
+      cooldown_s: 60
+    severity: "A"
+    require_ack: true
+    auto_clear: false
+
   - id: RADAR_SIGNAL_LOSS
     enabled: true
     title: "Radar signal loss"

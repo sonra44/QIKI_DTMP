@@ -37,7 +37,7 @@ from qiki.shared.models.radar import (
 )
 from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_SENSOR_THERMAL
+from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
 
 
 class QSimService:
@@ -59,6 +59,8 @@ class QSimService:
             except Exception:
                 self._hardware_profile_hash = None
         self.world_model = WorldModel(bot_config=self._bot_config)
+        self._thermal_trip_last: dict[str, bool] = {}
+        self._reset_trip_edge_state()
         self.sensor_data_queue: list[SensorReading] = []
         self.actuator_command_queue: list[ActuatorCommand] = []
         env_flag = os.getenv("RADAR_ENABLED", "0").strip().lower()
@@ -147,6 +149,7 @@ class QSimService:
     def reset_simulation(self) -> None:
         # Keep publishers and config; reset simulation truth.
         self.world_model = WorldModel(bot_config=self._bot_config)
+        self._reset_trip_edge_state()
         self.sensor_data_queue.clear()
         self.actuator_command_queue.clear()
         self.radar_frames.clear()
@@ -512,6 +515,7 @@ class QSimService:
             event_type="qiki.events.v1.SensorReading",
             source="urn:qiki:q-sim-service:thermal",
         )
+        self._maybe_publish_thermal_trip_edges(ts_epoch)
         self._events_publisher.publish_event(
             SIM_POWER_BUS,
             {
@@ -527,6 +531,58 @@ class QSimService:
             event_type="qiki.events.v1.PowerBusReading",
             source="urn:qiki:q-sim-service:power",
         )
+
+    def _reset_trip_edge_state(self) -> None:
+        """
+        Reset edge-detection state for thermal trip events.
+
+        No-mocks: we mirror the current thermal trip state from WorldModel, so we only emit
+        edge events on transitions (not continuously).
+        """
+        state = getattr(self.world_model, "_thermal_trip_state", None)
+        if not isinstance(state, dict):
+            self._thermal_trip_last = {}
+            return
+        self._thermal_trip_last = {str(k): bool(v) for k, v in state.items()}
+
+    def _maybe_publish_thermal_trip_edges(self, ts_epoch: float) -> None:
+        state = getattr(self.world_model, "_thermal_trip_state", None)
+        nodes = getattr(self.world_model, "_thermal_nodes", None)
+        if not isinstance(state, dict) or not isinstance(nodes, dict):
+            return
+        for node_id, tripped in state.items():
+            nid = str(node_id)
+            if nid != "core":
+                continue
+            prev = bool(self._thermal_trip_last.get(nid, False))
+            cur = bool(tripped)
+            if cur == prev:
+                continue
+
+            node = nodes.get(nid) if isinstance(nodes.get(nid), dict) else {}
+            trip_c = float(node.get("trip_c", 0.0)) if isinstance(node, dict) else 0.0
+            hys_c = float(node.get("hys_c", 0.0)) if isinstance(node, dict) else 0.0
+            temp_c = float(getattr(self.world_model, "temp_core_c", 0.0))
+
+            self._events_publisher.publish_event(
+                SIM_SENSOR_THERMAL_TRIP,
+                {
+                    "schema_version": 1,
+                    "category": "sensor",
+                    "kind": "thermal_trip" if cur else "thermal_clear",
+                    "source": "thermal",
+                    "subject": nid,
+                    "tripped": 1 if cur else 0,
+                    "temp": temp_c,
+                    "trip_c": trip_c,
+                    "hys_c": hys_c,
+                    "ts_epoch": ts_epoch,
+                    "unit": "C",
+                },
+                event_type="qiki.events.v1.ThermalTrip",
+                source="urn:qiki:q-sim-service:thermal",
+            )
+            self._thermal_trip_last[nid] = cur
 
     def _build_telemetry_payload(self, state: dict) -> dict:
         ts_dt = datetime.now(timezone.utc)
