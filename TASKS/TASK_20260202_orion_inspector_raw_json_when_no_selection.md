@@ -1,7 +1,7 @@
 # TASK: ORION Inspector — показывать Raw JSON телеметрии при отсутствии выбора
 
 Date: 2026-02-02
-Status: in_progress (will be completed when committed + pushed)
+Status: done
 
 ## Goal
 
@@ -45,3 +45,6 @@ Quality gate:
 - Docker quality gate зелёный.
 - Изменения закоммичены и запушены так, чтобы `origin/main == origin/master`.
 
+## Result
+
+- Commit: `a0e61e9` (pushed to `main` and `master`)
