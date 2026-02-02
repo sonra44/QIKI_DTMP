@@ -45,6 +45,7 @@ QIKI = Q‑Core Agent (AgentContext, TickOrchestrator, FSMHandler, WorldModel, R
 ### 5.2 Sensor Plane (сенсоры)
 - IMU: 3× гироскоп, 3× акселерометр, опц. 3× магнитометр (6/9 DoF).
 - Термодатчики: корпус, кластеры RCS, батарея, конденсаторы, ПДУ.
+- Thermal Plane пороги/гистерезис/ambient‑floor (P0 canon): `docs/design/hardware_and_physics/thermal_plane_warn_and_floor.md`.
 - Радиация: дозиметр (накопленная доза) и счётчик событий (мгновенный фон/всплески).
 - Стыковка: датчики замка/контакта/тока/температуры байонета.
 - Датчики близости стыковки.

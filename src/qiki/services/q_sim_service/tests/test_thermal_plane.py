@@ -1,6 +1,8 @@
 from qiki.services.q_sim_service.core.world_model import WorldModel
 
 
+import pytest
+
 def test_thermal_nodes_follow_config_and_no_fake_defaults() -> None:
     bot_config = {
         "hardware_profile": {
@@ -61,8 +63,20 @@ def test_thermal_nodes_follow_config_and_no_fake_defaults() -> None:
     assert [n.get("id") for n in nodes] == ["core", "pdu"]
     assert all("temp_c" in n for n in nodes)
     assert all("tripped" in n for n in nodes)
+    assert all("warned" in n for n in nodes)
+    assert all("warn_c" in n for n in nodes)
     assert all("trip_c" in n for n in nodes)
     assert all("hys_c" in n for n in nodes)
+
+    core = next((n for n in nodes if isinstance(n, dict) and n.get("id") == "core"), None)
+    assert isinstance(core, dict)
+    assert float(core.get("warn_c", 0.0)) == pytest.approx(80.0)
+    assert core.get("warned") is False
+
+    pdu = next((n for n in nodes if isinstance(n, dict) and n.get("id") == "pdu"), None)
+    assert isinstance(pdu, dict)
+    assert float(pdu.get("warn_c", 0.0)) == pytest.approx(85.0)
+    assert pdu.get("warned") is False
 
 
 def test_thermal_plane_cools_towards_ambient_when_no_heat_sources() -> None:
@@ -262,3 +276,121 @@ def test_thermal_trip_hysteresis_clears_when_below_trip_minus_hys() -> None:
     )
     assert isinstance(core2, dict)
     assert core2.get("tripped") is False
+
+
+def test_thermal_warn_sets_warned_before_trip() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+                "nbl_active_init": False,
+                "nbl_max_power_w": 0.0,
+                "nbl_soc_min_pct": 0.0,
+                "nbl_core_temp_max_c": 90.0,
+            },
+            "thermal_plane": {
+                "enabled": True,
+                "ambient_exchange_w_per_c": 0.0,
+                "nodes": [
+                    {
+                        "id": "core",
+                        "heat_capacity_j_per_c": 1000.0,
+                        "cooling_w_per_c": 0.0,
+                        "t_init_c": 85.0,
+                        "t_max_c": 90.0,
+                        "t_hysteresis_c": 5.0,
+                    }
+                ],
+                "couplings": [],
+            },
+        }
+    }
+
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(1.0)
+    core = next(
+        (
+            n
+            for n in wm.get_state().get("thermal", {}).get("nodes", [])
+            if isinstance(n, dict) and n.get("id") == "core"
+        ),
+        None,
+    )
+    assert isinstance(core, dict)
+    assert float(core.get("warn_c", 0.0)) == pytest.approx(80.0)
+    assert core.get("warned") is True
+    assert core.get("tripped") is False
+
+
+def test_thermal_step_does_not_overshoot_below_ambient_from_above() -> None:
+    # Ambient is -60C by default; with a large dt and strong cooling, Euler integration may overshoot.
+    # We clamp only overshoot from above ambient (passive cooling cannot drive below ambient).
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 0.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+                "nbl_active_init": False,
+                "nbl_max_power_w": 0.0,
+                "nbl_soc_min_pct": 0.0,
+                "nbl_core_temp_max_c": 90.0,
+            },
+            "thermal_plane": {
+                "enabled": True,
+                "ambient_exchange_w_per_c": 0.0,
+                "nodes": [
+                    {
+                        "id": "core",
+                        "heat_capacity_j_per_c": 1.0,
+                        "cooling_w_per_c": 2000.0,
+                        "t_init_c": 40.0,
+                        "t_max_c": 90.0,
+                        "t_hysteresis_c": 5.0,
+                    }
+                ],
+                "couplings": [],
+            },
+        }
+    }
+
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(10.0)
+    core = next(
+        (
+            n
+            for n in wm.get_state().get("thermal", {}).get("nodes", [])
+            if isinstance(n, dict) and n.get("id") == "core"
+        ),
+        None,
+    )
+    assert isinstance(core, dict)
+    assert float(core.get("temp_c", 0.0)) == pytest.approx(-60.0)

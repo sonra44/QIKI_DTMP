@@ -460,6 +460,20 @@ subsystems:
           key: thermal.nodes[*].id
         related:
           - power.faults
+      - path: thermal.nodes[*].warned
+        label: Thermal warning/Предупреждение
+        unit: bool
+        type: boolean
+        why_operator: Node is above warn threshold but not tripped/Узел выше warn-порога, но ещё не в trip
+        dimensions:
+          key: thermal.nodes[*].id
+      - path: thermal.nodes[*].warn_c
+        label: Warn threshold/Warn-порог
+        unit: celsius
+        type: number
+        why_operator: Warn threshold for early operator awareness/Порог предупреждения для раннего реагирования
+        dimensions:
+          key: thermal.nodes[*].id
       - path: thermal.nodes[*].trip_c
         label: Trip threshold/Порог перегрева
         unit: celsius

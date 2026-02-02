@@ -80,7 +80,11 @@ class ThermalNodeTelemetry(BaseModel):
 
     id: str
     temp_c: float
+
+    # Operator-facing derived states/thresholds (no mocks).
     tripped: bool = False
+    warned: bool = False
+    warn_c: float = 0.0
     trip_c: float = 0.0
     hys_c: float = 0.0
 

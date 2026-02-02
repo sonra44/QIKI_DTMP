@@ -449,6 +449,13 @@ class WorldModel:
         except Exception:
             self._thermal_ambient_exchange_w_per_c = 0.0
 
+        # Warn threshold policy: derived warn = trip - warn_delta unless explicit t_warn_c is provided.
+        try:
+            self._thermal_warn_delta_c = float(tp.get("warn_delta_c", 10.0))
+        except Exception:
+            self._thermal_warn_delta_c = 10.0
+        self._thermal_warn_delta_c = max(0.0, min(80.0, float(self._thermal_warn_delta_c)))
+
         nodes = tp.get("nodes")
         if not isinstance(nodes, list):
             nodes = []
@@ -485,11 +492,26 @@ class WorldModel:
             except Exception:
                 t_hys = 0.0
 
+            try:
+                t_warn = raw.get("t_warn_c")
+                t_warn = float(t_warn) if t_warn is not None else None
+            except Exception:
+                t_warn = None
+
             cap = max(1.0, cap)
             cool = max(0.0, cool)
             t_init = max(-120.0, min(160.0, t_init))
             t_trip = float(t_trip)
             t_hys = max(0.0, t_hys)
+
+            if t_trip > 0.0 and t_hys <= 0.0:
+                # Keep this config warning persistent (survives step() fault reset).
+                self.power_faults.append(f"THERMAL_PLANE_PARAM_INVALID:{node_id}:hys_zero")
+
+            if t_warn is None and t_trip > 0.0:
+                t_warn = float(t_trip) - float(self._thermal_warn_delta_c)
+            if t_warn is None:
+                t_warn = 0.0
 
             self._thermal_nodes_order.append(node_id)
             self._thermal_nodes[node_id] = {
@@ -498,6 +520,7 @@ class WorldModel:
                 "cool_w_per_c": float(cool),
                 "trip_c": float(t_trip),
                 "hys_c": float(t_hys),
+                "warn_c": float(t_warn),
             }
             self._thermal_trip_state[node_id] = False
 
@@ -618,6 +641,9 @@ class WorldModel:
                 net_w -= float(k) * (t - other_t)
             dT = (net_w / cap) * dt
             t2 = max(-120.0, min(160.0, t + dT))
+            # Passive ambient cooling cannot drive a node below ambient; prevent Euler overshoot.
+            if t >= amb and t2 < amb:
+                t2 = max(-120.0, min(160.0, float(amb)))
             next_t[nid] = float(t2)
 
         for nid, t2 in next_t.items():
@@ -883,7 +909,10 @@ class WorldModel:
         self.power_faults = [
             f
             for f in self.power_faults
-            if f.endswith("_MISSING") or f.endswith("_INVALID") or f.startswith("POWER_PLANE_PARAM_INVALID")
+            if f.endswith("_MISSING")
+            or f.endswith("_INVALID")
+            or f.startswith("POWER_PLANE_PARAM_INVALID")
+            or f.startswith("THERMAL_PLANE_PARAM_INVALID")
         ]
         self.power_shed_loads = []
         self.power_shed_reasons = []
@@ -1422,12 +1451,18 @@ class WorldModel:
                 node = self._thermal_nodes.get(nid)
                 if not isinstance(node, dict):
                     continue
+                temp_c = float(node.get("temp_c", self.temp_external_c))
+                tripped = bool(self._thermal_trip_state.get(nid, False))
+                warn_c = float(node.get("warn_c", 0.0))
+                warned = bool((not tripped) and warn_c > 0.0 and temp_c >= warn_c)
                 thermal_nodes.append(
                     {
                         "id": nid,
-                        "temp_c": float(node.get("temp_c", self.temp_external_c)),
-                        # Operator-facing (derived, no-mocks): explicit trip state and thresholds.
-                        "tripped": bool(self._thermal_trip_state.get(nid, False)),
+                        "temp_c": temp_c,
+                        # Operator-facing (derived, no-mocks): explicit trip/warn state and thresholds.
+                        "tripped": tripped,
+                        "warned": warned,
+                        "warn_c": warn_c,
                         "trip_c": float(node.get("trip_c", 0.0)),
                         "hys_c": float(node.get("hys_c", 0.0)),
                     }

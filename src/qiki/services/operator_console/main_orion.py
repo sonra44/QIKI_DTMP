@@ -2485,12 +2485,16 @@ class OrionApp(App):
         current = self._selection_by_app.get("thermal")
         table_rows: list[tuple[Any, ...]] = []
 
-        def status_label(node_id: str, temp: Any, *, tripped: Any) -> str:
+        def status_label(node_id: str, temp: Any, *, tripped: Any, warned: Any) -> str:
             if temp is None:
                 return I18N.NA
-            # Prefer explicit node trip state (newer telemetry), fallback to power faults (legacy).
+            # Prefer explicit node state (newer telemetry), fallback to power faults (legacy).
             if isinstance(tripped, bool):
-                return I18N.bidi("Abnormal", "Не норма") if tripped else I18N.bidi("Normal", "Норма")
+                if tripped:
+                    return I18N.bidi("Abnormal", "Не норма")
+                if isinstance(warned, bool) and warned:
+                    return I18N.bidi("Warning", "Предупреждение")
+                return I18N.bidi("Normal", "Норма")
             if f"THERMAL_TRIP:{node_id}" in faults_set:
                 return I18N.bidi("Abnormal", "Не норма")
             return I18N.bidi("Normal", "Норма")
@@ -2505,12 +2509,16 @@ class OrionApp(App):
             nid = node_id.strip()
             value = I18N.num_unit(temp, "C", "°C", digits=1)
             tripped = raw.get("tripped")
+            warned = raw.get("warned")
+            warn_c = raw.get("warn_c")
             trip_c = raw.get("trip_c")
             hys_c = raw.get("hys_c")
-            status = status_label(nid, temp, tripped=tripped)
+            status = status_label(nid, temp, tripped=tripped, warned=warned)
             source_keys = (
                 f"thermal.nodes[id={nid}].temp_c",
                 f"thermal.nodes[id={nid}].tripped",
+                f"thermal.nodes[id={nid}].warned",
+                f"thermal.nodes[id={nid}].warn_c",
                 f"thermal.nodes[id={nid}].trip_c",
                 f"thermal.nodes[id={nid}].hys_c",
                 "power.faults",
@@ -2521,6 +2529,8 @@ class OrionApp(App):
                 "status": status,
                 "temp_c": temp,
                 "tripped": tripped,
+                "warned": warned,
+                "warn_c": warn_c,
                 "trip_c": trip_c,
                 "hys_c": hys_c,
                 "value": value,
