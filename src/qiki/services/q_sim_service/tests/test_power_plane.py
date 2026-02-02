@@ -50,6 +50,16 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "nbl_budget_w" in power
 
 
+def test_telemetry_battery_is_legacy_alias_of_power_soc_pct() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+    normalized = TelemetrySnapshotModel.normalize_payload(payload)
+
+    assert normalized.get("battery") == pytest.approx(((normalized.get("power") or {}).get("soc_pct")))
+
+
 def test_battery_soc_init_pct_is_applied_and_clamped() -> None:
     bot_config = {
         "hardware_profile": {

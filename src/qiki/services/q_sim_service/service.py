@@ -467,6 +467,18 @@ class QSimService:
         pitch = float(att.get("pitch_rad", 0.0))
         yaw = float(att.get("yaw_rad", math.radians(state.get("heading", 0.0))))
 
+        # Canonical: SoC lives under power.soc_pct. Keep top-level `battery` as legacy alias
+        # to avoid breaking old consumers, but ensure it matches the canonical field.
+        soc_pct: float | None = None
+        try:
+            power_block = state.get("power") if isinstance(state, dict) else None
+            if isinstance(power_block, dict) and power_block.get("soc_pct") is not None:
+                soc_pct = float(power_block.get("soc_pct"))
+        except Exception:
+            soc_pct = None
+        if soc_pct is None:
+            soc_pct = float(state.get("battery_level", 0.0))
+
         comms_plane = {}
         try:
             hp = (self._bot_config or {}).get("hardware_profile") if isinstance(self._bot_config, dict) else {}
@@ -494,7 +506,7 @@ class QSimService:
             velocity=float(state.get("speed", 0.0)),
             heading=float(state.get("heading", 0.0)),
             attitude={"roll_rad": roll, "pitch_rad": pitch, "yaw_rad": yaw},
-            battery=float(state.get("battery_level", 0.0)),
+            battery=float(soc_pct),
             cpu_usage=None if state.get("cpu_usage") is None else float(state.get("cpu_usage")),
             memory_usage=None if state.get("memory_usage") is None else float(state.get("memory_usage")),
             hull={"integrity": float(state.get("hull_integrity", 100.0))},
