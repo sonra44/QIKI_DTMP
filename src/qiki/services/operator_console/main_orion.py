@@ -5242,6 +5242,8 @@ class OrionApp(App):
 
         normalized_level = self._normalize_level(severity)
         ts_epoch = time.time()
+        if isinstance(payload, dict) and isinstance(payload.get("ts_epoch"), (int, float)):
+            ts_epoch = float(payload.get("ts_epoch"))
         subj = str(subject or "")
         if subj == "qiki.events.v1.system_mode" and isinstance(payload, dict):
             mode = payload.get("mode")
@@ -5292,6 +5294,36 @@ class OrionApp(App):
             matched_incidents = self._incident_store.ingest(incident_event)
         else:
             matched_incidents = []
+
+        # P0 observability (no new subjects): publish a best-effort audit event when an incident is opened.
+        # This makes incident creation provable via record/replay without scraping the TUI.
+        if matched_incidents and self.nats_client:
+            for inc in matched_incidents:
+                if int(getattr(inc, "count", 0) or 0) != 1:
+                    continue
+                if str(getattr(inc, "state", "") or "") != "active":
+                    continue
+                try:
+                    await self._publish_audit_event(
+                        {
+                            "schema_version": 1,
+                            "category": "audit",
+                            "kind": "incident_open",
+                            "source": "orion",
+                            "subject": "incident",
+                            # Use the event timestamp when available (replay determinism).
+                            "ts_epoch": ts_epoch,
+                            "incident_key": str(getattr(inc, "key", "") or getattr(inc, "incident_id", "")),
+                            "incident_id": str(getattr(inc, "incident_id", "")) or None,
+                            "rule_id": str(getattr(inc, "rule_id", "")) or None,
+                            "severity": str(getattr(inc, "severity", "")) or None,
+                        }
+                    )
+                except Exception as exc:
+                    self._console_log(
+                        f"{I18N.bidi('Audit publish failed', 'Не удалось отправить аудит')}: {exc}",
+                        level="warning",
+                    )
 
         if self._events_live:
             # Re-render under active filter and keep selection consistent.
