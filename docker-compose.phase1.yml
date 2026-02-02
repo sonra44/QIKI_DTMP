@@ -77,6 +77,7 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - BOT_CONFIG_PATH=${BOT_CONFIG_PATH:-/workspace/src/qiki/services/q_core_agent/config/bot_config.json}
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - TELEMETRY_NATS_ENABLED=1
@@ -107,7 +108,7 @@ services:
       - LOG_LEVEL=INFO
       - BIOS_LISTEN_HOST=0.0.0.0
       - BIOS_LISTEN_PORT=8080
-      - BOT_CONFIG_PATH=/workspace/src/qiki/services/q_core_agent/config/bot_config.json
+      - BOT_CONFIG_PATH=${BOT_CONFIG_PATH:-/workspace/src/qiki/services/q_core_agent/config/bot_config.json}
       - SIM_GRPC_HOST=q-sim-service
       - SIM_GRPC_PORT=50051
       - SIM_HEALTH_CHECK_TIMEOUT=2.0

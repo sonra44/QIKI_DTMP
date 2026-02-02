@@ -263,7 +263,11 @@ class QSimService:
         return False
 
     def _load_bot_config(self) -> dict | None:
+        # Canonical stack env name is BOT_CONFIG_PATH (used by BIOS and other services).
+        # QIKI_BOT_CONFIG_PATH is kept for backward compatibility and unit tests.
         env_path = os.getenv("QIKI_BOT_CONFIG_PATH", "").strip()
+        if not env_path:
+            env_path = os.getenv("BOT_CONFIG_PATH", "").strip()
         candidates: list[Path] = []
         if env_path:
             candidates.append(Path(env_path))
