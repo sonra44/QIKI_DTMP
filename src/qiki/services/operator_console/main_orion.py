@@ -6289,6 +6289,84 @@ class OrionApp(App):
             return key
         return None
 
+    @classmethod
+    def _should_route_to_system_by_default(cls, raw: str) -> bool:
+        """
+        Default routing policy for the command dock:
+
+        - QIKI is the default for free-form text.
+        - But "operator console system commands" should work without forcing `S:`.
+          Use `q:` or `//` to force QIKI when needed.
+        """
+        text = (raw or "").strip()
+        if not text:
+            return False
+        low = text.lower()
+
+        # Screen aliases and canonical screen names.
+        if cls._normalize_screen_token(low) is not None:
+            return True
+
+        # One-word console/system commands (no QIKI).
+        if low in {
+            "help",
+            "помощь",
+            "?",
+            "h",
+            "events",
+            "события",
+            "ack",
+            "acknowledge",
+            "clear",
+            "очистить",
+        }:
+            return True
+
+        # Multi-token console/system commands.
+        if low.startswith(
+            (
+                "screen ",
+                "экран ",
+                "events ",
+                "events.",
+                "события ",
+                "события.",
+                "type ",
+                "тип ",
+                "filter ",
+                "фильтр ",
+                "ack ",
+                "acknowledge ",
+                "подтвердить ",
+            )
+        ):
+            return True
+
+        # Control-plane commands: sim/rcs/xpdr/dock/power must be system by default.
+        if low.startswith(
+            (
+                "simulation.",
+                "simulation ",
+                "sim.",
+                "sim ",
+                "симуляция.",
+                "симуляция ",
+                "rcs.",
+                "dock.",
+                "nbl.",
+                "power.",
+                "xpdr.",
+                "ответчик.",
+            )
+        ):
+            return True
+
+        # Rules maintenance.
+        if low in {"reload rules", "rules reload", "rules refresh", "перезагрузить правила", "правила перезагрузить"}:
+            return True
+
+        return False
+
     def _show_help(self) -> None:
         def display_aliases(app: OrionAppSpec) -> str:
             # Never show abbreviated aliases in UI help; keep the help readable and fully spelled out.
@@ -6337,6 +6415,13 @@ class OrionApp(App):
             f"A — {I18N.bidi('acknowledge selected incident', 'подтвердить выбранный инцидент')} | "
             f"X — {I18N.bidi('clear acknowledged incidents', 'очистить подтвержденные инциденты')} | "
             f"R — {I18N.bidi('mark events read (paused)', 'отметить прочитанным (пауза)')}",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Routing', 'Маршрутизация')}: "
+            f"{I18N.bidi('system commands work without', 'системные команды работают без')} `S:` "
+            f"({I18N.bidi('e.g.', 'например')}: sim.*, power.*, xpdr.*, rcs.*, dock.*). "
+            f"{I18N.bidi('Force QIKI with', 'Принудительно QIKI через')}: q: <text> | // <text>",
             level="info",
         )
         self._console_log(
@@ -6641,30 +6726,10 @@ class OrionApp(App):
             await self._publish_qiki_intent(qiki_text)
             return
 
-        # If this isn't an explicit system command, we treat unknown inputs as QIKI.
-        # Known console commands still work without a prefix.
-        low = cmd.lower()
-        if not forced_command:
-            known = {
-                "help",
-                "помощь",
-                "?",
-                "h",
-                "events",
-                "события",
-            }
-            if low not in known and not (
-                low.startswith("events ")
-                or low.startswith("events.")
-                or low.startswith("события ")
-                or low.startswith("события.")
-                or low == "ack"
-                or low.startswith("ack ")
-                or low == "acknowledge"
-                or low.startswith("acknowledge ")
-            ):
-                await self._publish_qiki_intent(cmd)
-                return
+        # Default input mode is QIKI, but operator console system commands should work without forcing `S:`.
+        if not forced_command and not self._should_route_to_system_by_default(cmd):
+            await self._publish_qiki_intent(cmd)
+            return
 
         self._console_log(f"{I18N.bidi('command', 'команда')}> {cmd}", level="info")
 
