@@ -8,13 +8,53 @@
 - `docker compose -f docker-compose.phase1.yml ps`
 - `curl -sf http://localhost:8222/healthz` — ожидаем `{ "status": "ok" }`
 - `docker compose -f docker-compose.phase1.yml logs --tail=20 q-sim-service` — gRPC сервер поднят
-- `docker compose -f docker-compose.phase1.yml logs --tail=20 faststream-bridge | rg -n "Radar frame received"` — кадры доходят через JetStream
+- NOTE: симуляция стартует в `STOPPED` (кадры радара публикуются только после `sim.start`).
 
 ## 2.1) System mode (JetStream edge event)
 ```bash
 docker compose -f docker-compose.phase1.yml exec -T qiki-dev env NATS_URL="nats://nats:4222" \
   python tools/system_mode_smoke.py --persisted-only
 ```
+
+## 2.2) Запуск симуляции (чтобы пошли радарные кадры)
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY'
+import asyncio, json, uuid, nats
+from qiki.shared.models.core import CommandMessage, MessageMetadata
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, RESPONSES_CONTROL
+
+async def main():
+    nc = await nats.connect('nats://nats:4222')
+    fut = asyncio.get_running_loop().create_future()
+    req_id = str(uuid.uuid4())
+
+    async def handler(msg):
+        try:
+            payload = json.loads(msg.data.decode('utf-8'))
+        except Exception:
+            return
+        rid = payload.get('request_id') or payload.get('requestId')
+        if str(rid) == req_id and not fut.done():
+            fut.set_result(payload)
+
+    await nc.subscribe(RESPONSES_CONTROL, cb=handler)
+    cmd = CommandMessage(
+        command_name='sim.start',
+        parameters={'speed': 1.0},
+        metadata=MessageMetadata(message_id=req_id, message_type='control_command', source='checklist', destination='q_sim_service'),
+    )
+    await nc.publish(COMMANDS_CONTROL, json.dumps(cmd.model_dump(mode='json')).encode('utf-8'))
+    await nc.flush(timeout=2.0)
+    payload = await asyncio.wait_for(fut, timeout=6.0)
+    print(payload)
+    await nc.close()
+
+asyncio.run(main())
+PY
+```
+
+## 2.3) Радарный пайплайн (JetStream)
+- `docker compose -f docker-compose.phase1.yml logs --tail=50 faststream-bridge | rg -n \"Radar frame received\"` — кадры доходят через JetStream
 
 ## 3) gRPC health-check
 ```bash

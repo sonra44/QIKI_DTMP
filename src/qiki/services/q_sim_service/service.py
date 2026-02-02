@@ -125,7 +125,9 @@ class QSimService:
         self._sensor_index = 0
 
         # Simulation runtime state (single source of truth).
-        self._sim_running = True
+        # Canonical: start STOPPED. Operator (ORION) explicitly transitions to RUNNING via `sim.start`.
+        # This prevents edge-events (radar guards/incidents) from firing before the operator is listening.
+        self._sim_running = False
         self._sim_paused = False
         self._sim_speed = 1.0
 
