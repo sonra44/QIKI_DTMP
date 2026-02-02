@@ -69,6 +69,40 @@ rules:
     require_ack: true
     auto_clear: false
 
+  - id: FOE_TRANSPONDER_OFF_APPROACH
+    enabled: true
+    title: "Foe approach (transponder off)"
+    description: "Foe contact approaching without transponder (guard rule)"
+    match:
+      type: "radar"
+      source: "guard"
+      subject: "FOE_TRANSPONDER_OFF_APPROACH"
+      field: "range_m"
+    threshold:
+      op: "<"
+      value: 150
+      cooldown_s: 60
+    severity: "A"
+    require_ack: true
+    auto_clear: false
+
+  - id: SPOOFING_DETECTED
+    enabled: true
+    title: "Spoofing detected"
+    description: "Transponder spoof mode detected (guard rule)"
+    match:
+      type: "radar"
+      source: "guard"
+      subject: "SPOOFING_DETECTED"
+      field: "transponder_mode"
+    threshold:
+      op: "="
+      value: 3
+      cooldown_s: 60
+    severity: "W"
+    require_ack: true
+    auto_clear: false
+
   - id: POWER_BUS_NEAR_LIMIT
     enabled: true
     title: "Power bus near current limit"
