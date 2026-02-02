@@ -40,3 +40,10 @@ OPENAI_API_KEY_UPDATE = "qiki.secrets.v1.openai_api_key"
 EVENTS_V1_WILDCARD = "qiki.events.v1.>"
 EVENTS_AUDIT = "qiki.events.v1.audit"
 SYSTEM_MODE_EVENT = "qiki.events.v1.system_mode"
+
+# Operator action events (published by ORION; registrar will also audit these into EVENTS_AUDIT).
+OPERATOR_ACTIONS = "qiki.events.v1.operator.actions"
+
+# Simulation (q_sim_service) event subjects
+SIM_SENSOR_THERMAL = "qiki.events.v1.sensor.thermal"
+SIM_POWER_BUS = "qiki.events.v1.power.bus"

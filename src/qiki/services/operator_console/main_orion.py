@@ -33,7 +33,7 @@ from qiki.services.operator_console.ui.profile_panel import ProfilePanel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, OPENAI_API_KEY_UPDATE, QIKI_INTENTS
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, OPENAI_API_KEY_UPDATE, OPERATOR_ACTIONS, QIKI_INTENTS
 
 try:
     import yaml
@@ -6795,6 +6795,24 @@ class OrionApp(App):
                 self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
                 return
             if self._ack_incident(key):
+                inc = self._incident_store.get(key) if self._incident_store is not None else None
+                audit_payload: dict[str, Any] = {
+                    "schema_version": 1,
+                    "category": "audit",
+                    "kind": "incident_ack",
+                    "source": "orion",
+                    "subject": "incident",
+                    "ts_epoch": time.time(),
+                    "incident_key": key,
+                }
+                if inc is not None:
+                    audit_payload["incident_id"] = str(getattr(inc, "incident_id", "")) or None
+                    audit_payload["rule_id"] = str(getattr(inc, "rule_id", "")) or None
+                    audit_payload["severity"] = str(getattr(inc, "severity", "")) or None
+                try:
+                    await self._publish_audit_event(audit_payload)
+                except Exception:
+                    pass
                 self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
@@ -6816,6 +6834,24 @@ class OrionApp(App):
                 self._console_log(f"{I18N.bidi('No incident selected', 'Инцидент не выбран')}", level="info")
                 return
             if self._ack_incident(key):
+                inc = self._incident_store.get(key) if self._incident_store is not None else None
+                audit_payload: dict[str, Any] = {
+                    "schema_version": 1,
+                    "category": "audit",
+                    "kind": "incident_ack",
+                    "source": "orion",
+                    "subject": "incident",
+                    "ts_epoch": time.time(),
+                    "incident_key": key,
+                }
+                if inc is not None:
+                    audit_payload["incident_id"] = str(getattr(inc, "incident_id", "")) or None
+                    audit_payload["rule_id"] = str(getattr(inc, "rule_id", "")) or None
+                    audit_payload["severity"] = str(getattr(inc, "severity", "")) or None
+                try:
+                    await self._publish_audit_event(audit_payload)
+                except Exception:
+                    pass
                 self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
@@ -6828,7 +6864,37 @@ class OrionApp(App):
             return
 
         if low in {"clear", "очистить"} or low.startswith("clear ") or low.startswith("очистить "):
+            acked_snapshot: list[dict[str, str]] = []
+            if self._incident_store is not None:
+                for inc in list(self._incident_store.list_incidents()):
+                    try:
+                        if bool(getattr(inc, "acked", False)):
+                            acked_snapshot.append(
+                                {
+                                    "incident_id": str(getattr(inc, "incident_id", "")),
+                                    "rule_id": str(getattr(inc, "rule_id", "")),
+                                    "incident_key": str(getattr(inc, "key", "")),
+                                }
+                            )
+                    except Exception:
+                        continue
             cleared = self._clear_acked_incidents()
+            try:
+                await self._publish_audit_event(
+                    {
+                        "schema_version": 1,
+                        "category": "audit",
+                        "kind": "incident_clear",
+                        "source": "orion",
+                        "subject": "incidents",
+                        "ts_epoch": time.time(),
+                        "cleared_count": int(cleared),
+                        "cleared_total": int(len(acked_snapshot)),
+                        "cleared_incidents": acked_snapshot[:10],
+                    }
+                )
+            except Exception:
+                pass
             self._console_log(
                 f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}"
             )
@@ -7352,12 +7418,16 @@ class OrionApp(App):
             "симуляция.стоп": "sim.stop",
             "симуляция.сброс": "sim.reset",
             # Power Plane runtime control (no mocks): Dock / NBL.
+            "power.dock.on": "power.dock.on",
+            "power.dock.off": "power.dock.off",
             "dock.on": "power.dock.on",
             "dock.off": "power.dock.off",
             "док.вкл": "power.dock.on",
             "док.выкл": "power.dock.off",
             "стыковка.вкл": "power.dock.on",
             "стыковка.выкл": "power.dock.off",
+            "power.nbl.on": "power.nbl.on",
+            "power.nbl.off": "power.nbl.off",
             "nbl.on": "power.nbl.on",
             "nbl.off": "power.nbl.off",
             "нбл.вкл": "power.nbl.on",
@@ -7529,6 +7599,18 @@ class OrionApp(App):
             self._console_log(
                 f"{I18N.bidi('Publish failed', 'Отправка не удалась')}: {e}",
                 level="error",
+            )
+
+    async def _publish_audit_event(self, payload: dict[str, Any]) -> None:
+        if not self.nats_client:
+            return
+        try:
+            await self.nats_client.publish_command(OPERATOR_ACTIONS, payload)
+        except Exception as exc:
+            # Audit is best-effort, but failures must be visible (no silent drops).
+            self._console_log(
+                f"{I18N.bidi('Audit publish failed', 'Не удалось отправить аудит')}: {exc}",
+                level="warning",
             )
 
 

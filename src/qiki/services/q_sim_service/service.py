@@ -22,6 +22,7 @@ from generated.common_types_pb2 import (
 from generated.sensor_raw_in_pb2 import SensorReading
 
 from qiki.services.q_sim_service.core.world_model import WorldModel
+from qiki.services.q_sim_service.events_publisher import SimEventsNatsPublisher
 from qiki.services.q_sim_service.logger import logger
 from qiki.services.q_sim_service.radar_publisher import RadarNatsPublisher
 from qiki.services.q_sim_service.telemetry_publisher import TelemetryNatsPublisher
@@ -36,6 +37,7 @@ from qiki.shared.models.radar import (
 )
 from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
+from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_SENSOR_THERMAL
 
 
 class QSimService:
@@ -78,6 +80,16 @@ class QSimService:
             nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
             subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", "qiki.telemetry")
             self._telemetry_publisher = TelemetryNatsPublisher(nats_url, subject=subject)
+
+        events_flag_default = "1" if self.telemetry_nats_enabled else "0"
+        events_flag = os.getenv("EVENTS_NATS_ENABLED", events_flag_default).strip().lower()
+        self.events_nats_enabled = events_flag not in ("0", "false", "")
+        self._events_publisher: SimEventsNatsPublisher | None = None
+        self._events_interval_sec = float(os.getenv("EVENTS_INTERVAL_SEC", str(self._telemetry_interval_sec)))
+        self._events_last_sent_mono = 0.0
+        if self.events_nats_enabled:
+            nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
+            self._events_publisher = SimEventsNatsPublisher(nats_url)
 
         # Transponder (XPDR) mode: canonical runtime source is bot_config.json (if present),
         # but we keep env overrides for debugging.
@@ -140,6 +152,7 @@ class QSimService:
         self.radar_frames.clear()
         self._sensor_index = 0
         self._telemetry_last_sent_mono = 0.0
+        self._events_last_sent_mono = 0.0
 
     def apply_control_command(self, cmd: CommandMessage) -> bool:
         """
@@ -428,6 +441,7 @@ class QSimService:
         self.actuator_command_queue.clear()
 
         self._maybe_publish_telemetry()
+        self._maybe_publish_events()
 
         sensor_data = self.generate_sensor_data()
         self.sensor_data_queue.append(sensor_data)
@@ -453,6 +467,51 @@ class QSimService:
         state = self.world_model.get_state()
         payload = self._build_telemetry_payload(state)
         self._telemetry_publisher.publish_snapshot(payload)
+
+    def _maybe_publish_events(self) -> None:
+        if not self.events_nats_enabled:
+            return
+        if self._events_publisher is None:
+            return
+
+        now_mono = time.monotonic()
+        if now_mono - self._events_last_sent_mono < self._events_interval_sec:
+            return
+        self._events_last_sent_mono = now_mono
+
+        ts_epoch = time.time()
+        # Minimal no-mocks sim events used by IncidentStore rules:
+        # - TEMP_CORE_SPIKE: type=sensor, source=thermal, subject=core, payload.temp
+        # - POWER_BUS_OVERLOAD: type=power, source=bus, subject=main, payload.current
+        self._events_publisher.publish_event(
+            SIM_SENSOR_THERMAL,
+            {
+                "schema_version": 1,
+                "category": "sensor",
+                "source": "thermal",
+                "subject": "core",
+                "temp": float(getattr(self.world_model, "temp_core_c", 0.0)),
+                "ts_epoch": ts_epoch,
+                "unit": "C",
+            },
+            event_type="qiki.events.v1.SensorReading",
+            source="urn:qiki:q-sim-service:thermal",
+        )
+        self._events_publisher.publish_event(
+            SIM_POWER_BUS,
+            {
+                "schema_version": 1,
+                "category": "power",
+                "source": "bus",
+                "subject": "main",
+                "current": float(getattr(self.world_model, "power_bus_a", 0.0)),
+                "bus_v": float(getattr(self.world_model, "power_bus_v", 0.0)),
+                "ts_epoch": ts_epoch,
+                "unit": "A",
+            },
+            event_type="qiki.events.v1.PowerBusReading",
+            source="urn:qiki:q-sim-service:power",
+        )
 
     def _build_telemetry_payload(self, state: dict) -> dict:
         ts_dt = datetime.now(timezone.utc)
