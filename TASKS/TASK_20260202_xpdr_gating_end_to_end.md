@@ -33,6 +33,7 @@ This enables running Phase1 with a variant bot config without editing images.
 
 - `tests/integration/test_xpdr_gating_flow.py`
   - When comms enabled: `sim.xpdr.mode SILENT` applies and shows in telemetry.
+    - Also proves Power Plane coupling: `power.loads_w.transponder` becomes `0.0` in `SILENT`, and becomes `>0.0` again after restoring `ON` (no leaked state between tests).
   - When comms disabled: `sim.xpdr.mode ON` is rejected with `error_detail.code=comms_disabled` and telemetry stays forced `OFF`.
 
 ## How to run (Docker-first)
