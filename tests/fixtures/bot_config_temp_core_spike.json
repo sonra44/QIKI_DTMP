@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "bot_id": "QIKI-DEFAULT-001",
+  "bot_type": "default_bot",
+  "mode": "full",
+  "hardware_profile": {
+    "max_speed_mps": 1.0,
+    "power_capacity_wh": 500,
+    "battery_soc_init_pct": 80.0,
+    "power_plane": {
+      "bus_v_nominal": 28.0,
+      "bus_v_min": 22.0,
+      "max_bus_a": 5.0,
+      "battery_max_charge_w": 120.0,
+      "battery_max_discharge_w": 140.0,
+      "base_power_in_w": 30.0,
+      "base_power_out_w": 60.0,
+      "motion_power_w_per_mps": 40.0,
+      "mcqpu_power_w_at_100pct": 35.0,
+      "radar_power_w": 18.0,
+      "transponder_power_w": 6.0,
+      "soc_shed_low_pct": 20.0,
+      "soc_shed_high_pct": 30.0,
+      "supercap_capacity_wh": 5.0,
+      "supercap_soc_pct_init": 70.0,
+      "supercap_max_charge_w": 120.0,
+      "supercap_max_discharge_w": 200.0,
+      "dock_connected_init": true,
+      "dock_station_bus_v": 28.0,
+      "dock_station_max_power_w": 250.0,
+      "dock_current_limit_a": 10.0,
+      "dock_soft_start_s": 2.0,
+      "dock_temp_c_init": -60.0,
+      "nbl_active_init": true,
+      "nbl_max_power_w": 20.0,
+      "nbl_soc_min_pct": 35.0,
+      "nbl_core_temp_max_c": 90.0
+    },
+    "thermal_plane": {
+      "enabled": true,
+      "ambient_exchange_w_per_c": 0.0,
+      "nodes": [
+        {
+          "id": "core",
+          "heat_capacity_j_per_c": 800.0,
+          "cooling_w_per_c": 0.0,
+          "t_init_c": 80.0,
+          "t_max_c": 90.0,
+          "t_hysteresis_c": 5.0
+        },
+        {"id": "pdu", "heat_capacity_j_per_c": 650.0, "cooling_w_per_c": 0.9, "t_init_c": 25.0, "t_max_c": 95.0, "t_hysteresis_c": 5.0},
+        {"id": "supercap", "heat_capacity_j_per_c": 400.0, "cooling_w_per_c": 0.7, "t_init_c": 20.0, "t_max_c": 85.0, "t_hysteresis_c": 5.0},
+        {"id": "battery", "heat_capacity_j_per_c": 1200.0, "cooling_w_per_c": 0.3, "t_init_c": 20.0, "t_max_c": 70.0, "t_hysteresis_c": 3.0},
+        {"id": "dock_bridge", "heat_capacity_j_per_c": 500.0, "cooling_w_per_c": 0.9, "t_init_c": -60.0, "t_max_c": 120.0, "t_hysteresis_c": 5.0},
+        {"id": "hull", "heat_capacity_j_per_c": 3000.0, "cooling_w_per_c": 1.5, "t_init_c": -50.0, "t_max_c": 140.0, "t_hysteresis_c": 10.0}
+      ],
+      "couplings": []
+    },
+    "propulsion_plane": {
+      "enabled": true,
+      "thrusters_path": "config/propulsion/thrusters.json",
+      "propellant_kg_init": 12.0,
+      "isp_s": 60.0,
+      "rcs_power_w_at_100pct": 80.0,
+      "heat_fraction_to_hull": 0.35,
+      "pulse_window_s": 0.25,
+      "ztt_torque_tol_nm": 25.0
+    },
+    "docking_plane": {"enabled": true, "ports": ["A", "B"], "default_port": "A"},
+    "sensor_plane": {
+      "enabled": true,
+      "imu": {"enabled": true},
+      "radiation": {"enabled": true, "limits": {"warn_usvh": 1.0, "crit_usvh": 2.0}},
+      "proximity": {"enabled": false},
+      "solar": {"enabled": false},
+      "star_tracker": {"enabled": false},
+      "magnetometer": {"enabled": false}
+    },
+    "comms_plane": {
+      "enabled": true,
+      "xpdr_mode_init": "ON"
+    },
+    "actuators": [
+      {"id": "37dcb32c-ae13-5156-ae80-0f4c663824de", "role": "motor_left", "type": "wheel_motor"},
+      {"id": "2b2c711f-0e36-5e6b-85fc-d8737fd5e1da", "role": "motor_right", "type": "wheel_motor"},
+      {"id": "c0648061-af84-5c8a-a383-71218ba92082", "role": "system_controller", "type": "main_controller"},
+      {"id": "e6b718f2-769c-527c-a931-d2d7bb2cad82", "role": "rcs_forward", "type": "rcs_thruster"},
+      {"id": "aad7ce7d-9ee6-5949-9c45-c3baf309ca44", "role": "rcs_aft", "type": "rcs_thruster"},
+      {"id": "e03efa3e-5735-5a82-8f5c-9a9d9dfff351", "role": "rcs_port", "type": "rcs_thruster"},
+      {"id": "3ceca74a-2a9e-5aec-a308-4c24c9102324", "role": "rcs_starboard", "type": "rcs_thruster"}
+    ]
+  }
+}
+
