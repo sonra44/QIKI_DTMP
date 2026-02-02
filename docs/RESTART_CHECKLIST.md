@@ -10,6 +10,12 @@
 - `docker compose -f docker-compose.phase1.yml logs --tail=20 q-sim-service` — gRPC сервер поднят
 - `docker compose -f docker-compose.phase1.yml logs --tail=20 faststream-bridge | rg -n "Radar frame received"` — кадры доходят через JetStream
 
+## 2.1) System mode (JetStream edge event)
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev env NATS_URL="nats://nats:4222" \
+  python tools/system_mode_smoke.py --persisted-only
+```
+
 ## 3) gRPC health-check
 ```bash
 docker compose -f docker-compose.phase1.yml exec -T q-sim-service python - <<'PY'

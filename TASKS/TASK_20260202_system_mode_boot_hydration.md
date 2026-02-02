@@ -35,7 +35,12 @@ Implementation:
   - `tests/unit/test_system_mode_boot_event.py` proves faststream-bridge publishes boot mode event.
   - `tests/unit/test_orion_hydrate_system_mode_from_jetstream.py` proves ORION hydrates `_qiki_mode` from JetStream payload.
 
+- Integration proof (Docker-first, deterministic):
+  - `tests/integration/test_system_mode_boot_event_stream.py` publishes an existing QIKI intent (`mode factory`) and asserts the resulting `qiki.events.v1.system_mode` is persisted in JetStream stream `QIKI_EVENTS_V1`.
+
+- Restart proof (canonical checklist):
+  - `docs/RESTART_CHECKLIST.md` step **2.1** runs `python tools/system_mode_smoke.py --persisted-only` to verify the persisted edge-event exists after a restart (no mocks).
+
 - Runtime evidence (tmux):
   - After restart, ORION header shows `Mode/Режим FACTORY` (not `N/A/—`).
   - Captured via: `tmux capture-pane -pt %19 -S -20`.
-
