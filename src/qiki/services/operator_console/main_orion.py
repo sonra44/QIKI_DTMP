@@ -5615,6 +5615,8 @@ class OrionApp(App):
         if not isinstance(payload, dict):
             payload = {}
         success_raw = payload.get("success")
+        if success_raw is None:
+            success_raw = payload.get("ok")
         if isinstance(success_raw, bool):
             success = I18N.yes_no(success_raw)
         elif success_raw is None:
@@ -5628,6 +5630,10 @@ class OrionApp(App):
         inner_payload = payload.get("payload")
         if isinstance(inner_payload, dict):
             message = inner_payload.get("status") or inner_payload.get("message")
+        if not message:
+            err_detail = payload.get("error_detail")
+            if isinstance(err_detail, dict):
+                message = err_detail.get("message")
         self._console_log(
             f"{I18N.bidi('Control response', 'Ответ управления')}: "
             f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()

@@ -41,8 +41,12 @@ def _build_control_response_payload(
 ) -> dict:
     request_id = cmd.metadata.correlation_id or cmd.metadata.message_id
     payload: dict = {
+        "version": 1,
+        "kind": cmd.command_name,
         "success": bool(success),
+        "ok": bool(success),
         "requestId": str(request_id),
+        "request_id": str(request_id),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "payload": {
             "command_name": cmd.command_name,
@@ -50,7 +54,12 @@ def _build_control_response_payload(
         },
     }
     if error:
-        payload["error"] = str(error)
+        payload["error"] = str(error)  # legacy fallback
+        payload["error_detail"] = {
+            "code": str(error),
+            "message": str(status),
+            "details": {"command_name": cmd.command_name},
+        }
     return payload
 
 

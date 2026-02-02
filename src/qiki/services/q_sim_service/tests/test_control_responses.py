@@ -29,7 +29,11 @@ def test_control_response_payload_uses_correlation_id() -> None:
 
     resp = _build_control_response_payload(cmd, success=True, status=status, error=error)
     assert resp["success"] is True
+    assert resp["ok"] is True
     assert resp["requestId"] == str(req_id)
+    assert resp["request_id"] == str(req_id)
+    assert resp["version"] == 1
+    assert resp["kind"] == "sim.start"
     assert resp["payload"]["command_name"] == "sim.start"
     assert resp["payload"]["status"] == "applied"
     assert "error" not in resp
@@ -47,6 +51,13 @@ def test_control_response_describes_xpdr_rejection_when_comms_disabled() -> None
     assert error == "comms_disabled"
     assert "связь" in status.lower()
 
+    resp = _build_control_response_payload(cmd, success=False, status=status, error=error)
+    assert resp["success"] is False
+    assert resp["ok"] is False
+    assert resp["error"] == "comms_disabled"
+    assert isinstance(resp.get("error_detail"), dict)
+    assert resp["error_detail"]["code"] == "comms_disabled"
+
 
 def test_control_response_describes_xpdr_invalid_mode() -> None:
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
@@ -59,3 +70,6 @@ def test_control_response_describes_xpdr_invalid_mode() -> None:
     assert error == "invalid_mode"
     assert status.startswith("invalid mode:")
 
+    resp = _build_control_response_payload(cmd, success=False, status=status, error=error)
+    assert resp["error"] == "invalid_mode"
+    assert resp["error_detail"]["code"] == "invalid_mode"
