@@ -4910,6 +4910,9 @@ class OrionApp(App):
         actions: list[str] = []
         if ctx is None:
             summary_rows.append((I18N.bidi("Selection", "Выбор"), I18N.bidi("No selection", "Выбора нет")))
+            env = self._snapshots.get_last("telemetry")
+            if env is not None and isinstance(env.payload, dict):
+                raw_preview = OrionInspector.safe_preview(env.payload, max_lines=8 if compact else 24)
         else:
             age_s = time.time() - ctx.created_at_epoch
             freshness = self._fmt_age_s(age_s)

@@ -3,6 +3,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_orion_hydrates_mode_from_jetstream() -> None:
+    pytest.importorskip("textual")
     from qiki.services.operator_console.main_orion import OrionApp
 
     app = OrionApp()
@@ -17,4 +18,3 @@ async def test_orion_hydrates_mode_from_jetstream() -> None:
     await app._hydrate_qiki_mode_from_jetstream()
 
     assert app._qiki_mode == "FACTORY"
-
