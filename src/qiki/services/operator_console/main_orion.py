@@ -2004,6 +2004,47 @@ class OrionApp(App):
             head = items[0]
             return f"{head} (+{len(items) - 1})"
 
+        def fmt_w_breakdown(value: Any) -> str:
+            if not isinstance(value, dict):
+                return I18N.NA
+            items: list[tuple[str, float]] = []
+            for k, raw in value.items():
+                key = str(k).strip()
+                if not key:
+                    continue
+                try:
+                    v = float(raw)
+                except Exception:
+                    continue
+                if abs(v) <= 1e-9:
+                    continue
+                items.append((key, v))
+
+            if not items:
+                return I18N.bidi("none", "нет")
+
+            label_by_key = {
+                "base": I18N.bidi("Base", "База"),
+                "dock": I18N.bidi("Dock", "Док"),
+                "motion": I18N.bidi("Motion", "Движ"),
+                "mcqpu": I18N.bidi("MCQPU", "MCQPU"),
+                "radar": I18N.bidi("Radar", "Радар"),
+                "transponder": I18N.bidi("XPDR", "XPDR"),
+                "nbl": I18N.bidi("NBL", "NBL"),
+                "rcs": I18N.bidi("RCS", "РДС"),
+                "supercap_charge": I18N.bidi("Supercap", "Суперкап"),
+                "supercap_discharge": I18N.bidi("Supercap", "Суперкап"),
+            }
+
+            items.sort(key=lambda kv: abs(float(kv[1])), reverse=True)
+            shown = items[:3]
+            parts = [f"{label_by_key.get(k, k)} {I18N.num_unit(v, 'W', 'Вт', digits=1)}" for k, v in shown]
+            s = ", ".join(parts)
+            remaining = len(items) - len(shown)
+            if remaining > 0:
+                s = f"{s} (+{remaining})"
+            return s if len(s) <= 32 else s[:29] + "..."
+
         def mk_row(
             row_key: str,
             label: str,
@@ -2168,6 +2209,18 @@ class OrionApp(App):
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
                 get("power.power_out_w"),
                 ("power.power_out_w",),
+            ),
+            mk_row(
+                "power_sources",
+                I18N.bidi("Power sources", "Источники мощности"),
+                "power.sources_w",
+                fmt_w_breakdown,
+            ),
+            mk_row(
+                "power_loads",
+                I18N.bidi("Power loads", "Нагрузки мощности"),
+                "power.loads_w",
+                fmt_w_breakdown,
             ),
             (
                 "dock_temp",

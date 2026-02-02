@@ -22,6 +22,10 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert isinstance(power, dict)
 
     # Supervisor / PDU / supercap fields (no v2, still under power.*).
+    assert "loads_w" in power
+    assert "sources_w" in power
+    assert isinstance(power.get("loads_w"), dict)
+    assert isinstance(power.get("sources_w"), dict)
     assert "shed_reasons" in power
     assert "pdu_limit_w" in power
     assert "pdu_throttled" in power
@@ -41,6 +45,108 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "nbl_power_w" in power
     assert "nbl_budget_w" in power
 
+
+def test_battery_soc_init_pct_is_applied_and_clamped() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 500,
+            "battery_soc_init_pct": 42.5,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    assert wm.battery_level == pytest.approx(42.5)
+
+    bot_config["hardware_profile"]["battery_soc_init_pct"] = 120.0
+    wm = WorldModel(bot_config=bot_config)
+    assert wm.battery_level == pytest.approx(100.0)
+
+    bot_config["hardware_profile"]["battery_soc_init_pct"] = -10.0
+    wm = WorldModel(bot_config=bot_config)
+    assert wm.battery_level == pytest.approx(0.0)
+
+
+def test_soc_changes_from_net_power_and_capacity_wh() -> None:
+    # Deficit: 100W for 1 hour on a 100Wh battery drains 100% -> 0%.
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 100.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 100.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(3600.0)
+    assert wm.battery_level == pytest.approx(0.0)
+
+    # Surplus: 100W for 1 hour on a 100Wh battery charges 0% -> 100% (clamped).
+    bot_config["hardware_profile"]["battery_soc_init_pct"] = 0.0
+    bot_config["hardware_profile"]["power_plane"]["base_power_in_w"] = 100.0
+    bot_config["hardware_profile"]["power_plane"]["base_power_out_w"] = 0.0
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(3600.0)
+    assert wm.battery_level == pytest.approx(100.0)
+
+
+def test_power_breakdown_is_consistent_with_power_in_out() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 50.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 10.0,
+                "base_power_out_w": 20.0,
+                "motion_power_w_per_mps": 40.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.speed = 1.0
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(1.0)
+    state = wm.get_state()
+    power = state["power"]
+    loads = power["loads_w"]
+    sources = power["sources_w"]
+
+    assert sum(float(v) for v in loads.values()) == pytest.approx(float(power["power_out_w"]))
+    assert sum(float(v) for v in sources.values()) == pytest.approx(float(power["power_in_w"]))
 
 def test_soc_load_shedding_hysteresis_blocks_non_critical_loads() -> None:
     bot_config = {

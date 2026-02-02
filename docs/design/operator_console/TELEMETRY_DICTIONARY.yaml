@@ -237,6 +237,16 @@ subsystems:
         orion:
           screen: power
           row_key: supercap_discharge
+      - path: power.sources_w
+        label: Power sources breakdown/Источники мощности (структура)
+        unit: map
+        type: object
+        why_operator: Explains where input power comes from/Показывает источники входной мощности
+      - path: power.loads_w
+        label: Power loads breakdown/Нагрузки мощности (структура)
+        unit: map
+        type: object
+        why_operator: Explains which subsystems consume power/Показывает какие подсистемы потребляют мощность
       - path: power.power_in_w
         label: Input power/Входная мощность
         unit: watt

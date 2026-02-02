@@ -171,6 +171,24 @@ class WorldModel:
         # Apply runtime profile from bot_config (single SoT).
         self._apply_bot_config(bot_config)
 
+        # Power Plane breakdown (operator-facing diagnostics; no-mocks).
+        # These are derived values, not additional sources of truth.
+        self.power_loads_w: dict[str, float] = {
+            "base": float(self._base_power_out_w),
+            "motion": 0.0,
+            "mcqpu": 0.0,
+            "radar": 0.0,
+            "transponder": 0.0,
+            "nbl": 0.0,
+            "rcs": 0.0,
+            "supercap_charge": 0.0,
+        }
+        self.power_sources_w: dict[str, float] = {
+            "base": float(self._base_power_in_w),
+            "dock": 0.0,
+            "supercap_discharge": 0.0,
+        }
+
         self._sim_time_s = 0.0
 
         # Virtual MCQPU utilization (simulation-truth).
@@ -214,6 +232,13 @@ class WorldModel:
                 self.power_faults.append("BATTERY_CAPACITY_INVALID")
         else:
             self.power_faults.append("BATTERY_CAPACITY_MISSING")
+
+        if "battery_soc_init_pct" in hw:
+            try:
+                init_soc = float(hw["battery_soc_init_pct"])
+                self.battery_level = max(0.0, min(100.0, init_soc))
+            except Exception:
+                self.power_faults.append("BATTERY_SOC_INIT_INVALID")
 
         pp = hw.get("power_plane")
         if not isinstance(pp, dict):
@@ -1048,6 +1073,24 @@ class WorldModel:
             self.nbl_allowed = False
         # Finalize RCS telemetry values.
         self.rcs_power_w = float(rcs_out)
+
+        # Power breakdown (final, post-shedding / post-throttling / post-supercap).
+        self.power_loads_w = {
+            "base": float(self._base_power_out_w),
+            "motion": float(motion_out),
+            "mcqpu": float(mcqpu_out),
+            "radar": float(radar_out),
+            "transponder": float(xpdr_out),
+            "nbl": float(nbl_out),
+            "rcs": float(rcs_out),
+            "supercap_charge": float(self.supercap_charge_w),
+        }
+        self.power_sources_w = {
+            "base": float(self._base_power_in_w),
+            "dock": float(self.dock_power_w),
+            "supercap_discharge": float(self.supercap_discharge_w),
+        }
+
         # Thermal Plane (no-mocks): temperatures derived from a thermal node network.
         self._thermal_step(delta_time)
         # Thermal plane may append faults; keep stable order.
@@ -1361,6 +1404,8 @@ class WorldModel:
             },
             "power": {
                 "soc_pct": self.battery_level,
+                "sources_w": dict(self.power_sources_w),
+                "loads_w": dict(self.power_loads_w),
                 "power_in_w": self.power_in_w,
                 "power_out_w": self.power_out_w,
                 "bus_v": self.power_bus_v,

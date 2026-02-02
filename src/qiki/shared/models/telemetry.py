@@ -32,6 +32,9 @@ class PowerTelemetry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     soc_pct: float = Field(ge=0.0, le=100.0)
+    # Operator-facing diagnostics: breakdown of sources/loads, not additional sources of truth.
+    sources_w: dict[str, float] = Field(default_factory=dict)
+    loads_w: dict[str, float] = Field(default_factory=dict)
     power_in_w: float = Field(ge=0.0)
     power_out_w: float = Field(ge=0.0)
     bus_v: float = Field(ge=0.0)
