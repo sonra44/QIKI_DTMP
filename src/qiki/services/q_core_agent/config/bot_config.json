@@ -11,6 +11,8 @@
       "bus_v_nominal": 28.0,
       "bus_v_min": 22.0,
       "max_bus_a": 5.0,
+      "battery_max_charge_w": 120.0,
+      "battery_max_discharge_w": 140.0,
       "base_power_in_w": 30.0,
       "base_power_out_w": 60.0,
       "motion_power_w_per_mps": 40.0,

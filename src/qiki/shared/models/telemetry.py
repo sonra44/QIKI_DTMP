@@ -37,6 +37,11 @@ class PowerTelemetry(BaseModel):
     loads_w: dict[str, float] = Field(default_factory=dict)
     power_in_w: float = Field(ge=0.0)
     power_out_w: float = Field(ge=0.0)
+    # Battery constraints and diagnostics (post-supercap, derived from net power).
+    battery_charge_w: float = Field(default=0.0, ge=0.0)
+    battery_discharge_w: float = Field(default=0.0, ge=0.0)
+    battery_spill_w: float = Field(default=0.0, ge=0.0)
+    battery_unserved_w: float = Field(default=0.0, ge=0.0)
     bus_v: float = Field(ge=0.0)
     bus_a: float = Field(ge=0.0)
     # Power Supervisor state (virtual hardware, no-mocks).

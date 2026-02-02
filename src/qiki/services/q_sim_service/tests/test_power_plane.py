@@ -26,6 +26,10 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "sources_w" in power
     assert isinstance(power.get("loads_w"), dict)
     assert isinstance(power.get("sources_w"), dict)
+    assert "battery_charge_w" in power
+    assert "battery_discharge_w" in power
+    assert "battery_spill_w" in power
+    assert "battery_unserved_w" in power
     assert "shed_reasons" in power
     assert "pdu_limit_w" in power
     assert "pdu_throttled" in power
@@ -111,6 +115,77 @@ def test_soc_changes_from_net_power_and_capacity_wh() -> None:
     )
     wm.step(3600.0)
     assert wm.battery_level == pytest.approx(100.0)
+
+
+def test_battery_charge_limit_clamps_soc_and_reports_spill() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 0.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 100.0,
+                "base_power_out_w": 0.0,
+                "battery_max_charge_w": 10.0,
+                "battery_max_discharge_w": 0.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(3600.0)
+    assert wm.battery_level == pytest.approx(10.0)
+    state = wm.get_state()
+    power = state["power"]
+    assert float(power["battery_charge_w"]) == pytest.approx(10.0)
+    assert float(power["battery_spill_w"]) == pytest.approx(90.0)
+
+
+def test_battery_discharge_limit_clamps_soc_and_reports_unserved() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 100.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "max_bus_a": 10.0,
+                "base_power_in_w": 0.0,
+                "base_power_out_w": 100.0,
+                "battery_max_charge_w": 0.0,
+                "battery_max_discharge_w": 10.0,
+                "motion_power_w_per_mps": 0.0,
+                "mcqpu_power_w_at_100pct": 0.0,
+                "radar_power_w": 0.0,
+                "transponder_power_w": 0.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.set_runtime_load_inputs(
+        radar_enabled=False,
+        sensor_queue_depth=0,
+        actuator_queue_depth=0,
+        transponder_active=False,
+    )
+    wm.step(3600.0)
+    assert wm.battery_level == pytest.approx(90.0)
+    state = wm.get_state()
+    power = state["power"]
+    assert float(power["battery_discharge_w"]) == pytest.approx(10.0)
+    assert float(power["battery_unserved_w"]) == pytest.approx(90.0)
+    assert "BATTERY_DISCHARGE_LIMIT" in wm.power_faults
 
 
 def test_power_breakdown_is_consistent_with_power_in_out() -> None:

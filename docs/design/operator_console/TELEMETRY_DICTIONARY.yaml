@@ -261,6 +261,38 @@ subsystems:
         orion:
           screen: power
           row_key: power_consumption
+      - path: power.battery_charge_w
+        label: Battery charge/Заряд батареи
+        unit: watt
+        type: number
+        why_operator: Shows how much power is going into the battery (limited)/Показывает сколько мощности уходит в заряд батареи (с лимитом)
+        orion:
+          screen: power
+          row_key: battery_charge
+      - path: power.battery_discharge_w
+        label: Battery discharge/Разряд батареи
+        unit: watt
+        type: number
+        why_operator: Shows how much power is drawn from the battery (limited)/Показывает сколько мощности берётся из батареи (с лимитом)
+        orion:
+          screen: power
+          row_key: battery_discharge
+      - path: power.battery_spill_w
+        label: Battery spill/Сброс заряда
+        unit: watt
+        type: number
+        why_operator: Surplus power that cannot be stored due to charge limit/Излишек мощности, который нельзя сохранить из-за лимита заряда
+        orion:
+          screen: power
+          row_key: battery_spill
+      - path: power.battery_unserved_w
+        label: Unserved load/Недостающая мощность
+        unit: watt
+        type: number
+        why_operator: Deficit that cannot be supplied due to discharge limit/Дефицит мощности, который нельзя покрыть из-за лимита разряда
+        orion:
+          screen: power
+          row_key: battery_unserved
       - path: power.bus_v
         label: Bus voltage/Напряжение шины
         unit: volt

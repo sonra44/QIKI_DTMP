@@ -65,6 +65,9 @@ class WorldModel:
         self._eps_soc_shed_high_pct = 30.0
         self._soc_shed_state = False
         self._battery_capacity_wh = 200.0
+        # Battery electrical constraints (virtual hardware). 0.0 means "unlimited".
+        self._battery_max_charge_w = 0.0
+        self._battery_max_discharge_w = 0.0
         self._base_power_in_w = 30.0
         self._base_power_out_w = 60.0
         self._motion_power_w_per_mps = 40.0
@@ -80,6 +83,11 @@ class WorldModel:
         self.supercap_soc_pct = 0.0
         self.supercap_charge_w = 0.0
         self.supercap_discharge_w = 0.0
+        # Battery charge/discharge telemetry (post-supercap; derived, no-mocks).
+        self.battery_charge_w = 0.0
+        self.battery_discharge_w = 0.0
+        self.battery_spill_w = 0.0
+        self.battery_unserved_w = 0.0
 
         # Dock Power Bridge (virtual hardware).
         self.dock_connected = False
@@ -262,6 +270,16 @@ class WorldModel:
         self._mcqpu_power_w_at_100pct = f("mcqpu_power_w_at_100pct", self._mcqpu_power_w_at_100pct)
         self._radar_power_w = f("radar_power_w", self._radar_power_w)
         self._transponder_power_w = f("transponder_power_w", self._transponder_power_w)
+        battery_max_charge_w = f("battery_max_charge_w", self._battery_max_charge_w)
+        if battery_max_charge_w < 0.0:
+            self.power_faults.append("POWER_PLANE_PARAM_NEGATIVE:battery_max_charge_w")
+            battery_max_charge_w = 0.0
+        self._battery_max_charge_w = float(battery_max_charge_w)
+        battery_max_discharge_w = f("battery_max_discharge_w", self._battery_max_discharge_w)
+        if battery_max_discharge_w < 0.0:
+            self.power_faults.append("POWER_PLANE_PARAM_NEGATIVE:battery_max_discharge_w")
+            battery_max_discharge_w = 0.0
+        self._battery_max_discharge_w = float(battery_max_discharge_w)
 
         self._eps_soc_shed_low_pct = f("soc_shed_low_pct", self._eps_soc_shed_low_pct)
         self._eps_soc_shed_high_pct = f("soc_shed_high_pct", self._eps_soc_shed_high_pct)
@@ -415,6 +433,10 @@ class WorldModel:
         self.nbl_allowed = False
         self.nbl_power_w = 0.0
         self.nbl_budget_w = 0.0
+        self.battery_charge_w = 0.0
+        self.battery_discharge_w = 0.0
+        self.battery_spill_w = 0.0
+        self.battery_unserved_w = 0.0
 
         # Thermal Plane parameters (single source of truth: bot_config.json).
         tp = hw.get("thermal_plane")
@@ -1049,14 +1071,36 @@ class WorldModel:
         self.power_bus_a = 0.0 if self.power_bus_v <= 0.0 else self.power_out_w / self.power_bus_v
         net_w = self.power_in_w - self.power_out_w
         if self._battery_capacity_wh > 0.0:
-            delta_wh = net_w * delta_time / 3600.0
+            raw_charge_w = max(0.0, float(net_w))
+            raw_discharge_w = max(0.0, float(-net_w))
+
+            max_charge_w = max(0.0, float(self._battery_max_charge_w))
+            max_discharge_w = max(0.0, float(self._battery_max_discharge_w))
+
+            charge_w = raw_charge_w
+            if max_charge_w > 0.0 and charge_w > max_charge_w:
+                self.power_faults.append("BATTERY_CHARGE_LIMIT")
+                self.battery_spill_w = float(charge_w - max_charge_w)
+                charge_w = max_charge_w
+
+            discharge_w = raw_discharge_w
+            if max_discharge_w > 0.0 and discharge_w > max_discharge_w:
+                self.power_faults.append("BATTERY_DISCHARGE_LIMIT")
+                self.battery_unserved_w = float(discharge_w - max_discharge_w)
+                discharge_w = max_discharge_w
+
+            self.battery_charge_w = float(max(0.0, charge_w))
+            self.battery_discharge_w = float(max(0.0, discharge_w))
+
+            effective_net_w = self.battery_charge_w - self.battery_discharge_w
+            delta_wh = float(effective_net_w) * delta_time / 3600.0
             delta_pct = (delta_wh / self._battery_capacity_wh) * 100.0
             self.battery_level = max(0.0, min(100.0, self.battery_level + delta_pct))
         else:
             self.battery_level = max(0.0, min(100.0, self.battery_level))
             self.power_faults.append("BATTERY_CAPACITY_ZERO")
 
-        if self.battery_level <= 0.0 and net_w < 0.0:
+        if self.battery_level <= 0.0 and self.battery_discharge_w > 0.0:
             self.power_faults.append("BATTERY_EMPTY")
 
         # Dedup (stable order) before exposing to telemetry.
@@ -1408,6 +1452,10 @@ class WorldModel:
                 "loads_w": dict(self.power_loads_w),
                 "power_in_w": self.power_in_w,
                 "power_out_w": self.power_out_w,
+                "battery_charge_w": float(self.battery_charge_w),
+                "battery_discharge_w": float(self.battery_discharge_w),
+                "battery_spill_w": float(self.battery_spill_w),
+                "battery_unserved_w": float(self.battery_unserved_w),
                 "bus_v": self.power_bus_v,
                 "bus_a": self.power_bus_a,
                 "load_shedding": bool(self.power_load_shedding),
