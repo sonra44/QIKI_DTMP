@@ -21,9 +21,19 @@ async def test_sim_stop_stops_radar_frames_and_start_resumes() -> None:
     frames: list[float] = []
     stopped_at: float | None = None
     resumed_at: float | None = None
+    telemetry_latest: dict | None = None
 
     def now() -> float:
         return asyncio.get_running_loop().time()
+
+    async def on_telemetry(msg) -> None:
+        nonlocal telemetry_latest
+        try:
+            payload = json.loads(msg.data.decode("utf-8"))
+        except Exception:
+            return
+        if isinstance(payload, dict):
+            telemetry_latest = payload
 
     async def on_frame(_msg) -> None:
         t = now()
@@ -34,6 +44,7 @@ async def test_sim_stop_stops_radar_frames_and_start_resumes() -> None:
             return
         frames.append(t)
 
+    await nc.subscribe("qiki.telemetry", cb=on_telemetry)
     await nc.subscribe("qiki.radar.v1.frames", cb=on_frame)
 
     meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
@@ -48,7 +59,13 @@ async def test_sim_stop_stops_radar_frames_and_start_resumes() -> None:
         t0 = now()
         while not frames and (now() - t0) < 6.0:
             await asyncio.sleep(0.05)
-        assert frames, "No radar frames observed before stop"
+        if not frames:
+            power = (telemetry_latest or {}).get("power") if isinstance(telemetry_latest, dict) else None
+            power = power if isinstance(power, dict) else {}
+            shed = power.get("shed_loads") if isinstance(power.get("shed_loads"), list) else []
+            if "radar" in shed:
+                pytest.skip("Radar is currently shed by Power Plane; frames are not expected")
+            pytest.fail("No radar frames observed before stop")
 
         stopped_at = now()
         await publish(CommandMessage(command_name="sim.stop", parameters={}, metadata=meta))

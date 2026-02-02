@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 
+import asyncio
 import nats
 import pytest
 from nats.errors import NoServersError, TimeoutError as NatsTimeoutError
@@ -71,9 +72,18 @@ async def test_power_soc_decreases_while_running_and_freezes_when_paused_and_sto
 
         power_in0 = float(power0.get("power_in_w", 0.0))
         power_out0 = float(power0.get("power_out_w", 0.0))
+        pdu_limit0 = float(power0.get("pdu_limit_w", 0.0))
         dock_connected0 = bool(power0.get("dock_connected", True))
+        soc0 = get_soc(t_run)
 
-        if dock_connected0 or power_in0 > 0.5 or not (60.0 <= power_out0 <= 90.0) or thermal_nodes0:
+        if (
+            dock_connected0
+            or power_in0 > 0.5
+            or not (60.0 <= power_out0 <= 90.0)
+            or pdu_limit0 < 500.0
+            or soc0 < 50.0
+            or thermal_nodes0
+        ):
             pytest.skip("Not running power SoC drain fixture")
 
         soc_samples_run = await sample_soc_over(3.0)
@@ -103,4 +113,3 @@ async def test_power_soc_decreases_while_running_and_freezes_when_paused_and_sto
             await publish(CommandMessage(command_name="sim.start", parameters={"speed": 1.0}, metadata=meta))
         finally:
             await nc.close()
-

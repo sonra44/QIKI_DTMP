@@ -36,6 +36,7 @@ def test_control_response_payload_uses_correlation_id() -> None:
     assert resp["kind"] == "sim.start"
     assert resp["payload"]["command_name"] == "sim.start"
     assert resp["payload"]["status"] == "applied"
+    assert isinstance(resp.get("timestamp"), str) and resp.get("timestamp")
     assert "error" not in resp
 
 
