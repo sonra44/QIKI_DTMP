@@ -116,3 +116,31 @@ def test_track_conversion_roundtrip():
     assert back.velocity_covariance == track.velocity_covariance
     assert back.age_s == track.age_s
     assert back.miss_count == track.miss_count
+
+
+def test_track_accepts_plan_aliases_without_changing_wire_keys():
+    payload = {
+        "schema_version": 1,
+        "track_id": str(uuid4()),
+        "object_type": int(ObjectTypeEnum.DRONE),
+        "iff_class": int(FriendFoeEnum.FOE),
+        "transponder_on": True,
+        "transponder_mode": int(TransponderModeEnum.ON),
+        "quality": 0.7,
+        "status": int(RadarTrackStatusEnum.TRACKED),
+        "range_m": 500.0,
+        "bearing_deg": 123.0,
+        "elev_deg": 5.0,
+        "vr_mps": -25.0,
+        "snr_db": 20.0,
+        "rcs_dbsm": 2.5,
+        "error_covariance": [1.0, 0.0, 0.0, 1.5, 0.0, 2.0],
+    }
+
+    track = RadarTrackModel.model_validate(payload)
+    assert track.iff == FriendFoeEnum.FOE
+    assert track.position_covariance == payload["error_covariance"]
+
+    dumped = track.model_dump(mode="json")
+    assert "iff_class" not in dumped
+    assert "error_covariance" not in dumped

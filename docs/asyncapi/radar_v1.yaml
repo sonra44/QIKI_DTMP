@@ -3,11 +3,23 @@ info:
   title: "QIKI Radar v1 (NATS)"
   version: "0.0.0"
   description: |
-    Stub AsyncAPI specification for Radar v1.
+    Phase1 NATS subjects for Radar v1.
 
-    Source of truth:
-    - Protobuf contracts: `protos/radar/v1/radar.proto`
+    On-wire payload encoding: JSON (UTF-8).
+
+    Runtime sources of truth:
+    - JSON models: `src/qiki/shared/models/radar.py` (`RadarFrameModel`, `RadarTrackModel`)
+    - Publishers:
+      - `src/qiki/services/q_sim_service/radar_publisher.py` (frames)
+      - `src/qiki/services/faststream_bridge/track_publisher.py` (tracks)
+
+    Reference contracts:
+    - Protobuf: `protos/radar/v1/radar.proto` (field names align; no v2)
     - Contract evolution rules: `docs/CONTRACT_POLICY.md`
+
+    Naming notes (plan aliases; backward-compatible input accepted by `RadarTrackModel`):
+    - `iff_class` / `iffClass` maps to `iff`
+    - `error_covariance` / `errorCovariance` maps to `position_covariance`
 
 servers:
   nats:
@@ -17,22 +29,22 @@ servers:
 
 channels:
   qiki.radar.v1.frames:
-    description: "Radar frames (compat union topic). Payload encoding: protobuf/JSON (TBD)."
+    description: "Radar frames (union topic). Payload: JSON `RadarFrameModel`."
     subscribe:
       message:
         $ref: "#/components/messages/RadarFrame"
   qiki.radar.v1.frames.lr:
-    description: "Radar frames (Long Range)."
+    description: "Radar frames (Long Range). Payload: JSON `RadarFrameModel`."
     subscribe:
       message:
         $ref: "#/components/messages/RadarFrame"
   qiki.radar.v1.tracks.sr:
-    description: "Short Range objects/frames (SR)."
+    description: "Short Range objects/frames (SR). Payload: JSON `RadarFrameModel`."
     subscribe:
       message:
         $ref: "#/components/messages/RadarFrame"
   qiki.radar.v1.tracks:
-    description: "Aggregated radar tracks."
+    description: "Aggregated radar tracks. Payload: JSON `RadarTrackModel`."
     subscribe:
       message:
         $ref: "#/components/messages/RadarTrack"
@@ -42,15 +54,14 @@ components:
     RadarFrame:
       name: "RadarFrame"
       title: "RadarFrame"
-      summary: "Serialized `qiki.radar.v1.RadarFrame`."
+      summary: "JSON payload for a radar frame (derived from `RadarFrameModel`)."
       payload:
         type: object
-        description: "Payload is a protobuf message; schema is defined in `protos/radar/v1/radar.proto`."
+        description: "JSON payload (see `src/qiki/shared/models/radar.py`). Reference proto: `protos/radar/v1/radar.proto`."
     RadarTrack:
       name: "RadarTrack"
       title: "RadarTrack"
-      summary: "Serialized `qiki.radar.v1.RadarTrack`."
+      summary: "JSON payload for an aggregated radar track (derived from `RadarTrackModel`)."
       payload:
         type: object
-        description: "Payload is a protobuf message; schema is defined in `protos/radar/v1/radar.proto`."
-
+        description: "JSON payload (see `src/qiki/shared/models/radar.py`). Reference proto: `protos/radar/v1/radar.proto`."

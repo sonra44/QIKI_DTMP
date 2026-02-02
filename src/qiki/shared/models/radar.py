@@ -5,7 +5,14 @@ from enum import IntEnum
 from typing import List, Optional, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class ObjectTypeEnum(IntEnum):
@@ -122,7 +129,10 @@ class RadarTrackModel(BaseModel):
     schema_version: int = 1
     track_id: UUID = Field(default_factory=uuid4)
     object_type: ObjectTypeEnum = ObjectTypeEnum.OBJECT_TYPE_UNSPECIFIED
-    iff: FriendFoeEnum = FriendFoeEnum.UNKNOWN
+    iff: FriendFoeEnum = Field(
+        default=FriendFoeEnum.UNKNOWN,
+        validation_alias=AliasChoices("iff", "iff_class", "iffClass"),
+    )
     transponder_on: bool = False
     transponder_mode: TransponderModeEnum = TransponderModeEnum.OFF
     transponder_id: Optional[str] = None
@@ -138,7 +148,15 @@ class RadarTrackModel(BaseModel):
 
     position: Optional[Vector3Model] = None
     velocity: Optional[Vector3Model] = None
-    position_covariance: Optional[List[float]] = None
+    position_covariance: Optional[List[float]] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "position_covariance",
+            "positionCovariance",
+            "error_covariance",
+            "errorCovariance",
+        ),
+    )
     velocity_covariance: Optional[List[float]] = None
     age_s: float = Field(ge=0.0, default=0.0)
     miss_count: int = Field(ge=0, default=0)
