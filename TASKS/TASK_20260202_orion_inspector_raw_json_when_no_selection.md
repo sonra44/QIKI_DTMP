@@ -23,6 +23,7 @@ Status: done
 1) ORION Inspector:
    - Когда `ctx is None`, `Raw data (JSON)` берётся из последнего telemetry snapshot (`_snapshots.get_last("telemetry")`).
    - Иначе — как раньше (preview выбранного объекта).
+   - Чтобы поле не оставалось “застывшим” после старта, `handle_telemetry_data()` обновляет Inspector, если на активном экране нет selection.
 
 2) Unit test:
    - Новый unit тест доказывает, что при отсутствии selection Inspector рендерит `schema_version` и `source` из telemetry payload.
@@ -39,6 +40,9 @@ Unit:
 Quality gate:
 - `QUALITY_GATE_PROFILE=full bash scripts/quality_gate_docker.sh`
 
+Runtime (tmux proof):
+- `tmux capture-pane -pt %19 -S -220` показывает, что под `Raw data (JSON)/Сырые данные (JSON)` теперь появляется реальный JSON (а не `N/A/—`) при отсутствии выбора.
+
 ## Done when
 
 - В default Phase1+ORION стекe Inspector больше не показывает `N/A/—` в `Raw data (JSON)` просто потому что “не выбрано” — при наличии telemetry он показывает реальный JSON preview.
@@ -47,4 +51,4 @@ Quality gate:
 
 ## Result
 
-- Commit: `a0e61e9` (pushed to `main` and `master`)
+- Commits: `a0e61e9`, `03e257a` (pushed to `main` and `master`); follow-up commit adds auto-refresh on telemetry.

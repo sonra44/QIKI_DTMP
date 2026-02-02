@@ -5275,6 +5275,9 @@ class OrionApp(App):
         self._render_diagnostics_table()
         self._refresh_summary()
 
+        if self._selection_by_app.get(self.active_screen) is None:
+            self._refresh_inspector()
+
     async def handle_track_data(self, data: dict) -> None:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
