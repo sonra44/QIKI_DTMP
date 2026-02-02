@@ -1,16 +1,24 @@
 schema_version: 1
 rules:
   - id: UNKNOWN_CONTACT_CLOSE
+    title: "Unknown contact close"
     description: "Неопознанный объект в ближней зоне (<70 м)."
+    action_required: "Investigate contact; keep separation."
     severity: critical
     fsm_event: RADAR_ALERT_UNKNOWN_CLOSE
     iff: 3  # FriendFoeEnum.UNKNOWN
     min_range_m: 0.0
     max_range_m: 70.0
     min_quality: 0.2
+    # Anti-flap (P0, optional; backward-compatible):
+    min_duration_s: 0.0
+    cooldown_s: 60.0
+    hysteresis_m: 5.0
 
   - id: FOE_TRANSPONDER_OFF_APPROACH
+    title: "Foe transponder off approach"
     description: "Враждебный контакт без транспондера в пределах 150 м."
+    action_required: "Escalate; verify IFF and prepare evasion."
     severity: critical
     fsm_event: RADAR_ALERT_FOE_APPROACH
     iff: 2  # FriendFoeEnum.FOE
@@ -18,9 +26,14 @@ rules:
     min_range_m: 0.0
     max_range_m: 150.0
     min_quality: 0.1
+    min_duration_s: 0.0
+    cooldown_s: 60.0
+    hysteresis_m: 5.0
 
   - id: SPOOFING_DETECTED
+    title: "Spoofing detected"
     description: "Режим транспондера SPOOF – требуется проверка маршрута."
+    action_required: "Verify route; treat as suspicious."
     severity: warning
     fsm_event: RADAR_ALERT_SPOOF
     allowed_transponder_modes:
@@ -28,3 +41,6 @@ rules:
     min_range_m: 0.0
     max_range_m: 500.0
     min_quality: 0.0
+    min_duration_s: 0.0
+    cooldown_s: 60.0
+    hysteresis_m: 10.0

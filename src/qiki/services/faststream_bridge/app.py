@@ -25,6 +25,7 @@ from qiki.shared.nats_subjects import (
     RADAR_TRACKS_DURABLE as RADAR_TRACKS_DURABLE_DEFAULT,
 )
 from qiki.services.faststream_bridge.radar_handlers import frame_to_track
+from qiki.services.faststream_bridge.radar_guard_cadence import RadarGuardCadence
 from qiki.services.faststream_bridge.radar_guard_publisher import RadarGuardEventPublisher
 from qiki.services.faststream_bridge.track_publisher import RadarTrackPublisher
 from qiki.services.faststream_bridge.lag_monitor import (
@@ -118,10 +119,10 @@ _track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
 _guard_events_enabled = os.getenv("RADAR_GUARD_EVENTS_ENABLED", "0").strip().lower() not in ("0", "false", "")
 _guard_table = load_guard_table() if _guard_events_enabled else None
 _guard_publisher = RadarGuardEventPublisher(NATS_URL, subject=RADAR_GUARD_ALERTS)
-_guard_publish_interval_s = max(
-    0.1, float(os.getenv("RADAR_GUARD_PUBLISH_INTERVAL_S", "2.0").strip() or "2.0")
+_guard_default_cooldown_s = max(0.1, float(os.getenv("RADAR_GUARD_PUBLISH_INTERVAL_S", "2.0").strip() or "2.0"))
+_guard_cadence = (
+    RadarGuardCadence(_guard_table, default_cooldown_s=_guard_default_cooldown_s) if _guard_table is not None else None
 )
-_guard_last_publish_ts: dict[str, float] = {}
 _lag_monitor = JetStreamLagMonitor(
     nats_url=NATS_URL,
     stream=RADAR_STREAM,
@@ -337,36 +338,18 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
         logger.debug("Track published with CloudEvents headers: track_id=%s", track.track_id)
 
         # Radar guards -> events -> ORION incidents (opt-in; no-mocks).
-        if _guard_table is not None:
-            results = _guard_table.evaluate_track(track)
-            current_keys = {f"{r.rule_id}|{r.track_id}" for r in results}
-            now_epoch = float(time.time())
-
-            # Publish with a per-key cadence to avoid missing the alert due to subscription timing,
-            # while still being stable and non-spammy for operators.
-            for r in results:
-                key = f"{r.rule_id}|{r.track_id}"
-                last = float(_guard_last_publish_ts.get(key, 0.0) or 0.0)
-                if now_epoch - last < _guard_publish_interval_s:
-                    continue
+        if _guard_cadence is not None:
+            for evaluation in _guard_cadence.update(track):
                 _guard_publisher.publish_guard_alert(
-                    _build_radar_guard_event_payload(track=track, evaluation=r)
+                    _build_radar_guard_event_payload(track=track, evaluation=evaluation)
                 )
-                _guard_last_publish_ts[key] = now_epoch
-
-            # Clear inactive rules to allow re-entry alerts.
-            for key in list(_guard_last_publish_ts):
-                if key not in current_keys:
-                    _guard_last_publish_ts.pop(key, None)
     except Exception as exc:  # pragma: no cover
         logger.warning("Failed to handle radar frame: %s", exc)
         fallback = frame_to_track(RadarFrameModel(sensor_id=msg.sensor_id, detections=[]))
         _track_publisher.publish_track(fallback)
 
 
-def _build_radar_guard_event_payload(
-    *, track: RadarTrackModel, evaluation: GuardEvaluationResult
-) -> dict:
+def _build_radar_guard_event_payload(*, track: RadarTrackModel, evaluation: GuardEvaluationResult) -> dict:
     event_dt = track.ts_event or track.timestamp
     payload = {
         "schema_version": 1,

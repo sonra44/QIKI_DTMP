@@ -47,7 +47,9 @@ class GuardRule(BaseModel):
     """Single guard rule describing conditions and resulting FSM trigger."""
 
     rule_id: str = Field(alias="id")
+    title: Optional[str] = None
     description: str
+    action_required: Optional[str] = None
     severity: str = Field(pattern="^(info|warning|critical)$")
     fsm_event: str
     iff: Optional[FriendFoeEnum] = None
@@ -57,6 +59,13 @@ class GuardRule(BaseModel):
     max_range_m: Optional[float] = None
     min_quality: float = 0.0
     max_radial_velocity_mps: Optional[float] = None
+    # Anti-flap / trust controls (P0): optional and backward-compatible.
+    # - min_duration_s: condition must hold continuously for this long before the first edge alert.
+    # - cooldown_s: suppress re-entry alerts for this long after the last published edge.
+    # - hysteresis_m: expand range bounds while ACTIVE to prevent boundary flapping.
+    min_duration_s: float = 0.0
+    cooldown_s: float = 0.0
+    hysteresis_m: float = 0.0
 
     @model_validator(mode="after")
     def _validate_ranges(self) -> "GuardRule":
@@ -64,45 +73,56 @@ class GuardRule(BaseModel):
             raise ValueError("max_range_m must be greater than min_range_m")
         if not 0.0 <= self.min_quality <= 1.0:
             raise ValueError("min_quality must be in [0,1]")
+        if self.min_duration_s < 0.0:
+            raise ValueError("min_duration_s must be >= 0")
+        if self.cooldown_s < 0.0:
+            raise ValueError("cooldown_s must be >= 0")
+        if self.hysteresis_m < 0.0:
+            raise ValueError("hysteresis_m must be >= 0")
         return self
 
-    def evaluate(self, track: RadarTrackModel) -> Optional[GuardEvaluationResult]:
+    def matches(self, track: RadarTrackModel, *, active: bool = False, hysteresis_m: Optional[float] = None) -> bool:
         # P0 trust: guard rules operate on stabilized tracks only.
         # NEW/UNSPECIFIED tracks are too noisy and cause operator-facing flapping.
         if track.status not in {
             RadarTrackStatusEnum.TRACKED,
             RadarTrackStatusEnum.COASTING,
         }:
-            return None
+            return False
 
         if self.iff is not None and track.iff != self.iff:
-            return None
+            return False
 
         if self.require_transponder_on is True and not track.transponder_on:
-            return None
+            return False
         if self.require_transponder_on is False and track.transponder_on:
-            return None
+            return False
 
-        if (
-            self.allowed_transponder_modes
-            and track.transponder_mode not in self.allowed_transponder_modes
-        ):
-            return None
+        if self.allowed_transponder_modes and track.transponder_mode not in self.allowed_transponder_modes:
+            return False
 
-        if track.range_m < self.min_range_m:
-            return None
-        if self.max_range_m is not None and track.range_m > self.max_range_m:
-            return None
+        h = float(self.hysteresis_m if hysteresis_m is None else hysteresis_m)
+        if active and h:
+            min_range = float(self.min_range_m) - h
+            max_range = (float(self.max_range_m) + h) if self.max_range_m is not None else None
+        else:
+            min_range = float(self.min_range_m)
+            max_range = float(self.max_range_m) if self.max_range_m is not None else None
+
+        if track.range_m < min_range:
+            return False
+        if max_range is not None and track.range_m > max_range:
+            return False
 
         if track.quality < self.min_quality:
-            return None
+            return False
 
-        if (
-            self.max_radial_velocity_mps is not None
-            and abs(track.vr_mps) > self.max_radial_velocity_mps
-        ):
-            return None
+        if self.max_radial_velocity_mps is not None and abs(track.vr_mps) > self.max_radial_velocity_mps:
+            return False
 
+        return True
+
+    def build_result(self, track: RadarTrackModel) -> GuardEvaluationResult:
         return GuardEvaluationResult(
             rule_id=self.rule_id,
             severity=self.severity,
@@ -116,6 +136,11 @@ class GuardRule(BaseModel):
             transponder_mode=track.transponder_mode,
         )
 
+    def evaluate(self, track: RadarTrackModel) -> Optional[GuardEvaluationResult]:
+        if not self.matches(track, active=False, hysteresis_m=0.0):
+            return None
+        return self.build_result(track)
+
 
 class GuardTable(BaseModel):
     """Collection of guard rules loaded from configuration."""
@@ -126,9 +151,7 @@ class GuardTable(BaseModel):
     def evaluate_track(self, track: RadarTrackModel) -> List[GuardEvaluationResult]:
         return [result for rule in self.rules if (result := rule.evaluate(track))]
 
-    def evaluate_tracks(
-        self, tracks: Iterable[RadarTrackModel]
-    ) -> List[GuardEvaluationResult]:
+    def evaluate_tracks(self, tracks: Iterable[RadarTrackModel]) -> List[GuardEvaluationResult]:
         results: List[GuardEvaluationResult] = []
         for track in tracks:
             results.extend(self.evaluate_track(track))
@@ -153,9 +176,7 @@ class GuardTableLoader:
     def _load_from_resource(self) -> dict:
         guard_resource = resources.files(self.resource_package).joinpath(self.resource_name)
         if not guard_resource.is_file():  # type: ignore[attr-defined]
-            raise FileNotFoundError(
-                f"Guard table resource not found: {self.resource_package}:{self.resource_name}"
-            )
+            raise FileNotFoundError(f"Guard table resource not found: {self.resource_package}:{self.resource_name}")
 
         with guard_resource.open("r", encoding="utf-8") as handle:  # type: ignore[attr-defined]
             return yaml.safe_load(handle)
