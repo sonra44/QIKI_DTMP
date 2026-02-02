@@ -246,11 +246,66 @@ subsystems:
         unit: map
         type: object
         why_operator: Explains where input power comes from/Показывает источники входной мощности
+      - path: power.sources_w.base
+        label: Base source/Базовый источник
+        unit: watt
+        type: number
+        why_operator: Base contribution to available power/Базовый вклад в доступную мощность
+      - path: power.sources_w.dock
+        label: Dock source/Источник дока
+        unit: watt
+        type: number
+        why_operator: Power supplied by docking bridge/Мощность, подаваемая док-мостом
+      - path: power.sources_w.supercap_discharge
+        label: Supercap discharge (source)/Разряд суперкапа (источник)
+        unit: watt
+        type: number
+        why_operator: Power supplied by supercap discharge/Мощность от разряда суперкапа
       - path: power.loads_w
         label: Power loads breakdown/Нагрузки мощности (структура)
         unit: map
         type: object
         why_operator: Explains which subsystems consume power/Показывает какие подсистемы потребляют мощность
+      - path: power.loads_w.base
+        label: Base load/Базовая нагрузка
+        unit: watt
+        type: number
+        why_operator: Always-on baseline consumption/Постоянное базовое потребление
+      - path: power.loads_w.mcqpu
+        label: MCQPU load/Нагрузка MCQPU
+        unit: watt
+        type: number
+        why_operator: Compute subsystem consumption/Потребление вычислительной подсистемы
+      - path: power.loads_w.motion
+        label: Motion load/Нагрузка движения
+        unit: watt
+        type: number
+        why_operator: Motion subsystem consumption/Потребление подсистемы движения
+      - path: power.loads_w.nbl
+        label: NBL load/Нагрузка NBL
+        unit: watt
+        type: number
+        why_operator: NBL consumption/Потребление NBL
+      - path: power.loads_w.radar
+        label: Radar load/Нагрузка радара
+        unit: watt
+        type: number
+        why_operator: Radar subsystem consumption/Потребление подсистемы радара
+      - path: power.loads_w.rcs
+        label: RCS load/Нагрузка RCS
+        unit: watt
+        type: number
+        why_operator: RCS subsystem consumption/Потребление подсистемы RCS
+      - path: power.loads_w.supercap_charge
+        label: Supercap charge (load)/Заряд суперкапа (нагрузка)
+        unit: watt
+        type: number
+        why_operator: Power spent on charging supercap/Мощность, уходящая на заряд суперкапа
+      - path: power.loads_w.transponder
+        label: Transponder load/Нагрузка транспондера
+        unit: watt
+        type: number
+        why_operator: Transponder subsystem consumption/Потребление транспондера
       - path: power.power_in_w
         label: Input power/Входная мощность
         unit: watt

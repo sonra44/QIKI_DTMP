@@ -4394,20 +4394,54 @@ class OrionApp(App):
             (I18N.bidi("Battery", "Батарея"), I18N.pct(get("battery"), digits=2)),
         ]
 
-        def thermal_node(node_id: str) -> Any:
+        def thermal_nodes_map() -> dict[str, Any]:
             nodes = get("thermal.nodes")
             if not isinstance(nodes, list):
-                return None
+                return {}
+            out: dict[str, Any] = {}
             for node in nodes:
-                if isinstance(node, dict) and node.get("id") == node_id:
-                    return node.get("temp_c")
-            return None
+                if not isinstance(node, dict):
+                    continue
+                node_id = node.get("id")
+                if isinstance(node_id, str) and node_id:
+                    out[node_id] = node.get("temp_c")
+            return out
+
+        def thermal_node_label(node_id: str) -> str:
+            labels = {
+                "core": I18N.bidi("Core", "Ядро"),
+                "pdu": I18N.bidi("PDU", "ПДУ"),
+                "battery": I18N.bidi("Battery", "Батарея"),
+                "supercap": I18N.bidi("Supercap", "Суперкап"),
+                "dock_bridge": I18N.bidi("Dock bridge", "Док-мост"),
+                "hull": I18N.bidi("Hull", "Корпус"),
+            }
+            return labels.get(node_id, node_id)
+
+        thermal_nodes = thermal_nodes_map()
+        thermal_node_order = ["core", "pdu", "battery", "supercap", "dock_bridge", "hull"]
+        thermal_node_rows: list[tuple[str, str]] = []
+        used = set()
+        for node_id in thermal_node_order:
+            if node_id not in thermal_nodes:
+                continue
+            thermal_node_rows.append(
+                (thermal_node_label(node_id), I18N.num_unit(thermal_nodes.get(node_id), "°C", "°C", digits=1))
+            )
+            used.add(node_id)
+
+        for node_id in sorted(thermal_nodes.keys()):
+            if node_id in used:
+                continue
+            thermal_node_rows.append(
+                (thermal_node_label(node_id), I18N.num_unit(thermal_nodes.get(node_id), "°C", "°C", digits=1))
+            )
+
+        # Keep the panel compact: show a few most important nodes + canonical external/core temps.
+        thermal_node_rows = thermal_node_rows[:4]
 
         thermal_rows = [
-            (I18N.bidi("Core", "Ядро"), I18N.num_unit(thermal_node("core"), "°C", "°C", digits=1)),
-            (I18N.bidi("Bus", "Шина"), I18N.num_unit(thermal_node("bus"), "°C", "°C", digits=1)),
-            (I18N.bidi("Battery", "Батарея"), I18N.num_unit(thermal_node("battery"), "°C", "°C", digits=1)),
-            (I18N.bidi("Radiator", "Радиатор"), I18N.num_unit(thermal_node("radiator"), "°C", "°C", digits=1)),
+            *thermal_node_rows,
             (
                 I18N.bidi("External temperature", "Наружная температура"),
                 I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1),
