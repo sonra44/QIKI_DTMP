@@ -161,16 +161,20 @@ SoT конфиг: `src/qiki/services/q_core_agent/config/bot_config.json`
 
 ## 5) Gaps / open questions (fill next)
 
-1) **Init SoC**: сейчас старт SoC = 100% (в модели). Нужен ли параметр `battery_soc_init_pct` в SoT?
-2) **Meaning of base_power_in_w**: что именно моделируем (solar/RTG/фон/только dock)?
-3) **Per-load breakdown**: хотим ли явный breakdown нагрузок как словарь/таблица (`loads_w`) для инспектора?
-4) **Battery constraints**: max charge/discharge W, КПД, политика при 0% (что отключаем первым).
-5) **bus sag model**: как именно использовать `bus_v_nominal/bus_v_min` (если хотим реалистичнее).
+1) **Init SoC (DONE)**: параметр `hardware_profile.battery_soc_init_pct` добавлен в SoT и применяется в симуляции (clamp 0..100).
+2) **Battery constraints (NEXT)**: нужны явные лимиты батареи (max charge/discharge W), КПД/потери и политика при 0% SoC (что отключаем первым и как).
+3) **Meaning of base_power_in_w / base_power_out_w**: что именно моделируем (solar/RTG/фон/только dock) и какие режимы “нет генерации”.
+4) **Breakdown contract**: зафиксировать стабильные ключи/семантику для `power.sources_w` и `power.loads_w` (чтобы UI/тесты не плавали).
+5) **Duplication**: решить судьбу `battery_level` vs `power.soc_pct` (оставляем как legacy alias или уводим в один канон).
+6) **bus sag model**: как именно использовать `bus_v_nominal/bus_v_min` (если хотим реалистичнее, без “магии”).
 
 ---
 
 ## 6) Next steps (proposed)
 
 Минимальный следующий инкремент (рекомендуется):
-1) Добавить `battery_soc_init_pct` в SoT и применить в `_apply_bot_config()` (с тестом).
-2) Добавить 1 unit test: SoC корректно уменьшается при `power_out_w > power_in_w` и увеличивается при профиците.
+1) Добавить в SoT параметры батареи: `battery_max_charge_w`, `battery_max_discharge_w` (место/структуру согласовать: top-level `hardware_profile.*` или внутри `power_plane.*`).
+2) В симуляции: применять эти лимиты при расчёте `power_in_w/power_out_w` (чтобы SoC не “заряжался” бесконечно) и выдавать fault/event при нарушении.
+3) В telemetry: добавить диагностические поля `power.battery_charge_w`, `power.battery_discharge_w` (или эквивалент), чтобы ORION мог объяснять поведение.
+4) В ORION: показать компактно ограничения/режим (N/A если ключей нет).
+5) Доказательство: unit tests на лимит заряд/разряд + согласованность breakdown ↔ итоговой мощности.
