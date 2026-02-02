@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from qiki.shared.models.radar import RadarFrameModel, RadarTrackModel
 from qiki.shared.models.qiki_chat import BilingualText, QikiChatRequestV1, QikiChatResponseV1, QikiMode
 from qiki.shared.models.core import CommandMessage, MessageMetadata
-from qiki.shared.nats_subjects import COMMANDS_CONTROL, EVENTS_AUDIT
+from qiki.shared.nats_subjects import COMMANDS_CONTROL, EVENTS_AUDIT, EVENTS_STREAM_NAME
 from qiki.shared.nats_subjects import (
     QIKI_INTENTS,
     QIKI_RESPONSES,
@@ -155,6 +155,28 @@ _QIKI_INTENTS_SUBJECT = os.getenv("QIKI_INTENTS_SUBJECT", QIKI_INTENTS)
 _QIKI_RESPONSES_SUBJECT = os.getenv("QIKI_RESPONSES_SUBJECT", QIKI_RESPONSES)
 
 
+async def _publish_system_mode(mode: QikiMode, *, logger_: Logger) -> None:
+    payload = {
+        "event_schema_version": 1,
+        "source": "faststream_bridge",
+        "subject": SYSTEM_MODE_EVENT,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ts_epoch": float(time.time()),
+        "mode": mode.value,
+    }
+    # Prefer JetStream publish so ORION can hydrate after a restart even if it missed core-NATS.
+    try:
+        await broker.publish(payload, subject=SYSTEM_MODE_EVENT, stream=EVENTS_STREAM_NAME)
+        return
+    except Exception as exc:
+        logger_.warning("Failed to publish system mode to JetStream: %s", exc)
+    # Fallback: core-NATS publish (best-effort).
+    try:
+        await broker.publish(payload, subject=SYSTEM_MODE_EVENT)
+    except Exception as exc:
+        logger_.warning("Failed to publish system mode event: %s", exc)
+
+
 @broker.subscriber(_QIKI_INTENTS_SUBJECT)
 @broker.publisher(_QIKI_RESPONSES_SUBJECT)
 async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
@@ -174,21 +196,7 @@ async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
     logger.info("QIKI intent received: request_id=%s text=%r", req.request_id, req.input.text)
     if (new_mode := _parse_mode_change(req.input.text)) is not None:
         set_mode(new_mode)
-        now = datetime.now(timezone.utc).isoformat()
-        try:
-            await broker.publish(
-                {
-                    "event_schema_version": 1,
-                    "source": "faststream_bridge",
-                    "subject": SYSTEM_MODE_EVENT,
-                    "timestamp": now,
-                    "ts_epoch": float(time.time()),
-                    "mode": new_mode.value,
-                },
-                subject=SYSTEM_MODE_EVENT,
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Failed to publish system mode event: %s", exc)
+        await _publish_system_mode(new_mode, logger_=logger)
     current_mode = get_mode()
     # Handle proposal decisions: execute stored actions on ACCEPT.
     if req.decision is not None:
@@ -294,22 +302,7 @@ async def on_startup():
 async def after_startup() -> None:
     # Publish the initial system mode once at boot so operator UIs don't show N/A
     # until the first explicit mode-change intent arrives (no new subjects/contracts).
-    current_mode = get_mode()
-    now = datetime.now(timezone.utc).isoformat()
-    try:
-        await broker.publish(
-            {
-                "event_schema_version": 1,
-                "source": "faststream_bridge",
-                "subject": SYSTEM_MODE_EVENT,
-                "timestamp": now,
-                "ts_epoch": float(time.time()),
-                "mode": current_mode.value,
-            },
-            subject=SYSTEM_MODE_EVENT,
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Failed to publish initial system mode event: %s", exc)
+    await _publish_system_mode(get_mode(), logger_=logger)
 
 
 @app.on_shutdown
