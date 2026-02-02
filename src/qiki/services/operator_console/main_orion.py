@@ -2046,11 +2046,6 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-        if self.active_screen == "events" and not isinstance(self.focused, Input):
-            try:
-                self.set_focus(table)
-            except Exception:
-                pass
 
     def _render_power_table(self) -> None:
         try:
@@ -4585,11 +4580,6 @@ class OrionApp(App):
                 )
             )
 
-        if self.active_screen == "qiki":
-            try:
-                self.set_focus(table)
-            except Exception:
-                pass
 
     def _seed_summary_table(self) -> None:
         try:
@@ -5763,55 +5753,17 @@ class OrionApp(App):
             except Exception:
                 pass
 
+        # Render the target screen immediately so the first frame is consistent.
         if screen == "events":
             self._render_events_table()
-
-            # Make selection/Inspector discoverable: focus + initial highlight.
-            def _focus_events() -> None:
-                try:
-                    table = self.query_one("#events-table", DataTable)
-                    self.set_focus(table)
-                    cursor_row = getattr(table, "cursor_row", None)
-                    if (cursor_row is None or cursor_row < 0) and table.row_count:
-                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
-                except Exception:
-                    pass
-
-            self.call_after_refresh(_focus_events)
         if screen == "qiki":
             self._render_qiki_table()
-
-            def _focus_qiki() -> None:
-                try:
-                    table = self.query_one("#qiki-table", DataTable)
-                    self.set_focus(table)
-                    cursor_row = getattr(table, "cursor_row", None)
-                    if (cursor_row is None or cursor_row < 0) and table.row_count:
-                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
-                except Exception:
-                    pass
-
-            self.call_after_refresh(_focus_qiki)
         if screen == "summary":
             self._render_summary_table()
         if screen == "power":
             self._render_power_table()
         if screen == "sensors":
             self._render_sensors_table()
-
-            # Make selection/Inspector discoverable: focus + initial highlight.
-            # Important: do it after layout refresh, иначе фокус может уйти в sidebar.
-            def _focus_sensors() -> None:
-                try:
-                    table = self.query_one("#sensors-table", DataTable)
-                    self.set_focus(table)
-                    cursor_row = getattr(table, "cursor_row", None)
-                    if (cursor_row is None or cursor_row < 0) and table.row_count:
-                        table.move_cursor(row=0, column=0, animate=False, scroll=False)
-                except Exception:
-                    pass
-
-            self.call_after_refresh(_focus_sensors)
         if screen == "propulsion":
             self._render_propulsion_table()
         if screen == "thermal":
@@ -5823,17 +5775,8 @@ class OrionApp(App):
         if screen == "rules":
             self._render_rules_table()
 
-            # Rules interactions (toggle with confirmation) must be available without
-            # requiring the operator to manually fight focus first.
-            def _focus_rules() -> None:
-                try:
-                    table = self.query_one("#rules-table", DataTable)
-                    self.set_focus(table)
-                    table.move_cursor(row=0, column=0, animate=False, scroll=False)
-                except Exception:
-                    pass
-
-            self.call_after_refresh(_focus_rules)
+        # Avoid focus/cursor flicker on screen switches: keep focus deterministic.
+        self.call_after_refresh(self.action_focus_command)
 
         self._refresh_inspector()
 
