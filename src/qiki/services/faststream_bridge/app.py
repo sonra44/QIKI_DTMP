@@ -11,7 +11,7 @@ from pydantic import ValidationError
 # Импортируем наши Pydantic модели
 # Важно, чтобы PYTHONPATH был настроен правильно, чтобы найти shared
 # В Docker-окружении это будет работать, так как корень проекта - /workspace
-from qiki.shared.models.radar import RadarFrameModel
+from qiki.shared.models.radar import RadarFrameModel, RadarTrackModel
 from qiki.shared.models.qiki_chat import BilingualText, QikiChatRequestV1, QikiChatResponseV1, QikiMode
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.nats_subjects import COMMANDS_CONTROL, EVENTS_AUDIT
@@ -31,7 +31,7 @@ from qiki.services.faststream_bridge.lag_monitor import (
     ConsumerTarget,
     JetStreamLagMonitor,
 )
-from qiki.services.q_core_agent.core.guard_table import load_guard_table
+from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, load_guard_table
 from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
 from qiki.services.faststream_bridge.mode_store import get_mode, set_mode
 from qiki.shared.nats_subjects import RADAR_GUARD_ALERTS, SYSTEM_MODE_EVENT
@@ -357,27 +357,7 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
                 if now_epoch - last < _guard_publish_interval_s:
                     continue
                 _guard_publisher.publish_guard_alert(
-                    {
-                        "schema_version": 1,
-                        "category": "radar",
-                        "kind": "guard_alert",
-                        "source": "guard",
-                        "subject": r.rule_id,
-                        # Use simulation-truth timestamp carried by the track.
-                        "ts_epoch": float(track.timestamp.timestamp()),
-                        "rule_id": r.rule_id,
-                        # Provide a stable per-track identifier for deterministic incident keys.
-                        "id": str(r.track_id),
-                        "track_id": str(r.track_id),
-                        "fsm_event": r.fsm_event,
-                        "severity": r.severity,
-                        "message": r.message,
-                        "range_m": float(r.range_m),
-                        "quality": float(r.quality),
-                        "iff": int(r.iff),
-                        "transponder_on": bool(r.transponder_on),
-                        "transponder_mode": int(r.transponder_mode),
-                    }
+                    _build_radar_guard_event_payload(track=track, evaluation=r)
                 )
                 _guard_last_publish_ts[key] = now_epoch
 
@@ -389,3 +369,33 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
         logger.warning("Failed to handle radar frame: %s", exc)
         fallback = frame_to_track(RadarFrameModel(sensor_id=msg.sensor_id, detections=[]))
         _track_publisher.publish_track(fallback)
+
+
+def _build_radar_guard_event_payload(
+    *, track: RadarTrackModel, evaluation: GuardEvaluationResult
+) -> dict:
+    event_dt = track.ts_event or track.timestamp
+    payload = {
+        "schema_version": 1,
+        "category": "radar",
+        "kind": "guard_alert",
+        "source": "guard",
+        "subject": evaluation.rule_id,
+        # Use simulation-truth time carried by the track.
+        "ts_epoch": float(event_dt.timestamp()),
+        "rule_id": evaluation.rule_id,
+        # Provide a stable per-track identifier for deterministic incident keys.
+        "id": str(evaluation.track_id),
+        "track_id": str(evaluation.track_id),
+        "fsm_event": evaluation.fsm_event,
+        "severity": evaluation.severity,
+        "message": evaluation.message,
+        "range_m": float(evaluation.range_m),
+        "quality": float(evaluation.quality),
+        "iff": int(evaluation.iff),
+        "transponder_on": bool(evaluation.transponder_on),
+        "transponder_mode": int(evaluation.transponder_mode),
+    }
+    if track.ts_ingest is not None:
+        payload["ts_ingest_epoch"] = float(track.ts_ingest.timestamp())
+    return payload
