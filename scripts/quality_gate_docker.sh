@@ -3,6 +3,28 @@ set -euo pipefail
 
 compose_files=(-f docker-compose.phase1.yml)
 
+PROFILE="${QUALITY_GATE_PROFILE:-}"
+if [[ -n "${PROFILE}" ]]; then
+  case "${PROFILE}" in
+    full)
+      # "Full" means: run the complete pytest set + integration suite.
+      # Mypy remains opt-in because the codebase is not mypy-clean yet.
+      export QUALITY_GATE_RUN_INTEGRATION="${QUALITY_GATE_RUN_INTEGRATION:-1}"
+      export QUALITY_GATE_RUFF_FORMAT_CHECK="${QUALITY_GATE_RUFF_FORMAT_CHECK:-1}"
+      ;;
+    strict)
+      # "Strict" is for local hardening sessions (may fail until mypy debt is addressed).
+      export QUALITY_GATE_RUN_INTEGRATION="${QUALITY_GATE_RUN_INTEGRATION:-1}"
+      export QUALITY_GATE_RUFF_FORMAT_CHECK="${QUALITY_GATE_RUFF_FORMAT_CHECK:-1}"
+      export QUALITY_GATE_RUN_MYPY="${QUALITY_GATE_RUN_MYPY:-1}"
+      ;;
+    *)
+      echo "[quality-gate] Unknown QUALITY_GATE_PROFILE=${PROFILE} (expected: full|strict)" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 if [[ "${QIKI_USE_OPERATOR_COMPOSE:-0}" == "1" ]]; then
   compose_files+=(-f docker-compose.operator.yml)
 fi

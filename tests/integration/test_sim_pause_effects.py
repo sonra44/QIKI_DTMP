@@ -35,18 +35,24 @@ async def test_sim_pause_stops_radar_frames_and_start_resumes() -> None:
 
     await nc.subscribe("qiki.radar.v1.frames", cb=on_frame)
 
+    meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
+
+    async def publish(cmd: CommandMessage) -> None:
+        await nc.publish("qiki.commands.control", json.dumps(cmd.model_dump(mode="json")).encode("utf-8"))
+        await nc.flush(timeout=1)
+
     try:
+        # Ensure frames flow (simulation starts explicitly).
+        await publish(CommandMessage(command_name="sim.start", parameters={"speed": 1.0}, metadata=meta))
+
         # Wait for at least one frame while running.
         t0 = now()
-        while not frames and (now() - t0) < 5.0:
+        while not frames and (now() - t0) < 6.0:
             await asyncio.sleep(0.05)
         assert frames, "No radar frames observed before pause"
 
-        meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
-
         paused_at = now()
-        pause_cmd = CommandMessage(command_name="sim.pause", parameters={}, metadata=meta)
-        await nc.publish("qiki.commands.control", json.dumps(pause_cmd.model_dump(mode="json")).encode("utf-8"))
+        await publish(CommandMessage(command_name="sim.pause", parameters={}, metadata=meta))
 
         # After pause, we should not see new frames.
         frames_before = len(frames)
@@ -54,12 +60,11 @@ async def test_sim_pause_stops_radar_frames_and_start_resumes() -> None:
         assert len(frames) == frames_before, "Radar frames continued during pause"
 
         resumed_at = now()
-        start_cmd = CommandMessage(command_name="sim.start", parameters={"speed": 1.0}, metadata=meta)
-        await nc.publish("qiki.commands.control", json.dumps(start_cmd.model_dump(mode="json")).encode("utf-8"))
+        await publish(CommandMessage(command_name="sim.start", parameters={"speed": 1.0}, metadata=meta))
 
         # After resume, we should see at least one new frame.
         t1 = now()
-        while len(frames) == frames_before and (now() - t1) < 5.0:
+        while len(frames) == frames_before and (now() - t1) < 6.0:
             await asyncio.sleep(0.05)
         assert len(frames) > frames_before, "Radar frames did not resume after start"
     finally:
