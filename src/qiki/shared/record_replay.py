@@ -4,11 +4,12 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
 
-RecordLineType = Literal["telemetry", "event", "unknown"]
+RecordLineType = Literal["telemetry", "event", "radar_track", "control_ack", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class RecordLine:
     schema_version: int
     type: RecordLineType
     ts_epoch: float
+    ts_ingest_epoch: float
     subject: str
     data: Any
 
@@ -25,6 +27,7 @@ class RecordLine:
                 "schema_version": int(self.schema_version),
                 "type": self.type,
                 "ts_epoch": float(self.ts_epoch),
+                "ts_ingest_epoch": float(self.ts_ingest_epoch),
                 "subject": self.subject,
                 "data": self.data,
             },
@@ -38,7 +41,29 @@ def _infer_type(subject: str) -> RecordLineType:
         return "telemetry"
     if s.startswith("qiki.events.v1."):
         return "event"
+    if s == "qiki.radar.v1.tracks" or s.startswith("qiki.radar.v1.tracks."):
+        return "radar_track"
+    if s == "qiki.responses.control":
+        return "control_ack"
     return "unknown"
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    # Accept both RFC3339-with-Z and full ISO offsets.
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
 
 
 def _extract_ts_epoch(subject: str, payload: Any) -> float:
@@ -53,6 +78,13 @@ def _extract_ts_epoch(subject: str, payload: Any) -> float:
             return float(payload.get("ts_unix_ms")) / 1000.0
         except Exception:
             return float(time.time())
+
+    if isinstance(payload, dict):
+        # Radar/control payloads carry ISO timestamps (or explicit ts_event).
+        for key in ("ts_event", "tsEvent", "timestamp"):
+            dt = _parse_iso_datetime(payload.get(key))
+            if dt is not None:
+                return float(dt.timestamp())
 
     return float(time.time())
 
@@ -75,12 +107,20 @@ async def record_jsonl(
     nc = await nats.connect(servers=[nats_url], connect_timeout=2)
     started = asyncio.get_running_loop().time()
 
-    counts = {"telemetry": 0, "event": 0, "unknown": 0, "total": 0}
+    counts = {
+        "telemetry": 0,
+        "event": 0,
+        "radar_track": 0,
+        "control_ack": 0,
+        "unknown": 0,
+        "total": 0,
+    }
 
     fh = out_path.open("w", encoding="utf-8")
 
     async def handler(msg) -> None:
         subject = str(getattr(msg, "subject", "") or "")
+        ts_ingest_epoch = float(time.time())
         try:
             payload = json.loads(msg.data.decode("utf-8"))
         except Exception:
@@ -96,6 +136,7 @@ async def record_jsonl(
                 schema_version=1,
                 type=kind,
                 ts_epoch=ts_epoch,
+                ts_ingest_epoch=ts_ingest_epoch,
                 subject=subject,
                 data=payload,
             ).to_json()
@@ -159,11 +200,18 @@ async def replay_jsonl(
         raw = json.loads(ln)
         if not isinstance(raw, dict):
             continue
+        ts_epoch = raw.get("ts_epoch")
+        if ts_epoch is None:
+            ts_epoch = raw.get("ts_event_epoch", 0.0)
+        ingest_epoch = raw.get("ts_ingest_epoch")
+        if ingest_epoch is None:
+            ingest_epoch = raw.get("ts_ingest", 0.0)
         parsed.append(
             RecordLine(
                 schema_version=int(raw.get("schema_version", 1)),
                 type=str(raw.get("type", "unknown")),  # type: ignore[arg-type]
-                ts_epoch=float(raw.get("ts_epoch", 0.0)),
+                ts_epoch=float(ts_epoch or 0.0),
+                ts_ingest_epoch=float(ingest_epoch or 0.0),
                 subject=str(raw.get("subject", "")),
                 data=raw.get("data"),
             )
