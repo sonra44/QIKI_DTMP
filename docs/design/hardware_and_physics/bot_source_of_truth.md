@@ -40,6 +40,7 @@ QIKI = Q‑Core Agent (AgentContext, TickOrchestrator, FSMHandler, WorldModel, R
 - Пороговая логика: правила заряд/разряд и аварийные отсечки.
 - Dock Power Bridge: сквозное питание через байонет, антиобратные ключи, контроль полярности, лимиты по току/мощности, мягкий пуск.
 - NBL Power Budgeter: лимиты пиковой/средней мощности для NBL по SoC/термо.
+- Порядок отключения/ограничения нагрузок (P0 canon): `docs/design/hardware_and_physics/power_plane_load_shedding.md`.
 
 ### 5.2 Sensor Plane (сенсоры)
 - IMU: 3× гироскоп, 3× акселерометр, опц. 3× магнитометр (6/9 DoF).
