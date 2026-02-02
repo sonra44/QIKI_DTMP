@@ -17,9 +17,11 @@ def test_default_routing_prefers_system_for_help_and_screens() -> None:
     assert OrionApp._should_route_to_system_by_default("help") is True
     assert OrionApp._should_route_to_system_by_default("экран system") is True
     assert OrionApp._should_route_to_system_by_default("system") is True  # screen alias
+    assert OrionApp._should_route_to_system_by_default("record") is True
+    assert OrionApp._should_route_to_system_by_default("record start /tmp/x.jsonl") is True
+    assert OrionApp._should_route_to_system_by_default("replay /tmp/x.jsonl") is True
 
 
 def test_default_routing_keeps_free_text_as_qiki() -> None:
     assert OrionApp._should_route_to_system_by_default("привет как дела") is False
     assert OrionApp._should_route_to_system_by_default("analyze my radar") is False
-

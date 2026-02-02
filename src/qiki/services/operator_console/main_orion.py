@@ -33,13 +33,18 @@ from qiki.services.operator_console.ui.profile_panel import ProfilePanel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
+from qiki.shared.record_replay import record_jsonl, replay_jsonl
 from qiki.shared.nats_subjects import (
     COMMANDS_CONTROL,
     EVENTS_STREAM_NAME,
+    EVENTS_V1_WILDCARD,
     OPENAI_API_KEY_UPDATE,
     OPERATOR_ACTIONS,
     QIKI_INTENTS,
+    RADAR_TRACKS,
+    RESPONSES_CONTROL,
     SYSTEM_MODE_EVENT,
+    SYSTEM_TELEMETRY,
 )
 
 try:
@@ -1341,6 +1346,15 @@ class OrionApp(App):
         self._bottom_bar_height_override: Optional[int] = None
         self._inspector_override: Optional[bool] = None
         self._sidebar_override: Optional[bool] = None
+        # Record/Replay (local tools) — keep state in-app, no new NATS contracts.
+        self._record_task: asyncio.Task | None = None
+        self._record_output_path: str | None = None
+        self._record_started_ts_epoch: float | None = None
+        self._record_last_result: dict[str, Any] | None = None
+        self._replay_task: asyncio.Task | None = None
+        self._replay_input_path: str | None = None
+        self._replay_started_ts_epoch: float | None = None
+        self._replay_last_result: dict[str, Any] | None = None
         try:
             raw_output_height = os.getenv("OPERATOR_CONSOLE_OUTPUT_HEIGHT")
             if raw_output_height:
@@ -6533,6 +6547,8 @@ class OrionApp(App):
             "acknowledge",
             "clear",
             "очистить",
+            "record",
+            "replay",
         }:
             return True
 
@@ -6552,6 +6568,8 @@ class OrionApp(App):
                 "ack ",
                 "acknowledge ",
                 "подтвердить ",
+                "record ",
+                "replay ",
             )
         ):
             return True
@@ -6622,6 +6640,11 @@ class OrionApp(App):
             f"{I18N.bidi('Incidents', 'Инциденты')}: "
             f"{I18N.bidi('Acknowledge', 'Подтвердить')} acknowledge <key/ключ> | подтвердить <ключ> | "
             f"{I18N.bidi('Clear acknowledged', 'Очистить подтвержденные')} clear/очистить",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Record/Replay', 'Запись/реплей')}: "
+            f"record start [path] [duration_s] | record stop | replay <path> [speed=1.0] [prefix=...] [no_timing] | replay stop",
             level="info",
         )
         self._console_log(
@@ -6991,6 +7014,253 @@ class OrionApp(App):
                 self.action_toggle_events_live()
             else:
                 self._console_log(f"{I18N.bidi('Events paused', 'События пауза')}", level="info")
+            return
+
+        if low == "record" or low.startswith("record "):
+            parts = cmd.split()
+            action = parts[1].lower() if len(parts) > 1 else ""
+
+            def _task_state(task: asyncio.Task | None) -> str:
+                if task is None:
+                    return I18N.bidi("idle", "нет")
+                if task.cancelled():
+                    return I18N.bidi("canceled", "отменено")
+                if task.done():
+                    return I18N.bidi("done", "готово")
+                return I18N.bidi("running", "работает")
+
+            if not action or action in {"status", "info"}:
+                self._console_log(
+                    f"{I18N.bidi('Record', 'Запись')}: {_task_state(self._record_task)} "
+                    f"(path={self._record_output_path or I18N.NA})",
+                    level="info",
+                )
+                return
+
+            if action in {"stop", "cancel", "abort"}:
+                if self._record_task is None or self._record_task.done():
+                    self._console_log(
+                        f"{I18N.bidi('Record', 'Запись')}: {I18N.bidi('not running', 'не запущена')}",
+                        level="info",
+                    )
+                    self._record_task = None
+                    return
+                self._record_task.cancel()
+                self._console_log(
+                    f"{I18N.bidi('Record', 'Запись')}: {I18N.bidi('stop requested', 'остановка')}",
+                    level="info",
+                )
+                return
+
+            if action in {"start", "on"}:
+                if self._record_task is not None and not self._record_task.done():
+                    self._console_log(
+                        f"{I18N.bidi('Record already running', 'Запись уже запущена')}: {self._record_output_path or I18N.NA}",
+                        level="info",
+                    )
+                    return
+                if self.nats_client is None:
+                    self._console_log(
+                        f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}",
+                        level="warning",
+                    )
+                    return
+
+                output_path = parts[2].strip() if len(parts) > 2 else ""
+                if not output_path:
+                    out_dir = os.getenv("OPERATOR_CONSOLE_RECORD_DIR", "/tmp/qiki_records").strip() or "/tmp/qiki_records"
+                    output_path = str(Path(out_dir) / f"qiki_record_{int(time.time())}.jsonl")
+                output_path = os.path.expanduser(output_path)
+
+                duration_s = None
+                for tok in parts[3:]:
+                    if tok.startswith("duration="):
+                        duration_s = self._parse_duration_s(tok.split("=", 1)[1])
+                        continue
+                    if duration_s is None:
+                        duration_s = self._parse_duration_s(tok)
+                if duration_s is None:
+                    duration_s = float(os.getenv("OPERATOR_CONSOLE_RECORD_DEFAULT_DURATION_S", "86400") or "86400")
+
+                subjects = [
+                    SYSTEM_TELEMETRY,
+                    EVENTS_V1_WILDCARD,
+                    RADAR_TRACKS,
+                    RESPONSES_CONTROL,
+                ]
+                self._record_output_path = output_path
+                self._record_started_ts_epoch = float(time.time())
+                self._record_last_result = None
+
+                async def _record_job() -> dict[str, Any]:
+                    return await record_jsonl(
+                        nats_url=self.nats_client.url,
+                        subjects=subjects,
+                        duration_s=float(duration_s or 0.0),
+                        output_path=output_path,
+                    )
+
+                task = asyncio.create_task(_record_job())
+                self._record_task = task
+
+                def _on_done(t: asyncio.Task) -> None:
+                    if self._record_task is not t:
+                        return
+                    try:
+                        if t.cancelled():
+                            self._record_last_result = {"ok": False, "canceled": True, "path": self._record_output_path}
+                            self._console_log(f"{I18N.bidi('Record canceled', 'Запись отменена')}", level="info")
+                        else:
+                            res = t.result()
+                            self._record_last_result = dict(res) if isinstance(res, dict) else {"result": res}
+                            self._console_log(
+                                f"{I18N.bidi('Record finished', 'Запись завершена')}: "
+                                f"{self._record_output_path} ({I18N.bidi('total', 'всего')}={self._record_last_result.get('counts', {}).get('total', I18N.NA)})",
+                                level="info",
+                            )
+                    except Exception as exc:
+                        self._record_last_result = {"ok": False, "error": str(exc), "path": self._record_output_path}
+                        self._console_log(f"{I18N.bidi('Record failed', 'Запись ошибка')}: {exc}", level="warning")
+                    finally:
+                        self._record_task = None
+
+                task.add_done_callback(_on_done)
+                self._console_log(
+                    f"{I18N.bidi('Record started', 'Запись запущена')}: {output_path} "
+                    f"(duration_s={float(duration_s):g}, subjects={len(subjects)})",
+                    level="info",
+                )
+                return
+
+            self._console_log(
+                f"{I18N.bidi('Unknown record command', 'Неизвестная команда записи')}: {cmd}",
+                level="info",
+            )
+            return
+
+        if low == "replay" or low.startswith("replay "):
+            parts = cmd.split()
+            action = parts[1].lower() if len(parts) > 1 else ""
+
+            if not action or action in {"status", "info"}:
+                state = I18N.bidi("idle", "нет")
+                if self._replay_task is not None and not self._replay_task.done():
+                    state = I18N.bidi("running", "работает")
+                elif self._replay_task is not None and self._replay_task.done():
+                    state = I18N.bidi("done", "готово")
+                self._console_log(
+                    f"{I18N.bidi('Replay', 'Реплей')}: {state} "
+                    f"(path={self._replay_input_path or I18N.NA})",
+                    level="info",
+                )
+                return
+
+            if action in {"stop", "cancel", "abort"}:
+                if self._replay_task is None or self._replay_task.done():
+                    self._console_log(
+                        f"{I18N.bidi('Replay', 'Реплей')}: {I18N.bidi('not running', 'не запущен')}",
+                        level="info",
+                    )
+                    self._replay_task = None
+                    return
+                self._replay_task.cancel()
+                self._console_log(
+                    f"{I18N.bidi('Replay', 'Реплей')}: {I18N.bidi('stop requested', 'остановка')}",
+                    level="info",
+                )
+                return
+
+            input_path = parts[1].strip() if len(parts) > 1 else ""
+            if not input_path:
+                self._console_log(
+                    f"{I18N.bidi('Usage', 'Использование')}: replay <path> [speed=1.0] [prefix=...] [no_timing]",
+                    level="info",
+                )
+                return
+            if self._replay_task is not None and not self._replay_task.done():
+                self._console_log(f"{I18N.bidi('Replay already running', 'Реплей уже запущен')}", level="info")
+                return
+            if self.nats_client is None:
+                self._console_log(
+                    f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}",
+                    level="warning",
+                )
+                return
+
+            speed = 1.0
+            subject_prefix: str | None = None
+            no_timing = False
+            for tok in parts[2:]:
+                low_tok = tok.strip().lower()
+                if not low_tok:
+                    continue
+                if low_tok in {"no_timing", "notiming", "no-timing"}:
+                    no_timing = True
+                    continue
+                if "=" in tok:
+                    k, v = tok.split("=", 1)
+                    k = k.strip().lower()
+                    v = v.strip()
+                    if k == "speed":
+                        try:
+                            speed = float(v)
+                        except Exception:
+                            pass
+                        continue
+                    if k in {"prefix", "subject_prefix"}:
+                        subject_prefix = v or None
+                        continue
+                if subject_prefix is None:
+                    try:
+                        speed = float(tok)
+                        continue
+                    except Exception:
+                        subject_prefix = tok
+
+            input_path = os.path.expanduser(input_path)
+            self._replay_input_path = input_path
+            self._replay_started_ts_epoch = float(time.time())
+            self._replay_last_result = None
+
+            async def _replay_job() -> dict[str, Any]:
+                return await replay_jsonl(
+                    nats_url=self.nats_client.url,
+                    input_path=input_path,
+                    speed=float(speed),
+                    subject_prefix=subject_prefix,
+                    no_timing=bool(no_timing),
+                )
+
+            task = asyncio.create_task(_replay_job())
+            self._replay_task = task
+
+            def _on_done(t: asyncio.Task) -> None:
+                if self._replay_task is not t:
+                    return
+                try:
+                    if t.cancelled():
+                        self._replay_last_result = {"ok": False, "canceled": True, "path": self._replay_input_path}
+                        self._console_log(f"{I18N.bidi('Replay canceled', 'Реплей отменен')}", level="info")
+                    else:
+                        res = t.result()
+                        self._replay_last_result = dict(res) if isinstance(res, dict) else {"result": res}
+                        self._console_log(
+                            f"{I18N.bidi('Replay finished', 'Реплей завершен')}: {self._replay_input_path} "
+                            f"({I18N.bidi('published', 'отправлено')}={self._replay_last_result.get('published', I18N.NA)})",
+                            level="info",
+                        )
+                except Exception as exc:
+                    self._replay_last_result = {"ok": False, "error": str(exc), "path": self._replay_input_path}
+                    self._console_log(f"{I18N.bidi('Replay failed', 'Реплей ошибка')}: {exc}", level="warning")
+                finally:
+                    self._replay_task = None
+
+            task.add_done_callback(_on_done)
+            self._console_log(
+                f"{I18N.bidi('Replay started', 'Реплей запущен')}: {input_path} "
+                f"(speed={float(speed):g}, prefix={subject_prefix or I18N.NA}, no_timing={no_timing})",
+                level="info",
+            )
             return
 
         if low == "ack" or low.startswith("ack ") or low == "acknowledge" or low.startswith("acknowledge "):
