@@ -37,7 +37,7 @@ services:
       - ./src/qiki/core:/app/qiki/core:ro
       - ./src/qiki/models:/app/qiki/models:ro
     networks:
-      - qiki-network
+      - qiki-network-phase1
     depends_on:
       - nats
       - q-sim-service
@@ -47,6 +47,4 @@ services:
     command: python main_orion.py
 
 networks:
-  qiki-network:
-    external: true
-    name: qiki_dtmp_qiki-network-phase1
+  qiki-network-phase1:

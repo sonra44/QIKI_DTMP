@@ -80,6 +80,7 @@ services:
       - BOT_CONFIG_PATH=${BOT_CONFIG_PATH:-/workspace/src/qiki/services/q_core_agent/config/bot_config.json}
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
+      - RADAR_SR_THRESHOLD_M=${RADAR_SR_THRESHOLD_M:-5000.0}
       - TELEMETRY_NATS_ENABLED=1
       - TELEMETRY_INTERVAL_SEC=1.0
       - NATS_URL=nats://nats:4222
@@ -143,6 +144,9 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+    environment:
+      - NATS_URL=nats://nats:4222
+      - RADAR_GUARD_EVENTS_ENABLED=${RADAR_GUARD_EVENTS_ENABLED:-0}
     restart: on-failure
 
   # Registrar service for event auditing

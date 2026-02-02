@@ -47,3 +47,6 @@ OPERATOR_ACTIONS = "qiki.events.v1.operator.actions"
 # Simulation (q_sim_service) event subjects
 SIM_SENSOR_THERMAL = "qiki.events.v1.sensor.thermal"
 SIM_POWER_BUS = "qiki.events.v1.power.bus"
+
+# Radar guard alerts (published by radar processing pipeline)
+RADAR_GUARD_ALERTS = "qiki.events.v1.radar.guard"

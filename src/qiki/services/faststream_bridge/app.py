@@ -25,14 +25,16 @@ from qiki.shared.nats_subjects import (
     RADAR_TRACKS_DURABLE as RADAR_TRACKS_DURABLE_DEFAULT,
 )
 from qiki.services.faststream_bridge.radar_handlers import frame_to_track
+from qiki.services.faststream_bridge.radar_guard_publisher import RadarGuardEventPublisher
 from qiki.services.faststream_bridge.track_publisher import RadarTrackPublisher
 from qiki.services.faststream_bridge.lag_monitor import (
     ConsumerTarget,
     JetStreamLagMonitor,
 )
+from qiki.services.q_core_agent.core.guard_table import load_guard_table
 from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
 from qiki.services.faststream_bridge.mode_store import get_mode, set_mode
-from qiki.shared.nats_subjects import SYSTEM_MODE_EVENT
+from qiki.shared.nats_subjects import RADAR_GUARD_ALERTS, SYSTEM_MODE_EVENT
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -113,6 +115,13 @@ def _docking_actions_allowed(mode: QikiMode) -> bool:
 
 
 _track_publisher = RadarTrackPublisher(NATS_URL, subject=RADAR_TRACKS_SUBJECT)
+_guard_events_enabled = os.getenv("RADAR_GUARD_EVENTS_ENABLED", "0").strip().lower() not in ("0", "false", "")
+_guard_table = load_guard_table() if _guard_events_enabled else None
+_guard_publisher = RadarGuardEventPublisher(NATS_URL, subject=RADAR_GUARD_ALERTS)
+_guard_publish_interval_s = max(
+    0.1, float(os.getenv("RADAR_GUARD_PUBLISH_INTERVAL_S", "2.0").strip() or "2.0")
+)
+_guard_last_publish_ts: dict[str, float] = {}
 _lag_monitor = JetStreamLagMonitor(
     nats_url=NATS_URL,
     stream=RADAR_STREAM,
@@ -310,6 +319,49 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
         track = frame_to_track(msg)
         _track_publisher.publish_track(track)
         logger.debug("Track published with CloudEvents headers: track_id=%s", track.track_id)
+
+        # Radar guards -> events -> ORION incidents (opt-in; no-mocks).
+        if _guard_table is not None:
+            results = _guard_table.evaluate_track(track)
+            current_keys = {f"{r.rule_id}|{r.track_id}" for r in results}
+            now_epoch = float(time.time())
+
+            # Publish with a per-key cadence to avoid missing the alert due to subscription timing,
+            # while still being stable and non-spammy for operators.
+            for r in results:
+                key = f"{r.rule_id}|{r.track_id}"
+                last = float(_guard_last_publish_ts.get(key, 0.0) or 0.0)
+                if now_epoch - last < _guard_publish_interval_s:
+                    continue
+                _guard_publisher.publish_guard_alert(
+                    {
+                        "schema_version": 1,
+                        "category": "radar",
+                        "kind": "guard_alert",
+                        "source": "guard",
+                        "subject": r.rule_id,
+                        # Use simulation-truth timestamp carried by the track.
+                        "ts_epoch": float(track.timestamp.timestamp()),
+                        "rule_id": r.rule_id,
+                        # Provide a stable per-track identifier for deterministic incident keys.
+                        "id": str(r.track_id),
+                        "track_id": str(r.track_id),
+                        "fsm_event": r.fsm_event,
+                        "severity": r.severity,
+                        "message": r.message,
+                        "range_m": float(r.range_m),
+                        "quality": float(r.quality),
+                        "iff": int(r.iff),
+                        "transponder_on": bool(r.transponder_on),
+                        "transponder_mode": int(r.transponder_mode),
+                    }
+                )
+                _guard_last_publish_ts[key] = now_epoch
+
+            # Clear inactive rules to allow re-entry alerts.
+            for key in list(_guard_last_publish_ts):
+                if key not in current_keys:
+                    _guard_last_publish_ts.pop(key, None)
     except Exception as exc:  # pragma: no cover
         logger.warning("Failed to handle radar frame: %s", exc)
         fallback = frame_to_track(RadarFrameModel(sensor_id=msg.sensor_id, detections=[]))

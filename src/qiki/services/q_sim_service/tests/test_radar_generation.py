@@ -64,6 +64,16 @@ def test_generate_radar_frame_basic():
     assert sr_det.transponder_id is not None
 
 
+def test_radar_sr_threshold_env_override(monkeypatch):
+    monkeypatch.setenv("RADAR_SR_THRESHOLD_M", "100")
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    sim = QSimService(cfg)
+
+    frame = sim.generate_radar_frame()
+    sr_det = frame.detections[1]
+    assert sr_det.range_m == pytest.approx(50.0)
+
+
 def test_generate_sensor_data_produces_radar_when_enabled():
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     sim = QSimService(cfg)

@@ -35,6 +35,23 @@ rules:
     require_ack: true
     auto_clear: true
 
+  - id: UNKNOWN_CONTACT_CLOSE
+    enabled: true
+    title: "Unknown contact close"
+    description: "Unknown radar contact in close range (guard rule)"
+    match:
+      type: "radar"
+      source: "guard"
+      subject: "UNKNOWN_CONTACT_CLOSE"
+      field: "range_m"
+    threshold:
+      op: "<"
+      value: 70
+      cooldown_s: 60
+    severity: "C"
+    require_ack: true
+    auto_clear: false
+
   - id: POWER_BUS_NEAR_LIMIT
     enabled: true
     title: "Power bus near current limit"

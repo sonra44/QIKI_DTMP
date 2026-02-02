@@ -43,6 +43,7 @@ from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_SENSOR_THERMAL
 class QSimService:
     def __init__(self, config: QSimServiceConfig):
         self.config = config
+        self._sr_threshold_m = self._read_sr_threshold_m()
         self._bot_config = self._load_bot_config()
         self._comms_enabled = True
         if isinstance(self._bot_config, dict):
@@ -68,8 +69,7 @@ class QSimService:
         self._radar_publisher: RadarNatsPublisher | None = None
         if self.radar_enabled and self.radar_nats_enabled:
             nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
-            sr_threshold = self.config.radar.sr_threshold_m
-            self._radar_publisher = RadarNatsPublisher(nats_url, sr_threshold)
+            self._radar_publisher = RadarNatsPublisher(nats_url, self._sr_threshold_m)
 
         telemetry_flag = os.getenv("TELEMETRY_NATS_ENABLED", "0").strip().lower()
         self.telemetry_nats_enabled = telemetry_flag not in ("0", "false", "")
@@ -373,7 +373,7 @@ class QSimService:
         snr_db = 20.0
         rcs_dbsm = 1.0
 
-        sr_threshold = self.config.radar.sr_threshold_m
+        sr_threshold = self._sr_threshold_m
         bearing_deg = bearing
         elev_deg = elev
 
@@ -403,6 +403,17 @@ class QSimService:
 
         frame = RadarFrameModel(sensor_id=uuid4(), detections=[lr_detection, sr_detection])
         return frame
+
+    def _read_sr_threshold_m(self) -> float:
+        raw = os.getenv("RADAR_SR_THRESHOLD_M", "").strip()
+        if raw:
+            try:
+                value = float(raw)
+                if value > 0.0:
+                    return value
+            except Exception:
+                pass
+        return float(self.config.radar.sr_threshold_m)
 
     def run(self):
         logger.info("QSimService started.")
