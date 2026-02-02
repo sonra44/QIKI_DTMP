@@ -1416,13 +1416,22 @@ class WorldModel:
                 return ("warn", f"value>=warn ({value:.3g}>={warn:.3g})", {"warn_usvh": warn, "crit_usvh": crit})
             return ("ok", "within limits", {"warn_usvh": warn, "crit_usvh": crit})
 
-        thermal_nodes: list[dict[str, float | str]] = []
+        thermal_nodes: list[dict[str, float | str | bool]] = []
         if self._thermal_enabled and self._thermal_nodes_order:
             for nid in self._thermal_nodes_order:
                 node = self._thermal_nodes.get(nid)
                 if not isinstance(node, dict):
                     continue
-                thermal_nodes.append({"id": nid, "temp_c": float(node.get("temp_c", self.temp_external_c))})
+                thermal_nodes.append(
+                    {
+                        "id": nid,
+                        "temp_c": float(node.get("temp_c", self.temp_external_c)),
+                        # Operator-facing (derived, no-mocks): explicit trip state and thresholds.
+                        "tripped": bool(self._thermal_trip_state.get(nid, False)),
+                        "trip_c": float(node.get("trip_c", 0.0)),
+                        "hys_c": float(node.get("hys_c", 0.0)),
+                    }
+                )
         return {
             "position": {
                 "x": self.position.x,

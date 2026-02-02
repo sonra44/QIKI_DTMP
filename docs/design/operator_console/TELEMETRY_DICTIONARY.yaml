@@ -392,6 +392,29 @@ subsystems:
         orion:
           screen: thermal
           row_key: thermal_node
+      - path: thermal.nodes[*].tripped
+        label: Thermal trip/Перегрев
+        unit: bool
+        type: boolean
+        why_operator: Explicit per-node trip state (preferred over parsing power.faults)/Явное состояние перегрева узла (предпочтительно, чем парсить power.faults)
+        dimensions:
+          key: thermal.nodes[*].id
+        related:
+          - power.faults
+      - path: thermal.nodes[*].trip_c
+        label: Trip threshold/Порог перегрева
+        unit: celsius
+        type: number
+        why_operator: Configured trip threshold for the node/Настроенный порог перегрева узла
+        dimensions:
+          key: thermal.nodes[*].id
+      - path: thermal.nodes[*].hys_c
+        label: Trip hysteresis/Гистерезис перегрева
+        unit: celsius
+        type: number
+        why_operator: Configured hysteresis for trip clearing/Настроенный гистерезис для снятия перегрева
+        dimensions:
+          key: thermal.nodes[*].id
 
   propulsion:
     description: Propulsion/Двигатели

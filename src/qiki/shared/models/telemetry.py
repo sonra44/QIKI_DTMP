@@ -80,6 +80,9 @@ class ThermalNodeTelemetry(BaseModel):
 
     id: str
     temp_c: float
+    tripped: bool = False
+    trip_c: float = 0.0
+    hys_c: float = 0.0
 
 
 class ThermalTelemetry(BaseModel):

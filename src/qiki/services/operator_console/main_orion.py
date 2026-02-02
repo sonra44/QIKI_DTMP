@@ -2406,9 +2406,12 @@ class OrionApp(App):
         selected_key = current.key if current is not None else None
         selected_row: Optional[int] = None
 
-        def status_label(node_id: str, temp: Any) -> str:
+        def status_label(node_id: str, temp: Any, *, tripped: Any) -> str:
             if temp is None:
                 return I18N.NA
+            # Prefer explicit node trip state (newer telemetry), fallback to power faults (legacy).
+            if isinstance(tripped, bool):
+                return I18N.bidi("Abnormal", "Не норма") if tripped else I18N.bidi("Normal", "Норма")
             if f"THERMAL_TRIP:{node_id}" in faults_set:
                 return I18N.bidi("Abnormal", "Не норма")
             return I18N.bidi("Normal", "Норма")
@@ -2422,13 +2425,25 @@ class OrionApp(App):
                 continue
             nid = node_id.strip()
             value = I18N.num_unit(temp, "C", "°C", digits=1)
-            status = status_label(nid, temp)
-            source_keys = (f"thermal.nodes[id={nid}].temp_c", "power.faults")
+            tripped = raw.get("tripped")
+            trip_c = raw.get("trip_c")
+            hys_c = raw.get("hys_c")
+            status = status_label(nid, temp, tripped=tripped)
+            source_keys = (
+                f"thermal.nodes[id={nid}].temp_c",
+                f"thermal.nodes[id={nid}].tripped",
+                f"thermal.nodes[id={nid}].trip_c",
+                f"thermal.nodes[id={nid}].hys_c",
+                "power.faults",
+            )
             table.add_row(nid, status, value, age, source, key=nid)
             self._thermal_by_key[nid] = {
                 "node_id": nid,
                 "status": status,
                 "temp_c": temp,
+                "tripped": tripped,
+                "trip_c": trip_c,
+                "hys_c": hys_c,
                 "value": value,
                 "age": age,
                 "source": source,
