@@ -1806,17 +1806,44 @@ class OrionApp(App):
         items = self._active_tracks_sorted()
         if not items:
             self._selection_by_app.pop("radar", None)
+            status = I18N.NA
+            info = I18N.NO_TRACKS_YET
+            telemetry_env = self._snapshots.get_last("telemetry")
+            if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
+                try:
+                    normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
+                except ValidationError:
+                    normalized = {}
+                sim_state = normalized.get("sim_state") if isinstance(normalized, dict) else None
+                if isinstance(sim_state, dict):
+                    fsm_state = sim_state.get("fsm_state")
+                    running = sim_state.get("running")
+                    paused = sim_state.get("paused")
+                    state_norm = str(fsm_state).strip().upper() if isinstance(fsm_state, str) else ""
+                    if paused is True or state_norm == "PAUSED":
+                        status = I18N.bidi("Paused", "Пауза")
+                        info = I18N.bidi("No tracks while paused", "Нет треков на паузе")
+                    elif running is False or state_norm == "STOPPED":
+                        status = I18N.bidi("Stopped", "Остановлено")
+                        info = I18N.bidi(
+                            "Simulation stopped (start to see tracks)",
+                            "Симуляция остановлена (запустите, чтобы увидеть треки)",
+                        )
+                    elif running is True or state_norm == "RUNNING":
+                        status = I18N.bidi("No tracks", "Треков нет")
+                        info = I18N.NO_TRACKS_YET
             self._sync_datatable_rows(
                 table,
                 rows=[
                     (
                         "seed",
                         "—",
+                        status,
                         I18N.NA,
                         I18N.NA,
                         I18N.NA,
                         I18N.NA,
-                        I18N.NO_TRACKS_YET,
+                        info,
                     )
                 ],
             )
