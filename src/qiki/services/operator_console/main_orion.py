@@ -842,7 +842,7 @@ class OrionHeader(Container):
         )
         set_cell(
             "hdr-sim",
-            f"{I18N.bidi('Simulation', 'Симуляция')} {self.sim}",
+            f"{I18N.bidi('Sim', 'Сим')} {self.sim}",
             tooltip=f"{I18N.bidi('Simulation state', 'Состояние симуляции')}: {self.sim}",
         )
 
@@ -2125,8 +2125,11 @@ class OrionApp(App):
             SystemStateBlock(
                 block_id="events_filters",
                 title=I18N.bidi("Events filters", "Фильтры событий"),
-                status="na",
-                value=f"type={self._events_filter_type or I18N.NA}; filter={self._events_filter_text or I18N.NA}",
+                status="ok",
+                value=(
+                    f"type={self._events_filter_type or I18N.bidi('off', 'выкл')}; "
+                    f"filter={self._events_filter_text or I18N.bidi('off', 'выкл')}"
+                ),
                 ts_epoch=None,
                 envelope=None,
             )
