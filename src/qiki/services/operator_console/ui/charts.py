@@ -239,7 +239,7 @@ class RadarVisualization:
         if 0 <= x < self.width and 0 <= y < self.height:
             grid[y][x] = "●"
             
-    def render(self, detections: List[dict]) -> str:
+    def render(self, detections: List[dict], *, max_range_m: float = 500.0) -> str:
         """
         Render radar display with detections.
         
@@ -259,7 +259,7 @@ class RadarVisualization:
         # Plot detections
         for det in detections:
             if "range" in det and "bearing" in det:
-                self.plot_detection(grid, det["range"], det["bearing"])
+                self.plot_detection(grid, det["range"], det["bearing"], max_range=max_range_m)
                 
         # Convert grid to string
         lines = []
@@ -267,18 +267,40 @@ class RadarVisualization:
             lines.append("".join(row))
             
         return "\n".join(lines)
-        
-    def draw_circle(self, grid: List[List[str]], radius_ratio: float):
+
+    def draw_circle(self, grid: List[List[str]], radius_ratio: float) -> None:
         """Draw a circle on the grid."""
         steps = 36  # Number of points to draw
         for i in range(steps):
             angle = 2 * math.pi * i / steps
             x = int(self.center_x + radius_ratio * self.center_x * math.sin(angle))
             y = int(self.center_y + radius_ratio * self.center_y * math.cos(angle))
-            
-            if 0 <= x < self.width and 0 <= y < self.height:
-                if grid[y][x] == " ":
-                    grid[y][x] = "·"
+
+            if 0 <= x < self.width and 0 <= y < self.height and grid[y][x] == " ":
+                grid[y][x] = "·"
+
+
+class PpiScopeRenderer:
+    """Minimal radar PPI renderer used by ORION (optional; no hard deps)."""
+
+    def __init__(self, *, width: int, height: int, max_range_m: float) -> None:
+        self._viz = RadarVisualization(width=width, height=height)
+        self._max_range_m = float(max_range_m)
+
+    def render_tracks(self, tracks: List[dict[str, Any]]) -> str:
+        detections: List[dict] = []
+        for t in tracks:
+            if not isinstance(t, dict):
+                continue
+            r = t.get("range_m")
+            b = t.get("bearing_deg")
+            try:
+                r_f = float(r)
+                b_f = float(b)
+            except Exception:
+                continue
+            detections.append({"range": r_f, "bearing": b_f})
+        return self._viz.render(detections, max_range_m=self._max_range_m)
 
 
 class BatteryIndicator:

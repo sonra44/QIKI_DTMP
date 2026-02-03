@@ -2818,6 +2818,14 @@ class OrionApp(App):
         time_left = rcs.get("time_left_s")
         propellant = rcs.get("propellant_kg")
         power_w = rcs.get("power_w")
+        active_bool = None if active is None else bool(active)
+
+        axis_label = I18N.fmt_na(axis)
+        axis_raw = axis
+        if active_bool is False and axis_label == I18N.NA:
+            # If RCS is not active, having no axis is expected (not unknown).
+            axis_label = I18N.bidi("none", "нет")
+            axis_raw = "none"
 
         rows.extend(
             [
@@ -2840,8 +2848,8 @@ class OrionApp(App):
                 (
                     "rcs_axis",
                     I18N.bidi("Axis", "Ось"),
-                    I18N.fmt_na(axis),
-                    axis,
+                    axis_label,
+                    axis_raw,
                     bool(throttled),
                     ("propulsion.rcs.axis", "propulsion.rcs.throttled"),
                 ),
@@ -3687,7 +3695,17 @@ class OrionApp(App):
         def seed_empty() -> None:
             self._mission_by_key = {}
             self._selection_by_app.pop("mission", None)
-            self._sync_datatable_rows(table, rows=[("seed", "—", I18N.NA, I18N.NA)])
+            self._sync_datatable_rows(
+                table,
+                rows=[
+                    (
+                        "seed",
+                        I18N.bidi("Mission", "Миссия"),
+                        I18N.NA,
+                        I18N.bidi("No mission/task data", "Нет данных миссии/задач"),
+                    )
+                ],
+            )
 
         def mission_env() -> Optional[EventEnvelope]:
             for t in ("mission", "task"):
@@ -3797,7 +3815,14 @@ class OrionApp(App):
             )
 
         if not table_rows:
-            table_rows = [("seed", "—", I18N.NA, I18N.NA)]
+            table_rows = [
+                (
+                    "seed",
+                    I18N.bidi("Mission", "Миссия"),
+                    I18N.NA,
+                    I18N.bidi("No mission/task data", "Нет данных миссии/задач"),
+                )
+            ]
         self._sync_datatable_rows(table, rows=table_rows)
 
         if current is None or current.key not in self._mission_by_key:
