@@ -6067,6 +6067,12 @@ class OrionApp(App):
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
             pass
+        try:
+            # Keybar is a pure renderer; it won't necessarily re-render on app state changes
+            # unless explicitly refreshed.
+            self.query_one("#orion-keybar", OrionKeybar).refresh()
+        except Exception:
+            pass
         for sid in (
             "system",
             "radar",
