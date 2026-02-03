@@ -1442,6 +1442,41 @@ class OrionApp(App):
         return str(round(float(value), digits))
 
     @staticmethod
+    def _sensor_status_label(
+        raw_value: Any,
+        rendered_value: str,
+        *,
+        warning: bool = False,
+        status_kind: str | None = None,
+    ) -> str:
+        if status_kind is not None:
+            kind = str(status_kind).strip().lower()
+            if kind == "ok":
+                return I18N.bidi("Normal", "Норма")
+            if kind == "warn":
+                return I18N.bidi("Warning", "Предупреждение")
+            if kind == "crit":
+                return I18N.bidi("Abnormal", "Не норма")
+            if kind in {"na", "disabled"}:
+                return I18N.bidi("Disabled", "Отключено")
+            return I18N.NA
+
+        if isinstance(raw_value, dict):
+            enabled = raw_value.get("enabled")
+            if isinstance(enabled, bool) and enabled is False:
+                return I18N.bidi("Disabled", "Отключено")
+            # A dict is an aggregate; without an explicit status_kind it is safer to show N/A than pretend "Normal".
+            return I18N.NA
+
+        if raw_value is None:
+            return I18N.NA
+        if warning:
+            return I18N.bidi("Warning", "Предупреждение")
+        if rendered_value == I18N.INVALID:
+            return I18N.bidi("Abnormal", "Не норма")
+        return I18N.bidi("Normal", "Норма")
+
+    @staticmethod
     def _radar_status_code(payload: dict[str, Any]) -> str:
         raw = payload.get("status")
         if isinstance(raw, str):
@@ -1486,6 +1521,81 @@ class OrionApp(App):
             return {0: "—", 1: "LR", 2: "SR"}.get(raw, str(raw))
         if isinstance(raw, str) and raw:
             for token in ("LR", "SR"):
+                if token in raw:
+                    return token
+            return raw
+        return "—"
+
+    @staticmethod
+    def _radar_iff_code(payload: dict[str, Any]) -> str:
+        raw = payload.get("iff", payload.get("iff_class", payload.get("iffClass")))
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.FriendFoeEnum (aligned with proto):
+            # 0 UNSPECIFIED, 1 FRIEND, 2 FOE, 3 UNKNOWN
+            return {0: "—", 1: "FRND", 2: "FOE", 3: "UNK"}.get(raw, str(raw))
+        if isinstance(raw, str) and raw:
+            for token, label in (("FRIEND", "FRND"), ("FOE", "FOE"), ("UNKNOWN", "UNK")):
+                if token in raw:
+                    return label
+            return raw
+        return "—"
+
+    @staticmethod
+    def _radar_object_type_code(payload: dict[str, Any]) -> str:
+        raw = payload.get("object_type", payload.get("objectType", payload.get("type")))
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.ObjectTypeEnum (aligned with proto):
+            # 0 UNSPECIFIED, 1 DRONE, 2 SHIP, 3 STATION, 4 ASTEROID, 5 DEBRIS
+            return {0: "—", 1: "DRONE", 2: "SHIP", 3: "STN", 4: "AST", 5: "DEBR"}.get(raw, str(raw))
+        if isinstance(raw, str) and raw:
+            for token, label in (
+                ("DEBRIS", "DEBR"),
+                ("ASTEROID", "AST"),
+                ("STATION", "STN"),
+                ("SHIP", "SHIP"),
+                ("DRONE", "DRONE"),
+            ):
+                if token in raw:
+                    return label
+            return raw
+        return "—"
+
+    @staticmethod
+    def _radar_transponder_mode_code(payload: dict[str, Any]) -> str:
+        raw = payload.get("transponder_mode", payload.get("transponderMode", payload.get("mode")))
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.TransponderModeEnum (aligned with proto):
+            # 0 OFF, 1 ON, 2 SILENT, 3 SPOOF
+            return {0: "OFF", 1: "ON", 2: "SILENT", 3: "SPOOF"}.get(raw, str(raw))
+        if isinstance(raw, str) and raw:
+            for token in ("OFF", "ON", "SILENT", "SPOOF"):
                 if token in raw:
                     return token
             return raw
@@ -2883,25 +2993,12 @@ class OrionApp(App):
         def status_label(
             raw_value: Any, rendered_value: str, *, warning: bool = False, status_kind: str | None = None
         ) -> str:
-            if status_kind is not None:
-                kind = str(status_kind).strip().lower()
-                if kind == "ok":
-                    return I18N.bidi("Normal", "Норма")
-                if kind == "warn":
-                    return I18N.bidi("Warning", "Предупреждение")
-                if kind == "crit":
-                    return I18N.bidi("Abnormal", "Не норма")
-                return I18N.NA
-            if isinstance(raw_value, dict):
-                # A dict is an aggregate; without an explicit status_kind it is safer to show N/A than pretend "Normal".
-                return I18N.NA
-            if raw_value is None:
-                return I18N.NA
-            if warning:
-                return I18N.bidi("Warning", "Предупреждение")
-            if rendered_value == I18N.INVALID:
-                return I18N.bidi("Abnormal", "Не норма")
-            return I18N.bidi("Normal", "Норма")
+            return OrionApp._sensor_status_label(
+                raw_value,
+                rendered_value,
+                warning=warning,
+                status_kind=status_kind,
+            )
 
         rows: list[tuple[str, str, str, Any, bool, str | None, tuple[str, ...]]] = []
 
@@ -5220,12 +5317,16 @@ class OrionApp(App):
                 range_m = payload.get("range_m", payload.get("range"))
                 bearing_deg = payload.get("bearing_deg", payload.get("bearing"))
                 vr_mps = payload.get("vr_mps", payload.get("velocity"))
-                object_type = payload.get("object_type", payload.get("type"))
+                object_type = OrionApp._radar_object_type_code(payload)
+                iff = OrionApp._radar_iff_code(payload)
                 status = OrionApp._radar_status_code(payload)
                 quality = payload.get("quality")
                 miss_count = payload.get("miss_count", payload.get("missCount"))
                 range_band = OrionApp._radar_range_band_code(payload)
                 id_present = payload.get("id_present", payload.get("idPresent"))
+                transponder_on = payload.get("transponder_on", payload.get("transponderOn"))
+                transponder_mode = OrionApp._radar_transponder_mode_code(payload)
+                transponder_id = payload.get("transponder_id", payload.get("transponderId"))
                 ts_event = payload.get("ts_event", payload.get("tsEvent", payload.get("timestamp")))
                 ts_ingest = payload.get("ts_ingest", payload.get("tsIngest"))
                 summary_rows.extend(
@@ -5234,6 +5335,8 @@ class OrionApp(App):
                         (I18N.bidi("Bearing", "Пеленг"), I18N.num_unit(bearing_deg, "°", "°", digits=1)),
                         (I18N.bidi("Status", "Статус"), I18N.fmt_na(status)),
                         (I18N.bidi("Quality", "Качество"), I18N.fmt_na(self._fmt_num(quality, digits=2))),
+                        (I18N.bidi("Object type", "Тип объекта"), I18N.fmt_na(object_type)),
+                        (I18N.bidi("IFF", "Свой-чужой"), I18N.fmt_na(iff)),
                     ]
                 )
                 fields_rows.extend(
@@ -5245,10 +5348,14 @@ class OrionApp(App):
                             I18N.num_unit(vr_mps, "meters per second", "метры в секунду", digits=2),
                         ),
                         (I18N.bidi("Object type", "Тип объекта"), I18N.fmt_na(object_type)),
+                        (I18N.bidi("IFF", "Свой-чужой"), I18N.fmt_na(iff)),
                         (I18N.bidi("Status", "Статус"), I18N.fmt_na(status)),
                         (I18N.bidi("Quality", "Качество"), I18N.fmt_na(self._fmt_num(quality, digits=2))),
                         (I18N.bidi("Range band", "Диапазон"), I18N.fmt_na(range_band)),
                         (I18N.bidi("ID present", "IFF/ID"), I18N.fmt_na(id_present)),
+                        (I18N.bidi("Transponder on", "Транспондер вкл"), I18N.fmt_na(transponder_on)),
+                        (I18N.bidi("Transponder mode", "Режим транспондера"), I18N.fmt_na(transponder_mode)),
+                        (I18N.bidi("Transponder id", "ID транспондера"), I18N.fmt_na(transponder_id)),
                         (I18N.bidi("Miss count", "Пропуски"), I18N.fmt_na(miss_count)),
                         (I18N.bidi("ts_event", "ts_event"), I18N.fmt_na(ts_event)),
                         (I18N.bidi("ts_ingest", "ts_ingest"), I18N.fmt_na(ts_ingest)),
