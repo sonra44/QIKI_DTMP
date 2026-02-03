@@ -2112,7 +2112,7 @@ class OrionApp(App):
             mission_freshness = self._snapshots.freshness(mission_env.type, now_epoch=now)
         mission_status = self._freshness_to_status(mission_freshness)
 
-        mission_value = I18N.NA
+        mission_value = I18N.bidi("No mission/task data", "Нет данных миссии/задач")
         if mission_env is not None:
             payload = mission_env.payload
             mission: dict[str, Any] = {}
