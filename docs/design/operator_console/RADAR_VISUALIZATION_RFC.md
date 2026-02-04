@@ -54,7 +54,7 @@ We lock the “space model” to avoid debate:
   - **Top (XY)** — primary “situational awareness” / classic PPI-like.
   - **Side (XZ)** — altitude/vertical separation awareness.
   - **Front (YZ)** — approach/closing awareness.
-  - Optional: **ISO** (pseudo-3D) view (future).
+  - **ISO** (pseudo-3D) — pseudo-3D projection with yaw/pitch camera (available).
 
 Rationale: 3D truth, but 2D views are debuggable and legible in terminals.
 
@@ -99,7 +99,7 @@ We keep all of these in a single UX: same controls, same legends, same overlays.
 - Left click: select nearest track (within pick radius).
 - Left drag:
   - In Top/Side/Front views: pan (translate viewport).
-  - In ISO view (future): rotate yaw/pitch.
+  - In ISO view: rotate yaw/pitch (use `radar.iso reset` to reset).
 - Right click: context action (future; starts as “clear selection”).
 
 ### 6.2 Hotkeys (required)
@@ -161,7 +161,7 @@ Enable bitmap backends only when you have proven terminal passthrough end-to-end
 - `RADAR_RENDERER=kitty` — force Kitty Terminal Graphics Protocol (local Kitty/WezTerm; avoid SSH+tmux unless proven).
 - `RADAR_RENDERER=sixel` — force SIXEL (only on terminals that support it).
 
-In the Phase1 Docker stack, this env var is passed to `operator-console` via `docker-compose.operator.yml`.
+In the Phase1 Docker stack, these env vars (`RADAR_RENDERER`, `RADAR_VIEW`) are passed to `operator-console` via `docker-compose.operator.yml`.
 
 ## 11) Dependencies (allowed and expected)
 
@@ -181,7 +181,7 @@ but the product installation may include them in Docker images for simplicity.
 - Color encoding for IFF/status is visible.
 - Mouse wheel zoom works.
 - Click selection works.
-- Views (Top/Side/Front) exist and are switchable.
+- Views (Top/Side/Front/ISO) exist and are switchable.
 - Empty state is honest (no mocked tracks).
 
 ### 12.2 Enhanced (when supported)
