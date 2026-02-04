@@ -1,6 +1,25 @@
 import pytest
 
 
+def test_radar_renderer_auto_forces_unicode_in_ssh_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    monkeypatch.setenv("RADAR_RENDERER", "auto")
+    monkeypatch.setenv("TMUX", "/tmp/tmux-ssh-test")
+    monkeypatch.setenv("SSH_CONNECTION", "1")
+
+    # Ensure the test is actually checking the SSH+tmux policy (not missing deps fallbacks).
+    monkeypatch.setattr(main_orion, "_textual_image_best_backend_kind", lambda: "kitty")
+    monkeypatch.setattr(main_orion, "render_bitmap_ppi", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_orion, "RadarBitmapTGP", object())
+
+    app = main_orion.OrionApp()
+    assert app._radar_renderer_requested == "auto"
+    assert app._radar_renderer_effective == "unicode"
+
+
 @pytest.mark.asyncio
 async def test_radar_view_command_updates_state_without_forcing() -> None:
     pytest.importorskip("textual")

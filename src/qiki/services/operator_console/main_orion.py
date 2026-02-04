@@ -103,6 +103,25 @@ def _textual_image_best_backend_kind() -> str | None:
     return None
 
 
+def _is_ssh_tmux_operator_env() -> bool:
+    """Return True when we are in the canonical Phase1 operator environment (SSH + tmux).
+
+    RFC/ADR: in SSH+tmux we must keep the radar on the Unicode baseline by default, because
+    bitmap protocols are often unreliable end-to-end.
+    """
+
+    try:
+        import os
+
+        tmux = (os.getenv("TMUX", "") or "").strip()
+        if not tmux:
+            return False
+        ssh = any((os.getenv(k, "") or "").strip() for k in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
+        return bool(ssh)
+    except Exception:
+        return False
+
+
 def _emit_xterm_mouse_tracking(*, enabled: bool) -> None:
     """Best-effort: request mouse reporting from the operator terminal.
 
@@ -1707,7 +1726,10 @@ class OrionApp(App):
             radar_renderer = "unicode"
         self._radar_renderer_requested: str = radar_renderer
         if radar_renderer == "auto":
-            self._radar_renderer_effective = _textual_image_best_backend_kind() or "unicode"
+            if _is_ssh_tmux_operator_env():
+                self._radar_renderer_effective = "unicode"
+            else:
+                self._radar_renderer_effective = _textual_image_best_backend_kind() or "unicode"
         else:
             self._radar_renderer_effective = radar_renderer
 
