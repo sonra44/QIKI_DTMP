@@ -58,6 +58,12 @@ except Exception:
     # Radar is not a priority; ORION must still boot even if optional radar renderer is absent.
     PpiScopeRenderer = None  # type: ignore[assignment]
 
+try:
+    from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
+except Exception:
+    # Radar must never block ORION boot; keep a best-effort fallback.
+    BraillePpiRenderer = None  # type: ignore[assignment]
+
 
 @dataclass(frozen=True, slots=True)
 class OrionAppSpec:
@@ -1373,15 +1379,20 @@ class OrionApp(App):
         self._output_height_rows = int(max(3, min(40, base_out)))
         self._output_height_default_rows = int(self._output_height_rows)
 
-        self._ppi_renderer = (
-            None
-            if PpiScopeRenderer is None
-            else PpiScopeRenderer(
-                width=int(os.getenv("OPERATOR_CONSOLE_PPI_WIDTH", "47")),
-                height=int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25")),
-                max_range_m=float(os.getenv("OPERATOR_CONSOLE_PPI_MAX_RANGE_M", "500.0")),
+        ppi_width = int(os.getenv("OPERATOR_CONSOLE_PPI_WIDTH", "47"))
+        ppi_height = int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25"))
+        ppi_max_range = float(os.getenv("OPERATOR_CONSOLE_PPI_MAX_RANGE_M", "500.0"))
+
+        if BraillePpiRenderer is not None:
+            self._ppi_renderer = BraillePpiRenderer(
+                width_cells=ppi_width,
+                height_cells=ppi_height,
+                max_range_m=ppi_max_range,
             )
-        )
+        elif PpiScopeRenderer is not None:
+            self._ppi_renderer = PpiScopeRenderer(width=ppi_width, height=ppi_height, max_range_m=ppi_max_range)
+        else:
+            self._ppi_renderer = None
         self._update_system_snapshot()
         self._load_incident_rules(initial=True)
 
