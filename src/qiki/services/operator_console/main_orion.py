@@ -967,6 +967,8 @@ class _RadarMouseMixin:
         self._drag_last_y = 0
         self._drag_start_pan_u_m = 0.0
         self._drag_start_pan_v_m = 0.0
+        self._drag_start_iso_yaw_deg = 45.0
+        self._drag_start_iso_pitch_deg = 35.0
 
     def on_mouse_scroll_up(self, event) -> None:  # noqa: ANN001
         try:
@@ -999,6 +1001,8 @@ class _RadarMouseMixin:
             app = self.app
             self._drag_start_pan_u_m = float(getattr(app, "_radar_pan_u_m", 0.0) or 0.0)
             self._drag_start_pan_v_m = float(getattr(app, "_radar_pan_v_m", 0.0) or 0.0)
+            self._drag_start_iso_yaw_deg = float(getattr(app, "_radar_iso_yaw_deg", 45.0) or 45.0)
+            self._drag_start_iso_pitch_deg = float(getattr(app, "_radar_iso_pitch_deg", 35.0) or 35.0)
             event.stop()
         except Exception:
             return
@@ -1024,10 +1028,12 @@ class _RadarMouseMixin:
             if dx == 0 and dy == 0:
                 return
             app = self.app
-            if hasattr(app, "_apply_radar_pan_from_drag"):
-                app._apply_radar_pan_from_drag(
+            if hasattr(app, "_apply_radar_drag_from_mouse"):
+                app._apply_radar_drag_from_mouse(
                     start_pan_u_m=self._drag_start_pan_u_m,
                     start_pan_v_m=self._drag_start_pan_v_m,
+                    start_iso_yaw_deg=self._drag_start_iso_yaw_deg,
+                    start_iso_pitch_deg=self._drag_start_iso_pitch_deg,
                     dx_cells=dx,
                     dy_cells=dy,
                 )
@@ -1566,12 +1572,14 @@ class OrionApp(App):
         self._ppi_max_range_m: float = float(ppi_max_range)
 
         radar_view = (os.getenv("RADAR_VIEW", "top") or "top").strip().lower()
-        if radar_view not in {"top", "side", "front"}:
+        if radar_view not in {"top", "side", "front", "iso"}:
             radar_view = "top"
         self._radar_view: str = radar_view
         self._radar_zoom: float = 1.0
         self._radar_pan_u_m: float = 0.0
         self._radar_pan_v_m: float = 0.0
+        self._radar_iso_yaw_deg: float = 45.0
+        self._radar_iso_pitch_deg: float = 35.0
 
         radar_renderer = (os.getenv("RADAR_RENDERER", "unicode") or "unicode").strip().lower()
         if radar_renderer not in {"unicode", "auto", "kitty", "sixel"}:
@@ -2188,6 +2196,8 @@ class OrionApp(App):
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
+                    iso_yaw_deg=self._radar_iso_yaw_deg,
+                    iso_pitch_deg=self._radar_iso_pitch_deg,
                     selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
                     draw_overlays=True,
                 )
@@ -2210,6 +2220,8 @@ class OrionApp(App):
                         pan_v_m=self._radar_pan_v_m,
                         rich=True,
                         selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
+                        iso_yaw_deg=self._radar_iso_yaw_deg,
+                        iso_pitch_deg=self._radar_iso_pitch_deg,
                     )
                 )
             except Exception:
@@ -2250,6 +2262,12 @@ class OrionApp(App):
             f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f} m",
             Style(color="#a0a0a0"),
         )
+        if self._radar_view == "iso":
+            t.append("\n")
+            t.append(
+                f"ISO yaw/pitch: {self._radar_iso_yaw_deg:.0f}°/{self._radar_iso_pitch_deg:.0f}°",
+                Style(color="#a0a0a0"),
+            )
         if getattr(self, "_radar_renderer_effective", "unicode") != "unicode":
             t.append("\n")
             t.append(
@@ -2257,6 +2275,34 @@ class OrionApp(App):
                 Style(color="#a0a0a0"),
             )
         legend.update(t)
+
+    def _apply_radar_drag_from_mouse(
+        self,
+        *,
+        start_pan_u_m: float,
+        start_pan_v_m: float,
+        start_iso_yaw_deg: float,
+        start_iso_pitch_deg: float,
+        dx_cells: int,
+        dy_cells: int,
+    ) -> None:
+        if self._radar_view == "iso":
+            self._radar_iso_yaw_deg = float(start_iso_yaw_deg) + float(dx_cells) * 4.0
+            self._radar_iso_pitch_deg = float(start_iso_pitch_deg) - float(dy_cells) * 2.0
+            # Keep it stable: prevent gimbal-like flips.
+            self._radar_iso_pitch_deg = max(-80.0, min(80.0, float(self._radar_iso_pitch_deg)))
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                return
+            return
+        self._apply_radar_pan_from_drag(
+            start_pan_u_m=float(start_pan_u_m),
+            start_pan_v_m=float(start_pan_v_m),
+            dx_cells=int(dx_cells),
+            dy_cells=int(dy_cells),
+        )
 
     def _apply_radar_pan_from_drag(
         self,
@@ -2318,6 +2364,8 @@ class OrionApp(App):
             zoom=self._radar_zoom,
             pan_u_m=self._radar_pan_u_m,
             pan_v_m=self._radar_pan_v_m,
+            iso_yaw_deg=self._radar_iso_yaw_deg,
+            iso_pitch_deg=self._radar_iso_pitch_deg,
         )
         if picked is None:
             return
@@ -5184,6 +5232,8 @@ class OrionApp(App):
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
+                    iso_yaw_deg=self._radar_iso_yaw_deg,
+                    iso_pitch_deg=self._radar_iso_pitch_deg,
                     selected_track_id=None,
                     draw_overlays=True,
                 )
@@ -5206,6 +5256,8 @@ class OrionApp(App):
                         pan_v_m=self._radar_pan_v_m,
                         rich=True,
                         selected_track_id=None,
+                        iso_yaw_deg=self._radar_iso_yaw_deg,
+                        iso_pitch_deg=self._radar_iso_pitch_deg,
                     )
                 )
             except Exception:
@@ -7264,7 +7316,7 @@ class OrionApp(App):
         )
         self._console_log(
             f"{I18N.bidi('Radar', 'Радар')}: "
-            f"radar.view <top|side|front> | radar.zoom <in|out|reset> | radar.pan reset",
+            f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset",
             level="info",
         )
         self._console_log(
@@ -8123,7 +8175,7 @@ class OrionApp(App):
             self._load_incident_rules(initial=False)
             return
 
-        # radar.view <top|side|front>
+        # radar.view <top|side|front|iso>
         if low.startswith(("radar.view", "радар.вид")):
             parts = cmd.split()
             token = parts[1].strip().lower() if len(parts) >= 2 else ""
@@ -8137,16 +8189,32 @@ class OrionApp(App):
                 "front": "front",
                 "yz": "front",
                 "фронт": "front",
+                "iso": "iso",
+                "3d": "iso",
+                "изо": "iso",
+                "изометрия": "iso",
             }.get(token)
             if view is None:
                 self._console_log(
                     f"{I18N.bidi('Radar view', 'Вид радара')}: {self._radar_view} "
-                    f"({I18N.bidi('use', 'используйте')}: radar.view top|side|front)",
+                    f"({I18N.bidi('use', 'используйте')}: radar.view top|side|front|iso)",
                     level="info",
                 )
                 return
             self._radar_view = view
             self._console_log(f"{I18N.bidi('Radar view', 'Вид радара')}: {view}", level="info")
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                pass
+            return
+
+        # radar.iso reset
+        if low in {"radar.iso reset", "радар.изо сброс"}:
+            self._radar_iso_yaw_deg = 45.0
+            self._radar_iso_pitch_deg = 35.0
+            self._console_log("ISO yaw/pitch: reset/сброс", level="info")
             try:
                 if self.active_screen == "radar":
                     self._render_radar_ppi()

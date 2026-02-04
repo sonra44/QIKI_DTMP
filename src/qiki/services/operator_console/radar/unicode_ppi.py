@@ -7,6 +7,8 @@ from typing import Any
 from rich.style import Style
 from rich.text import Text
 
+from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
+
 
 def _dot_bit(local_x: int, local_y: int) -> int:
     """Return braille dot bit for a pixel in a 2x4 cell.
@@ -86,12 +88,14 @@ class BraillePpiRenderer:
         draw_overlays: bool = True,
         rich: bool = False,
         selected_track_id: str | None = None,
+        iso_yaw_deg: float = 45.0,
+        iso_pitch_deg: float = 35.0,
     ) -> str | Text:
         width_cells = max(10, int(self.width_cells))
         height_cells = max(6, int(self.height_cells))
         max_range_m = max(1.0, float(self.max_range_m))
         view_norm = (view or "").strip().lower()
-        if view_norm not in {"top", "side", "front"}:
+        if view_norm not in {"top", "side", "front", "iso"}:
             view_norm = "top"
         try:
             zoom_f = float(zoom)
@@ -190,12 +194,14 @@ class BraillePpiRenderer:
             if z_m is None:
                 z_m = 0.0
 
-            if view_norm == "top":
-                u_m, v_m = float(x_m), float(y_m)
-            elif view_norm == "side":
-                u_m, v_m = float(x_m), float(z_m)
-            else:
-                u_m, v_m = float(y_m), float(z_m)
+            u_m, v_m = project_xyz_to_uv_m(
+                x_m=float(x_m),
+                y_m=float(y_m),
+                z_m=float(z_m),
+                view=view_norm,
+                iso_yaw_deg=float(iso_yaw_deg),
+                iso_pitch_deg=float(iso_pitch_deg),
+            )
 
             # Pan is in meters in the selected view plane.
             try:
@@ -258,6 +264,8 @@ def pick_nearest_track_id(
     pan_u_m: float = 0.0,
     pan_v_m: float = 0.0,
     pick_radius_cells: float = 2.5,
+    iso_yaw_deg: float = 45.0,
+    iso_pitch_deg: float = 35.0,
 ) -> str | None:
     """Pick nearest track by click position in the PPI widget cell space.
 
@@ -268,7 +276,7 @@ def pick_nearest_track_id(
     height_cells = max(6, int(height_cells))
     max_range_m = max(1.0, float(max_range_m))
     view_norm = (view or "").strip().lower()
-    if view_norm not in {"top", "side", "front"}:
+    if view_norm not in {"top", "side", "front", "iso"}:
         view_norm = "top"
     try:
         zoom_f = float(zoom)
@@ -326,12 +334,14 @@ def pick_nearest_track_id(
         if z_m is None:
             z_m = 0.0
 
-        if view_norm == "top":
-            u_m, v_m = float(x_m), float(y_m)
-        elif view_norm == "side":
-            u_m, v_m = float(x_m), float(z_m)
-        else:
-            u_m, v_m = float(y_m), float(z_m)
+        u_m, v_m = project_xyz_to_uv_m(
+            x_m=float(x_m),
+            y_m=float(y_m),
+            z_m=float(z_m),
+            view=view_norm,
+            iso_yaw_deg=float(iso_yaw_deg),
+            iso_pitch_deg=float(iso_pitch_deg),
+        )
 
         try:
             u_m -= float(pan_u_m)

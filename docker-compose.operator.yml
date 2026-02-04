@@ -21,6 +21,7 @@ services:
       - PYTHONUNBUFFERED=1
       - TERM=${TERM:-xterm-256color}
       - RADAR_RENDERER=${RADAR_RENDERER:-unicode}
+      - RADAR_VIEW=${RADAR_VIEW:-top}
       - OPERATOR_CONSOLE_COMMAND_MAX_CHARS=1024
       # BootScreen tuning (no-mocks): visual delay only (no fake OK/%).
       # Set higher (e.g. 10–20s) when you want the boot sequence to be observable in tmux.

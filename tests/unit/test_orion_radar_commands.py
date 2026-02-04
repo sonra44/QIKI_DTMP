@@ -16,6 +16,9 @@ async def test_radar_view_command_updates_state_without_forcing() -> None:
     await app._run_command("radar.view front")
     assert app._radar_view == "front"
 
+    await app._run_command("radar.view iso")
+    assert app._radar_view == "iso"
+
 
 @pytest.mark.asyncio
 async def test_radar_zoom_command_updates_state() -> None:
@@ -46,4 +49,3 @@ async def test_radar_pan_reset_command() -> None:
     await app._run_command("radar.pan reset")
     assert app._radar_pan_u_m == 0.0
     assert app._radar_pan_v_m == 0.0
-

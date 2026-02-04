@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
+
 
 def _iff_kind(payload: dict[str, Any]) -> str | None:
     raw = payload.get("iff", payload.get("iff_class", payload.get("iffClass")))
@@ -50,6 +52,8 @@ def render_bitmap_ppi(
     zoom: float = 1.0,
     pan_u_m: float = 0.0,
     pan_v_m: float = 0.0,
+    iso_yaw_deg: float = 45.0,
+    iso_pitch_deg: float = 35.0,
     selected_track_id: str | None = None,
     draw_overlays: bool = True,
 ):
@@ -65,7 +69,7 @@ def render_bitmap_ppi(
     max_range_m = max(1.0, float(max_range_m))
 
     view_norm = (view or "").strip().lower()
-    if view_norm not in {"top", "side", "front"}:
+    if view_norm not in {"top", "side", "front", "iso"}:
         view_norm = "top"
     try:
         zoom_f = float(zoom)
@@ -126,12 +130,14 @@ def render_bitmap_ppi(
         if z_m is None:
             z_m = 0.0
 
-        if view_norm == "top":
-            u_m, v_m = float(x_m), float(y_m)
-        elif view_norm == "side":
-            u_m, v_m = float(x_m), float(z_m)
-        else:
-            u_m, v_m = float(y_m), float(z_m)
+        u_m, v_m = project_xyz_to_uv_m(
+            x_m=float(x_m),
+            y_m=float(y_m),
+            z_m=float(z_m),
+            view=view_norm,
+            iso_yaw_deg=float(iso_yaw_deg),
+            iso_pitch_deg=float(iso_pitch_deg),
+        )
 
         try:
             u_m -= float(pan_u_m)
@@ -154,4 +160,3 @@ def render_bitmap_ppi(
         draw.ellipse((px - r0, py - r0, px + r0, py + r0), fill=color, outline=None)
 
     return img
-
