@@ -118,7 +118,7 @@ Inside ORION, incoming messages are normalized into an `EventEnvelope`:
 It also derives **freshness** (`Fresh/Свежо`, `Stale/Устарело`, `Dead/Нет обновлений`) by thresholds:
 
 - telemetry: fresh `< 30s`, stale `< 300s`, else dead
-- mission/task: fresh `< 300s`, stale `< 3600s`, else dead
+- mission/task: fresh `< 300s`, stale `< 3600s`, else dead (**Phase1 note:** no producer yet; ORION renders empty-state per `docs/operator_console/REAL_DATA_MATRIX.md` and ADR `docs/design/canon/ADR/ADR_2026-02-04_mission_task_phase1_non_goal.md`)
 - power: fresh `< 60s`, stale `< 900s`, else dead
 - default: fresh `< 60s`, stale `< 600s`, else dead
 

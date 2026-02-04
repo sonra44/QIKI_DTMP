@@ -11,4 +11,4 @@ Rules:
 ## ADR list
 
 - `ADR_2026-02-04_radar_visualization_strategy.md`
-
+- `ADR_2026-02-04_mission_task_phase1_non_goal.md`
