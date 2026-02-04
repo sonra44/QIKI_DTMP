@@ -20,6 +20,66 @@ def test_radar_renderer_auto_forces_unicode_in_ssh_tmux(monkeypatch: pytest.Monk
     assert app._radar_renderer_effective == "unicode"
 
 
+def test_radar_view_hotkey_actions_update_state() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app.active_screen = "radar"
+
+    app.action_radar_view_side()
+    assert app._radar_view == "side"
+
+    app.action_radar_view_front()
+    assert app._radar_view == "front"
+
+    app.action_radar_view_iso()
+    assert app._radar_view == "iso"
+
+    app.action_radar_view_top()
+    assert app._radar_view == "top"
+
+
+@pytest.mark.asyncio
+async def test_radar_bitmap_render_error_falls_back_to_unicode(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import qiki.services.operator_console.main_orion as main_orion
+    from textual.widgets import Static
+
+    class FakeBitmap(Static):
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self.image = None
+
+    def boom(*args, **kwargs):  # noqa: ANN001
+        raise RuntimeError("bitmap failed")
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setenv("RADAR_RENDERER", "kitty")
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+    monkeypatch.setattr(main_orion, "render_bitmap_ppi", boom)
+    monkeypatch.setattr(main_orion, "RadarBitmapTGP", FakeBitmap)
+
+    app = main_orion.OrionApp()
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+        app._render_radar_ppi()
+        await pilot.pause()
+        assert app._radar_renderer_effective == "unicode"
+        assert isinstance(app.query_one("#radar-ppi"), main_orion.RadarPpi)
+
+
 @pytest.mark.asyncio
 async def test_radar_view_command_updates_state_without_forcing() -> None:
     pytest.importorskip("textual")

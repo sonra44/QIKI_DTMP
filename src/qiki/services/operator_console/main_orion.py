@@ -407,153 +407,163 @@ class BootScreen(ModalScreen[bool]):
         remaining = max(0.0, float(seconds))
         while remaining > 0:
             step = min(0.1, remaining)
-            await asyncio.sleep(step)
+            try:
+                await asyncio.sleep(step)
+            except asyncio.CancelledError:
+                return
             remaining -= step
 
     async def _run(self) -> None:
-        log = self.query_one("#boot-log", BootLog)
+        try:
+            log = self.query_one("#boot-log", BootLog)
 
-        # Phase 0: cosmetic boot (no statuses, no percentages).
-        cosmetic_sec = float(os.getenv("ORION_BOOT_COSMETIC_SEC", "2.0"))
-        cosmetic_sec = max(0.0, min(30.0, cosmetic_sec))
-        lines = [
-            I18N.bidi("INIT: Allocating terminal buffers...", "INIT: Выделение буферов терминала..."),
-            I18N.bidi("CORE: Loading ORION UI modules...", "CORE: Загрузка модулей ORION UI..."),
-            I18N.bidi("TDE: Rendering console chrome...", "TDE: Отрисовка интерфейса..."),
-        ]
-        per_line = cosmetic_sec / max(1, len(lines))
-        for line in lines:
-            log.add_line(line, style="dim green")
-            await self._sleep_chunked(per_line)
+            # Phase 0: cosmetic boot (no statuses, no percentages).
+            cosmetic_sec = float(os.getenv("ORION_BOOT_COSMETIC_SEC", "2.0"))
+            cosmetic_sec = max(0.0, min(30.0, cosmetic_sec))
+            lines = [
+                I18N.bidi("INIT: Allocating terminal buffers...", "INIT: Выделение буферов терминала..."),
+                I18N.bidi("CORE: Loading ORION UI modules...", "CORE: Загрузка модулей ORION UI..."),
+                I18N.bidi("TDE: Rendering console chrome...", "TDE: Отрисовка интерфейса..."),
+            ]
+            per_line = cosmetic_sec / max(1, len(lines))
+            for line in lines:
+                log.add_line(line, style="dim green")
+                await self._sleep_chunked(per_line)
 
-        # Phase 1: NATS (real).
-        log.add_line(I18N.bidi("NET: Connecting to NATS bus...", "NET: Подключение к шине NATS..."), style="yellow")
-        nats_timeout = float(os.getenv("ORION_BOOT_NATS_TIMEOUT_SEC", "8.0"))
-        nats_timeout = max(0.5, min(60.0, nats_timeout))
+            # Phase 1: NATS (real).
+            log.add_line(I18N.bidi("NET: Connecting to NATS bus...", "NET: Подключение к шине NATS..."), style="yellow")
+            nats_timeout = float(os.getenv("ORION_BOOT_NATS_TIMEOUT_SEC", "8.0"))
+            nats_timeout = max(0.5, min(60.0, nats_timeout))
 
-        start = time.time()
-        app = self.app  # type: ignore[assignment]
-        while time.time() - start < nats_timeout:
-            # _boot_nats_init_done is set by OrionApp._init_nats.
-            done = bool(getattr(app, "_boot_nats_init_done", False))
-            if done:
-                break
-            await self._sleep_chunked(0.1)
+            start = time.time()
+            app = self.app  # type: ignore[assignment]
+            while time.time() - start < nats_timeout:
+                # _boot_nats_init_done is set by OrionApp._init_nats.
+                done = bool(getattr(app, "_boot_nats_init_done", False))
+                if done:
+                    break
+                await self._sleep_chunked(0.1)
 
-        nats_ok = bool(getattr(app, "nats_connected", False))
-        if nats_ok:
-            log.add_line(I18N.bidi("NET: NATS connected [OK]", "NET: NATS подключен [OK]"), style="bold green")
-        else:
-            err = str(getattr(app, "_boot_nats_error", "") or "").strip()
-            tail = f": {err}" if err else ""
+            nats_ok = bool(getattr(app, "nats_connected", False))
+            if nats_ok:
+                log.add_line(I18N.bidi("NET: NATS connected [OK]", "NET: NATS подключен [OK]"), style="bold green")
+            else:
+                err = str(getattr(app, "_boot_nats_error", "") or "").strip()
+                tail = f": {err}" if err else ""
+                log.add_line(
+                    I18N.bidi(f"NET: NATS connect failed [FAIL]{tail}", f"NET: NATS не подключился [СБОЙ]{tail}"),
+                    style="bold red",
+                )
+
+            # Phase 2: BIOS event (real, from NATS).
             log.add_line(
-                I18N.bidi(f"NET: NATS connect failed [FAIL]{tail}", f"NET: NATS не подключился [СБОЙ]{tail}"),
-                style="bold red",
+                I18N.bidi("BIOS: Waiting for POST status event...", "BIOS: Ожидание события статуса POST..."),
+                style="yellow",
             )
+            bios_timeout = float(os.getenv("ORION_BOOT_BIOS_TIMEOUT_SEC", "12.0"))
+            bios_timeout = max(0.5, min(120.0, bios_timeout))
+            bios_env = None
+            start = time.time()
+            while time.time() - start < bios_timeout:
+                try:
+                    bios_env = getattr(app, "_snapshots").get_last("bios")
+                except Exception:
+                    bios_env = None
+                if bios_env is not None:
+                    break
+                await self._sleep_chunked(0.2)
 
-        # Phase 2: BIOS event (real, from NATS).
-        log.add_line(
-            I18N.bidi("BIOS: Waiting for POST status event...", "BIOS: Ожидание события статуса POST..."),
-            style="yellow",
-        )
-        bios_timeout = float(os.getenv("ORION_BOOT_BIOS_TIMEOUT_SEC", "12.0"))
-        bios_timeout = max(0.5, min(120.0, bios_timeout))
-        bios_env = None
-        start = time.time()
-        while time.time() - start < bios_timeout:
-            try:
-                bios_env = getattr(app, "_snapshots").get_last("bios")
-            except Exception:
-                bios_env = None
-            if bios_env is not None:
-                break
-            await self._sleep_chunked(0.2)
-
-        payload = getattr(bios_env, "payload", None) if bios_env is not None else None
-        if isinstance(payload, dict):
-            all_go = payload.get("all_systems_go")
-            post = payload.get("post_results") if isinstance(payload.get("post_results"), list) else []
-            if isinstance(all_go, bool):
-                if all_go:
-                    log.add_line(
-                        I18N.bidi(
-                            f"BIOS: POST complete [OK] (devices: {len(post)})",
-                            f"BIOS: POST завершён [OK] (устройств: {len(post)})",
-                        ),
-                        style="bold green",
-                    )
+            payload = getattr(bios_env, "payload", None) if bios_env is not None else None
+            if isinstance(payload, dict):
+                all_go = payload.get("all_systems_go")
+                post = payload.get("post_results") if isinstance(payload.get("post_results"), list) else []
+                if isinstance(all_go, bool):
+                    if all_go:
+                        log.add_line(
+                            I18N.bidi(
+                                f"BIOS: POST complete [OK] (devices: {len(post)})",
+                                f"BIOS: POST завершён [OK] (устройств: {len(post)})",
+                            ),
+                            style="bold green",
+                        )
+                    else:
+                        log.add_line(
+                            I18N.bidi(
+                                f"BIOS: POST complete [FAIL] (devices: {len(post)})",
+                                f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})",
+                            ),
+                            style="bold red",
+                        )
                 else:
+                    log.add_line(I18N.bidi("BIOS: POST status unknown", "BIOS: Статус POST неизвестен"), style="yellow")
+
+                # Row-by-row visualization (real data).
+                # Keep it readable: show non-OK first, then a limited number of OK rows.
+                max_rows = int(os.getenv("ORION_BOOT_POST_MAX_ROWS", "30"))
+                max_rows = max(5, min(200, max_rows))
+                line_delay = float(os.getenv("ORION_BOOT_POST_LINE_DELAY_SEC", "0.02"))
+                line_delay = max(0.0, min(0.5, line_delay))
+
+                bad: list[dict[str, Any]] = []
+                ok: list[dict[str, Any]] = []
+                for row in post:
+                    if not isinstance(row, dict):
+                        continue
+                    status = row.get("status")
+                    if status == 1:
+                        ok.append(row)
+                    else:
+                        bad.append(row)
+
+                shown: list[dict[str, Any]] = []
+                shown.extend(bad[:max_rows])
+                if len(shown) < max_rows:
+                    shown.extend(ok[: max_rows - len(shown)])
+
+                for row in shown:
+                    if not isinstance(row, dict):
+                        continue
+                    did = str(row.get("device_id") or row.get("deviceId") or "").strip() or I18N.UNKNOWN
+                    dname = str(row.get("device_name") or row.get("deviceName") or "").strip() or I18N.UNKNOWN
+                    status = row.get("status")
+                    msg = str(row.get("status_message") or row.get("statusMessage") or "").strip()
+                    label = "N/A"
+                    style = "dim"
+                    if status == 1:
+                        label, style = "OK", "green"
+                    elif status == 2:
+                        label, style = "DEGRADED", "yellow"
+                    elif status == 3:
+                        label, style = "ERROR", "red"
+                    suffix = f" — {msg}" if msg else ""
+                    log.add_line(f"{did} ({dname}): {label}{suffix}", style=style)
+                    if line_delay:
+                        await self._sleep_chunked(line_delay)
+
+                remaining = len(post) - len(shown)
+                if remaining > 0:
                     log.add_line(
                         I18N.bidi(
-                            f"BIOS: POST complete [FAIL] (devices: {len(post)})",
-                            f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})",
+                            f"… ({remaining} more devices not shown)",
+                            f"… (ещё устройств не показано: {remaining})",
                         ),
-                        style="bold red",
+                        style="dim",
                     )
             else:
-                log.add_line(I18N.bidi("BIOS: POST status unknown", "BIOS: Статус POST неизвестен"), style="yellow")
+                # No-mocks: no fake OK. Show N/A and proceed.
+                log.add_line(I18N.bidi("BIOS: No data (N/A)", "BIOS: Нет данных (N/A)"), style="yellow")
 
-            # Row-by-row visualization (real data).
-            # Keep it readable: show non-OK first, then a limited number of OK rows.
-            max_rows = int(os.getenv("ORION_BOOT_POST_MAX_ROWS", "30"))
-            max_rows = max(5, min(200, max_rows))
-            line_delay = float(os.getenv("ORION_BOOT_POST_LINE_DELAY_SEC", "0.02"))
-            line_delay = max(0.0, min(0.5, line_delay))
-
-            bad: list[dict[str, Any]] = []
-            ok: list[dict[str, Any]] = []
-            for row in post:
-                if not isinstance(row, dict):
-                    continue
-                status = row.get("status")
-                if status == 1:
-                    ok.append(row)
-                else:
-                    bad.append(row)
-
-            shown: list[dict[str, Any]] = []
-            shown.extend(bad[:max_rows])
-            if len(shown) < max_rows:
-                shown.extend(ok[: max_rows - len(shown)])
-
-            for row in shown:
-                if not isinstance(row, dict):
-                    continue
-                did = str(row.get("device_id") or row.get("deviceId") or "").strip() or I18N.UNKNOWN
-                dname = str(row.get("device_name") or row.get("deviceName") or "").strip() or I18N.UNKNOWN
-                status = row.get("status")
-                msg = str(row.get("status_message") or row.get("statusMessage") or "").strip()
-                label = "N/A"
-                style = "dim"
-                if status == 1:
-                    label, style = "OK", "green"
-                elif status == 2:
-                    label, style = "DEGRADED", "yellow"
-                elif status == 3:
-                    label, style = "ERROR", "red"
-                suffix = f" — {msg}" if msg else ""
-                log.add_line(f"{did} ({dname}): {label}{suffix}", style=style)
-                if line_delay:
-                    await self._sleep_chunked(line_delay)
-
-            remaining = len(post) - len(shown)
-            if remaining > 0:
-                log.add_line(
-                    I18N.bidi(
-                        f"… ({remaining} more devices not shown)",
-                        f"… (ещё устройств не показано: {remaining})",
-                    ),
-                    style="dim",
-                )
-        else:
-            # No-mocks: no fake OK. Show N/A and proceed.
-            log.add_line(I18N.bidi("BIOS: No data (N/A)", "BIOS: Нет данных (N/A)"), style="yellow")
-
-        log.add_line(
-            I18N.bidi("HANDOVER: Switching to operator view...", "ПЕРЕДАЧА: Переход в режим оператора..."), style="dim"
-        )
-        await self._sleep_chunked(0.4)
-        self.dismiss(True)
+            log.add_line(
+                I18N.bidi(
+                    "HANDOVER: Switching to operator view...",
+                    "ПЕРЕДАЧА: Переход в режим оператора...",
+                ),
+                style="dim",
+            )
+            await self._sleep_chunked(0.4)
+            self.dismiss(True)
+        except asyncio.CancelledError:
+            return
 
 
 class SnapshotStore:
@@ -1554,6 +1564,11 @@ class OrionApp(App):
         *(Binding(app.hotkey, f"show_screen('{app.screen}')", app.title) for app in ORION_APPS),
         Binding("tab", "cycle_focus", I18N.bidi("Tab focus", "Таб фокус")),
         Binding("ctrl+e", "focus_command", "Command input/Ввод команды"),
+        # Radar view hotkeys (RFC): only active on the Radar screen.
+        Binding("1", "radar_view_top", "Radar view top", show=False),
+        Binding("2", "radar_view_side", "Radar view side", show=False),
+        Binding("3", "radar_view_front", "Radar view front", show=False),
+        Binding("4", "radar_view_iso", "Radar view iso", show=False),
         Binding("ctrl+up", "output_grow", I18N.bidi("Output +", "Вывод +"), show=False),
         Binding("ctrl+down", "output_shrink", I18N.bidi("Output -", "Вывод -"), show=False),
         Binding("ctrl+0", "output_reset", I18N.bidi("Output reset", "Вывод сброс"), show=False),
@@ -1703,6 +1718,7 @@ class OrionApp(App):
         self._output_height_rows = int(max(3, min(40, base_out)))
         self._output_height_default_rows = int(self._output_height_rows)
         self._output_follow = True
+        self._radar_ppi_swap_pending: bool = False
 
         ppi_width = int(os.getenv("OPERATOR_CONSOLE_PPI_WIDTH", "47"))
         ppi_height = int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25"))
@@ -1785,6 +1801,38 @@ class OrionApp(App):
     def action_output_reset(self) -> None:
         self._output_height_rows = int(self._output_height_default_rows)
         self._apply_output_layout()
+
+    def action_radar_view_top(self) -> None:
+        if self.active_screen != "radar":
+            return
+        self._radar_view = "top"
+        self._radar_pan_u_m = 0.0
+        self._radar_pan_v_m = 0.0
+        self._render_radar_ppi()
+
+    def action_radar_view_side(self) -> None:
+        if self.active_screen != "radar":
+            return
+        self._radar_view = "side"
+        self._radar_pan_u_m = 0.0
+        self._radar_pan_v_m = 0.0
+        self._render_radar_ppi()
+
+    def action_radar_view_front(self) -> None:
+        if self.active_screen != "radar":
+            return
+        self._radar_view = "front"
+        self._radar_pan_u_m = 0.0
+        self._radar_pan_v_m = 0.0
+        self._render_radar_ppi()
+
+    def action_radar_view_iso(self) -> None:
+        if self.active_screen != "radar":
+            return
+        self._radar_view = "iso"
+        self._radar_pan_u_m = 0.0
+        self._radar_pan_v_m = 0.0
+        self._render_radar_ppi()
 
     def _output_log(self) -> RichLog | None:
         try:
@@ -2359,6 +2407,35 @@ class OrionApp(App):
         except Exception:
             return
 
+        # Ensure the mounted PPI widget matches the effective renderer. This allows seamless
+        # runtime fallback without restart (RFC).
+        desired_kind = getattr(self, "_radar_renderer_effective", "unicode") or "unicode"
+        try:
+            if desired_kind == "unicode":
+                if not isinstance(ppi, RadarPpi):
+                    self._schedule_radar_ppi_widget_swap("unicode")
+                    return
+            elif desired_kind == "kitty" and RadarBitmapTGP is not None:
+                if not isinstance(ppi, RadarBitmapTGP):
+                    self._schedule_radar_ppi_widget_swap("kitty")
+                    return
+            elif desired_kind == "sixel" and RadarBitmapSixel is not None:
+                if not isinstance(ppi, RadarBitmapSixel):
+                    self._schedule_radar_ppi_widget_swap("sixel")
+                    return
+            elif desired_kind != "unicode" and RadarBitmapAuto is not None:
+                if not isinstance(ppi, RadarBitmapAuto):
+                    self._schedule_radar_ppi_widget_swap(desired_kind)
+                    return
+            elif desired_kind != "unicode":
+                # Effective bitmap requested but widget class is unavailable: fallback.
+                self._fallback_radar_to_unicode("bitmap widget unavailable")
+                return
+        except Exception:
+            # If widget checks fail, avoid crashing the UI refresh loop; fallback.
+            self._fallback_radar_to_unicode("renderer widget mismatch")
+            return
+
         tracks_items = self._active_tracks_sorted()
         selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
         tracks = [(str(tid), payload) for tid, payload, _seen in tracks_items]
@@ -2371,11 +2448,7 @@ class OrionApp(App):
             return
         if self._radar_renderer_effective != "unicode":
             if render_bitmap_ppi is None or not hasattr(ppi, "image"):
-                try:
-                    ppi.update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
-                except Exception:
-                    pass
-                self._render_radar_legend()
+                self._fallback_radar_to_unicode("bitmap renderer unavailable")
                 return
             try:
                 img = render_bitmap_ppi(
@@ -2394,10 +2467,8 @@ class OrionApp(App):
                 )
                 ppi.image = img  # type: ignore[attr-defined]
             except Exception:
-                try:
-                    ppi.update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
-                except Exception:
-                    pass
+                self._fallback_radar_to_unicode("bitmap render error")
+                return
             self._render_radar_legend()
             return
         if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
@@ -2424,6 +2495,76 @@ class OrionApp(App):
         except Exception:
             return
         self._render_radar_legend()
+
+    def _schedule_radar_ppi_widget_swap(self, desired_kind: str) -> None:
+        if self._radar_ppi_swap_pending:
+            return
+        self._radar_ppi_swap_pending = True
+
+        def _do() -> None:
+            try:
+                asyncio.create_task(self._swap_radar_ppi_widget_async(desired_kind))
+            except Exception:
+                self._radar_ppi_swap_pending = False
+
+        try:
+            self.call_after_refresh(_do)
+        except Exception:
+            self._radar_ppi_swap_pending = False
+
+    async def _swap_radar_ppi_widget_async(self, desired_kind: str) -> None:
+        try:
+            radar_left = self.query_one("#radar-left", Vertical)
+            legend = self.query_one("#radar-legend", Static)
+        except Exception:
+            self._radar_ppi_swap_pending = False
+            return
+
+        try:
+            existing = self.query_one("#radar-ppi")
+            try:
+                await existing.remove()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        kind = (desired_kind or "unicode").strip().lower()
+        if kind == "unicode":
+            widget = RadarPpi(id="radar-ppi")
+        elif kind == "kitty" and RadarBitmapTGP is not None:
+            widget = RadarBitmapTGP(id="radar-ppi")
+        elif kind == "sixel" and RadarBitmapSixel is not None:
+            widget = RadarBitmapSixel(id="radar-ppi")
+        elif kind != "unicode" and RadarBitmapAuto is not None:
+            widget = RadarBitmapAuto(id="radar-ppi")
+        else:
+            widget = RadarPpi(id="radar-ppi")
+
+        try:
+            await radar_left.mount(widget, before=legend)
+        except Exception:
+            try:
+                await radar_left.mount(widget)
+            except Exception:
+                return
+        finally:
+            self._radar_ppi_swap_pending = False
+
+    def _fallback_radar_to_unicode(self, reason: str) -> None:
+        prev = str(getattr(self, "_radar_renderer_effective", "unicode") or "unicode")
+        self._radar_renderer_effective = "unicode"
+        try:
+            self._console_log(
+                I18N.bidi(
+                    f"Radar renderer fallback: {prev} -> unicode ({reason})",
+                    f"Фолбэк рендера радара: {prev} -> unicode ({reason})",
+                ),
+                level="warn",
+            )
+        except Exception:
+            pass
+        self._schedule_radar_ppi_widget_swap("unicode")
 
     def _render_radar_legend(self) -> None:
         try:
@@ -7518,7 +7659,8 @@ class OrionApp(App):
         self._console_log(
             f"{I18N.bidi('Radar', 'Радар')}: "
             f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset | "
-            f"radar.iso rotate <dyaw_deg> <dpitch_deg>",
+            f"radar.iso rotate <dyaw_deg> <dpitch_deg> | "
+            f"{I18N.bidi('hotkeys', 'горячие')}: 1 top · 2 side · 3 front · 4 iso (Radar screen)",
             level="info",
         )
         self._console_log(
