@@ -65,3 +65,18 @@ async def test_radar_iso_reset_command() -> None:
     await app._run_command("radar.iso reset")
     assert app._radar_iso_yaw_deg == 45.0
     assert app._radar_iso_pitch_deg == 35.0
+
+
+@pytest.mark.asyncio
+async def test_radar_iso_rotate_command_updates_yaw_pitch() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    assert app._radar_iso_yaw_deg == 45.0
+    assert app._radar_iso_pitch_deg == 35.0
+
+    await app._run_command("radar.iso rotate 10 -5")
+    assert app._radar_iso_yaw_deg == 55.0
+    assert app._radar_iso_pitch_deg == 30.0

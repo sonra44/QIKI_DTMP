@@ -7316,7 +7316,8 @@ class OrionApp(App):
         )
         self._console_log(
             f"{I18N.bidi('Radar', 'Радар')}: "
-            f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset",
+            f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset | "
+            f"radar.iso rotate <dyaw_deg> <dpitch_deg>",
             level="info",
         )
         self._console_log(
@@ -8203,6 +8204,39 @@ class OrionApp(App):
                 return
             self._radar_view = view
             self._console_log(f"{I18N.bidi('Radar view', 'Вид радара')}: {view}", level="info")
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                pass
+            return
+
+        # radar.iso rotate <dyaw_deg> <dpitch_deg>
+        if low.startswith(("radar.iso rotate", "радар.изо повернуть")):
+            parts = cmd.split()
+            if len(parts) < 4:
+                self._console_log(
+                    "ISO rotate/Поворот ISO: radar.iso rotate <dyaw_deg> <dpitch_deg>",
+                    level="info",
+                )
+                return
+            try:
+                dyaw = float(parts[2])
+                dpitch = float(parts[3])
+            except Exception:
+                self._console_log(
+                    "ISO rotate/Поворот ISO: radar.iso rotate <dyaw_deg> <dpitch_deg>",
+                    level="info",
+                )
+                return
+
+            self._radar_iso_yaw_deg = (float(self._radar_iso_yaw_deg) + float(dyaw)) % 360.0
+            self._radar_iso_pitch_deg = float(self._radar_iso_pitch_deg) + float(dpitch)
+            self._radar_iso_pitch_deg = max(-80.0, min(80.0, float(self._radar_iso_pitch_deg)))
+            self._console_log(
+                f"ISO yaw/pitch: {self._radar_iso_yaw_deg:.0f}°/{self._radar_iso_pitch_deg:.0f}°",
+                level="info",
+            )
             try:
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
