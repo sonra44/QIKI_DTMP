@@ -13,6 +13,5 @@ def test_orion_summary_mission_shows_no_data_message_when_absent() -> None:
     mission = [b for b in blocks if getattr(b, "block_id", None) == "mission"]
     assert len(mission) == 1
     b = mission[0]
-    assert b.status == "na"
+    assert b.status == "non_goal"
     assert b.value == I18N.bidi("No mission/task data", "Нет данных миссии/задач")
-

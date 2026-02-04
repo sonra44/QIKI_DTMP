@@ -1978,6 +1978,8 @@ class OrionApp(App):
             return I18N.bidi("Warning", "Предупреждение")
         if s in {"crit", "critical"}:
             return I18N.bidi("Critical", "Критично")
+        if s in {"non_goal", "nongoal", "non-goal"}:
+            return I18N.bidi("Non-goal", "Не цель")
         return I18N.NA
 
     def _freshness_to_status(self, freshness: Optional[str]) -> str:
@@ -2130,7 +2132,7 @@ class OrionApp(App):
             SystemStateBlock(
                 block_id="mission",
                 title=I18N.bidi("Mission control", "Управление миссией"),
-                status="na" if mission_env is None else mission_status,
+                status="non_goal" if mission_env is None else mission_status,
                 value=mission_value,
                 ts_epoch=None if mission_env is None else float(mission_env.ts_epoch),
                 envelope=mission_env,
@@ -3529,16 +3531,16 @@ class OrionApp(App):
             SystemStateBlock(
                 block_id="events_filter_type",
                 title=I18N.bidi("Events type filter", "Фильтр событий по типу"),
-                status="na" if not events_filter_type else "ok",
-                value=str(events_filter_type or I18N.NA),
+                status="ok",
+                value=str(events_filter_type or I18N.bidi("off", "выкл")),
                 ts_epoch=None if system_env is None else float(system_env.ts_epoch),
                 envelope=system_env,
             ),
             SystemStateBlock(
                 block_id="events_filter_text",
                 title=I18N.bidi("Events text filter", "Фильтр событий по тексту"),
-                status="na" if not events_filter_text else "ok",
-                value=str(events_filter_text or I18N.NA),
+                status="ok",
+                value=str(events_filter_text or I18N.bidi("off", "выкл")),
                 ts_epoch=None if system_env is None else float(system_env.ts_epoch),
                 envelope=system_env,
             ),
@@ -3728,7 +3730,7 @@ class OrionApp(App):
                     (
                         "seed",
                         I18N.bidi("Mission", "Миссия"),
-                        I18N.NA,
+                        I18N.bidi("Non-goal", "Не цель"),
                         I18N.bidi("No mission/task data", "Нет данных миссии/задач"),
                     )
                 ],
@@ -4770,12 +4772,12 @@ class OrionApp(App):
         table.clear()
         table.add_row(
             "—",
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
-            I18N.NA,
+            I18N.bidi("No events yet", "Событий нет"),
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
             key="seed",
         )
 
@@ -4809,7 +4811,7 @@ class OrionApp(App):
         self._qiki_last_response = None
         self._selection_by_app.pop("qiki", None)
         table.clear()
-        table.add_row(I18N.NA, I18N.NA, I18N.NA, I18N.NA, key="seed")
+        table.add_row("—", "—", I18N.bidi("No proposals", "Нет предложений"), "—", key="seed")
 
     def _render_qiki_table(self) -> None:
         try:
@@ -4822,7 +4824,10 @@ class OrionApp(App):
 
         if resp is None or not resp.proposals:
             self._selection_by_app.pop("qiki", None)
-            self._sync_datatable_rows(table, rows=[("seed", I18N.NA, I18N.NA, I18N.NA, I18N.NA)])
+            self._sync_datatable_rows(
+                table,
+                rows=[("seed", "—", "—", I18N.bidi("No proposals", "Нет предложений"), "—")],
+            )
             return
 
         rows_by_key: dict[str, tuple[Any, ...]] = {}
