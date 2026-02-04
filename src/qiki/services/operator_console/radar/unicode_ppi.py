@@ -163,3 +163,114 @@ class BraillePpiRenderer:
                 chars.append(chr(0x2800 + bits) if bits else " ")
             lines.append("".join(chars))
         return "\n".join(lines)
+
+
+def pick_nearest_track_id(
+    tracks: list[tuple[str, dict[str, Any]]],
+    *,
+    click_cell_x: int,
+    click_cell_y: int,
+    width_cells: int,
+    height_cells: int,
+    max_range_m: float,
+    view: str = "top",
+    zoom: float = 1.0,
+    pan_u_m: float = 0.0,
+    pan_v_m: float = 0.0,
+    pick_radius_cells: float = 2.5,
+) -> str | None:
+    """Pick nearest track by click position in the PPI widget cell space.
+
+    This is a pure helper for ORION mouse selection (no terminal I/O).
+    """
+
+    width_cells = max(10, int(width_cells))
+    height_cells = max(6, int(height_cells))
+    max_range_m = max(1.0, float(max_range_m))
+    view_norm = (view or "").strip().lower()
+    if view_norm not in {"top", "side", "front"}:
+        view_norm = "top"
+    try:
+        zoom_f = float(zoom)
+    except Exception:
+        zoom_f = 1.0
+    zoom_f = max(0.1, min(100.0, zoom_f))
+    effective_range_m = max(1.0, max_range_m / zoom_f)
+
+    width_px = width_cells * 2
+    height_px = height_cells * 4
+    center_px_x = width_px // 2
+    center_px_y = height_px // 2
+
+    # Click in cell coords -> approximate pixel coords (center of the cell).
+    click_px_x = int(click_cell_x) * 2 + 1
+    click_px_y = int(click_cell_y) * 4 + 2
+
+    # Radius threshold in pixels (heuristic; good enough for TUI selection).
+    pick_radius_px = max(2.0, float(pick_radius_cells) * 3.0)
+    pick_radius_sq = pick_radius_px * pick_radius_px
+
+    best_id: str | None = None
+    best_dist_sq: float | None = None
+
+    for track_id, payload in tracks:
+        if not isinstance(payload, dict):
+            continue
+
+        x_m: float | None = None
+        y_m: float | None = None
+        z_m: float | None = None
+
+        pos = payload.get("position")
+        if isinstance(pos, dict):
+            try:
+                x_m = float(pos.get("x"))
+                y_m = float(pos.get("y"))
+                z_m = float(pos.get("z"))
+            except Exception:
+                x_m = y_m = z_m = None
+
+        if x_m is None or y_m is None:
+            r = payload.get("range_m")
+            b = payload.get("bearing_deg")
+            try:
+                r_f = float(r)
+                b_f = float(b)
+            except Exception:
+                continue
+            bearing_rad = math.radians(b_f)
+            x_m = r_f * math.sin(bearing_rad)
+            y_m = r_f * math.cos(bearing_rad)
+            z_m = 0.0
+
+        if z_m is None:
+            z_m = 0.0
+
+        if view_norm == "top":
+            u_m, v_m = float(x_m), float(y_m)
+        elif view_norm == "side":
+            u_m, v_m = float(x_m), float(z_m)
+        else:
+            u_m, v_m = float(y_m), float(z_m)
+
+        try:
+            u_m -= float(pan_u_m)
+            v_m -= float(pan_v_m)
+        except Exception:
+            pass
+
+        nx = max(-1.0, min(1.0, u_m / effective_range_m))
+        ny = max(-1.0, min(1.0, v_m / effective_range_m))
+        px = int(round(center_px_x + nx * (width_px / 2 - 1)))
+        py = int(round(center_px_y - ny * (height_px / 2 - 1)))
+
+        dx = float(click_px_x - px)
+        dy = float(click_px_y - py)
+        dist_sq = dx * dx + dy * dy
+        if dist_sq > pick_radius_sq:
+            continue
+        if best_dist_sq is None or dist_sq < best_dist_sq:
+            best_dist_sq = dist_sq
+            best_id = str(track_id)
+
+    return best_id

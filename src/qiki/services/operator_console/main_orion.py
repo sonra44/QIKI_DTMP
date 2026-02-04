@@ -64,6 +64,11 @@ except Exception:
     # Radar must never block ORION boot; keep a best-effort fallback.
     BraillePpiRenderer = None  # type: ignore[assignment]
 
+try:
+    from qiki.services.operator_console.radar.unicode_ppi import pick_nearest_track_id
+except Exception:
+    pick_nearest_track_id = None  # type: ignore[assignment]
+
 
 @dataclass(frozen=True, slots=True)
 class OrionAppSpec:
@@ -918,6 +923,40 @@ class OrionHeader(Container):
         self._refresh_cells()
 
 
+class RadarPpi(Static):
+    """Radar PPI widget with mouse interaction (terminal-first; no mocks)."""
+
+    def on_mouse_scroll_up(self, event) -> None:  # noqa: ANN001
+        try:
+            app = self.app
+            if hasattr(app, "_apply_radar_zoom"):
+                app._apply_radar_zoom("in")
+            event.stop()
+        except Exception:
+            return
+
+    def on_mouse_scroll_down(self, event) -> None:  # noqa: ANN001
+        try:
+            app = self.app
+            if hasattr(app, "_apply_radar_zoom"):
+                app._apply_radar_zoom("out")
+            event.stop()
+        except Exception:
+            return
+
+    def on_mouse_down(self, event) -> None:  # noqa: ANN001
+        try:
+            button = getattr(event, "button", None)
+            if int(button) != 1:
+                return
+            app = self.app
+            if hasattr(app, "_handle_radar_ppi_click"):
+                app._handle_radar_ppi_click(int(getattr(event, "x", 0)), int(getattr(event, "y", 0)))
+            event.stop()
+        except Exception:
+            return
+
+
 class OrionSidebar(Static):
     can_focus = True
     active_screen = reactive("system")
@@ -1382,6 +1421,9 @@ class OrionApp(App):
         ppi_width = int(os.getenv("OPERATOR_CONSOLE_PPI_WIDTH", "47"))
         ppi_height = int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25"))
         ppi_max_range = float(os.getenv("OPERATOR_CONSOLE_PPI_MAX_RANGE_M", "500.0"))
+        self._ppi_width_cells: int = int(ppi_width)
+        self._ppi_height_cells: int = int(ppi_height)
+        self._ppi_max_range_m: float = float(ppi_max_range)
 
         radar_view = (os.getenv("RADAR_VIEW", "top") or "top").strip().lower()
         if radar_view not in {"top", "side", "front"}:
@@ -1393,9 +1435,9 @@ class OrionApp(App):
 
         if BraillePpiRenderer is not None:
             self._ppi_renderer = BraillePpiRenderer(
-                width_cells=ppi_width,
-                height_cells=ppi_height,
-                max_range_m=ppi_max_range,
+                width_cells=self._ppi_width_cells,
+                height_cells=self._ppi_height_cells,
+                max_range_m=self._ppi_max_range_m,
             )
         elif PpiScopeRenderer is not None:
             self._ppi_renderer = PpiScopeRenderer(width=ppi_width, height=ppi_height, max_range_m=ppi_max_range)
@@ -1977,6 +2019,66 @@ class OrionApp(App):
             )
             return
         ppi.update(self._ppi_renderer.render_tracks(tracks))
+
+    def _apply_radar_zoom(self, op: str) -> None:
+        low = (op or "").strip().lower()
+        if low == "reset":
+            self._radar_zoom = 1.0
+        elif low == "in":
+            self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) * 1.25))
+        elif low == "out":
+            self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) / 1.25))
+        else:
+            return
+
+        try:
+            if self.active_screen == "radar":
+                self._render_radar_ppi()
+        except Exception:
+            return
+
+    def _handle_radar_ppi_click(self, x: int, y: int) -> None:
+        if pick_nearest_track_id is None:
+            return
+
+        items = self._active_tracks_sorted()
+        if not items:
+            return
+
+        candidates: list[tuple[str, dict[str, Any]]] = [(str(tid), payload) for tid, payload, _seen in items]
+        picked = pick_nearest_track_id(
+            candidates,
+            click_cell_x=int(x),
+            click_cell_y=int(y),
+            width_cells=self._ppi_width_cells,
+            height_cells=self._ppi_height_cells,
+            max_range_m=self._ppi_max_range_m,
+            view=self._radar_view,
+            zoom=self._radar_zoom,
+            pan_u_m=self._radar_pan_u_m,
+            pan_v_m=self._radar_pan_v_m,
+        )
+        if picked is None:
+            return
+
+        for track_id, payload, seen in items:
+            if str(track_id) != str(picked):
+                continue
+            self._set_selection(
+                SelectionContext(
+                    app_id="radar",
+                    key=str(track_id),
+                    kind="track",
+                    source="radar",
+                    created_at_epoch=float(seen),
+                    payload=payload,
+                    ids=(str(track_id),),
+                )
+            )
+            self._render_tracks_table()
+            if self.active_screen == "radar":
+                self._refresh_inspector()
+            return
 
     def _refresh_radar(self) -> None:
         self._render_tracks_table()
@@ -4078,7 +4180,7 @@ class OrionApp(App):
 
                 with Container(id="screen-radar"):
                     with Horizontal(id="radar-layout"):
-                        yield Static(id="radar-ppi")
+                        yield RadarPpi(id="radar-ppi")
                         radar_table: OrionDataTable = OrionDataTable(id="radar-table")
                         radar_table.add_columns(
                             I18N.bidi("Track", "Трек"),
