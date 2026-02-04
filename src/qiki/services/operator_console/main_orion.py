@@ -84,6 +84,25 @@ except Exception:
     _RadarTGPImage = None  # type: ignore[assignment]
 
 
+def _textual_image_best_backend_kind() -> str | None:
+    """Return bitmap backend kind selected by textual-image auto-detection, if any.
+
+    We only accept true bitmap protocols here (Kitty TGP / SIXEL). If textual-image selects a
+    Unicode/halfcell backend, we keep ORION on the Braille Unicode baseline (RFC).
+    """
+
+    try:
+        from textual_image import renderable as _ti_renderable
+    except Exception:
+        return None
+    mod = str(getattr(getattr(_ti_renderable, "Image", None), "__module__", "") or "")
+    if mod.endswith(".tgp"):
+        return "kitty"
+    if mod.endswith(".sixel"):
+        return "sixel"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class OrionAppSpec:
     screen: str
@@ -1558,7 +1577,10 @@ class OrionApp(App):
         if radar_renderer not in {"unicode", "auto", "kitty", "sixel"}:
             radar_renderer = "unicode"
         self._radar_renderer_requested: str = radar_renderer
-        self._radar_renderer_effective: str = radar_renderer
+        if radar_renderer == "auto":
+            self._radar_renderer_effective = _textual_image_best_backend_kind() or "unicode"
+        else:
+            self._radar_renderer_effective = radar_renderer
 
         if self._radar_renderer_effective != "unicode":
             if render_bitmap_ppi is None:
@@ -1566,8 +1588,6 @@ class OrionApp(App):
             elif self._radar_renderer_effective == "kitty" and RadarBitmapTGP is None:
                 self._radar_renderer_effective = "unicode"
             elif self._radar_renderer_effective == "sixel" and RadarBitmapSixel is None:
-                self._radar_renderer_effective = "unicode"
-            elif self._radar_renderer_effective == "auto" and RadarBitmapAuto is None:
                 self._radar_renderer_effective = "unicode"
 
         if BraillePpiRenderer is not None:
