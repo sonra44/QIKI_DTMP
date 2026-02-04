@@ -163,6 +163,11 @@ Enable bitmap backends only when you have proven terminal passthrough end-to-end
 
 In the Phase1 Docker stack, these env vars (`RADAR_RENDERER`, `RADAR_VIEW`) are passed to `operator-console` via `docker-compose.operator.yml`.
 
+#### tmux + mouse wheel (common pitfall)
+
+In `tmux` with `mouse on`, the mouse wheel may be captured by tmux copy-mode scrolling instead of being forwarded to full-screen apps.
+If ORION does not receive wheel events, add the standard passthrough binds for `WheelUpPane/WheelDownPane` (forward when the pane is in alternate screen, otherwise keep tmux scrollback).
+
 ## 11) Dependencies (allowed and expected)
 
 We allow adding dependencies for radar graphics:
