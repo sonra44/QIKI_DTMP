@@ -88,6 +88,59 @@ async def test_radar_overlay_command_toggles_vectors_and_labels() -> None:
 
 
 @pytest.mark.asyncio
+async def test_radar_hotkeys_do_not_trigger_while_input_focused(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+
+    app = main_orion.OrionApp()
+    now = time.time()
+    app._tracks_by_id = {
+        "A": ({"range_m": 100.0, "bearing_deg": 0.0}, now),
+        "B": ({"range_m": 200.0, "bearing_deg": 0.0}, now),
+    }
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+        app._refresh_radar()
+        await pilot.pause()
+        app.action_focus_command()
+        await pilot.pause()
+
+        base_view = app._radar_view
+        base_vectors = app._radar_overlay_vectors
+        base_labels = app._radar_overlay_labels
+        base_selection = app._selection_by_app.get("radar").key if "radar" in app._selection_by_app else None
+
+        await pilot.press("1")
+        await pilot.press("2")
+        await pilot.press("3")
+        await pilot.press("4")
+        await pilot.press("n")
+        await pilot.press("p")
+        await pilot.press("k")
+        await pilot.press("l")
+        await pilot.pause()
+
+        assert app._radar_view == base_view
+        assert app._radar_overlay_vectors == base_vectors
+        assert app._radar_overlay_labels == base_labels
+        sel = app._selection_by_app.get("radar").key if "radar" in app._selection_by_app else None
+        assert sel == base_selection
+
+
+@pytest.mark.asyncio
 async def test_radar_bitmap_render_error_falls_back_to_unicode(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
 
