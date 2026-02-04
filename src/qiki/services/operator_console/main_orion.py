@@ -2246,6 +2246,8 @@ class OrionApp(App):
             legend.update(I18N.NA)
             return
 
+        hint_style = Style(color="#a0a0a0")
+
         t = Text()
         t.append(I18N.bidi("Legend", "Легенда") + ": ")
         t.append("FRND", Style(color="#00ff66"))
@@ -2256,24 +2258,22 @@ class OrionApp(App):
         t.append(" ")
         t.append(I18N.bidi("SEL", "ВЫБР"), Style(color="#ffffff", bold=True))
         t.append("\n")
+
         t.append(
             f"{I18N.bidi('View', 'Вид')}: {self._radar_view}  "
-            f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}  "
-            f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f} m",
-            Style(color="#a0a0a0"),
+            f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}",
+            hint_style,
         )
+        t.append("\n")
+
+        third_line = f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f}m"
         if self._radar_view == "iso":
-            t.append("\n")
-            t.append(
-                f"ISO yaw/pitch: {self._radar_iso_yaw_deg:.0f}°/{self._radar_iso_pitch_deg:.0f}°",
-                Style(color="#a0a0a0"),
-            )
-        if getattr(self, "_radar_renderer_effective", "unicode") != "unicode":
-            t.append("\n")
-            t.append(
-                f"{I18N.bidi('Renderer', 'Рендер')}: {self._radar_renderer_effective}",
-                Style(color="#a0a0a0"),
-            )
+            third_line += f" ISO:{self._radar_iso_yaw_deg:.0f}/{self._radar_iso_pitch_deg:.0f}°"
+        else:
+            if getattr(self, "_radar_renderer_effective", "unicode") != "unicode":
+                third_line += f" {I18N.bidi('Renderer', 'Рендер')}: {self._radar_renderer_effective}"
+
+        t.append(third_line, hint_style)
         legend.update(t)
 
     def _apply_radar_drag_from_mouse(
