@@ -1683,6 +1683,7 @@ class OrionApp(App):
         base_out = self._output_height_override if self._output_height_override is not None else 8
         self._output_height_rows = int(max(3, min(40, base_out)))
         self._output_height_default_rows = int(self._output_height_rows)
+        self._output_follow = True
 
         ppi_width = int(os.getenv("OPERATOR_CONSOLE_PPI_WIDTH", "47"))
         ppi_height = int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25"))
@@ -1762,6 +1763,54 @@ class OrionApp(App):
     def action_output_reset(self) -> None:
         self._output_height_rows = int(self._output_height_default_rows)
         self._apply_output_layout()
+
+    def _output_log(self) -> RichLog | None:
+        try:
+            return self.query_one("#command-output-log", RichLog)
+        except Exception:
+            return None
+
+    def _output_apply_follow(self, enabled: bool) -> None:
+        self._output_follow = bool(enabled)
+        log = self._output_log()
+        if log is None:
+            return
+        try:
+            log.auto_scroll = bool(enabled)
+        except Exception:
+            pass
+
+    def _output_scroll_relative(self, delta_lines: int) -> None:
+        log = self._output_log()
+        if log is None:
+            if delta_lines < 0:
+                self._output_follow = False
+            return
+
+        if delta_lines < 0:
+            self._output_apply_follow(False)
+
+        try:
+            log.scroll_relative(y=float(delta_lines), animate=False, immediate=True)
+        except Exception:
+            return
+
+        try:
+            if int(getattr(log, "scroll_y", 0)) >= int(getattr(log, "max_scroll_y", 0)):
+                self._output_apply_follow(True)
+        except Exception:
+            pass
+
+    def _output_scroll_end(self) -> None:
+        log = self._output_log()
+        if log is None:
+            self._output_apply_follow(True)
+            return
+        try:
+            log.scroll_end(animate=False, immediate=True, x_axis=False, y_axis=True)
+        except Exception:
+            pass
+        self._output_apply_follow(True)
 
     def _update_system_snapshot(self) -> None:
         now = time.time()
@@ -7343,6 +7392,8 @@ class OrionApp(App):
 
         # One-word console/system commands (no QIKI).
         if low in {
+            "output",
+            "вывод",
             "help",
             "помощь",
             "?",
@@ -7361,6 +7412,10 @@ class OrionApp(App):
         # Multi-token console/system commands.
         if low.startswith(
             (
+                "output ",
+                "output.",
+                "вывод ",
+                "вывод.",
                 "screen ",
                 "экран ",
                 "events ",
@@ -7447,6 +7502,10 @@ class OrionApp(App):
         self._console_log(
             f"{I18N.bidi('Mouse', 'Мышь')}: "
             f"mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Output', 'Вывод')}: output up|down|end | output follow on/off",
             level="info",
         )
         self._console_log(
@@ -7796,6 +7855,58 @@ class OrionApp(App):
         low = cmd.lower()
         if low in {"help", "помощь", "?", "h"}:
             self._show_help()
+            return
+
+        if low == "output" or low == "вывод" or low.startswith(("output ", "output.", "вывод ", "вывод.")):
+            parts = cmd.split()
+            if len(parts) == 1:
+                state = I18N.bidi("follow", "следить") if self._output_follow else I18N.bidi("manual", "ручной")
+                self._console_log(
+                    f"{I18N.bidi('Output', 'Вывод')}: {state}",
+                    level="info",
+                )
+                return
+
+            action = (parts[1] or "").strip().lower()
+            arg = (parts[2] if len(parts) > 2 else "").strip()
+
+            def parse_lines(default: int) -> int:
+                if not arg:
+                    return default
+                try:
+                    return max(1, min(100, int(float(arg))))
+                except Exception:
+                    return default
+
+            if action in {"up", "вверх"}:
+                self._output_scroll_relative(-parse_lines(10))
+                return
+            if action in {"down", "вниз"}:
+                self._output_scroll_relative(parse_lines(10))
+                return
+            if action in {"end", "bottom", "низ", "конец"}:
+                self._output_scroll_end()
+                return
+            if action in {"follow", "autofollow", "следить"}:
+                onoff = (arg or "").strip().lower()
+                if onoff in {"on", "1", "true", "yes", "вкл", "включить"}:
+                    self._output_apply_follow(True)
+                    self._console_log(f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow on', 'следить вкл')}", level="info")
+                    return
+                if onoff in {"off", "0", "false", "no", "выкл", "выключить"}:
+                    self._output_apply_follow(False)
+                    self._console_log(f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow off', 'следить выкл')}", level="info")
+                    return
+                self._console_log(
+                    f"{I18N.bidi('Output follow', 'Вывод следить')}: on/off",
+                    level="info",
+                )
+                return
+
+            self._console_log(
+                f"{I18N.bidi('Output', 'Вывод')}: output up|down|end|follow on|off",
+                level="info",
+            )
             return
 
         if low in {"events", "события"}:

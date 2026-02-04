@@ -104,3 +104,22 @@ async def test_mouse_debug_on_off_commands_do_not_crash() -> None:
     assert app._mouse_debug is True
     await app._run_command("mouse debug off")
     assert app._mouse_debug is False
+
+
+@pytest.mark.asyncio
+async def test_output_follow_and_scroll_commands_update_state() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    assert app._output_follow is True
+
+    await app._run_command("output follow off")
+    assert app._output_follow is False
+
+    await app._run_command("output end")
+    assert app._output_follow is True
+
+    await app._run_command("output up 5")
+    assert app._output_follow is False
