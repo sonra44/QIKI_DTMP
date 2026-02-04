@@ -1569,6 +1569,8 @@ class OrionApp(App):
         Binding("2", "radar_view_side", "Radar view side", show=False),
         Binding("3", "radar_view_front", "Radar view front", show=False),
         Binding("4", "radar_view_iso", "Radar view iso", show=False),
+        Binding("n", "radar_select_next", "Radar select next", show=False),
+        Binding("p", "radar_select_prev", "Radar select prev", show=False),
         Binding("ctrl+up", "output_grow", I18N.bidi("Output +", "Вывод +"), show=False),
         Binding("ctrl+down", "output_shrink", I18N.bidi("Output -", "Вывод -"), show=False),
         Binding("ctrl+0", "output_reset", I18N.bidi("Output reset", "Вывод сброс"), show=False),
@@ -1833,6 +1835,44 @@ class OrionApp(App):
         self._radar_pan_u_m = 0.0
         self._radar_pan_v_m = 0.0
         self._render_radar_ppi()
+
+    def action_radar_select_next(self) -> None:
+        self._radar_select_relative(delta=1)
+
+    def action_radar_select_prev(self) -> None:
+        self._radar_select_relative(delta=-1)
+
+    def _radar_select_relative(self, *, delta: int) -> None:
+        if self.active_screen != "radar":
+            return
+
+        items = self._active_tracks_sorted()
+        if not items:
+            return
+
+        ordered_ids = [str(track_id) for track_id, _payload, _seen in items]
+        current = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        if current in ordered_ids:
+            idx = ordered_ids.index(str(current))
+            new_id = ordered_ids[(idx + int(delta)) % len(ordered_ids)]
+        else:
+            new_id = ordered_ids[0]
+
+        if new_id not in self._tracks_by_id:
+            return
+        payload, seen = self._tracks_by_id[new_id]
+        self._set_selection(
+            SelectionContext(
+                app_id="radar",
+                key=new_id,
+                kind="track",
+                source="radar",
+                created_at_epoch=float(seen),
+                payload=payload,
+                ids=(new_id,),
+            )
+        )
+        self._refresh_radar()
 
     def _output_log(self) -> RichLog | None:
         try:
@@ -7660,7 +7700,8 @@ class OrionApp(App):
             f"{I18N.bidi('Radar', 'Радар')}: "
             f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset | "
             f"radar.iso rotate <dyaw_deg> <dpitch_deg> | "
-            f"{I18N.bidi('hotkeys', 'горячие')}: 1 top · 2 side · 3 front · 4 iso (Radar screen)",
+            f"{I18N.bidi('hotkeys', 'горячие')}: "
+            f"1 top · 2 side · 3 front · 4 iso · N next · P prev (Radar screen)",
             level="info",
         )
         self._console_log(
@@ -8747,6 +8788,30 @@ class OrionApp(App):
                     self._render_radar_ppi()
             except Exception:
                 pass
+            return
+
+        # radar.select <next|prev>
+        if low.startswith(("radar.select", "радар.выбор", "радар.выбрать")):
+            parts = cmd.split()
+            token = parts[1].strip().lower() if len(parts) >= 2 else ""
+            op = {
+                "next": "next",
+                "n": "next",
+                "след": "next",
+                "следующий": "next",
+                "prev": "prev",
+                "p": "prev",
+                "пред": "prev",
+                "предыдущий": "prev",
+            }.get(token)
+            if op is None:
+                self._console_log(
+                    f"{I18N.bidi('Radar select', 'Выбор радара')}: "
+                    f"{I18N.bidi('use', 'используйте')}: radar.select next|prev",
+                    level="info",
+                )
+                return
+            self._radar_select_relative(delta=1 if op == "next" else -1)
             return
 
         # screen/экран <name>

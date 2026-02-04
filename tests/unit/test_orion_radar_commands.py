@@ -41,6 +41,31 @@ def test_radar_view_hotkey_actions_update_state() -> None:
     assert app._radar_view == "top"
 
 
+def test_radar_select_actions_cycle_tracks() -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app.active_screen = "radar"
+    now = time.time()
+    app._tracks_by_id = {
+        "A": ({"range_m": 100.0, "bearing_deg": 0.0}, now),
+        "B": ({"range_m": 200.0, "bearing_deg": 0.0}, now),
+    }
+
+    app.action_radar_select_next()
+    assert app._selection_by_app["radar"].key == "A"
+
+    app.action_radar_select_next()
+    assert app._selection_by_app["radar"].key == "B"
+
+    app.action_radar_select_prev()
+    assert app._selection_by_app["radar"].key == "A"
+
+
 @pytest.mark.asyncio
 async def test_radar_bitmap_render_error_falls_back_to_unicode(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
@@ -128,6 +153,32 @@ async def test_radar_pan_reset_command() -> None:
     await app._run_command("radar.pan reset")
     assert app._radar_pan_u_m == 0.0
     assert app._radar_pan_v_m == 0.0
+
+
+@pytest.mark.asyncio
+async def test_radar_select_command_cycles_tracks() -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app.active_screen = "radar"
+    now = time.time()
+    app._tracks_by_id = {
+        "A": ({"range_m": 100.0, "bearing_deg": 0.0}, now),
+        "B": ({"range_m": 200.0, "bearing_deg": 0.0}, now),
+    }
+
+    await app._run_command("radar.select next")
+    assert app._selection_by_app["radar"].key == "A"
+
+    await app._run_command("radar.select next")
+    assert app._selection_by_app["radar"].key == "B"
+
+    await app._run_command("radar.select prev")
+    assert app._selection_by_app["radar"].key == "A"
 
 
 @pytest.mark.asyncio
