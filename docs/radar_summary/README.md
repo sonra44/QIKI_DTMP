@@ -4,6 +4,11 @@
 > Этот документ — справка/сводка идей и бэклога по развитию радара (Phase 3+).  
 > Он **не является** каноном приоритетов. Канон “что делаем сейчас” — `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.
 
+For the canonical radar visualization strategy/spec, see:
+
+- `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+- `docs/design/canon/ADR/ADR_2026-02-04_radar_visualization_strategy.md`
+
 ## 1. Текущее состояние
 
 * **Радар v1 реализован полностью**, однако визуальная часть и интерфейс отображения данных пока готовы лишь на ~10 %. В документации указано, что текущая версия радара передаёт кадры и треки, но дальнейшая агрегация, классификация и визуальный интерфейс отсутствуют (см. `RADAR.md`, `docs/radar_phase2_roadmap.md`, `docs/asyncapi/radar_v1.yaml`).

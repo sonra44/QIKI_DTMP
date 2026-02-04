@@ -28,6 +28,9 @@
 
 - `src/qiki/resources/radar/guard_rules.yaml` — guard rules (триггеры безопасности → события/FSM).
 - `LOG_ANALYSIS_2025-09-22.md` / `DEEP_DATA_ANALYSIS_2025-09-22.md` / `DEEP_CODE_ANALYSIS_2025-09-22.md` — глубокие разборы (когда нужно спорить фактами).
+- Radar visualization canon:
+  - `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+  - `docs/design/canon/ADR/ADR_2026-02-04_radar_visualization_strategy.md`
 
 ## 4) История, аудит и “не переанализировать”
 

@@ -13,7 +13,14 @@ This file exists as a stable **design canon entrypoint** referenced by session b
 - Q-Core Agent: `docs/design/q-core-agent/`
 - Game layer (lore/intent): `docs/design/game/`
 
+## Canon decisions (ADR)
+
+- ADR directory: `docs/design/canon/ADR/`
+
+## Canon spotlights (selected)
+
+- Radar visualization strategy/spec: `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+
 ## Non-canon / reference
 
 - `docs/Архив/**` is **REFERENCE ONLY (NOT CANON)**.
-

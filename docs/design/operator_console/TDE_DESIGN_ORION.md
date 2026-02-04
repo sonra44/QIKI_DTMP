@@ -1,8 +1,15 @@
 # Дизайн-спецификация: QIKI TUI Shell "ORION" (Terminal Desktop Environment)
 
-**Статус:** Verified & Approved
-**Дата:** 2025-12-20
-**Контекст:** Реализация интерфейса оператора в парадигме "Terminal as a Cockpit" с использованием Textual и Sixel.
+> **STATUS NOTE (2026-02-04):** This document is a design snapshot (2025-12-20).  
+> It contains valuable UI principles, but its “Sixel-first is verified” framing can be misread as the current canon.
+>
+> Canon for radar visualization (SSH+tmux reality; multi-backend; mouse+color) is:
+> - `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+> - `docs/design/canon/ADR/ADR_2026-02-04_radar_visualization_strategy.md`
+
+**Статус:** Design snapshot (reference; see RFC/ADR for canon decisions)  
+**Дата:** 2025-12-20  
+**Контекст:** Реализация интерфейса оператора в парадигме "Terminal as a Cockpit" с использованием Textual; bitmap-рендер (Kitty/SIXEL) рассматривается как capability-upgrade, не как обязательное предположение.
 
 ---
 
