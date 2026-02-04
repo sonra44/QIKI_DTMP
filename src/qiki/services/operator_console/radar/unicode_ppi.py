@@ -44,6 +44,7 @@ class BraillePpiRenderer:
         zoom: float = 1.0,
         pan_u_m: float = 0.0,
         pan_v_m: float = 0.0,
+        draw_overlays: bool = True,
     ) -> str:
         width_cells = max(10, int(self.width_cells))
         height_cells = max(6, int(self.height_cells))
@@ -76,6 +77,25 @@ class BraillePpiRenderer:
             local_x = px % 2
             local_y = py % 4
             cell_bits[cell_y][cell_x] |= _dot_bit(local_x, local_y)
+
+        if draw_overlays:
+            # Baseline overlays (always visible; no-mocks).
+            # - Center mark
+            # - Range rings (25/50/75/100%)
+            plot_px(center_px_x, center_px_y)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                plot_px(center_px_x + dx, center_px_y + dy)
+
+            ring_radii = [0.25, 0.5, 0.75, 1.0]
+            base_radius_px = max(2.0, min(width_px, height_px) / 2 - 1.0)
+            steps = max(36, int(base_radius_px * 3))
+            for ratio in ring_radii:
+                radius = base_radius_px * ratio
+                for i in range(steps):
+                    ang = 2 * math.pi * i / steps
+                    x = int(round(center_px_x + radius * math.sin(ang)))
+                    y = int(round(center_px_y - radius * math.cos(ang)))
+                    plot_px(x, y)
 
         for t in tracks:
             if not isinstance(t, dict):
