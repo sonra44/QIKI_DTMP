@@ -1,4 +1,6 @@
 import logging
+import contextlib
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -36,6 +38,11 @@ from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, l
 from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
 from qiki.services.faststream_bridge.mode_store import get_mode, set_mode
 from qiki.shared.nats_subjects import RADAR_GUARD_ALERTS, SYSTEM_MODE_EVENT
+
+try:
+    import nats  # type: ignore
+except Exception:  # pragma: no cover
+    nats = None  # type: ignore
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -165,12 +172,22 @@ async def _publish_system_mode(mode: QikiMode, *, logger_: Logger) -> None:
         "ts_epoch": float(time.time()),
         "mode": mode.value,
     }
-    # Prefer JetStream publish so ORION can hydrate after a restart even if it missed core-NATS.
-    try:
-        await broker.publish(payload, subject=SYSTEM_MODE_EVENT, stream=EVENTS_STREAM_NAME)
-        return
-    except Exception as exc:
-        logger_.warning("Failed to publish system mode to JetStream: %s", exc)
+    # ORION boot hydration relies on a persisted last-known system mode in JetStream.
+    # Do a direct JetStream publish for determinism.
+    if nats is not None:
+        nc = None
+        try:
+            nc = await nats.connect(servers=[NATS_URL], connect_timeout=5)
+            js = nc.jetstream()
+            await js.publish(SYSTEM_MODE_EVENT, json.dumps(payload).encode("utf-8"))
+            return
+        except Exception as exc:
+            logger_.warning("Failed to publish system mode to JetStream: %s", exc)
+        finally:
+            if nc is not None:
+                with contextlib.suppress(Exception):
+                    await nc.close()
+
     # Fallback: core-NATS publish (best-effort).
     try:
         await broker.publish(payload, subject=SYSTEM_MODE_EVENT)
