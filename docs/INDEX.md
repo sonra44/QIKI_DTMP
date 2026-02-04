@@ -37,6 +37,7 @@
 - `PALTCR_SESSION_2025-09-22_15-30.md` — “что уже доказано/понято” и что повторно не копать.
 - `CLAUDE_MEMORY.md` — накопленная память и эволюция решений.
 - `DOCUMENTATION_UPDATE_PROTOCOL.md` — как обновлять документацию (если вносим изменения).
+- `docs/agents/context_persistence.md` — протокол “контекст не потеряется” (skills/backup/restore).
 
 ## 5) Планирование и задачи
 
