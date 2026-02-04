@@ -150,6 +150,19 @@ Runtime controls (canonical names; implementation may start as env vars):
 - `RADAR_THEME=...`
 - `RADAR_COLOR=1` (on by default)
 
+### 10.1 Operator procedure (safe defaults)
+
+**Default safety rule:** if you are in **SSH+tmux** (the canonical Phase1 operator environment), keep the radar on the **Unicode baseline**.
+
+Enable bitmap backends only when you have proven terminal passthrough end-to-end:
+
+- `RADAR_RENDERER=unicode` — always-safe baseline (Braille/blocks, works in SSH+tmux).
+- `RADAR_RENDERER=auto` — enables **bitmap only** when the terminal supports a true bitmap protocol (Kitty TGP / SIXEL); otherwise stays on the Unicode baseline.
+- `RADAR_RENDERER=kitty` — force Kitty Terminal Graphics Protocol (local Kitty/WezTerm; avoid SSH+tmux unless proven).
+- `RADAR_RENDERER=sixel` — force SIXEL (only on terminals that support it).
+
+In the Phase1 Docker stack, this env var is passed to `operator-console` via `docker-compose.operator.yml`.
+
 ## 11) Dependencies (allowed and expected)
 
 We allow adding dependencies for radar graphics:
@@ -175,4 +188,3 @@ but the product installation may include them in Docker images for simplicity.
 
 - Auto-detect selects Kitty or SIXEL backend when available.
 - Fallback to Unicode is seamless when graphics is unavailable.
-
