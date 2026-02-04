@@ -1413,6 +1413,37 @@ class OrionCommandInput(Input):
         await super()._on_key(event)
 
 
+class OrionOutputLog(RichLog):
+    """Output log with reliable mouse-wheel scrolling (no focus required)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        try:
+            wheel_lines = int(os.getenv("OPERATOR_CONSOLE_OUTPUT_WHEEL_LINES", "3"))
+        except Exception:
+            wheel_lines = 3
+        self._wheel_lines = max(1, min(20, wheel_lines))
+
+    def _scroll_by_wheel(self, *, delta_lines: int) -> None:
+        if delta_lines == 0:
+            return
+        if delta_lines < 0:
+            self.auto_scroll = False
+
+        target_y = max(0, min(int(self.scroll_y) + delta_lines, int(self.max_scroll_y)))
+        self.scroll_to(y=target_y, animate=False, immediate=True)
+        if target_y >= int(self.max_scroll_y):
+            self.auto_scroll = True
+
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self._scroll_by_wheel(delta_lines=-self._wheel_lines)
+        event.stop()
+
+    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        self._scroll_by_wheel(delta_lines=self._wheel_lines)
+        event.stop()
+
+
 class OrionInspector(Static):
     """Right-side detail pane (no-mocks)."""
 
@@ -4725,7 +4756,7 @@ class OrionApp(App):
                 except Exception:
                     output_max_lines = 1024
                 output_max_lines = max(100, min(10_000, output_max_lines))
-                output = RichLog(
+                output = OrionOutputLog(
                     id="command-output-log",
                     highlight=False,
                     markup=False,
