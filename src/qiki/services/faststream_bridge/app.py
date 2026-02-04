@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import contextlib
 import json
 import os
@@ -195,6 +196,55 @@ async def _publish_system_mode(mode: QikiMode, *, logger_: Logger) -> None:
         logger_.warning("Failed to publish system mode event: %s", exc)
 
 
+async def _publish_system_mode_persisted_boot(mode: QikiMode, *, logger_: Logger) -> bool:
+    """Publish system_mode with a deterministic persisted proof at boot.
+
+    Why:
+    - faststream-bridge can start before `nats-js-init` creates the events stream.
+    - a JetStream publish before the stream exists is not persisted (and ORION shows N/A).
+    """
+
+    if nats is None:
+        return False
+
+    payload = {
+        "event_schema_version": 1,
+        "source": "faststream_bridge",
+        "subject": SYSTEM_MODE_EVENT,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ts_epoch": float(time.time()),
+        "mode": mode.value,
+    }
+
+    nc = None
+    try:
+        nc = await nats.connect(servers=[NATS_URL], connect_timeout=5)
+        js = nc.jetstream()
+
+        deadline = time.time() + float(os.getenv("SYSTEM_MODE_BOOT_PERSIST_TIMEOUT_SEC", "20.0"))
+        while time.time() < deadline:
+            try:
+                await js.stream_info(EVENTS_STREAM_NAME)
+                break
+            except Exception:
+                await asyncio.sleep(0.5)
+        else:
+            logger_.warning("Events stream not ready; system_mode not persisted at boot")
+            return False
+
+        await js.publish(SYSTEM_MODE_EVENT, json.dumps(payload).encode("utf-8"))
+        # Proof: ensure the last message exists in the configured stream.
+        await js.get_last_msg(EVENTS_STREAM_NAME, SYSTEM_MODE_EVENT)
+        return True
+    except Exception as exc:
+        logger_.warning("Failed to persist boot system_mode in JetStream: %s", exc)
+        return False
+    finally:
+        if nc is not None:
+            with contextlib.suppress(Exception):
+                await nc.close()
+
+
 @broker.subscriber(_QIKI_INTENTS_SUBJECT)
 @broker.publisher(_QIKI_RESPONSES_SUBJECT)
 async def handle_qiki_intent(msg: dict, logger: Logger) -> dict:
@@ -318,9 +368,12 @@ async def on_startup():
 
 @app.after_startup
 async def after_startup() -> None:
-    # Publish the initial system mode once at boot so operator UIs don't show N/A
-    # until the first explicit mode-change intent arrives (no new subjects/contracts).
-    await _publish_system_mode(get_mode(), logger_=logger)
+    # Publish the initial system mode once at boot, but make it deterministic:
+    # ensure it's actually persisted in JetStream (ORION boot hydration).
+    mode = get_mode()
+    if not await _publish_system_mode_persisted_boot(mode, logger_=logger):
+        # Fallback: best-effort publish so at least live subscribers see something.
+        await _publish_system_mode(mode, logger_=logger)
 
 
 @app.on_shutdown

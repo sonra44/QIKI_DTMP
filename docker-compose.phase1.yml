@@ -144,6 +144,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      nats-js-init:
+        condition: service_completed_successfully
     environment:
       - NATS_URL=nats://nats:4222
       - RADAR_GUARD_EVENTS_ENABLED=${RADAR_GUARD_EVENTS_ENABLED:-0}
