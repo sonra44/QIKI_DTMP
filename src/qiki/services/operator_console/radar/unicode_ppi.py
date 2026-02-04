@@ -36,10 +36,27 @@ class BraillePpiRenderer:
     height_cells: int
     max_range_m: float
 
-    def render_tracks(self, tracks: list[dict[str, Any]]) -> str:
+    def render_tracks(
+        self,
+        tracks: list[dict[str, Any]],
+        *,
+        view: str = "top",
+        zoom: float = 1.0,
+        pan_u_m: float = 0.0,
+        pan_v_m: float = 0.0,
+    ) -> str:
         width_cells = max(10, int(self.width_cells))
         height_cells = max(6, int(self.height_cells))
         max_range_m = max(1.0, float(self.max_range_m))
+        view_norm = (view or "").strip().lower()
+        if view_norm not in {"top", "side", "front"}:
+            view_norm = "top"
+        try:
+            zoom_f = float(zoom)
+        except Exception:
+            zoom_f = 1.0
+        zoom_f = max(0.1, min(100.0, zoom_f))
+        effective_range_m = max(1.0, max_range_m / zoom_f)
 
         # Braille “pixel” grid resolution per terminal cell.
         width_px = width_cells * 2
@@ -66,15 +83,18 @@ class BraillePpiRenderer:
 
             x_m: float | None = None
             y_m: float | None = None
+            z_m: float | None = None
 
             pos = t.get("position")
             if isinstance(pos, dict):
                 try:
                     x_m = float(pos.get("x"))
                     y_m = float(pos.get("y"))
+                    z_m = float(pos.get("z"))
                 except Exception:
                     x_m = None
                     y_m = None
+                    z_m = None
 
             if x_m is None or y_m is None:
                 r = t.get("range_m")
@@ -88,10 +108,28 @@ class BraillePpiRenderer:
                 bearing_rad = math.radians(b_f)
                 x_m = r_f * math.sin(bearing_rad)
                 y_m = r_f * math.cos(bearing_rad)
+                z_m = 0.0
+
+            if z_m is None:
+                z_m = 0.0
+
+            if view_norm == "top":
+                u_m, v_m = float(x_m), float(y_m)
+            elif view_norm == "side":
+                u_m, v_m = float(x_m), float(z_m)
+            else:
+                u_m, v_m = float(y_m), float(z_m)
+
+            # Pan is in meters in the selected view plane.
+            try:
+                u_m -= float(pan_u_m)
+                v_m -= float(pan_v_m)
+            except Exception:
+                pass
 
             # Map meters to pixels (square viewport, clamped).
-            nx = max(-1.0, min(1.0, float(x_m) / max_range_m))
-            ny = max(-1.0, min(1.0, float(y_m) / max_range_m))
+            nx = max(-1.0, min(1.0, u_m / effective_range_m))
+            ny = max(-1.0, min(1.0, v_m / effective_range_m))
 
             px = int(round(center_px_x + nx * (width_px / 2 - 1)))
             py = int(round(center_px_y - ny * (height_px / 2 - 1)))
@@ -105,4 +143,3 @@ class BraillePpiRenderer:
                 chars.append(chr(0x2800 + bits) if bits else " ")
             lines.append("".join(chars))
         return "\n".join(lines)
-

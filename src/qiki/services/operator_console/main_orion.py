@@ -1383,6 +1383,14 @@ class OrionApp(App):
         ppi_height = int(os.getenv("OPERATOR_CONSOLE_PPI_HEIGHT", "25"))
         ppi_max_range = float(os.getenv("OPERATOR_CONSOLE_PPI_MAX_RANGE_M", "500.0"))
 
+        radar_view = (os.getenv("RADAR_VIEW", "top") or "top").strip().lower()
+        if radar_view not in {"top", "side", "front"}:
+            radar_view = "top"
+        self._radar_view: str = radar_view
+        self._radar_zoom: float = 1.0
+        self._radar_pan_u_m: float = 0.0
+        self._radar_pan_v_m: float = 0.0
+
         if BraillePpiRenderer is not None:
             self._ppi_renderer = BraillePpiRenderer(
                 width_cells=ppi_width,
@@ -1956,6 +1964,17 @@ class OrionApp(App):
         tracks = [payload for _tid, payload, _seen in self._active_tracks_sorted()]
         if self._ppi_renderer is None:
             ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+            return
+        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
+            ppi.update(
+                self._ppi_renderer.render_tracks(
+                    tracks,
+                    view=self._radar_view,
+                    zoom=self._radar_zoom,
+                    pan_u_m=self._radar_pan_u_m,
+                    pan_v_m=self._radar_pan_v_m,
+                )
+            )
             return
         ppi.update(self._ppi_renderer.render_tracks(tracks))
 
@@ -4768,6 +4787,17 @@ class OrionApp(App):
         if self._ppi_renderer is None:
             ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
             return
+        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
+            ppi.update(
+                self._ppi_renderer.render_tracks(
+                    [],
+                    view=self._radar_view,
+                    zoom=self._radar_zoom,
+                    pan_u_m=self._radar_pan_u_m,
+                    pan_v_m=self._radar_pan_v_m,
+                )
+            )
+            return
         ppi.update(self._ppi_renderer.render_tracks([]))
 
     def _seed_events_table(self) -> None:
@@ -6775,6 +6805,8 @@ class OrionApp(App):
                 "power.",
                 "xpdr.",
                 "ответчик.",
+                "radar.",
+                "радар.",
             )
         ):
             return True
@@ -6810,6 +6842,11 @@ class OrionApp(App):
             f"{I18N.bidi('Simulation', 'Симуляция')}: "
             f"simulation.start [speed]/симуляция.старт [скорость] | simulation.pause/симуляция.пауза | simulation.stop/симуляция.стоп | "
             f"simulation.reset/симуляция.сброс ({I18N.bidi('confirm', 'подтвердить')}: Y)",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Radar', 'Радар')}: "
+            f"radar.view <top|side|front> | radar.zoom <in|out|reset> | radar.pan reset",
             level="info",
         )
         self._console_log(
@@ -7666,6 +7703,90 @@ class OrionApp(App):
 
         if low in {"reload rules", "rules reload", "rules refresh", "перезагрузить правила", "правила перезагрузить"}:
             self._load_incident_rules(initial=False)
+            return
+
+        # radar.view <top|side|front>
+        if low.startswith(("radar.view", "радар.вид")):
+            parts = cmd.split()
+            token = parts[1].strip().lower() if len(parts) >= 2 else ""
+            view = {
+                "top": "top",
+                "xy": "top",
+                "верх": "top",
+                "side": "side",
+                "xz": "side",
+                "бок": "side",
+                "front": "front",
+                "yz": "front",
+                "фронт": "front",
+            }.get(token)
+            if view is None:
+                self._console_log(
+                    f"{I18N.bidi('Radar view', 'Вид радара')}: {self._radar_view} "
+                    f"({I18N.bidi('use', 'используйте')}: radar.view top|side|front)",
+                    level="info",
+                )
+                return
+            self._radar_view = view
+            self._console_log(f"{I18N.bidi('Radar view', 'Вид радара')}: {view}", level="info")
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                pass
+            return
+
+        # radar.zoom <in|out|reset>
+        if low.startswith(("radar.zoom", "радар.зум", "радар.масштаб")):
+            parts = cmd.split()
+            token = parts[1].strip().lower() if len(parts) >= 2 else ""
+            op = {
+                "in": "in",
+                "plus": "in",
+                "+": "in",
+                "внутрь": "in",
+                "out": "out",
+                "minus": "out",
+                "-": "out",
+                "наружу": "out",
+                "reset": "reset",
+                "0": "reset",
+                "сброс": "reset",
+            }.get(token)
+            if op is None:
+                self._console_log(
+                    f"{I18N.bidi('Radar zoom', 'Масштаб радара')}: x{round(float(self._radar_zoom), 2)} "
+                    f"({I18N.bidi('use', 'используйте')}: radar.zoom in|out|reset)",
+                    level="info",
+                )
+                return
+            if op == "reset":
+                self._radar_zoom = 1.0
+            elif op == "in":
+                self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) * 1.25))
+            else:
+                self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) / 1.25))
+            self._console_log(
+                f"{I18N.bidi('Radar zoom', 'Масштаб радара')}: x{round(float(self._radar_zoom), 2)}",
+                level="info",
+            )
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                pass
+            return
+
+        # radar.pan reset
+        if low in {"radar.pan reset", "радар.пан сброс", "радар.сдвиг сброс"}:
+            self._radar_pan_u_m = 0.0
+            self._radar_pan_v_m = 0.0
+            self._console_log(f"{I18N.bidi('Radar pan', 'Сдвиг радара')}: reset/сброс", level="info")
+            try:
+                if self.active_screen == "radar":
+                    self._render_radar_ppi()
+            except Exception:
+                pass
             return
 
         # screen/экран <name>
