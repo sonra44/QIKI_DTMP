@@ -70,6 +70,7 @@ async def test_orion_radar_empty_when_stopped_is_not_na() -> None:
     # columns: Track, Status, Range, Bearing, Vr, Q, Info (7)
     assert len(cells) == 7
     assert cells[1] == I18N.bidi("Stopped", "Остановлено")
+    assert cells[2:6] == ["—", "—", "—", "—"]
     assert "start" in cells[-1].lower() or "запуст" in cells[-1].lower()
 
 
@@ -118,5 +119,5 @@ async def test_orion_radar_empty_when_running_shows_no_tracks() -> None:
     cells = captured["seed"]
     assert len(cells) == 7
     assert cells[1] == I18N.bidi("No tracks", "Треков нет")
+    assert cells[2:6] == ["—", "—", "—", "—"]
     assert I18N.NO_TRACKS_YET in cells[-1]
-

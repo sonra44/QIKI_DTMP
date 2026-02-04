@@ -1808,6 +1808,7 @@ class OrionApp(App):
             self._selection_by_app.pop("radar", None)
             status = I18N.NA
             info = I18N.NO_TRACKS_YET
+            empty_num = "—"
             telemetry_env = self._snapshots.get_last("telemetry")
             if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
                 try:
@@ -1839,10 +1840,10 @@ class OrionApp(App):
                         "seed",
                         "—",
                         status,
-                        I18N.NA,
-                        I18N.NA,
-                        I18N.NA,
-                        I18N.NA,
+                        empty_num,
+                        empty_num,
+                        empty_num,
+                        empty_num,
                         info,
                     )
                 ],
@@ -4745,7 +4746,8 @@ class OrionApp(App):
             return
         self._selection_by_app.pop("radar", None)
         table.clear()
-        table.add_row("—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NO_TRACKS_YET)
+        empty = "—"
+        table.add_row(empty, empty, empty, empty, empty, empty, I18N.NO_TRACKS_YET)
 
     def _seed_radar_ppi(self) -> None:
         try:
