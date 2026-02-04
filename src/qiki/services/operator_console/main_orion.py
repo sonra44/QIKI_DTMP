@@ -1067,10 +1067,22 @@ class RadarPpi(_RadarMouseMixin, Static):
 
 if _RadarAutoImage is not None:
 
-    class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage):  # type: ignore[misc]
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
-            super().__init__(*args, **kwargs)
-            self._init_radar_mouse()
+    # textual-image>=0.8.5 uses a base Image class with a metaclass that requires a `Renderable=...`
+    # argument on *subclassing* (even when subclassing an already-concrete widget like AutoImage/TGPImage).
+    # Older versions don't require it, so we keep a compatibility fallback.
+    try:
+
+        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage, Renderable=_RadarAutoImage._Renderable):  # type: ignore[misc,attr-defined]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
+
+    except (TypeError, AttributeError):
+
+        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
 
 
 else:  # pragma: no cover
@@ -1079,10 +1091,19 @@ else:  # pragma: no cover
 
 if _RadarTGPImage is not None:
 
-    class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage):  # type: ignore[misc]
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
-            super().__init__(*args, **kwargs)
-            self._init_radar_mouse()
+    try:
+
+        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage, Renderable=_RadarTGPImage._Renderable):  # type: ignore[misc,attr-defined]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
+
+    except (TypeError, AttributeError):
+
+        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
 
 
 else:  # pragma: no cover
@@ -1091,10 +1112,19 @@ else:  # pragma: no cover
 
 if _RadarSixelImage is not None:
 
-    class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage):  # type: ignore[misc]
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
-            super().__init__(*args, **kwargs)
-            self._init_radar_mouse()
+    try:
+
+        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage, Renderable=_RadarSixelImage._Renderable):  # type: ignore[misc,attr-defined]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
+
+    except (TypeError, AttributeError):
+
+        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+                super().__init__(*args, **kwargs)
+                self._init_radar_mouse()
 
 
 else:  # pragma: no cover

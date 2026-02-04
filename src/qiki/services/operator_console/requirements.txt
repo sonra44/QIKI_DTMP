@@ -1,8 +1,11 @@
 # Core dependencies
 rich>=13.7.0
-textual>=0.47.1
+# Pin Textual to a known-good version for ORION TUI.
+# `textual>=...` caused unreviewed major upgrades which broke textual-image subclassing.
+textual==7.5.0
 Pillow>=10.0.0
-textual-image>=0.8.0
+# textual-image 0.8.5 requires `Renderable=...` on widget subclassing (handled in code).
+textual-image==0.8.5
 nats-py>=2.6.0
 grpcio>=1.60.0
 protobuf>=4.25.1
