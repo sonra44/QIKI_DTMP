@@ -1,3 +1,5 @@
+import pytest
+
 from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
 
 
@@ -56,3 +58,37 @@ def test_braille_ppi_front_view_projects_y_to_right() -> None:
     assert loc is not None
     x, _y = loc
     assert x > (12 // 2)
+
+
+def test_braille_ppi_rich_mode_returns_text_with_track_style() -> None:
+    pytest.importorskip("rich")
+
+    from rich.style import Style
+    from rich.text import Text
+
+    r = BraillePpiRenderer(width_cells=12, height_cells=7, max_range_m=500.0)
+    out = r.render_tracks(
+        [("T1", {"position": {"x": 0.0, "y": 0.0, "z": 0.0}, "iff": 1})],
+        rich=True,
+        draw_overlays=False,
+        selected_track_id=None,
+    )
+    assert isinstance(out, Text)
+    assert any(span.style == Style(color="#00ff66") for span in out.spans)
+
+
+def test_braille_ppi_rich_mode_selected_track_is_highlighted() -> None:
+    pytest.importorskip("rich")
+
+    from rich.style import Style
+    from rich.text import Text
+
+    r = BraillePpiRenderer(width_cells=12, height_cells=7, max_range_m=500.0)
+    out = r.render_tracks(
+        [("T1", {"position": {"x": 0.0, "y": 0.0, "z": 0.0}, "iff": 2})],
+        rich=True,
+        draw_overlays=False,
+        selected_track_id="T1",
+    )
+    assert isinstance(out, Text)
+    assert any(span.style == Style(color="#ffffff", bold=True) for span in out.spans)

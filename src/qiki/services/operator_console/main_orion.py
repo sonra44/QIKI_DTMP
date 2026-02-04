@@ -926,6 +926,16 @@ class OrionHeader(Container):
 class RadarPpi(Static):
     """Radar PPI widget with mouse interaction (terminal-first; no mocks)."""
 
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+        self._drag_start_x = 0
+        self._drag_start_y = 0
+        self._drag_last_x = 0
+        self._drag_last_y = 0
+        self._drag_start_pan_u_m = 0.0
+        self._drag_start_pan_v_m = 0.0
+
     def on_mouse_scroll_up(self, event) -> None:  # noqa: ANN001
         try:
             app = self.app
@@ -949,12 +959,64 @@ class RadarPpi(Static):
             button = getattr(event, "button", None)
             if int(button) != 1:
                 return
+            self._dragging = True
+            self._drag_start_x = int(getattr(event, "x", 0) or 0)
+            self._drag_start_y = int(getattr(event, "y", 0) or 0)
+            self._drag_last_x = self._drag_start_x
+            self._drag_last_y = self._drag_start_y
             app = self.app
-            if hasattr(app, "_handle_radar_ppi_click"):
-                app._handle_radar_ppi_click(int(getattr(event, "x", 0)), int(getattr(event, "y", 0)))
+            self._drag_start_pan_u_m = float(getattr(app, "_radar_pan_u_m", 0.0) or 0.0)
+            self._drag_start_pan_v_m = float(getattr(app, "_radar_pan_v_m", 0.0) or 0.0)
             event.stop()
         except Exception:
             return
+
+    def on_mouse_move(self, event) -> None:  # noqa: ANN001
+        try:
+            if not self._dragging:
+                return
+            buttons = getattr(event, "buttons", None)
+            if buttons is not None:
+                try:
+                    if int(buttons) == 0:
+                        self._dragging = False
+                        return
+                except Exception:
+                    pass
+            x = int(getattr(event, "x", 0) or 0)
+            y = int(getattr(event, "y", 0) or 0)
+            self._drag_last_x = x
+            self._drag_last_y = y
+            dx = x - self._drag_start_x
+            dy = y - self._drag_start_y
+            if dx == 0 and dy == 0:
+                return
+            app = self.app
+            if hasattr(app, "_apply_radar_pan_from_drag"):
+                app._apply_radar_pan_from_drag(
+                    start_pan_u_m=self._drag_start_pan_u_m,
+                    start_pan_v_m=self._drag_start_pan_v_m,
+                    dx_cells=dx,
+                    dy_cells=dy,
+                )
+                event.stop()
+        except Exception:
+            return
+
+    def on_mouse_up(self, event) -> None:  # noqa: ANN001
+        try:
+            button = getattr(event, "button", None)
+            if button is not None and int(button) != 1:
+                return
+            dx = self._drag_last_x - self._drag_start_x
+            dy = self._drag_last_y - self._drag_start_y
+            if abs(dx) + abs(dy) <= 1:
+                app = self.app
+                if hasattr(app, "_handle_radar_ppi_click"):
+                    app._handle_radar_ppi_click(self._drag_last_x, self._drag_last_y)
+            self._dragging = False
+        except Exception:
+            self._dragging = False
 
 
 class OrionSidebar(Static):
@@ -1246,7 +1308,9 @@ class OrionApp(App):
     #system-dashboard.dashboard-1x4 { grid-size: 1 4; grid-gutter: 1 1; }
     .mfd-panel { border: round #303030; padding: 0 1; color: #e0e0e0; background: #050505; }
     #radar-layout { height: 1fr; }
+    #radar-left { width: 47; }
     #radar-ppi { width: 47; height: 25; color: #00ff66; background: #050505; }
+    #radar-legend { width: 47; height: 5; border: round #303030; padding: 0 1; color: #e0e0e0; background: #050505; }
     #radar-table { width: 1fr; }
     #orion-inspector { dock: right; width: 44; border: round #303030; padding: 1; color: #e0e0e0; background: #050505; }
     #events-table { height: 1fr; }
@@ -2003,7 +2067,10 @@ class OrionApp(App):
         except Exception:
             return
 
-        tracks = [payload for _tid, payload, _seen in self._active_tracks_sorted()]
+        tracks_items = self._active_tracks_sorted()
+        selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        tracks = [(str(tid), payload) for tid, payload, _seen in tracks_items]
+        payloads = [payload for _tid, payload, _seen in tracks_items]
         if self._ppi_renderer is None:
             ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
             return
@@ -2015,10 +2082,67 @@ class OrionApp(App):
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
+                    rich=True,
+                    selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
                 )
             )
+            self._render_radar_legend()
             return
-        ppi.update(self._ppi_renderer.render_tracks(tracks))
+        ppi.update(self._ppi_renderer.render_tracks(payloads))
+        self._render_radar_legend()
+
+    def _render_radar_legend(self) -> None:
+        try:
+            legend = self.query_one("#radar-legend", Static)
+        except Exception:
+            return
+        try:
+            from rich.style import Style
+            from rich.text import Text
+        except Exception:
+            legend.update(I18N.NA)
+            return
+
+        t = Text()
+        t.append(I18N.bidi("Legend", "Легенда") + ": ")
+        t.append("FRND", Style(color="#00ff66"))
+        t.append(" ")
+        t.append("FOE", Style(color="#ff3355", bold=True))
+        t.append(" ")
+        t.append("UNK", Style(color="#ffb000", bold=True))
+        t.append(" ")
+        t.append(I18N.bidi("SEL", "ВЫБР"), Style(color="#ffffff", bold=True))
+        t.append("\n")
+        t.append(
+            f"{I18N.bidi('View', 'Вид')}: {self._radar_view}  "
+            f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}  "
+            f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f} m",
+            Style(color="#a0a0a0"),
+        )
+        legend.update(t)
+
+    def _apply_radar_pan_from_drag(
+        self,
+        *,
+        start_pan_u_m: float,
+        start_pan_v_m: float,
+        dx_cells: int,
+        dy_cells: int,
+    ) -> None:
+        effective_range_m = max(1.0, float(self._ppi_max_range_m) / max(0.1, float(self._radar_zoom)))
+        denom_u = max(1.0, float(self._ppi_width_cells) / 2.0 - 1.0)
+        denom_v = max(1.0, float(self._ppi_height_cells) / 2.0 - 1.0)
+        meters_per_cell_u = effective_range_m / denom_u
+        meters_per_cell_v = effective_range_m / denom_v
+
+        self._radar_pan_u_m = float(start_pan_u_m) - float(dx_cells) * meters_per_cell_u
+        self._radar_pan_v_m = float(start_pan_v_m) + float(dy_cells) * meters_per_cell_v
+
+        try:
+            if self.active_screen == "radar":
+                self._render_radar_ppi()
+        except Exception:
+            return
 
     def _apply_radar_zoom(self, op: str) -> None:
         low = (op or "").strip().lower()
@@ -4180,7 +4304,11 @@ class OrionApp(App):
 
                 with Container(id="screen-radar"):
                     with Horizontal(id="radar-layout"):
-                        yield RadarPpi(id="radar-ppi")
+                        with Vertical(id="radar-left"):
+                            yield RadarPpi(id="radar-ppi")
+                            legend = Static(id="radar-legend")
+                            legend.border_title = I18N.bidi("Legend", "Легенда")
+                            yield legend
                         radar_table: OrionDataTable = OrionDataTable(id="radar-table")
                         radar_table.add_columns(
                             I18N.bidi("Track", "Трек"),
@@ -4897,10 +5025,14 @@ class OrionApp(App):
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
+                    rich=True,
+                    selected_track_id=None,
                 )
             )
+            self._render_radar_legend()
             return
         ppi.update(self._ppi_renderer.render_tracks([]))
+        self._render_radar_legend()
 
     def _seed_events_table(self) -> None:
         try:

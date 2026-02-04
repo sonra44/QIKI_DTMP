@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import math
 from typing import Any
 
+from rich.style import Style
+from rich.text import Text
+
 
 def _dot_bit(local_x: int, local_y: int) -> int:
     """Return braille dot bit for a pixel in a 2x4 cell.
@@ -36,16 +39,54 @@ class BraillePpiRenderer:
     height_cells: int
     max_range_m: float
 
+    @staticmethod
+    def _iff_kind(payload: dict[str, Any]) -> str | None:
+        raw = payload.get("iff", payload.get("iff_class", payload.get("iffClass")))
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s.isdigit():
+                try:
+                    raw = int(s)
+                except Exception:
+                    raw = s
+            else:
+                raw = s.upper()
+        if isinstance(raw, int):
+            # qiki.shared.models.radar.FriendFoeEnum (aligned with proto):
+            # 0 UNSPECIFIED, 1 FRIEND, 2 FOE, 3 UNKNOWN
+            return {1: "friend", 2: "foe", 3: "unknown"}.get(raw)
+        if isinstance(raw, str) and raw:
+            if "FRIEND" in raw:
+                return "friend"
+            if "FOE" in raw:
+                return "foe"
+            if "UNKNOWN" in raw:
+                return "unknown"
+        return None
+
+    @classmethod
+    def _track_style(cls, payload: dict[str, Any]) -> Style:
+        kind = cls._iff_kind(payload)
+        if kind == "friend":
+            return Style(color="#00ff66")
+        if kind == "foe":
+            return Style(color="#ff3355", bold=True)
+        if kind == "unknown":
+            return Style(color="#ffb000", bold=True)
+        return Style(color="#00b7ff")
+
     def render_tracks(
         self,
-        tracks: list[dict[str, Any]],
+        tracks: list[dict[str, Any]] | list[tuple[str, dict[str, Any]]],
         *,
         view: str = "top",
         zoom: float = 1.0,
         pan_u_m: float = 0.0,
         pan_v_m: float = 0.0,
         draw_overlays: bool = True,
-    ) -> str:
+        rich: bool = False,
+        selected_track_id: str | None = None,
+    ) -> str | Text:
         width_cells = max(10, int(self.width_cells))
         height_cells = max(6, int(self.height_cells))
         max_range_m = max(1.0, float(self.max_range_m))
@@ -68,8 +109,14 @@ class BraillePpiRenderer:
 
         # Accumulate braille bitmasks per cell.
         cell_bits: list[list[int]] = [[0 for _ in range(width_cells)] for _ in range(height_cells)]
+        cell_styles: list[list[Style | None]] = [[None for _ in range(width_cells)] for _ in range(height_cells)]
+        cell_priorities: list[list[int]] = [[-1 for _ in range(width_cells)] for _ in range(height_cells)]
 
-        def plot_px(px: int, py: int) -> None:
+        selected_id = str(selected_track_id) if selected_track_id is not None else None
+        overlay_style = Style(color="#20663a", dim=True)
+        selected_style = Style(color="#ffffff", bold=True)
+
+        def plot_px(px: int, py: int, *, style: Style | None = None, priority: int = 0) -> None:
             if px < 0 or py < 0 or px >= width_px or py >= height_px:
                 return
             cell_x = px // 2
@@ -77,14 +124,17 @@ class BraillePpiRenderer:
             local_x = px % 2
             local_y = py % 4
             cell_bits[cell_y][cell_x] |= _dot_bit(local_x, local_y)
+            if style is not None and priority >= cell_priorities[cell_y][cell_x]:
+                cell_priorities[cell_y][cell_x] = int(priority)
+                cell_styles[cell_y][cell_x] = style
 
         if draw_overlays:
             # Baseline overlays (always visible; no-mocks).
             # - Center mark
             # - Range rings (25/50/75/100%)
-            plot_px(center_px_x, center_px_y)
+            plot_px(center_px_x, center_px_y, style=overlay_style, priority=10)
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                plot_px(center_px_x + dx, center_px_y + dy)
+                plot_px(center_px_x + dx, center_px_y + dy, style=overlay_style, priority=10)
 
             ring_radii = [0.25, 0.5, 0.75, 1.0]
             base_radius_px = max(2.0, min(width_px, height_px) / 2 - 1.0)
@@ -95,17 +145,24 @@ class BraillePpiRenderer:
                     ang = 2 * math.pi * i / steps
                     x = int(round(center_px_x + radius * math.sin(ang)))
                     y = int(round(center_px_y - radius * math.cos(ang)))
-                    plot_px(x, y)
+                    plot_px(x, y, style=overlay_style, priority=10)
 
-        for t in tracks:
-            if not isinstance(t, dict):
+        for item in tracks:
+            track_id: str | None = None
+            payload: dict[str, Any] | None = None
+            if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str) and isinstance(item[1], dict):
+                track_id = item[0]
+                payload = item[1]
+            elif isinstance(item, dict):
+                payload = item
+            if payload is None:
                 continue
 
             x_m: float | None = None
             y_m: float | None = None
             z_m: float | None = None
 
-            pos = t.get("position")
+            pos = payload.get("position")
             if isinstance(pos, dict):
                 try:
                     x_m = float(pos.get("x"))
@@ -117,8 +174,8 @@ class BraillePpiRenderer:
                     z_m = None
 
             if x_m is None or y_m is None:
-                r = t.get("range_m")
-                b = t.get("bearing_deg")
+                r = payload.get("range_m")
+                b = payload.get("bearing_deg")
                 try:
                     r_f = float(r)
                     b_f = float(b)
@@ -153,7 +210,13 @@ class BraillePpiRenderer:
 
             px = int(round(center_px_x + nx * (width_px / 2 - 1)))
             py = int(round(center_px_y - ny * (height_px / 2 - 1)))
-            plot_px(px, py)
+            if selected_id is not None and track_id is not None and str(track_id) == selected_id:
+                style = selected_style
+                priority = 100
+            else:
+                style = self._track_style(payload)
+                priority = 50
+            plot_px(px, py, style=style, priority=priority)
 
         # Render to lines.
         lines: list[str] = []
@@ -162,7 +225,24 @@ class BraillePpiRenderer:
             for bits in row:
                 chars.append(chr(0x2800 + bits) if bits else " ")
             lines.append("".join(chars))
-        return "\n".join(lines)
+        out = "\n".join(lines)
+        if not rich:
+            return out
+
+        text = Text(out)
+        stride = width_cells + 1
+        for y in range(height_cells):
+            base = y * stride
+            for x in range(width_cells):
+                style = cell_styles[y][x]
+                if style is None:
+                    continue
+                ch = lines[y][x]
+                if ch == " ":
+                    continue
+                i = base + x
+                text.stylize(style, i, i + 1)
+        return text
 
 
 def pick_nearest_track_id(
