@@ -80,3 +80,14 @@ async def test_radar_iso_rotate_command_updates_yaw_pitch() -> None:
     await app._run_command("radar.iso rotate 10 -5")
     assert app._radar_iso_yaw_deg == 55.0
     assert app._radar_iso_pitch_deg == 30.0
+
+
+@pytest.mark.asyncio
+async def test_mouse_on_off_commands_do_not_crash() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    await app._run_command("mouse on")
+    await app._run_command("mouse off")

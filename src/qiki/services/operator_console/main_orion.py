@@ -103,6 +103,26 @@ def _textual_image_best_backend_kind() -> str | None:
     return None
 
 
+def _emit_xterm_mouse_tracking(*, enabled: bool) -> None:
+    """Best-effort: request mouse reporting from the operator terminal.
+
+    Needed when ORION is started detached and the operator attaches later: the initial
+    mouse-enable sequences won't reach the real terminal.
+    """
+
+    try:
+        import sys
+
+        if enabled:
+            seq = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+        else:
+            seq = "\x1b[?1000l\x1b[?1002l\x1b[?1006l"
+        sys.stdout.write(seq)
+        sys.stdout.flush()
+    except Exception:
+        return
+
+
 @dataclass(frozen=True, slots=True)
 class OrionAppSpec:
     screen: str
@@ -7307,6 +7327,10 @@ class OrionApp(App):
                 "ответчик.",
                 "radar.",
                 "радар.",
+                "mouse ",
+                "mouse.",
+                "мышь ",
+                "мышь.",
             )
         ):
             return True
@@ -7348,6 +7372,11 @@ class OrionApp(App):
             f"{I18N.bidi('Radar', 'Радар')}: "
             f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset | "
             f"radar.iso rotate <dyaw_deg> <dpitch_deg>",
+            level="info",
+        )
+        self._console_log(
+            f"{I18N.bidi('Mouse', 'Мышь')}: "
+            f"mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
             level="info",
         )
         self._console_log(
@@ -8204,6 +8233,32 @@ class OrionApp(App):
 
         if low in {"reload rules", "rules reload", "rules refresh", "перезагрузить правила", "правила перезагрузить"}:
             self._load_incident_rules(initial=False)
+            return
+
+        # mouse <on|off> / мышь <вкл|выкл> (xterm mouse reporting)
+        if low.startswith(("mouse", "мышь")):
+            parts = low.split()
+            raw_op = parts[1] if len(parts) >= 2 else ""
+            op = "".join(ch for ch in raw_op if ch.isalnum()).lower()
+            if op in {"on", "enable", "enabled", "вкл", "включить", "включена"}:
+                _emit_xterm_mouse_tracking(enabled=True)
+                self._console_log(
+                    f"{I18N.bidi('Mouse tracking', 'Отчёты мыши')}: {I18N.bidi('enabled', 'включено')} "
+                    f"({I18N.bidi('selection', 'выделение')}: Shift+drag)",
+                    level="info",
+                )
+                return
+            if op in {"off", "disable", "disabled", "выкл", "отключить", "отключена"}:
+                _emit_xterm_mouse_tracking(enabled=False)
+                self._console_log(
+                    f"{I18N.bidi('Mouse tracking', 'Отчёты мыши')}: {I18N.bidi('disabled', 'выключено')}",
+                    level="info",
+                )
+                return
+            self._console_log(
+                f"{I18N.bidi('Mouse', 'Мышь')}: mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
+                level="info",
+            )
             return
 
         # radar.view <top|side|front|iso>
