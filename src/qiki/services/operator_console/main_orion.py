@@ -989,6 +989,24 @@ class _RadarMouseMixin:
         self._drag_start_pan_v_m = 0.0
         self._drag_start_iso_yaw_deg = 45.0
         self._drag_start_iso_pitch_deg = 35.0
+        self._mouse_debug_last_ts = 0.0
+
+    def _mouse_debug(self, msg: str) -> None:
+        try:
+            app = self.app
+            enabled = bool(getattr(app, "_mouse_debug", False))
+            if not enabled:
+                return
+            now = time.time()
+            # Throttle move spam; down/up always log.
+            if msg.startswith("move") and now - float(self._mouse_debug_last_ts) < 0.25:
+                return
+            if msg.startswith("move"):
+                self._mouse_debug_last_ts = now
+            if hasattr(app, "_console_log"):
+                app._console_log(f"mouse-debug/radar: {msg}", level="info")
+        except Exception:
+            return
 
     def on_mouse_scroll_up(self, event) -> None:  # noqa: ANN001
         try:
@@ -1013,6 +1031,10 @@ class _RadarMouseMixin:
             button = getattr(event, "button", None)
             if int(button) != 1:
                 return
+            try:
+                self.app.capture_mouse(self)  # keep delivering move events while dragging
+            except Exception:
+                pass
             self._dragging = True
             self._drag_start_x = int(getattr(event, "x", 0) or 0)
             self._drag_start_y = int(getattr(event, "y", 0) or 0)
@@ -1023,6 +1045,13 @@ class _RadarMouseMixin:
             self._drag_start_pan_v_m = float(getattr(app, "_radar_pan_v_m", 0.0) or 0.0)
             self._drag_start_iso_yaw_deg = float(getattr(app, "_radar_iso_yaw_deg", 45.0) or 45.0)
             self._drag_start_iso_pitch_deg = float(getattr(app, "_radar_iso_pitch_deg", 35.0) or 35.0)
+            self._mouse_debug(
+                f"down x={self._drag_start_x} y={self._drag_start_y} "
+                f"view={getattr(app, '_radar_view', '?')} "
+                f"zoom={getattr(app, '_radar_zoom', '?')} "
+                f"pan={getattr(app, '_radar_pan_u_m', '?')},{getattr(app, '_radar_pan_v_m', '?')} "
+                f"iso={getattr(app, '_radar_iso_yaw_deg', '?')}/{getattr(app, '_radar_iso_pitch_deg', '?')}"
+            )
             event.stop()
         except Exception:
             return
@@ -1049,6 +1078,7 @@ class _RadarMouseMixin:
                 return
             app = self.app
             if hasattr(app, "_apply_radar_drag_from_mouse"):
+                self._mouse_debug(f"move x={x} y={y} dx={dx} dy={dy}")
                 app._apply_radar_drag_from_mouse(
                     start_pan_u_m=self._drag_start_pan_u_m,
                     start_pan_v_m=self._drag_start_pan_v_m,
@@ -1073,8 +1103,17 @@ class _RadarMouseMixin:
                 if hasattr(app, "_handle_radar_ppi_click"):
                     app._handle_radar_ppi_click(self._drag_last_x, self._drag_last_y)
             self._dragging = False
+            try:
+                self.app.capture_mouse(None)
+            except Exception:
+                pass
+            self._mouse_debug(f"up x={self._drag_last_x} y={self._drag_last_y} dx={dx} dy={dy}")
         except Exception:
             self._dragging = False
+            try:
+                self.app.capture_mouse(None)
+            except Exception:
+                pass
 
 
 class RadarPpi(_RadarMouseMixin, Static):
@@ -8240,6 +8279,15 @@ class OrionApp(App):
             parts = low.split()
             raw_op = parts[1] if len(parts) >= 2 else ""
             op = "".join(ch for ch in raw_op if ch.isalnum()).lower()
+            if op == "debug" and len(parts) >= 3:
+                flag = "".join(ch for ch in parts[2] if ch.isalnum()).lower()
+                self._mouse_debug = flag in {"on", "enable", "enabled", "1", "true", "да", "вкл", "включить", "включена"}
+                self._console_log(
+                    f"{I18N.bidi('Mouse debug', 'Отладка мыши')}: "
+                    f"{I18N.bidi('on', 'вкл') if self._mouse_debug else I18N.bidi('off', 'выкл')}",
+                    level="info",
+                )
+                return
             if op in {"on", "enable", "enabled", "вкл", "включить", "включена"}:
                 _emit_xterm_mouse_tracking(enabled=True)
                 self._console_log(
@@ -8256,7 +8304,8 @@ class OrionApp(App):
                 )
                 return
             self._console_log(
-                f"{I18N.bidi('Mouse', 'Мышь')}: mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
+                f"{I18N.bidi('Mouse', 'Мышь')}: mouse on/off | mouse debug on/off | "
+                f"{I18N.bidi('selection', 'выделение')}: Shift+drag",
                 level="info",
             )
             return

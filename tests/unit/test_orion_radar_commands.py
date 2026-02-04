@@ -91,3 +91,16 @@ async def test_mouse_on_off_commands_do_not_crash() -> None:
     app = OrionApp()
     await app._run_command("mouse on")
     await app._run_command("mouse off")
+
+
+@pytest.mark.asyncio
+async def test_mouse_debug_on_off_commands_do_not_crash() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    await app._run_command("mouse debug on")
+    assert app._mouse_debug is True
+    await app._run_command("mouse debug off")
+    assert app._mouse_debug is False
