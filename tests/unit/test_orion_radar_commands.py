@@ -67,6 +67,27 @@ def test_radar_select_actions_cycle_tracks() -> None:
 
 
 @pytest.mark.asyncio
+async def test_radar_overlay_command_toggles_vectors_and_labels() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app.active_screen = "radar"
+    assert app._radar_overlay_vectors is True
+    assert app._radar_overlay_labels is False
+
+    await app._run_command("radar.overlay vectors off")
+    assert app._radar_overlay_vectors is False
+
+    await app._run_command("radar.overlay labels on")
+    assert app._radar_overlay_labels is True
+
+    await app._run_command("radar.overlay labels toggle")
+    assert app._radar_overlay_labels is False
+
+
+@pytest.mark.asyncio
 async def test_radar_bitmap_render_error_falls_back_to_unicode(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
 
@@ -179,6 +200,44 @@ async def test_radar_select_command_cycles_tracks() -> None:
 
     await app._run_command("radar.select prev")
     assert app._selection_by_app["radar"].key == "A"
+
+
+def test_unicode_ppi_vectors_and_labels_are_rendered() -> None:
+    from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
+
+    r = BraillePpiRenderer(width_cells=24, height_cells=10, max_range_m=1000.0)
+    payload = {
+        "position": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "velocity": {"x": 10.0, "y": 0.0, "z": 0.0},
+        "iff": "FRIEND",
+    }
+
+    base = r.render_tracks([("ABCD", payload)], view="top", zoom=3.0, draw_overlays=False, rich=False)
+    with_vec = r.render_tracks(
+        [("ABCD", payload)],
+        view="top",
+        zoom=3.0,
+        draw_overlays=False,
+        draw_vectors=True,
+        rich=False,
+    )
+    with_lbl = r.render_tracks(
+        [("ABCD", payload)],
+        view="top",
+        zoom=3.0,
+        draw_overlays=False,
+        draw_labels=True,
+        rich=False,
+    )
+
+    def count_marks(s: str) -> int:
+        return sum(1 for ch in s if ch not in {" ", "\n"})
+
+    assert isinstance(base, str)
+    assert isinstance(with_vec, str)
+    assert isinstance(with_lbl, str)
+    assert count_marks(with_vec) > count_marks(base)
+    assert "ABCD" in with_lbl
 
 
 @pytest.mark.asyncio

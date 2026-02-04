@@ -1571,6 +1571,8 @@ class OrionApp(App):
         Binding("4", "radar_view_iso", "Radar view iso", show=False),
         Binding("n", "radar_select_next", "Radar select next", show=False),
         Binding("p", "radar_select_prev", "Radar select prev", show=False),
+        Binding("k", "radar_toggle_vectors", "Radar vectors toggle", show=False),
+        Binding("l", "radar_toggle_labels", "Radar labels toggle", show=False),
         Binding("ctrl+up", "output_grow", I18N.bidi("Output +", "Вывод +"), show=False),
         Binding("ctrl+down", "output_shrink", I18N.bidi("Output -", "Вывод -"), show=False),
         Binding("ctrl+0", "output_reset", I18N.bidi("Output reset", "Вывод сброс"), show=False),
@@ -1738,6 +1740,8 @@ class OrionApp(App):
         self._radar_pan_v_m: float = 0.0
         self._radar_iso_yaw_deg: float = 45.0
         self._radar_iso_pitch_deg: float = 35.0
+        self._radar_overlay_vectors: bool = True
+        self._radar_overlay_labels: bool = False
 
         radar_renderer = (os.getenv("RADAR_RENDERER", "unicode") or "unicode").strip().lower()
         if radar_renderer not in {"unicode", "auto", "kitty", "sixel"}:
@@ -1804,8 +1808,21 @@ class OrionApp(App):
         self._output_height_rows = int(self._output_height_default_rows)
         self._apply_output_layout()
 
-    def action_radar_view_top(self) -> None:
+    def _radar_hotkeys_allowed(self) -> bool:
         if self.active_screen != "radar":
+            return False
+        try:
+            from textual.widgets import Input as _Input
+
+            focused = getattr(self, "focused", None)
+            if isinstance(focused, _Input):
+                return False
+        except Exception:
+            pass
+        return True
+
+    def action_radar_view_top(self) -> None:
+        if not self._radar_hotkeys_allowed():
             return
         self._radar_view = "top"
         self._radar_pan_u_m = 0.0
@@ -1813,7 +1830,7 @@ class OrionApp(App):
         self._render_radar_ppi()
 
     def action_radar_view_side(self) -> None:
-        if self.active_screen != "radar":
+        if not self._radar_hotkeys_allowed():
             return
         self._radar_view = "side"
         self._radar_pan_u_m = 0.0
@@ -1821,7 +1838,7 @@ class OrionApp(App):
         self._render_radar_ppi()
 
     def action_radar_view_front(self) -> None:
-        if self.active_screen != "radar":
+        if not self._radar_hotkeys_allowed():
             return
         self._radar_view = "front"
         self._radar_pan_u_m = 0.0
@@ -1829,7 +1846,7 @@ class OrionApp(App):
         self._render_radar_ppi()
 
     def action_radar_view_iso(self) -> None:
-        if self.active_screen != "radar":
+        if not self._radar_hotkeys_allowed():
             return
         self._radar_view = "iso"
         self._radar_pan_u_m = 0.0
@@ -1837,10 +1854,26 @@ class OrionApp(App):
         self._render_radar_ppi()
 
     def action_radar_select_next(self) -> None:
+        if not self._radar_hotkeys_allowed():
+            return
         self._radar_select_relative(delta=1)
 
     def action_radar_select_prev(self) -> None:
+        if not self._radar_hotkeys_allowed():
+            return
         self._radar_select_relative(delta=-1)
+
+    def action_radar_toggle_vectors(self) -> None:
+        if not self._radar_hotkeys_allowed():
+            return
+        self._radar_overlay_vectors = not bool(self._radar_overlay_vectors)
+        self._refresh_radar()
+
+    def action_radar_toggle_labels(self) -> None:
+        if not self._radar_hotkeys_allowed():
+            return
+        self._radar_overlay_labels = not bool(self._radar_overlay_labels)
+        self._refresh_radar()
 
     def _radar_select_relative(self, *, delta: int) -> None:
         if self.active_screen != "radar":
@@ -2504,6 +2537,8 @@ class OrionApp(App):
                     iso_pitch_deg=self._radar_iso_pitch_deg,
                     selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
                     draw_overlays=True,
+                    draw_vectors=bool(self._radar_overlay_vectors),
+                    draw_labels=bool(self._radar_overlay_labels),
                 )
                 ppi.image = img  # type: ignore[attr-defined]
             except Exception:
@@ -2524,6 +2559,8 @@ class OrionApp(App):
                         selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
                         iso_yaw_deg=self._radar_iso_yaw_deg,
                         iso_pitch_deg=self._radar_iso_pitch_deg,
+                        draw_vectors=bool(self._radar_overlay_vectors),
+                        draw_labels=bool(self._radar_overlay_labels),
                     )
                 )
             except Exception:
@@ -2639,6 +2676,13 @@ class OrionApp(App):
         t.append("\n")
 
         third_line = f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f}m"
+        overlays = []
+        if bool(getattr(self, "_radar_overlay_vectors", False)):
+            overlays.append("VEC")
+        if bool(getattr(self, "_radar_overlay_labels", False)):
+            overlays.append("LBL")
+        if overlays:
+            third_line += f" {I18N.bidi('Overlays', 'Оверлеи')}: {','.join(overlays)}"
         if self._radar_view == "iso":
             third_line += f" ISO:{self._radar_iso_yaw_deg:.0f}/{self._radar_iso_pitch_deg:.0f}°"
         else:
@@ -7701,7 +7745,7 @@ class OrionApp(App):
             f"radar.view <top|side|front|iso> | radar.zoom <in|out|reset> | radar.pan reset | radar.iso reset | "
             f"radar.iso rotate <dyaw_deg> <dpitch_deg> | "
             f"{I18N.bidi('hotkeys', 'горячие')}: "
-            f"1 top · 2 side · 3 front · 4 iso · N next · P prev (Radar screen)",
+            f"1 top · 2 side · 3 front · 4 iso · N next · P prev · K vectors · L labels (Radar screen)",
             level="info",
         )
         self._console_log(
@@ -8812,6 +8856,56 @@ class OrionApp(App):
                 )
                 return
             self._radar_select_relative(delta=1 if op == "next" else -1)
+            return
+
+        # radar.overlay <vectors|labels> <on|off|toggle>
+        if low.startswith(("radar.overlay", "радар.оверлей", "радар.оверлеи")):
+            parts = cmd.split()
+            if len(parts) < 3:
+                self._console_log(
+                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: "
+                    f"radar.overlay vectors|labels on|off|toggle",
+                    level="info",
+                )
+                return
+            kind = parts[1].strip().lower()
+            op = parts[2].strip().lower()
+            enabled: bool | None
+            if op in {"on", "1", "true", "yes", "вкл", "включить"}:
+                enabled = True
+            elif op in {"off", "0", "false", "no", "выкл", "отключить"}:
+                enabled = False
+            elif op in {"toggle", "t", "перекл", "переключить"}:
+                enabled = None
+            else:
+                self._console_log(
+                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: "
+                    f"radar.overlay vectors|labels on|off|toggle",
+                    level="info",
+                )
+                return
+
+            if kind in {"vectors", "vec", "векторы", "вектор"}:
+                self._radar_overlay_vectors = (not bool(self._radar_overlay_vectors)) if enabled is None else bool(enabled)
+                self._console_log(
+                    f"{I18N.bidi('Vectors enabled', 'Векторы включены')}: {I18N.yes_no(bool(self._radar_overlay_vectors))}",
+                    level="info",
+                )
+                self._refresh_radar()
+                return
+            if kind in {"labels", "lbl", "метки", "подписи", "лейблы"}:
+                self._radar_overlay_labels = (not bool(self._radar_overlay_labels)) if enabled is None else bool(enabled)
+                self._console_log(
+                    f"{I18N.bidi('Labels enabled', 'Подписи включены')}: {I18N.yes_no(bool(self._radar_overlay_labels))}",
+                    level="info",
+                )
+                self._refresh_radar()
+                return
+
+            self._console_log(
+                f"{I18N.bidi('Unknown overlay', 'Неизвестный оверлей')}: {kind or I18N.NA}",
+                level="info",
+            )
             return
 
         # screen/экран <name>

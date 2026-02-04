@@ -77,6 +77,30 @@ class BraillePpiRenderer:
             return Style(color="#ffb000", bold=True)
         return Style(color="#00b7ff")
 
+    @staticmethod
+    def _velocity_xyz_mps(payload: dict[str, Any]) -> tuple[float, float, float] | None:
+        vel = payload.get("velocity")
+        if isinstance(vel, dict):
+            try:
+                return (float(vel.get("x")), float(vel.get("y")), float(vel.get("z")))
+            except Exception:
+                pass
+        for keys in (
+            ("vx_mps", "vy_mps", "vz_mps"),
+            ("vx", "vy", "vz"),
+            ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
+        ):
+            try:
+                vx = payload.get(keys[0])
+                vy = payload.get(keys[1])
+                vz = payload.get(keys[2])
+                if vx is None or vy is None:
+                    continue
+                return (float(vx), float(vy), float(vz or 0.0))
+            except Exception:
+                continue
+        return None
+
     def render_tracks(
         self,
         tracks: list[dict[str, Any]] | list[tuple[str, dict[str, Any]]],
@@ -86,6 +110,8 @@ class BraillePpiRenderer:
         pan_u_m: float = 0.0,
         pan_v_m: float = 0.0,
         draw_overlays: bool = True,
+        draw_vectors: bool = False,
+        draw_labels: bool = False,
         rich: bool = False,
         selected_track_id: str | None = None,
         iso_yaw_deg: float = 45.0,
@@ -115,10 +141,12 @@ class BraillePpiRenderer:
         cell_bits: list[list[int]] = [[0 for _ in range(width_cells)] for _ in range(height_cells)]
         cell_styles: list[list[Style | None]] = [[None for _ in range(width_cells)] for _ in range(height_cells)]
         cell_priorities: list[list[int]] = [[-1 for _ in range(width_cells)] for _ in range(height_cells)]
+        cell_overrides: list[list[str | None]] = [[None for _ in range(width_cells)] for _ in range(height_cells)]
 
         selected_id = str(selected_track_id) if selected_track_id is not None else None
         overlay_style = Style(color="#20663a", dim=True)
         selected_style = Style(color="#ffffff", bold=True)
+        vector_style = Style(color="#a0a0a0", dim=True)
 
         def plot_px(px: int, py: int, *, style: Style | None = None, priority: int = 0) -> None:
             if px < 0 or py < 0 or px >= width_px or py >= height_px:
@@ -131,6 +159,15 @@ class BraillePpiRenderer:
             if style is not None and priority >= cell_priorities[cell_y][cell_x]:
                 cell_priorities[cell_y][cell_x] = int(priority)
                 cell_styles[cell_y][cell_x] = style
+
+        def override_cell(cell_x: int, cell_y: int, ch: str, *, style: Style | None = None, priority: int = 0) -> None:
+            if cell_x < 0 or cell_y < 0 or cell_x >= width_cells or cell_y >= height_cells:
+                return
+            if priority >= cell_priorities[cell_y][cell_x]:
+                cell_priorities[cell_y][cell_x] = int(priority)
+                cell_overrides[cell_y][cell_x] = (ch or " ")[:1]
+                if style is not None:
+                    cell_styles[cell_y][cell_x] = style
 
         if draw_overlays:
             # Baseline overlays (always visible; no-mocks).
@@ -150,6 +187,10 @@ class BraillePpiRenderer:
                     x = int(round(center_px_x + radius * math.sin(ang)))
                     y = int(round(center_px_y - radius * math.cos(ang)))
                     plot_px(x, y, style=overlay_style, priority=10)
+
+        labels_enabled = bool(draw_labels) and float(zoom_f) >= 2.0
+        vectors_enabled = bool(draw_vectors)
+        vector_seconds = 8.0
 
         for item in tracks:
             track_id: str | None = None
@@ -224,12 +265,53 @@ class BraillePpiRenderer:
                 priority = 50
             plot_px(px, py, style=style, priority=priority)
 
+            if vectors_enabled:
+                vel = self._velocity_xyz_mps(payload)
+                if vel is not None:
+                    vx, vy, vz = vel
+                    du_mps, dv_mps = project_xyz_to_uv_m(
+                        x_m=float(vx),
+                        y_m=float(vy),
+                        z_m=float(vz),
+                        view=view_norm,
+                        iso_yaw_deg=float(iso_yaw_deg),
+                        iso_pitch_deg=float(iso_pitch_deg),
+                    )
+                    u2_m = float(u_m) + float(du_mps) * float(vector_seconds)
+                    v2_m = float(v_m) + float(dv_mps) * float(vector_seconds)
+                    nx2 = max(-1.0, min(1.0, u2_m / effective_range_m))
+                    ny2 = max(-1.0, min(1.0, v2_m / effective_range_m))
+                    px2 = int(round(center_px_x + nx2 * (width_px / 2 - 1)))
+                    py2 = int(round(center_px_y - ny2 * (height_px / 2 - 1)))
+                    dx = px2 - px
+                    dy = py2 - py
+                    steps = max(0, min(250, int(max(abs(dx), abs(dy)))))
+                    if steps >= 2:
+                        for i in range(1, steps + 1):
+                            x = int(round(px + dx * i / steps))
+                            y = int(round(py + dy * i / steps))
+                            plot_px(x, y, style=vector_style, priority=20)
+
+            if labels_enabled and track_id is not None:
+                label = str(track_id).strip()
+                if label:
+                    label = label[-4:]
+                    cell_x = px // 2
+                    cell_y = py // 4
+                    start_x = cell_x + 1
+                    for i, ch in enumerate(label):
+                        override_cell(start_x + i, cell_y, ch, style=style, priority=priority)
+
         # Render to lines.
         lines: list[str] = []
-        for row in cell_bits:
-            chars = []
-            for bits in row:
-                chars.append(chr(0x2800 + bits) if bits else " ")
+        for y, row in enumerate(cell_bits):
+            chars: list[str] = []
+            for x, bits in enumerate(row):
+                override = cell_overrides[y][x]
+                if override is not None:
+                    chars.append(override)
+                else:
+                    chars.append(chr(0x2800 + bits) if bits else " ")
             lines.append("".join(chars))
         out = "\n".join(lines)
         if not rich:

@@ -56,6 +56,8 @@ def render_bitmap_ppi(
     iso_pitch_deg: float = 35.0,
     selected_track_id: str | None = None,
     draw_overlays: bool = True,
+    draw_vectors: bool = False,
+    draw_labels: bool = False,
 ):
     """Render radar PPI to a PIL Image (RGBA).
 
@@ -158,5 +160,46 @@ def render_bitmap_ppi(
             color = _track_rgba(payload)
             r0 = 2
         draw.ellipse((px - r0, py - r0, px + r0, py + r0), fill=color, outline=None)
+
+        if draw_vectors:
+            vel = payload.get("velocity")
+            vx = vy = vz = None
+            if isinstance(vel, dict):
+                vx = vel.get("x")
+                vy = vel.get("y")
+                vz = vel.get("z")
+            else:
+                vx = payload.get("vx_mps", payload.get("vx"))
+                vy = payload.get("vy_mps", payload.get("vy"))
+                vz = payload.get("vz_mps", payload.get("vz"))
+            try:
+                if vx is not None and vy is not None:
+                    du_mps, dv_mps = project_xyz_to_uv_m(
+                        x_m=float(vx),
+                        y_m=float(vy),
+                        z_m=float(vz or 0.0),
+                        view=view_norm,
+                        iso_yaw_deg=float(iso_yaw_deg),
+                        iso_pitch_deg=float(iso_pitch_deg),
+                    )
+                    u2_m = float(u_m) + float(du_mps) * 8.0
+                    v2_m = float(v_m) + float(dv_mps) * 8.0
+                    nx2 = max(-1.0, min(1.0, u2_m / effective_range_m))
+                    ny2 = max(-1.0, min(1.0, v2_m / effective_range_m))
+                    px2 = int(round(cx + nx2 * (width_px / 2 - 2)))
+                    py2 = int(round(cy - ny2 * (height_px / 2 - 2)))
+                    vec = (color[0], color[1], color[2], 180)
+                    draw.line((px, py, px2, py2), fill=vec, width=1)
+            except Exception:
+                pass
+
+        if draw_labels and zoom_f >= 2.0:
+            try:
+                label = str(track_id).strip()
+                if label:
+                    label = label[-4:]
+                    draw.text((px + 6, py - 8), label, fill=color)
+            except Exception:
+                pass
 
     return img
