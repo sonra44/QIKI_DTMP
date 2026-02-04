@@ -69,6 +69,20 @@ try:
 except Exception:
     pick_nearest_track_id = None  # type: ignore[assignment]
 
+try:
+    from qiki.services.operator_console.radar.bitmap_ppi import render_bitmap_ppi
+except Exception:
+    render_bitmap_ppi = None  # type: ignore[assignment]
+
+try:
+    from textual_image.widget import AutoImage as _RadarAutoImage
+    from textual_image.widget import SixelImage as _RadarSixelImage
+    from textual_image.widget import TGPImage as _RadarTGPImage
+except Exception:
+    _RadarAutoImage = None  # type: ignore[assignment]
+    _RadarSixelImage = None  # type: ignore[assignment]
+    _RadarTGPImage = None  # type: ignore[assignment]
+
 
 @dataclass(frozen=True, slots=True)
 class OrionAppSpec:
@@ -923,11 +937,10 @@ class OrionHeader(Container):
         self._refresh_cells()
 
 
-class RadarPpi(Static):
-    """Radar PPI widget with mouse interaction (terminal-first; no mocks)."""
+class _RadarMouseMixin:
+    """Shared mouse interaction for radar widgets (Unicode/bitmap)."""
 
-    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
-        super().__init__(*args, **kwargs)
+    def _init_radar_mouse(self) -> None:
         self._dragging = False
         self._drag_start_x = 0
         self._drag_start_y = 0
@@ -1017,6 +1030,50 @@ class RadarPpi(Static):
             self._dragging = False
         except Exception:
             self._dragging = False
+
+
+class RadarPpi(_RadarMouseMixin, Static):
+    """Radar PPI widget with mouse interaction (terminal-first; no mocks)."""
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+        super().__init__(*args, **kwargs)
+        self._init_radar_mouse()
+
+
+if _RadarAutoImage is not None:
+
+    class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self._init_radar_mouse()
+
+
+else:  # pragma: no cover
+    RadarBitmapAuto = None  # type: ignore[assignment]
+
+
+if _RadarTGPImage is not None:
+
+    class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self._init_radar_mouse()
+
+
+else:  # pragma: no cover
+    RadarBitmapTGP = None  # type: ignore[assignment]
+
+
+if _RadarSixelImage is not None:
+
+    class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self._init_radar_mouse()
+
+
+else:  # pragma: no cover
+    RadarBitmapSixel = None  # type: ignore[assignment]
 
 
 class OrionSidebar(Static):
@@ -1496,6 +1553,22 @@ class OrionApp(App):
         self._radar_zoom: float = 1.0
         self._radar_pan_u_m: float = 0.0
         self._radar_pan_v_m: float = 0.0
+
+        radar_renderer = (os.getenv("RADAR_RENDERER", "unicode") or "unicode").strip().lower()
+        if radar_renderer not in {"unicode", "auto", "kitty", "sixel"}:
+            radar_renderer = "unicode"
+        self._radar_renderer_requested: str = radar_renderer
+        self._radar_renderer_effective: str = radar_renderer
+
+        if self._radar_renderer_effective != "unicode":
+            if render_bitmap_ppi is None:
+                self._radar_renderer_effective = "unicode"
+            elif self._radar_renderer_effective == "kitty" and RadarBitmapTGP is None:
+                self._radar_renderer_effective = "unicode"
+            elif self._radar_renderer_effective == "sixel" and RadarBitmapSixel is None:
+                self._radar_renderer_effective = "unicode"
+            elif self._radar_renderer_effective == "auto" and RadarBitmapAuto is None:
+                self._radar_renderer_effective = "unicode"
 
         if BraillePpiRenderer is not None:
             self._ppi_renderer = BraillePpiRenderer(
@@ -2063,7 +2136,7 @@ class OrionApp(App):
 
     def _render_radar_ppi(self) -> None:
         try:
-            ppi = self.query_one("#radar-ppi", Static)
+            ppi = self.query_one("#radar-ppi")
         except Exception:
             return
 
@@ -2072,23 +2145,61 @@ class OrionApp(App):
         tracks = [(str(tid), payload) for tid, payload, _seen in tracks_items]
         payloads = [payload for _tid, payload, _seen in tracks_items]
         if self._ppi_renderer is None:
-            ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+            try:
+                ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+            except Exception:
+                pass
             return
-        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
-            ppi.update(
-                self._ppi_renderer.render_tracks(
+        if self._radar_renderer_effective != "unicode":
+            if render_bitmap_ppi is None or not hasattr(ppi, "image"):
+                try:
+                    ppi.update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
+                except Exception:
+                    pass
+                self._render_radar_legend()
+                return
+            try:
+                img = render_bitmap_ppi(
                     tracks,
+                    width_px=int(self._ppi_width_cells) * 12,
+                    height_px=int(self._ppi_height_cells) * 24,
+                    max_range_m=float(self._ppi_max_range_m),
                     view=self._radar_view,
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
-                    rich=True,
                     selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
+                    draw_overlays=True,
                 )
-            )
+                ppi.image = img  # type: ignore[attr-defined]
+            except Exception:
+                try:
+                    ppi.update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
+                except Exception:
+                    pass
             self._render_radar_legend()
             return
-        ppi.update(self._ppi_renderer.render_tracks(payloads))
+        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
+            try:
+                ppi.update(
+                    self._ppi_renderer.render_tracks(
+                        tracks,
+                        view=self._radar_view,
+                        zoom=self._radar_zoom,
+                        pan_u_m=self._radar_pan_u_m,
+                        pan_v_m=self._radar_pan_v_m,
+                        rich=True,
+                        selected_track_id=str(selected_track_id) if selected_track_id is not None else None,
+                    )
+                )
+            except Exception:
+                return
+            self._render_radar_legend()
+            return
+        try:
+            ppi.update(self._ppi_renderer.render_tracks(payloads))
+        except Exception:
+            return
         self._render_radar_legend()
 
     def _render_radar_legend(self) -> None:
@@ -2119,6 +2230,12 @@ class OrionApp(App):
             f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f} m",
             Style(color="#a0a0a0"),
         )
+        if getattr(self, "_radar_renderer_effective", "unicode") != "unicode":
+            t.append("\n")
+            t.append(
+                f"{I18N.bidi('Renderer', 'Рендер')}: {self._radar_renderer_effective}",
+                Style(color="#a0a0a0"),
+            )
         legend.update(t)
 
     def _apply_radar_pan_from_drag(
@@ -4305,7 +4422,16 @@ class OrionApp(App):
                 with Container(id="screen-radar"):
                     with Horizontal(id="radar-layout"):
                         with Vertical(id="radar-left"):
-                            yield RadarPpi(id="radar-ppi")
+                            if self._radar_renderer_effective == "unicode":
+                                yield RadarPpi(id="radar-ppi")
+                            elif self._radar_renderer_effective == "kitty" and RadarBitmapTGP is not None:
+                                yield RadarBitmapTGP(id="radar-ppi")
+                            elif self._radar_renderer_effective == "sixel" and RadarBitmapSixel is not None:
+                                yield RadarBitmapSixel(id="radar-ppi")
+                            elif RadarBitmapAuto is not None:
+                                yield RadarBitmapAuto(id="radar-ppi")
+                            else:
+                                yield RadarPpi(id="radar-ppi")
                             legend = Static(id="radar-legend")
                             legend.border_title = I18N.bidi("Legend", "Легенда")
                             yield legend
@@ -5011,27 +5137,65 @@ class OrionApp(App):
 
     def _seed_radar_ppi(self) -> None:
         try:
-            ppi = self.query_one("#radar-ppi", Static)
+            ppi = self.query_one("#radar-ppi")
         except Exception:
             return
         if self._ppi_renderer is None:
-            ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+            try:
+                ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+            except Exception:
+                pass
             return
-        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
-            ppi.update(
-                self._ppi_renderer.render_tracks(
+        if self._radar_renderer_effective != "unicode":
+            if render_bitmap_ppi is None or not hasattr(ppi, "image"):
+                try:
+                    ppi.update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
+                except Exception:
+                    pass
+                self._render_radar_legend()
+                return
+            try:
+                img = render_bitmap_ppi(
                     [],
+                    width_px=int(self._ppi_width_cells) * 12,
+                    height_px=int(self._ppi_height_cells) * 24,
+                    max_range_m=float(self._ppi_max_range_m),
                     view=self._radar_view,
                     zoom=self._radar_zoom,
                     pan_u_m=self._radar_pan_u_m,
                     pan_v_m=self._radar_pan_v_m,
-                    rich=True,
                     selected_track_id=None,
+                    draw_overlays=True,
                 )
-            )
+                ppi.image = img  # type: ignore[attr-defined]
+            except Exception:
+                try:
+                    ppi.update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
+                except Exception:
+                    pass
             self._render_radar_legend()
             return
-        ppi.update(self._ppi_renderer.render_tracks([]))
+        if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
+            try:
+                ppi.update(
+                    self._ppi_renderer.render_tracks(
+                        [],
+                        view=self._radar_view,
+                        zoom=self._radar_zoom,
+                        pan_u_m=self._radar_pan_u_m,
+                        pan_v_m=self._radar_pan_v_m,
+                        rich=True,
+                        selected_track_id=None,
+                    )
+                )
+            except Exception:
+                return
+            self._render_radar_legend()
+            return
+        try:
+            ppi.update(self._ppi_renderer.render_tracks([]))
+        except Exception:
+            return
         self._render_radar_legend()
 
     def _seed_events_table(self) -> None:
