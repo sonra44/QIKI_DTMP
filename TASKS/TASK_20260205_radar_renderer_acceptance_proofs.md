@@ -51,6 +51,7 @@ Commits (pushed):
 - `7fdadc4` — new skill: `orion-operator-smoke`.
 - `511050c` — tests: wheel zoom + click selection.
 - `52b72af` — test: `RADAR_RENDERER=auto` selects bitmap backend when available.
+- `69e2db8` — tests: Unicode IFF colors applied + `RADAR_RENDERER=auto` can select SIXEL backend.
 
 ### Unit evidence (Docker-first)
 
@@ -71,4 +72,3 @@ Commits (pushed):
 ## Next
 
 1) Keep running `orion-operator-smoke` as a standard proof step in future radar UX work.
-
