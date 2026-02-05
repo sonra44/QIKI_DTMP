@@ -19,10 +19,22 @@ Prepare “3D radar” work by defining a single explicit **data/frame/unit cont
 
 ### Coordinate frame (Phase1)
 
-We treat radar track vectors as a right-handed local frame:
-- `position.x` (meters): horizontal axis used as **U** in `view=top` and `view=side`.
-- `position.y` (meters): horizontal axis used as **V** in `view=top` and **U** in `view=front`.
-- `position.z` (meters): vertical axis used as **V** in `view=side` and `view=front`.
+We distinguish two frames (both right-handed):
+
+1) **Body frame** (attitude/IMU):
+   - +X forward, +Y left, +Z up.
+   - Evidence: `src/qiki/shared/models/telemetry.py` (`AttitudeTelemetry` comment), `docs/design/hardware_and_physics/bot_source_of_truth.md` “Система координат”.
+
+2) **World/navigation frame** (positions, radar tracks, ORION radar views):
+   - +X east/right (screen right in ORION `Radar/Радар` Top view),
+   - +Y north/up (screen up),
+   - +Z up.
+   - Evidence (simulation): `src/qiki/services/q_sim_service/core/world_model.py` (`heading`: 0° is +Y, 90° is +X; movement uses `dx=sin(heading)`, `dy=cos(heading)`).
+
+ORION radar projections use the world frame directly:
+- `position.x` (meters): **U** in `view=top` and `view=side`.
+- `position.y` (meters): **V** in `view=top` and **U** in `view=front`.
+- `position.z` (meters): **V** in `view=side` and `view=front`.
 
 Evidence (code):
 - ORION projection mapping: `src/qiki/services/operator_console/radar/projection.py` `project_xyz_to_uv_m()`:
@@ -30,18 +42,23 @@ Evidence (code):
   - `side` → `(x, z)`
   - `front` → `(y, z)`
   - `iso` → dot with `iso_camera_basis(right/up)`
-- Existing polar→cartesian conventions differ by pipeline stage:
-  - ORION Unicode/bitmap renderers (fallback from polar): `x = r * sin(bearing)`, `y = r * cos(bearing)` (bearing clockwise from +Y).
-  - FastStream TrackStore `_polar_to_cartesian`: `x = r*cos(elev)*cos(bearing)`, `y = r*cos(elev)*sin(bearing)`, `z = r*sin(elev)` (bearing reference differs).
+- Canonical polar↔cartesian helpers are now shared (drift-guard):
+  - `src/qiki/shared/radar_coords.py` (`polar_to_xyz_m`, `xyz_to_bearing_deg`).
+  - Used by TrackStore and ORION renderers.
 
 ### Bearing/elevation conventions (must be locked)
 
-Current state (needs one canon choice before 3D work):
-- In ORION UI (charts + unicode_ppi fallback), `bearing_deg` is interpreted as degrees **clockwise from +Y**:
-  - `x ~ sin(bearing)`, `y ~ cos(bearing)`.
-- In TrackStore conversion, `bearing_deg` is interpreted with `x ~ cos(bearing)`, `y ~ sin(bearing)` and includes `elev_deg`.
+Locked (Phase1 canon):
+- `bearing_deg` is degrees **clockwise from +Y** (North/up): 0° → +Y, 90° → +X.
+- `elev_deg` is degrees up from the XY plane: 0° in-plane, +90° straight up.
 
-**Decision required:** pick ONE canonical definition of `bearing_deg` relative to `(x,y)` (and document it here), then align the outlier (ORION fallback or TrackStore).
+Evidence (code):
+- `WorldModel.heading`: 0° is +Y, 90° is +X (`src/qiki/services/q_sim_service/core/world_model.py`).
+- Shared helper: `src/qiki/shared/radar_coords.py`.
+- TrackStore uses shared helper for both directions:
+  - `_polar_to_cartesian` uses `polar_to_xyz_m`
+  - `_cartesian_to_bearing` uses `xyz_to_bearing_deg`
+- ORION Unicode/bitmap renderers use shared helper for polar fallback (including `elev_deg` when present).
 
 ## Scope / Non-goals
 

@@ -7,6 +7,7 @@ from typing import Any
 from rich.style import Style
 from rich.text import Text
 
+from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
 
 
@@ -221,16 +222,24 @@ class BraillePpiRenderer:
             if x_m is None or y_m is None:
                 r = payload.get("range_m")
                 b = payload.get("bearing_deg")
+                e = payload.get("elev_deg", 0.0)
                 try:
                     r_f = float(r)
                     b_f = float(b)
                 except Exception:
                     continue
-                # Bearing is degrees clockwise from +Y (north) in existing UI.
-                bearing_rad = math.radians(b_f)
-                x_m = r_f * math.sin(bearing_rad)
-                y_m = r_f * math.cos(bearing_rad)
-                z_m = 0.0
+                try:
+                    e_f = float(e)
+                except Exception:
+                    e_f = 0.0
+                xyz = polar_to_xyz_m(
+                    range_m=float(r_f),
+                    bearing_deg=float(b_f),
+                    elev_deg=float(e_f),
+                )
+                x_m = float(xyz.x_m)
+                y_m = float(xyz.y_m)
+                z_m = float(xyz.z_m)
 
             if z_m is None:
                 z_m = 0.0
@@ -407,15 +416,24 @@ def pick_nearest_track_id(
         if x_m is None or y_m is None:
             r = payload.get("range_m")
             b = payload.get("bearing_deg")
+            e = payload.get("elev_deg", 0.0)
             try:
                 r_f = float(r)
                 b_f = float(b)
             except Exception:
                 continue
-            bearing_rad = math.radians(b_f)
-            x_m = r_f * math.sin(bearing_rad)
-            y_m = r_f * math.cos(bearing_rad)
-            z_m = 0.0
+            try:
+                e_f = float(e)
+            except Exception:
+                e_f = 0.0
+            xyz = polar_to_xyz_m(
+                range_m=float(r_f),
+                bearing_deg=float(b_f),
+                elev_deg=float(e_f),
+            )
+            x_m = float(xyz.x_m)
+            y_m = float(xyz.y_m)
+            z_m = float(xyz.z_m)
 
         if z_m is None:
             z_m = 0.0

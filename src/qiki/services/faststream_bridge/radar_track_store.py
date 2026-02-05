@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
+from qiki.shared.radar_coords import polar_to_xyz_m, xyz_to_bearing_deg
 from qiki.shared.models.radar import (
     RadarDetectionModel,
     RadarFrameModel,
@@ -372,14 +373,12 @@ class RadarTrackStore:
 
 
 def _polar_to_cartesian(range_m: float, bearing_deg: float, elev_deg: float) -> _Vec3:
-    r = max(range_m, 0.0)
-    bearing_rad = math.radians(bearing_deg)
-    elev_rad = math.radians(elev_deg)
-    cos_elev = math.cos(elev_rad)
-    x = r * cos_elev * math.cos(bearing_rad)
-    y = r * cos_elev * math.sin(bearing_rad)
-    z = r * math.sin(elev_rad)
-    return _Vec3(x, y, z)
+    xyz = polar_to_xyz_m(
+        range_m=float(range_m),
+        bearing_deg=float(bearing_deg),
+        elev_deg=float(elev_deg),
+    )
+    return _Vec3(float(xyz.x_m), float(xyz.y_m), float(xyz.z_m))
 
 
 def _cartesian_to_range(vec: _Vec3) -> float:
@@ -387,7 +386,7 @@ def _cartesian_to_range(vec: _Vec3) -> float:
 
 
 def _cartesian_to_bearing(vec: _Vec3) -> float:
-    return math.degrees(math.atan2(vec.y, vec.x)) % 360
+    return xyz_to_bearing_deg(x_m=float(vec.x), y_m=float(vec.y))
 
 
 def _cartesian_to_elevation(vec: _Vec3) -> float:
