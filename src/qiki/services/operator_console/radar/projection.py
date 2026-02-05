@@ -31,7 +31,14 @@ def _dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
 def iso_camera_basis(*, yaw_deg: float, pitch_deg: float) -> CameraBasis:
     """Return a stable camera basis for ISO (pseudo-3D) projection.
 
-    Coordinate canon (see bot_source_of_truth.md): X forward, Y left, Z up.
+    Radar world/navigation frame (Phase1 contract):
+    - +X: right/east
+    - +Y: up/north
+    - +Z: up
+
+    Angle canon:
+    - yaw_deg: degrees clockwise from +Y (0°=+Y, 90°=+X)
+    - pitch_deg: degrees up from the horizon (0°=in-plane, +90°=straight up)
 
     The camera is defined by yaw around +Z and pitch above the horizon.
     We build an orthonormal basis (right, up) from a forward vector and the world up.
@@ -40,10 +47,10 @@ def iso_camera_basis(*, yaw_deg: float, pitch_deg: float) -> CameraBasis:
     yaw = math.radians(float(yaw_deg))
     pitch = math.radians(float(pitch_deg))
 
-    # Forward unit vector in world coordinates.
+    # Forward unit vector in world coordinates (clockwise from +Y).
     forward = (
-        math.cos(pitch) * math.cos(yaw),
         math.cos(pitch) * math.sin(yaw),
+        math.cos(pitch) * math.cos(yaw),
         math.sin(pitch),
     )
     up_world = (0.0, 0.0, 1.0)
@@ -73,4 +80,3 @@ def project_xyz_to_uv_m(
         p = (float(x_m), float(y_m), float(z_m))
         return (_dot(p, basis.right), _dot(p, basis.up))
     return (float(x_m), float(y_m))
-
