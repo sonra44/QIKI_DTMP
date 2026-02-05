@@ -411,6 +411,78 @@ async def test_radar_ppi_click_selects_nearest_track(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_radar_empty_state_is_honest_for_running_paused_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+    monkeypatch.setattr(
+        main_orion.TelemetrySnapshotModel,
+        "normalize_payload",
+        classmethod(lambda cls, payload: payload),
+    )
+
+    def put_sim_state(app: main_orion.OrionApp, payload: dict) -> None:
+        app._snapshots.put(
+            main_orion.EventEnvelope(
+                event_id="telemetry",
+                type="telemetry",
+                source="test",
+                ts_epoch=time.time(),
+                level="INFO",
+                payload=payload,
+                subject="telemetry",
+            )
+        )
+
+    async with main_orion.OrionApp().run_test(size=(140, 44)) as pilot:
+        app = pilot.app
+        app.action_show_screen("radar")
+        await pilot.pause()
+
+        table = app.query_one("#radar-table")
+        assert table.row_count >= 1
+
+        def row0() -> list:
+            return list(table.get_row_at(0))
+
+        # RUNNING: show "No tracks" (not mocked values).
+        put_sim_state(app, {"sim_state": {"running": True, "paused": False, "fsm_state": "RUNNING"}})
+        app._tracks_by_id = {}
+        app._render_tracks_table()
+        await pilot.pause()
+        r0 = row0()
+        assert len(r0) >= 2
+        info_running = str(r0[-1])
+        r0_text = " | ".join(str(c) for c in r0)
+        assert "—" in r0_text  # empty numeric fields must not be mocked as zeros
+        assert "No tracks" in info_running or "Треков" in info_running or "tracks" in info_running
+
+        # PAUSED: explicitly says no tracks while paused.
+        put_sim_state(app, {"sim_state": {"running": True, "paused": True, "fsm_state": "PAUSED"}})
+        app._render_tracks_table()
+        await pilot.pause()
+        info_paused = str(row0()[-1])
+        assert "paused" in info_paused.lower() or "пауз" in info_paused.lower()
+
+        # STOPPED: explicitly says simulation stopped.
+        put_sim_state(app, {"sim_state": {"running": False, "paused": False, "fsm_state": "STOPPED"}})
+        app._render_tracks_table()
+        await pilot.pause()
+        info_stopped = str(row0()[-1])
+        assert "stopped" in info_stopped.lower() or "останов" in info_stopped.lower()
+
+
+@pytest.mark.asyncio
 async def test_radar_view_command_updates_state_without_forcing() -> None:
     pytest.importorskip("textual")
 
