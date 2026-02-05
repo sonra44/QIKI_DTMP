@@ -9,6 +9,40 @@
 
 Prepare “3D radar” work by defining a single explicit **data/frame/unit contract** and proving which keys exist in Phase1 telemetry/track payloads, so future rendering is honest (no invented z/attitude).
 
+## Contract (axes / units / projections)
+
+### Units
+
+- Distances: meters (`*_m`)
+- Angles: degrees (`*_deg`)
+- Velocities: meters/second (`*_mps`)
+
+### Coordinate frame (Phase1)
+
+We treat radar track vectors as a right-handed local frame:
+- `position.x` (meters): horizontal axis used as **U** in `view=top` and `view=side`.
+- `position.y` (meters): horizontal axis used as **V** in `view=top` and **U** in `view=front`.
+- `position.z` (meters): vertical axis used as **V** in `view=side` and `view=front`.
+
+Evidence (code):
+- ORION projection mapping: `src/qiki/services/operator_console/radar/projection.py` `project_xyz_to_uv_m()`:
+  - `top` → `(x, y)`
+  - `side` → `(x, z)`
+  - `front` → `(y, z)`
+  - `iso` → dot with `iso_camera_basis(right/up)`
+- Existing polar→cartesian conventions differ by pipeline stage:
+  - ORION Unicode/bitmap renderers (fallback from polar): `x = r * sin(bearing)`, `y = r * cos(bearing)` (bearing clockwise from +Y).
+  - FastStream TrackStore `_polar_to_cartesian`: `x = r*cos(elev)*cos(bearing)`, `y = r*cos(elev)*sin(bearing)`, `z = r*sin(elev)` (bearing reference differs).
+
+### Bearing/elevation conventions (must be locked)
+
+Current state (needs one canon choice before 3D work):
+- In ORION UI (charts + unicode_ppi fallback), `bearing_deg` is interpreted as degrees **clockwise from +Y**:
+  - `x ~ sin(bearing)`, `y ~ cos(bearing)`.
+- In TrackStore conversion, `bearing_deg` is interpreted with `x ~ cos(bearing)`, `y ~ sin(bearing)` and includes `elev_deg`.
+
+**Decision required:** pick ONE canonical definition of `bearing_deg` relative to `(x,y)` (and document it here), then align the outlier (ORION fallback or TrackStore).
+
 ## Scope / Non-goals
 
 - In scope:
@@ -80,6 +114,7 @@ Radar track (`qiki.radar.v1.tracks`) sample keys (3D inputs exist):
 
 - Termius/tmux mouse behavior is not a valid acceptance dependency; proofs must remain headless/Docker-first.
 - Don’t start 3D rendering work before the contract is locked, or we will ship “pretty lies”.
+ - The project currently has two polar→cartesian mappings; until unified, 3D visualizations can be rotated/mirrored.
 
 ## Next
 
