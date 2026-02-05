@@ -11,6 +11,10 @@ dc() {
   docker compose "${compose_files[@]}" "$@"
 }
 
+# Integration tests require live sim-truth publishers (no-mocks). Make sure the
+# Phase1 stack is running and rebuilt from the current workspace.
+dc up -d --build --force-recreate nats nats-js-init q-sim-service faststream-bridge >/dev/null
+
 # IMPORTANT: pytest.ini has `addopts = -q -m "not integration"`.
 # To run integration-marked tests, we must override addopts.
 

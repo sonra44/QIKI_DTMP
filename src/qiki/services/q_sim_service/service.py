@@ -30,6 +30,7 @@ from qiki.shared.config.hardware_profile_hash import compute_hardware_profile_ha
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.converters.radar_proto_pydantic import model_frame_to_proto
 from qiki.shared.converters.protobuf_pydantic import pydantic_uuid_to_proto_uuid
+from qiki.shared.radar_coords import xyz_to_polar
 from qiki.shared.models.radar import (
     RadarDetectionModel,
     RadarFrameModel,
@@ -374,15 +375,25 @@ class QSimService:
         x = float(state["position"]["x"])
         y = float(state["position"]["y"])
         z = float(state["position"]["z"])
-        rng = max(0.0, math.hypot(x, y))
-        bearing = (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
-        horiz = max(1e-9, math.hypot(x, y))
-        elev = math.degrees(math.atan2(z, horiz))
+
+        # Radar 3D sim-truth: ensure at least one target has non-zero Z so that
+        # Side/Front/ISO views are not flat. Keep it deterministic and consistent
+        # with the Phase1 coordinate contract (bearing clockwise from +Y).
+        sr_threshold = float(self._sr_threshold_m)
+        if math.hypot(x, y) < 1.0:
+            # Avoid degenerate 0/0 bearing at rest: keep a stable forward target.
+            x = 0.0
+            y = sr_threshold * 0.7
+        try:
+            z = float(os.getenv("RADAR_SIM_TARGET_Z_M", "50.0"))
+        except Exception:
+            z = 50.0
+
+        rng, bearing, elev = xyz_to_polar(x_m=x, y_m=y, z_m=z)
         vr = 0.0
         snr_db = 20.0
         rcs_dbsm = 1.0
 
-        sr_threshold = self._sr_threshold_m
         bearing_deg = bearing
         elev_deg = elev
 

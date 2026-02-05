@@ -41,3 +41,27 @@ def xyz_to_bearing_deg(*, x_m: float, y_m: float) -> float:
     # +Y -> 0°, +X -> 90°
     return float(math.degrees(math.atan2(float(x_m), float(y_m))) % 360.0)
 
+
+def xyz_to_range_m(*, x_m: float, y_m: float, z_m: float) -> float:
+    return float(math.sqrt(float(x_m) ** 2 + float(y_m) ** 2 + float(z_m) ** 2))
+
+
+def xyz_to_elev_deg(*, x_m: float, y_m: float, z_m: float) -> float:
+    horiz = float(math.sqrt(float(x_m) ** 2 + float(y_m) ** 2))
+    return float(math.degrees(math.atan2(float(z_m), max(1e-9, horiz))))
+
+
+def xyz_to_polar(
+    *,
+    x_m: float,
+    y_m: float,
+    z_m: float,
+) -> tuple[float, float, float]:
+    """
+    Convert XYZ (meters) to polar (range_m, bearing_deg, elev_deg) using the Phase1 contract.
+    """
+
+    bearing_deg = xyz_to_bearing_deg(x_m=float(x_m), y_m=float(y_m))
+    elev_deg = xyz_to_elev_deg(x_m=float(x_m), y_m=float(y_m), z_m=float(z_m))
+    range_m = xyz_to_range_m(x_m=float(x_m), y_m=float(y_m), z_m=float(z_m))
+    return (range_m, bearing_deg, elev_deg)
