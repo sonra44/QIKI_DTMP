@@ -20,6 +20,42 @@ def test_radar_renderer_auto_forces_unicode_in_ssh_tmux(monkeypatch: pytest.Monk
     assert app._radar_renderer_effective == "unicode"
 
 
+@pytest.mark.asyncio
+async def test_radar_renderer_auto_prefers_bitmap_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import qiki.services.operator_console.main_orion as main_orion
+    from textual.widgets import Static
+
+    class FakeBitmap(Static):
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self.image = None
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setenv("RADAR_RENDERER", "auto")
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+    monkeypatch.setattr(main_orion, "_textual_image_best_backend_kind", lambda: "kitty")
+    monkeypatch.setattr(main_orion, "RadarBitmapTGP", FakeBitmap)
+    monkeypatch.setattr(main_orion, "render_bitmap_ppi", lambda *args, **kwargs: None)
+
+    app = main_orion.OrionApp()
+    assert app._radar_renderer_requested == "auto"
+    assert app._radar_renderer_effective == "kitty"
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+        assert isinstance(app.query_one("#radar-ppi"), FakeBitmap)
+
+
 def test_radar_view_hotkey_actions_update_state() -> None:
     pytest.importorskip("textual")
 
