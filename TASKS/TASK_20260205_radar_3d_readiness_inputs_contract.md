@@ -52,7 +52,29 @@ Prepare “3D radar” work by defining a single explicit **data/frame/unit cont
 
 ## Evidence (commands → output)
 
-- TBD
+### NATS subjects (Phase1)
+
+Producers:
+- `q_sim_service` publishes radar frames (detections) to:
+  - `qiki.radar.v1.frames` (union frame)
+  - `qiki.radar.v1.frames.lr`
+  - `qiki.radar.v1.tracks.sr` (SR detections stream; naming legacy but payload is a `RadarFrameModel`)
+- `faststream_bridge` consumes `qiki.radar.v1.frames` from JetStream stream `QIKI_RADAR_V1` and publishes tracks to:
+  - `qiki.radar.v1.tracks` (payload: `RadarTrackModel`)
+
+### Payload keys (real sample, Docker-first)
+
+Command used (inside `qiki-dev`): publish `sim.start` then subscribe and print keys only; then `sim.stop`.
+
+Radar frame (`qiki.radar.v1.frames`) sample keys:
+```json
+{"subject":"qiki.radar.v1.frames","keys":["detections","frame_id","schema_version","sensor_id","timestamp","ts_event","ts_ingest"],"detections_item0_keys":["bearing_deg","elev_deg","id_present","range_band","range_m","rcs_dbsm","snr_db","transponder_id","transponder_mode","transponder_on","vr_mps"]}
+```
+
+Radar track (`qiki.radar.v1.tracks`) sample keys (3D inputs exist):
+```json
+{"subject":"qiki.radar.v1.tracks","missing":false,"keys":["age_s","bearing_deg","elev_deg","id_present","iff","miss_count","object_type","position","position_covariance","quality","range_band","range_m","rcs_dbsm","schema_version","snr_db","status","timestamp","track_id","transponder_id","transponder_mode","transponder_on","ts_event","ts_ingest","velocity","velocity_covariance","vr_mps"],"position_keys":["x","y","z"],"velocity_keys":["x","y","z"]}
+```
 
 ## Notes / Risks
 
@@ -61,5 +83,4 @@ Prepare “3D radar” work by defining a single explicit **data/frame/unit cont
 
 ## Next
 
-1) Locate the Phase1 producer(s) of radar track payloads (code + NATS subject), and record the payload key schema used today.
-
+1) Lock the coordinate-frame contract: define what +X/+Y/+Z mean and how `bearing_deg` relates to `{x,y}` (must match current renderer convention).
