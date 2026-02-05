@@ -2673,6 +2673,11 @@ class OrionApp(App):
             f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}",
             hint_style,
         )
+        selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        t.append(
+            f"  {I18N.bidi('Sel', 'Выбор')}: {str(selected_track_id) if selected_track_id is not None else I18N.NA}",
+            hint_style,
+        )
         t.append("\n")
 
         third_line = f"{I18N.bidi('Pan', 'Сдвиг')}: {self._radar_pan_u_m:.0f},{self._radar_pan_v_m:.0f}m"
@@ -2680,7 +2685,8 @@ class OrionApp(App):
         if bool(getattr(self, "_radar_overlay_vectors", False)):
             overlays.append("VEC")
         if bool(getattr(self, "_radar_overlay_labels", False)):
-            overlays.append("LBL")
+            lbl_active = bool(float(getattr(self, "_radar_zoom", 1.0) or 1.0) >= 2.0)
+            overlays.append("LBL" if lbl_active else "LBL:req")
         if overlays:
             third_line += f" {I18N.bidi('Overlays', 'Оверлеи')}: {','.join(overlays)}"
         if self._radar_view == "iso":

@@ -180,6 +180,52 @@ async def test_radar_bitmap_render_error_falls_back_to_unicode(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+
+    app = main_orion.OrionApp()
+    now = time.time()
+    app._tracks_by_id = {
+        "AAAA": ({"range_m": 100.0, "bearing_deg": 0.0}, now),
+    }
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+
+        app._radar_overlay_labels = True
+        app._radar_zoom = 1.0
+        app._refresh_radar()
+        await pilot.pause()
+
+        legend = app.query_one("#radar-legend")
+        content = getattr(legend, "content", "")
+        plain = content.plain if hasattr(content, "plain") else str(content)
+        assert "AAAA" in plain
+        assert "LBL:req" in plain
+
+        app._radar_zoom = 3.0
+        app._refresh_radar()
+        await pilot.pause()
+        content2 = getattr(legend, "content", "")
+        plain2 = content2.plain if hasattr(content2, "plain") else str(content2)
+        assert "LBL:req" not in plain2
+        assert "LBL" in plain2
+
+
+@pytest.mark.asyncio
 async def test_radar_view_command_updates_state_without_forcing() -> None:
     pytest.importorskip("textual")
 
@@ -291,6 +337,40 @@ def test_unicode_ppi_vectors_and_labels_are_rendered() -> None:
     assert isinstance(with_lbl, str)
     assert count_marks(with_vec) > count_marks(base)
     assert "ABCD" in with_lbl
+
+
+def test_pick_radius_scales_with_zoom() -> None:
+    from qiki.services.operator_console.radar.unicode_ppi import pick_nearest_track_id
+
+    width_cells = 20
+    height_cells = 10
+    click_center_x = width_cells // 2
+    click_center_y = height_cells // 2
+    tracks = [("A", {"position": {"x": 0.0, "y": 0.0, "z": 0.0}})]
+
+    picked_low = pick_nearest_track_id(
+        tracks,
+        click_cell_x=click_center_x + 2,
+        click_cell_y=click_center_y,
+        width_cells=width_cells,
+        height_cells=height_cells,
+        max_range_m=1000.0,
+        view="top",
+        zoom=1.0,
+    )
+    assert picked_low == "A"
+
+    picked_high = pick_nearest_track_id(
+        tracks,
+        click_cell_x=click_center_x + 2,
+        click_cell_y=click_center_y,
+        width_cells=width_cells,
+        height_cells=height_cells,
+        max_range_m=1000.0,
+        view="top",
+        zoom=9.0,
+    )
+    assert picked_high is None
 
 
 @pytest.mark.asyncio

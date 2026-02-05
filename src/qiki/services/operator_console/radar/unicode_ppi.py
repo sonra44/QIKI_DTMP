@@ -345,7 +345,7 @@ def pick_nearest_track_id(
     zoom: float = 1.0,
     pan_u_m: float = 0.0,
     pan_v_m: float = 0.0,
-    pick_radius_cells: float = 2.5,
+    pick_radius_cells: float | None = None,
     iso_yaw_deg: float = 45.0,
     iso_pitch_deg: float = 35.0,
 ) -> str | None:
@@ -377,7 +377,11 @@ def pick_nearest_track_id(
     click_px_y = int(click_cell_y) * 4 + 2
 
     # Radius threshold in pixels (heuristic; good enough for TUI selection).
-    pick_radius_px = max(2.0, float(pick_radius_cells) * 3.0)
+    base_cells = 2.5 if pick_radius_cells is None else float(pick_radius_cells)
+    # Higher zoom => tighter picking radius for precision.
+    scaled_cells = base_cells / math.sqrt(max(0.1, float(zoom_f)))
+    scaled_cells = max(0.8, min(3.5, float(scaled_cells)))
+    pick_radius_px = max(2.0, float(scaled_cells) * 3.0)
     pick_radius_sq = pick_radius_px * pick_radius_px
 
     best_id: str | None = None
