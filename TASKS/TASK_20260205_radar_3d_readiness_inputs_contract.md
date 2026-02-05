@@ -96,10 +96,10 @@ Evidence (code):
 
 ## Definition of Done (DoD)
 
-- [ ] Contract section filled with explicit axes/units and view mapping
-- [ ] Evidence captured from real payloads (commands + short outputs)
-- [ ] No-mocks behavior explicitly defined for missing 3D inputs
-- [ ] Committed/pushed if repo changes are made
+- [x] Contract section filled with explicit axes/units and view mapping
+- [x] Evidence captured from real payloads (commands + short outputs)
+- [x] No-mocks behavior explicitly defined for missing 3D inputs
+- [x] Committed/pushed if repo changes are made
 
 ## Evidence (commands → output)
 
@@ -127,6 +127,19 @@ Radar track (`qiki.radar.v1.tracks`) sample keys (3D inputs exist):
 {"subject":"qiki.radar.v1.tracks","missing":false,"keys":["age_s","bearing_deg","elev_deg","id_present","iff","miss_count","object_type","position","position_covariance","quality","range_band","range_m","rcs_dbsm","schema_version","snr_db","status","timestamp","track_id","transponder_id","transponder_mode","transponder_on","ts_event","ts_ingest","velocity","velocity_covariance","vr_mps"],"position_keys":["x","y","z"],"velocity_keys":["x","y","z"]}
 ```
 
+### Bearing↔position end-to-end sanity (real data)
+
+Goal: confirm the locked convention holds on a real Phase1 `qiki.radar.v1.tracks` message.
+
+Command used (Docker-first, inside `qiki-dev`): subscribe to `qiki.radar.v1.tracks`, publish `sim.start`, pick a track with bearing close to a cardinal and print `(bearing_deg, position.x, position.y)`.
+
+Observed sample:
+```json
+{"subject":"qiki.radar.v1.tracks","bearing_deg":0.0,"nearest_cardinal_deg":0.0,"delta_deg":0.0,"position":{"x":0.0,"y":2500.0,"z":0.0},"signs":{"x":"zero","y":"pos"}}
+```
+
+Interpretation (matches contract): `bearing_deg=0°` → +Y (north/up), so `position.y > 0` and `position.x ≈ 0`.
+
 ## Notes / Risks
 
 - Termius/tmux mouse behavior is not a valid acceptance dependency; proofs must remain headless/Docker-first.
@@ -135,4 +148,22 @@ Radar track (`qiki.radar.v1.tracks`) sample keys (3D inputs exist):
 
 ## Next
 
-1) Lock the coordinate-frame contract: define what +X/+Y/+Z mean and how `bearing_deg` relates to `{x,y}` (must match current renderer convention).
+1) With the contract locked and proven, 3D radar work can proceed only via the world-frame vectors (`position/velocity`) and the honest rendering rules above (no flattening in 3D-only views).
+
+## Honest rendering rules (no-mocks)
+
+ORION radar MUST never invent 3D inputs. Rules:
+
+1) Prefer track vectors:
+   - If `position.{x,y,z}` exists: use it (world/navigation frame).
+   - If missing, renderer MAY fall back to polar (`range_m`, `bearing_deg`, `elev_deg`) but MUST treat missing `elev_deg` as unknown; only Top view is allowed to assume `z=0` for a 2D-only fallback.
+
+2) View requirements:
+   - `top` requires `x,y` → render even if `z` missing.
+   - `side` requires `x,z` → if `z` missing, skip the track and show `Z:—` in legend/diagnostics.
+   - `front` requires `y,z` → if `z` missing, skip the track and show `Z:—`.
+   - `iso` requires `x,y,z` → if `z` missing, skip the track and show `Z:—` (do not “flatten”).
+
+3) Overlays:
+   - Velocity vectors require `velocity.{x,y,z}`. If missing → vectors disabled (no partial fake vectors).
+   - Labels are cosmetic; they must never imply missing 3D truth. If a view is skipping tracks due to missing `z`, labels MUST also be skipped for those tracks.
