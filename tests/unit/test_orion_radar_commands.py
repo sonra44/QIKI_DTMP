@@ -226,6 +226,119 @@ async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_radar_mouse_wheel_zoom_changes_zoom(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+
+    app = main_orion.OrionApp()
+
+    class _Evt:
+        def stop(self) -> None:
+            return
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+
+        ppi = app.query_one("#radar-ppi")
+        before = float(getattr(app, "_radar_zoom", 1.0) or 1.0)
+        ppi.on_mouse_scroll_up(_Evt())
+        await pilot.pause()
+        after = float(getattr(app, "_radar_zoom", 1.0) or 1.0)
+        assert after > before
+
+
+@pytest.mark.asyncio
+async def test_radar_ppi_click_selects_nearest_track(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    import qiki.services.operator_console.main_orion as main_orion
+    from qiki.services.operator_console.radar.unicode_ppi import pick_nearest_track_id
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+
+    app = main_orion.OrionApp()
+    now = time.time()
+    # Two tracks at opposite sides; we will find a click cell that deterministically picks BBBB.
+    app._tracks_by_id = {
+        "AAAA": ({"position": {"x": -200.0, "y": 0.0, "z": 0.0}}, now),
+        "BBBB": ({"position": {"x": 200.0, "y": 0.0, "z": 0.0}}, now),
+    }
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+
+        app._ppi_width_cells = 60
+        app._ppi_height_cells = 30
+        app._ppi_max_range_m = 1000.0
+        app._radar_view = "top"
+        app._radar_zoom = 1.0
+        app._radar_pan_u_m = 0.0
+        app._radar_pan_v_m = 0.0
+
+        app._refresh_radar()
+        await pilot.pause()
+
+        candidates = [
+            ("AAAA", {"position": {"x": -200.0, "y": 0.0, "z": 0.0}}),
+            ("BBBB", {"position": {"x": 200.0, "y": 0.0, "z": 0.0}}),
+        ]
+
+        picked_cell: tuple[int, int] | None = None
+        for cx in range(0, app._ppi_width_cells):
+            cy = app._ppi_height_cells // 2
+            picked = pick_nearest_track_id(
+                candidates,
+                click_cell_x=cx,
+                click_cell_y=cy,
+                width_cells=app._ppi_width_cells,
+                height_cells=app._ppi_height_cells,
+                max_range_m=app._ppi_max_range_m,
+                view=app._radar_view,
+                zoom=app._radar_zoom,
+                pan_u_m=app._radar_pan_u_m,
+                pan_v_m=app._radar_pan_v_m,
+            )
+            if picked == "BBBB":
+                picked_cell = (cx, cy)
+                break
+
+        assert picked_cell is not None, "failed to find a click position that picks BBBB"
+
+        app._set_selection(
+            main_orion.SelectionContext(
+                app_id="radar",
+                key="AAAA",
+                kind="track",
+                source="radar",
+                created_at_epoch=now,
+                payload=app._tracks_by_id["AAAA"][0],
+                ids=("AAAA",),
+            )
+        )
+        app._handle_radar_ppi_click(*picked_cell)
+        assert app._selection_by_app["radar"].key == "BBBB"
+
+
+@pytest.mark.asyncio
 async def test_radar_view_command_updates_state_without_forcing() -> None:
     pytest.importorskip("textual")
 
