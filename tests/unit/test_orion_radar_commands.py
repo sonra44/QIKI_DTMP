@@ -56,6 +56,42 @@ async def test_radar_renderer_auto_prefers_bitmap_when_available(monkeypatch: py
         assert isinstance(app.query_one("#radar-ppi"), FakeBitmap)
 
 
+@pytest.mark.asyncio
+async def test_radar_renderer_auto_prefers_sixel_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import qiki.services.operator_console.main_orion as main_orion
+    from textual.widgets import Static
+
+    class FakeSixel(Static):
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
+            super().__init__(*args, **kwargs)
+            self.image = None
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setenv("RADAR_RENDERER", "auto")
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+    monkeypatch.setattr(main_orion, "_textual_image_best_backend_kind", lambda: "sixel")
+    monkeypatch.setattr(main_orion, "RadarBitmapSixel", FakeSixel)
+    monkeypatch.setattr(main_orion, "render_bitmap_ppi", lambda *args, **kwargs: None)
+
+    app = main_orion.OrionApp()
+    assert app._radar_renderer_requested == "auto"
+    assert app._radar_renderer_effective == "sixel"
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+        assert isinstance(app.query_one("#radar-ppi"), FakeSixel)
+
+
 def test_radar_view_hotkey_actions_update_state() -> None:
     pytest.importorskip("textual")
 
@@ -486,6 +522,37 @@ def test_unicode_ppi_vectors_and_labels_are_rendered() -> None:
     assert isinstance(with_lbl, str)
     assert count_marks(with_vec) > count_marks(base)
     assert "ABCD" in with_lbl
+
+
+def test_unicode_ppi_iff_color_styles_are_applied() -> None:
+    import re
+
+    from rich.style import Style
+
+    from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
+
+    r = BraillePpiRenderer(width_cells=60, height_cells=20, max_range_m=1000.0)
+    tracks = [
+        ("F", {"position": {"x": -200.0, "y": 0.0, "z": 0.0}, "iff": 1}),
+        ("E", {"position": {"x": -50.0, "y": 0.0, "z": 0.0}, "iff": 2}),
+        ("U", {"position": {"x": 100.0, "y": 0.0, "z": 0.0}, "iff": 3}),
+        ("D", {"position": {"x": 250.0, "y": 0.0, "z": 0.0}}),  # default style (no IFF)
+    ]
+
+    t = r.render_tracks(tracks, rich=True, draw_overlays=False)
+    spans = getattr(t, "spans", [])
+    colors: set[str] = set()
+    for span in spans:
+        style = getattr(span, "style", None)
+        if isinstance(style, Style) and style.color is not None:
+            m = re.search(r"#[0-9a-fA-F]{6}", str(style.color))
+            if m:
+                colors.add(m.group(0).lower())
+
+    assert "#00ff66" in colors  # friend
+    assert "#ff3355" in colors  # foe
+    assert "#ffb000" in colors  # unknown
+    assert "#00b7ff" in colors  # default
 
 
 def test_pick_radius_scales_with_zoom() -> None:
