@@ -31,6 +31,7 @@ link_skill "qiki-checkpoint"
 link_skill "qiki-drift-audit"
 link_skill "sovmem-health"
 link_skill "orion-operator-smoke"
+link_skill "context-persistence-health"
 
 echo
 cfg="$HOME/.codex/config.toml"

@@ -25,6 +25,7 @@ bash QIKI_DTMP/scripts/install_codex_skills.sh
 - `$qiki-checkpoint`: end-of-loop save (`STATUS/TODO_NEXT/(DECISIONS)`) + recall proof + git state.
 - `$qiki-drift-audit`: detect canon drift (second boards / missing canon entrypoints).
 - `$sovmem-health`: verify MCP + logs + backups (soft gate by default).
+- `$context-persistence-health`: verify SovMem + backups + systemd timer install/active status (strict-friendly).
 
 ## End-of-loop contract (soft gate)
 At the end of every “task loop”:
@@ -55,4 +56,3 @@ bash QIKI_DTMP/scripts/qiki_sovmem_health.sh
 ```
 
 Restore drill: see `docs/analysis/context_persistence_restore_drill.md`.
-
