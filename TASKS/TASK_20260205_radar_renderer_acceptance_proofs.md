@@ -52,6 +52,7 @@ Commits (pushed):
 - `511050c` — tests: wheel zoom + click selection.
 - `52b72af` — test: `RADAR_RENDERER=auto` selects bitmap backend when available.
 - `69e2db8` — tests: Unicode IFF colors applied + `RADAR_RENDERER=auto` can select SIXEL backend.
+- `8c19d2f` — test: honest empty state messaging for RUNNING/PAUSED/STOPPED (no mocked numbers).
 
 ### Unit evidence (Docker-first)
 
