@@ -102,6 +102,34 @@ class BraillePpiRenderer:
                 continue
         return None
 
+    @staticmethod
+    def _label_text(
+        *,
+        track_id: str | None,
+        view_norm: str,
+        z_m: float | None,
+    ) -> str:
+        """
+        Build a compact per-track label.
+
+        - Top view keeps the legacy track-id label.
+        - 3D views (side/front/iso) prefer altitude labels from simulation truth.
+        """
+
+        if view_norm == "top":
+            label = (track_id or "").strip()
+            return label[-4:] if label else ""
+
+        if z_m is not None and math.isfinite(float(z_m)):
+            z_i = int(round(float(z_m)))
+            if abs(z_i) < 1:
+                return "Z0"
+            sign = "+" if z_i > 0 else "-"
+            return f"Z{sign}{min(abs(z_i), 999)}"
+
+        label = (track_id or "").strip()
+        return label[-4:] if label else ""
+
     def render_tracks(
         self,
         tracks: list[dict[str, Any]] | list[tuple[str, dict[str, Any]]],
@@ -301,10 +329,13 @@ class BraillePpiRenderer:
                             y = int(round(py + dy * i / steps))
                             plot_px(x, y, style=vector_style, priority=20)
 
-            if labels_enabled and track_id is not None:
-                label = str(track_id).strip()
+            if labels_enabled:
+                label = self._label_text(
+                    track_id=track_id,
+                    view_norm=view_norm,
+                    z_m=z_m,
+                )
                 if label:
-                    label = label[-4:]
                     cell_x = px // 2
                     cell_y = py // 4
                     start_x = cell_x + 1
