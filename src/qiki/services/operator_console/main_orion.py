@@ -7021,9 +7021,11 @@ class OrionApp(App):
             err_detail = payload.get("error_detail")
             if isinstance(err_detail, dict):
                 message = err_detail.get("message")
+        level = "warning" if trust_marker == "UNTRUSTED" else "info"
         self._console_log(
             f"{I18N.bidi('Control response', 'Ответ управления')}[{trust_marker}]: "
-            f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()
+            f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip(),
+            level=level,
         )
 
     async def handle_qiki_response(self, data: dict) -> None:

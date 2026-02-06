@@ -30,8 +30,8 @@ async def test_control_response_log_contains_provenance_marker() -> None:
     from qiki.shared.nats_subjects import RESPONSES_CONTROL
 
     app = OrionApp()
-    messages: list[str] = []
-    app._console_log = lambda msg, level="info": messages.append(msg)  # type: ignore[method-assign]
+    messages: list[tuple[str, str]] = []
+    app._console_log = lambda msg, level="info": messages.append((str(msg), str(level)))  # type: ignore[method-assign]
 
     await app.handle_control_response(
         {
@@ -46,8 +46,8 @@ async def test_control_response_log_contains_provenance_marker() -> None:
         }
     )
 
-    assert any("[TRUSTED]:" in msg for msg in messages)
-    assert any("[UNTRUSTED]:" in msg for msg in messages)
+    assert any("[TRUSTED]:" in msg and level == "info" for msg, level in messages)
+    assert any("[UNTRUSTED]:" in msg and level == "warning" for msg, level in messages)
 
 
 def test_events_table_row_includes_trust_column() -> None:
