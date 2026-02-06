@@ -2706,63 +2706,36 @@ class OrionApp(App):
                     payload = self._tracks_by_id[selected_track_id][0]
             except Exception:
                 payload = None
-
-            def _fmt_z_label(p: dict[str, Any] | None) -> str:
-                if not isinstance(p, dict):
-                    return I18N.NA
-                pos = p.get("position")
-                if not isinstance(pos, dict) or "z" not in pos:
-                    return I18N.NA
-                try:
-                    z = float(pos.get("z"))
-                except Exception:
-                    return I18N.NA
-                if not math.isfinite(z):
-                    return I18N.NA
-                z_i = int(round(z))
-                if abs(z_i) < 1:
-                    return "Z0"
-                sign = "+" if z_i > 0 else "-"
-                return f"Z{sign}{min(abs(z_i), 999)}"
-
-            def _fmt_vz_label(p: dict[str, Any] | None) -> str:
-                if not isinstance(p, dict):
-                    return I18N.NA
-                vel = p.get("velocity")
-                if isinstance(vel, dict):
-                    if "z" not in vel:
-                        return I18N.NA
-                    try:
-                        vz = float(vel.get("z"))
-                    except Exception:
-                        return I18N.NA
-                else:
-                    vz = None
-                    for keys in (
-                        ("vx_mps", "vy_mps", "vz_mps"),
-                        ("vx", "vy", "vz"),
-                        ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
-                    ):
-                        if keys[2] not in p:
-                            continue
-                        try:
-                            vz = float(p.get(keys[2]))
-                        except Exception:
-                            vz = None
-                        break
-                    if vz is None:
-                        return I18N.NA
-                if not math.isfinite(float(vz)):
-                    return I18N.NA
-                vz_i = int(round(float(vz)))
-                if abs(vz_i) < 1:
-                    return "Vz0"
-                sign = "+" if vz_i > 0 else "-"
-                return f"Vz{sign}{min(abs(vz_i), 99)}"
+            try:
+                from qiki.services.operator_console.radar.unicode_ppi import (
+                    format_vz_token,
+                    format_z_token,
+                    radar_vz_mps_if_present,
+                    radar_z_m_if_present,
+                )
+            except Exception:
+                format_z_token = None  # type: ignore[assignment]
+                format_vz_token = None  # type: ignore[assignment]
+                radar_z_m_if_present = None  # type: ignore[assignment]
+                radar_vz_mps_if_present = None  # type: ignore[assignment]
 
             t.append("\n")
+            if (
+                payload is not None
+                and callable(radar_z_m_if_present)
+                and callable(radar_vz_mps_if_present)
+                and callable(format_z_token)
+                and callable(format_vz_token)
+            ):
+                z_m = radar_z_m_if_present(payload)
+                vz_mps = radar_vz_mps_if_present(payload)
+                z_txt = format_z_token(float(z_m)) if z_m is not None else I18N.NA
+                vz_txt = format_vz_token(float(vz_mps)) if vz_mps is not None else I18N.NA
+            else:
+                z_txt = I18N.NA
+                vz_txt = I18N.NA
             t.append(
-                f"3D: Z {_fmt_z_label(payload)}  Vz {_fmt_vz_label(payload)}",
+                f"3D: Z {z_txt}  Vz {vz_txt}",
                 hint_style,
             )
         legend.update(t)

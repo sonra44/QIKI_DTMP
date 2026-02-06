@@ -307,6 +307,22 @@ async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.M
         assert "Z+50" in plain
         assert "Vz+1" in plain
 
+        # Consistency proof: overlay label uses the same Z/Vz tokens as the legend.
+        from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
+
+        r = BraillePpiRenderer(width_cells=80, height_cells=10, max_range_m=1000.0)
+        overlay = r.render_tracks(
+            [("AAAA", app._tracks_by_id["AAAA"][0])],
+            view="side",
+            zoom=3.0,
+            draw_overlays=False,
+            draw_labels=True,
+            rich=False,
+        )
+        assert isinstance(overlay, str)
+        assert "Z+50" in overlay
+        assert "Vz+1" in overlay
+
         app._radar_zoom = 3.0
         app._refresh_radar()
         await pilot.pause()

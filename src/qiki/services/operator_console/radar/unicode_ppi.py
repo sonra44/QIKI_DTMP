@@ -11,6 +11,81 @@ from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
 
 
+def radar_z_m_if_present(payload: dict[str, Any]) -> float | None:
+    """Return Z altitude (meters) only when explicitly present (no-mocks).
+
+    Accepted sources:
+    - `position.z` exists (even if 0)
+    - `elev_deg` exists (even if 0), together with `range_m` and `bearing_deg`
+    """
+    pos = payload.get("position")
+    if isinstance(pos, dict) and "z" in pos:
+        try:
+            z = float(pos.get("z"))
+            return z if math.isfinite(z) else None
+        except Exception:
+            return None
+
+    if "elev_deg" not in payload:
+        return None
+    try:
+        r_f = float(payload.get("range_m"))
+        b_f = float(payload.get("bearing_deg"))
+        e_f = float(payload.get("elev_deg"))
+    except Exception:
+        return None
+    if not (math.isfinite(r_f) and math.isfinite(b_f) and math.isfinite(e_f)):
+        return None
+    xyz = polar_to_xyz_m(range_m=float(r_f), bearing_deg=float(b_f), elev_deg=float(e_f))
+    z = float(xyz.z_m)
+    return z if math.isfinite(z) else None
+
+
+def radar_vz_mps_if_present(payload: dict[str, Any]) -> float | None:
+    """Return vertical rate (m/s) only when explicitly present (no-mocks).
+
+    Unlike `_velocity_xyz_mps`, this does NOT default missing `z` to 0.0.
+    """
+    vel = payload.get("velocity")
+    if isinstance(vel, dict) and "z" in vel:
+        try:
+            z = float(vel.get("z"))
+            return z if math.isfinite(z) else None
+        except Exception:
+            return None
+
+    for keys in (
+        ("vx_mps", "vy_mps", "vz_mps"),
+        ("vx", "vy", "vz"),
+        ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
+    ):
+        if keys[2] not in payload:
+            continue
+        try:
+            z = float(payload.get(keys[2]))
+            return z if math.isfinite(z) else None
+        except Exception:
+            return None
+
+    return None
+
+
+def format_z_token(z_m: float) -> str:
+    z_i = int(round(float(z_m)))
+    if abs(z_i) < 1:
+        return "Z0"
+    sign = "+" if z_i > 0 else "-"
+    return f"Z{sign}{min(abs(z_i), 999)}"
+
+
+def format_vz_token(vz_mps: float) -> str:
+    vz_i = int(round(float(vz_mps)))
+    if abs(vz_i) < 1:
+        return "Vz0"
+    sign = "+" if vz_i > 0 else "-"
+    return f"Vz{sign}{min(abs(vz_i), 99)}"
+
+
 def _dot_bit(local_x: int, local_y: int) -> int:
     """Return braille dot bit for a pixel in a 2x4 cell.
 
@@ -104,33 +179,7 @@ class BraillePpiRenderer:
 
     @staticmethod
     def _velocity_z_mps(payload: dict[str, Any]) -> float | None:
-        """
-        Return vertical velocity only when it is explicitly present (no-mocks).
-
-        Unlike `_velocity_xyz_mps`, this does NOT default missing `z` to 0.0.
-        """
-        vel = payload.get("velocity")
-        if isinstance(vel, dict) and "z" in vel:
-            try:
-                z = float(vel.get("z"))
-                return z if math.isfinite(z) else None
-            except Exception:
-                return None
-
-        for keys in (
-            ("vx_mps", "vy_mps", "vz_mps"),
-            ("vx", "vy", "vz"),
-            ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
-        ):
-            if keys[2] not in payload:
-                continue
-            try:
-                z = float(payload.get(keys[2]))
-                return z if math.isfinite(z) else None
-            except Exception:
-                return None
-
-        return None
+        return radar_vz_mps_if_present(payload)
 
     @staticmethod
     def _label_text(
@@ -147,39 +196,19 @@ class BraillePpiRenderer:
         - 3D views (side/front/iso) prefer altitude labels from simulation truth.
         """
 
-        def vz_label() -> str:
-            if vz_mps is None:
-                return ""
-            try:
-                vz_f = float(vz_mps)
-            except Exception:
-                return ""
-            if not math.isfinite(vz_f):
-                return ""
-            vz_i = int(round(vz_f))
-            if abs(vz_i) < 1:
-                return "Vz0"
-            sign = "+" if vz_i > 0 else "-"
-            return f"Vz{sign}{min(abs(vz_i), 99)}"
+        z_token = format_z_token(float(z_m)) if z_m is not None and math.isfinite(float(z_m)) else ""
+        vz_token = format_vz_token(float(vz_mps)) if vz_mps is not None and math.isfinite(float(vz_mps)) else ""
 
         if view_norm == "top":
             label = (track_id or "").strip()
             return label[-4:] if label else ""
 
-        if z_m is not None and math.isfinite(float(z_m)):
-            z_i = int(round(float(z_m)))
-            if abs(z_i) < 1:
-                vz = vz_label()
-                return f"Z0 {vz}".strip() if vz else "Z0"
-            sign = "+" if z_i > 0 else "-"
-            base = f"Z{sign}{min(abs(z_i), 999)}"
-            vz = vz_label()
-            return f"{base} {vz}".strip() if vz else base
+        if z_token:
+            return f"{z_token} {vz_token}".strip() if vz_token else z_token
 
         label = (track_id or "").strip()
         base = label[-4:] if label else ""
-        vz = vz_label()
-        return f"{base} {vz}".strip() if vz else base
+        return f"{base} {vz_token}".strip() if vz_token else base
 
     def render_tracks(
         self,
@@ -292,11 +321,15 @@ class BraillePpiRenderer:
                 try:
                     x_m = float(pos.get("x"))
                     y_m = float(pos.get("y"))
-                    z_m = float(pos.get("z"))
                 except Exception:
                     x_m = None
                     y_m = None
                     z_m = None
+                if "z" in pos:
+                    try:
+                        z_m = float(pos.get("z"))
+                    except Exception:
+                        z_m = None
 
             if x_m is None or y_m is None:
                 r = payload.get("range_m")
@@ -381,11 +414,12 @@ class BraillePpiRenderer:
                             plot_px(x, y, style=vector_style, priority=20)
 
             if labels_enabled:
-                vz_mps = self._velocity_z_mps(payload)
+                z_label_m = radar_z_m_if_present(payload)
+                vz_mps = radar_vz_mps_if_present(payload)
                 label = self._label_text(
                     track_id=track_id,
                     view_norm=view_norm,
-                    z_m=z_m,
+                    z_m=z_label_m,
                     vz_mps=vz_mps,
                 )
                 if label:
@@ -493,9 +527,14 @@ def pick_nearest_track_id(
             try:
                 x_m = float(pos.get("x"))
                 y_m = float(pos.get("y"))
-                z_m = float(pos.get("z"))
             except Exception:
-                x_m = y_m = z_m = None
+                x_m = y_m = None
+                z_m = None
+            if "z" in pos:
+                try:
+                    z_m = float(pos.get("z"))
+                except Exception:
+                    z_m = None
 
         if x_m is None or y_m is None:
             r = payload.get("range_m")
