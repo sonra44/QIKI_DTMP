@@ -10,8 +10,8 @@ services:
       dockerfile: Dockerfile.nats
     container_name: qiki-nats-phase1
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     command:
       - "--jetstream"
       - "--http_port"
