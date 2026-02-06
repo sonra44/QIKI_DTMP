@@ -333,6 +333,61 @@ async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_radar_legend_3d_readout_is_honest_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    import time
+
+    import qiki.services.operator_console.main_orion as main_orion
+
+    async def no_nats(self) -> None:  # noqa: ANN001
+        self._boot_nats_init_done = True
+        self._boot_nats_error = ""
+        self.nats_client = None
+        self.nats_connected = False
+
+    monkeypatch.setattr(main_orion.OrionApp, "_init_nats", no_nats)
+
+    app = main_orion.OrionApp()
+    now = time.time()
+    app._selection_by_app["radar"] = main_orion.SelectionContext(
+        app_id="radar",
+        key="AAAA",
+        kind="track",
+        source="test",
+        created_at_epoch=now,
+        payload=None,
+        ids=(),
+    )
+    # Missing: position.z, elev_deg, velocity.z => legend must show N/A/—, not invented zeros.
+    app._tracks_by_id = {
+        "AAAA": (
+            {
+                "range_m": 100.0,
+                "bearing_deg": 0.0,
+                "velocity": {"x": 0.0, "y": 0.0},
+            },
+            now,
+        ),
+    }
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.action_show_screen("radar")
+        await pilot.pause()
+
+        app._radar_zoom = 3.0
+        app._radar_overlay_labels = True
+        app._refresh_radar()
+        await pilot.pause()
+
+        legend = app.query_one("#radar-legend")
+        content = getattr(legend, "content", "")
+        plain = content.plain if hasattr(content, "plain") else str(content)
+        assert "3D:" in plain
+        assert "3D: Z N/A/—  Vz N/A/—" in plain
+
+
+@pytest.mark.asyncio
 async def test_radar_mouse_wheel_zoom_changes_zoom(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
 
