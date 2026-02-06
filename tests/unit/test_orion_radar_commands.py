@@ -561,7 +561,8 @@ async def test_radar_select_command_cycles_tracks() -> None:
 def test_unicode_ppi_vectors_and_labels_are_rendered() -> None:
     from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
 
-    r = BraillePpiRenderer(width_cells=24, height_cells=10, max_range_m=1000.0)
+    # Wide enough so the appended `Vz±N` cue is not clipped near the right edge.
+    r = BraillePpiRenderer(width_cells=60, height_cells=10, max_range_m=1000.0)
     payload = {
         "position": {"x": 0.0, "y": 0.0, "z": 0.0},
         "velocity": {"x": 10.0, "y": 0.0, "z": 0.0},
@@ -599,26 +600,27 @@ def test_unicode_ppi_vectors_and_labels_are_rendered() -> None:
 def test_unicode_ppi_3d_view_labels_show_altitude() -> None:
     from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
 
-    r = BraillePpiRenderer(width_cells=24, height_cells=10, max_range_m=1000.0)
+    r = BraillePpiRenderer(width_cells=60, height_cells=10, max_range_m=1000.0)
     payload = {
         "position": {"x": 0.0, "y": 100.0, "z": 50.0},
         "velocity": {"x": 0.0, "y": 0.0, "z": 1.2},
         "iff": "FRIEND",
     }
 
-    side = r.render_tracks(
-        [("ABCD", payload)],
-        view="side",
-        zoom=3.0,
-        draw_overlays=False,
-        draw_labels=True,
-        rich=False,
-    )
+    for view in ("side", "front", "iso"):
+        out = r.render_tracks(
+            [("ABCD", payload)],
+            view=view,
+            zoom=3.0,
+            draw_overlays=False,
+            draw_labels=True,
+            rich=False,
+        )
 
-    assert isinstance(side, str)
-    assert "Z+50" in side
-    assert "Vz+1" in side
-    assert "ABCD" not in side
+        assert isinstance(out, str)
+        assert "Z+50" in out
+        assert "Vz+1" in out
+        assert "ABCD" not in out
 
 
 def test_unicode_ppi_3d_view_labels_do_not_invent_vz() -> None:
@@ -631,18 +633,19 @@ def test_unicode_ppi_3d_view_labels_do_not_invent_vz() -> None:
         "iff": "FRIEND",
     }
 
-    side = r.render_tracks(
-        [("ABCD", payload)],
-        view="side",
-        zoom=3.0,
-        draw_overlays=False,
-        draw_labels=True,
-        rich=False,
-    )
+    for view in ("side", "front", "iso"):
+        out = r.render_tracks(
+            [("ABCD", payload)],
+            view=view,
+            zoom=3.0,
+            draw_overlays=False,
+            draw_labels=True,
+            rich=False,
+        )
 
-    assert isinstance(side, str)
-    assert "Z+50" in side
-    assert "Vz" not in side
+        assert isinstance(out, str)
+        assert "Z+50" in out
+        assert "Vz" not in out
 
 
 def test_unicode_ppi_iff_color_styles_are_applied() -> None:
