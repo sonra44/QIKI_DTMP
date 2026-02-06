@@ -2696,6 +2696,75 @@ class OrionApp(App):
                 third_line += f" {I18N.bidi('Renderer', 'Рендер')}: {self._radar_renderer_effective}"
 
         t.append(third_line, hint_style)
+
+        # Selected-track 3D readout (no-mocks): show altitude and vertical rate only if
+        # the underlying keys are explicitly present in the payload.
+        if selected_track_id is not None:
+            payload = None
+            try:
+                if selected_track_id in self._tracks_by_id:
+                    payload = self._tracks_by_id[selected_track_id][0]
+            except Exception:
+                payload = None
+
+            def _fmt_z_label(p: dict[str, Any] | None) -> str:
+                if not isinstance(p, dict):
+                    return I18N.NA
+                pos = p.get("position")
+                if not isinstance(pos, dict) or "z" not in pos:
+                    return I18N.NA
+                try:
+                    z = float(pos.get("z"))
+                except Exception:
+                    return I18N.NA
+                if not math.isfinite(z):
+                    return I18N.NA
+                z_i = int(round(z))
+                if abs(z_i) < 1:
+                    return "Z0"
+                sign = "+" if z_i > 0 else "-"
+                return f"Z{sign}{min(abs(z_i), 999)}"
+
+            def _fmt_vz_label(p: dict[str, Any] | None) -> str:
+                if not isinstance(p, dict):
+                    return I18N.NA
+                vel = p.get("velocity")
+                if isinstance(vel, dict):
+                    if "z" not in vel:
+                        return I18N.NA
+                    try:
+                        vz = float(vel.get("z"))
+                    except Exception:
+                        return I18N.NA
+                else:
+                    vz = None
+                    for keys in (
+                        ("vx_mps", "vy_mps", "vz_mps"),
+                        ("vx", "vy", "vz"),
+                        ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
+                    ):
+                        if keys[2] not in p:
+                            continue
+                        try:
+                            vz = float(p.get(keys[2]))
+                        except Exception:
+                            vz = None
+                        break
+                    if vz is None:
+                        return I18N.NA
+                if not math.isfinite(float(vz)):
+                    return I18N.NA
+                vz_i = int(round(float(vz)))
+                if abs(vz_i) < 1:
+                    return "Vz0"
+                sign = "+" if vz_i > 0 else "-"
+                return f"Vz{sign}{min(abs(vz_i), 99)}"
+
+            t.append("\n")
+            t.append(
+                f"3D: Z {_fmt_z_label(payload)}  Vz {_fmt_vz_label(payload)}",
+                hint_style,
+            )
         legend.update(t)
 
     def _apply_radar_drag_from_mouse(

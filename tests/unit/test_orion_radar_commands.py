@@ -269,8 +269,25 @@ async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.M
 
     app = main_orion.OrionApp()
     now = time.time()
+    app._selection_by_app["radar"] = main_orion.SelectionContext(
+        app_id="radar",
+        key="AAAA",
+        kind="track",
+        source="test",
+        created_at_epoch=now,
+        payload=None,
+        ids=(),
+    )
     app._tracks_by_id = {
-        "AAAA": ({"range_m": 100.0, "bearing_deg": 0.0}, now),
+        "AAAA": (
+            {
+                "range_m": 100.0,
+                "bearing_deg": 0.0,
+                "position": {"x": 0.0, "y": 100.0, "z": 50.0},
+                "velocity": {"x": 0.0, "y": 0.0, "z": 1.2},
+            },
+            now,
+        ),
     }
 
     async with app.run_test(size=(140, 44)) as pilot:
@@ -287,6 +304,8 @@ async def test_radar_legend_shows_selection_and_labels_lod(monkeypatch: pytest.M
         plain = content.plain if hasattr(content, "plain") else str(content)
         assert "AAAA" in plain
         assert "LBL:req" in plain
+        assert "Z+50" in plain
+        assert "Vz+1" in plain
 
         app._radar_zoom = 3.0
         app._refresh_radar()
