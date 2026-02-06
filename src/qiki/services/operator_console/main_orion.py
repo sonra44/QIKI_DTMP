@@ -4847,7 +4847,7 @@ class OrionApp(App):
             self._selection_by_app.pop("events", None)
             self._sync_datatable_rows(
                 table,
-                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
+                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
             )
             return
 
@@ -4856,7 +4856,7 @@ class OrionApp(App):
             self._selection_by_app.pop("events", None)
             self._sync_datatable_rows(
                 table,
-                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
+                rows=[("seed", "—", I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA, I18N.NA)],
             )
             return
 
@@ -4887,6 +4887,7 @@ class OrionApp(App):
             age_s = max(0.0, now - float(inc.last_seen))
             age_text = I18N.fmt_age_compact(age_s)
             acked_text = I18N.yes_no(bool(inc.acked))
+            trust_text = self._provenance_marker(channel="events", subject=inc.subject)
             rows.append(
                 (
                     incident_id,
@@ -4894,6 +4895,7 @@ class OrionApp(App):
                     self._event_type_label(inc.type),
                     I18N.fmt_na(inc.source),
                     I18N.fmt_na(inc.subject),
+                    trust_text,
                     age_text,
                     str(int(inc.count)) if isinstance(inc.count, int) else I18N.NA,
                     acked_text,
@@ -4986,6 +4988,7 @@ class OrionApp(App):
                         I18N.bidi("Type", "Тип"),
                         I18N.bidi("Source", "Источник"),
                         I18N.bidi("Subject", "Тема"),
+                        I18N.bidi("Trust", "Доверие"),
                         I18N.bidi("Age", "Возраст"),
                         I18N.bidi("Count", "Счётчик"),
                         I18N.bidi("Ack", "Подтв"),
@@ -5388,7 +5391,7 @@ class OrionApp(App):
             set_widths("thermal-table", [20, 10, 14, 12, 12])
             set_widths("diagnostics-table", [28, 10, 20, 12])
             set_widths("mission-table", [22, 10, 34])
-            set_widths("events-table", [8, 14, 14, 22, 10, 8, 6])
+            set_widths("events-table", [8, 14, 14, 22, 11, 10, 8, 6])
             set_widths("console-table", [12, 9, 40])
             set_widths("radar-table", [10, 8, 12, 12, 12, 6, 18])
         elif density == "normal":
@@ -5399,7 +5402,7 @@ class OrionApp(App):
             set_widths("thermal-table", [24, 14, 16, 18, 16])
             set_widths("diagnostics-table", [36, 14, 24, 18])
             set_widths("mission-table", [28, 14, 52])
-            set_widths("events-table", [10, 18, 16, 28, 12, 10, 6])
+            set_widths("events-table", [10, 18, 16, 28, 11, 12, 10, 6])
             set_widths("console-table", [14, 10, 64])
             set_widths("radar-table", [12, 10, 14, 14, 14, 8, 26])
         else:
@@ -5750,6 +5753,7 @@ class OrionApp(App):
         table.add_row(
             "—",
             I18N.bidi("No events yet", "Событий нет"),
+            "—",
             "—",
             "—",
             "—",
@@ -6267,6 +6271,10 @@ class OrionApp(App):
                             (I18N.bidi("Type", "Тип"), self._event_type_label(incident.type)),
                             (I18N.bidi("Source", "Источник"), I18N.fmt_na(incident.source)),
                             (I18N.bidi("Subject", "Тема"), I18N.fmt_na(incident.subject)),
+                            (
+                                I18N.bidi("Trust", "Доверие"),
+                                self._provenance_marker(channel="events", subject=incident.subject),
+                            ),
                             (I18N.bidi("Count", "Счётчик"), str(incident.count)),
                             (I18N.bidi("Acknowledged", "Подтверждено"), I18N.yes_no(bool(incident.acked))),
                             (I18N.bidi("State", "Состояние"), I18N.bidi(incident.state, incident.state)),
@@ -6720,6 +6728,17 @@ class OrionApp(App):
             return str(subject).strip()
         return I18N.UNKNOWN
 
+    @staticmethod
+    def _provenance_marker(*, channel: str, subject: Any) -> str:
+        subj = str(subject or "").strip().lower()
+        if channel == "events":
+            events_prefix = EVENTS_V1_WILDCARD.replace(">", "").strip().lower()
+            return "TRUSTED" if bool(events_prefix) and subj.startswith(events_prefix) else "UNTRUSTED"
+        if channel == "control_response":
+            trusted_subject = str(RESPONSES_CONTROL).strip().lower()
+            return "TRUSTED" if trusted_subject and subj == trusted_subject else "UNTRUSTED"
+        return "UNTRUSTED"
+
     def _ack_incident(self, key: str) -> bool:
         k = (key or "").strip()
         if not k:
@@ -6980,6 +6999,8 @@ class OrionApp(App):
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         if not isinstance(payload, dict):
             payload = {}
+        subject = data.get("subject") if isinstance(data, dict) else None
+        trust_marker = self._provenance_marker(channel="control_response", subject=subject)
         success_raw = payload.get("success")
         if success_raw is None:
             success_raw = payload.get("ok")
@@ -7001,7 +7022,7 @@ class OrionApp(App):
             if isinstance(err_detail, dict):
                 message = err_detail.get("message")
         self._console_log(
-            f"{I18N.bidi('Control response', 'Ответ управления')}: "
+            f"{I18N.bidi('Control response', 'Ответ управления')}[{trust_marker}]: "
             f"{I18N.bidi('success', 'успех')}={success} {I18N.bidi('request', 'запрос')}={request} {message or ''}".strip()
         )
 
