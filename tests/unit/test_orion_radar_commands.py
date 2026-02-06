@@ -602,6 +602,7 @@ def test_unicode_ppi_3d_view_labels_show_altitude() -> None:
     r = BraillePpiRenderer(width_cells=24, height_cells=10, max_range_m=1000.0)
     payload = {
         "position": {"x": 0.0, "y": 100.0, "z": 50.0},
+        "velocity": {"x": 0.0, "y": 0.0, "z": 1.2},
         "iff": "FRIEND",
     }
 
@@ -616,7 +617,32 @@ def test_unicode_ppi_3d_view_labels_show_altitude() -> None:
 
     assert isinstance(side, str)
     assert "Z+50" in side
+    assert "Vz+1" in side
     assert "ABCD" not in side
+
+
+def test_unicode_ppi_3d_view_labels_do_not_invent_vz() -> None:
+    from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
+
+    r = BraillePpiRenderer(width_cells=24, height_cells=10, max_range_m=1000.0)
+    payload = {
+        "position": {"x": 0.0, "y": 100.0, "z": 50.0},
+        "velocity": {"x": 1.0, "y": 0.0},
+        "iff": "FRIEND",
+    }
+
+    side = r.render_tracks(
+        [("ABCD", payload)],
+        view="side",
+        zoom=3.0,
+        draw_overlays=False,
+        draw_labels=True,
+        rich=False,
+    )
+
+    assert isinstance(side, str)
+    assert "Z+50" in side
+    assert "Vz" not in side
 
 
 def test_unicode_ppi_iff_color_styles_are_applied() -> None:

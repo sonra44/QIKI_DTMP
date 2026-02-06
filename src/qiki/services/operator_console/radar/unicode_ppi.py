@@ -103,11 +103,42 @@ class BraillePpiRenderer:
         return None
 
     @staticmethod
+    def _velocity_z_mps(payload: dict[str, Any]) -> float | None:
+        """
+        Return vertical velocity only when it is explicitly present (no-mocks).
+
+        Unlike `_velocity_xyz_mps`, this does NOT default missing `z` to 0.0.
+        """
+        vel = payload.get("velocity")
+        if isinstance(vel, dict) and "z" in vel:
+            try:
+                z = float(vel.get("z"))
+                return z if math.isfinite(z) else None
+            except Exception:
+                return None
+
+        for keys in (
+            ("vx_mps", "vy_mps", "vz_mps"),
+            ("vx", "vy", "vz"),
+            ("vel_x_mps", "vel_y_mps", "vel_z_mps"),
+        ):
+            if keys[2] not in payload:
+                continue
+            try:
+                z = float(payload.get(keys[2]))
+                return z if math.isfinite(z) else None
+            except Exception:
+                return None
+
+        return None
+
+    @staticmethod
     def _label_text(
         *,
         track_id: str | None,
         view_norm: str,
         z_m: float | None,
+        vz_mps: float | None,
     ) -> str:
         """
         Build a compact per-track label.
@@ -116,6 +147,21 @@ class BraillePpiRenderer:
         - 3D views (side/front/iso) prefer altitude labels from simulation truth.
         """
 
+        def vz_label() -> str:
+            if vz_mps is None:
+                return ""
+            try:
+                vz_f = float(vz_mps)
+            except Exception:
+                return ""
+            if not math.isfinite(vz_f):
+                return ""
+            vz_i = int(round(vz_f))
+            if abs(vz_i) < 1:
+                return "Vz0"
+            sign = "+" if vz_i > 0 else "-"
+            return f"Vz{sign}{min(abs(vz_i), 99)}"
+
         if view_norm == "top":
             label = (track_id or "").strip()
             return label[-4:] if label else ""
@@ -123,12 +169,17 @@ class BraillePpiRenderer:
         if z_m is not None and math.isfinite(float(z_m)):
             z_i = int(round(float(z_m)))
             if abs(z_i) < 1:
-                return "Z0"
+                vz = vz_label()
+                return f"Z0 {vz}".strip() if vz else "Z0"
             sign = "+" if z_i > 0 else "-"
-            return f"Z{sign}{min(abs(z_i), 999)}"
+            base = f"Z{sign}{min(abs(z_i), 999)}"
+            vz = vz_label()
+            return f"{base} {vz}".strip() if vz else base
 
         label = (track_id or "").strip()
-        return label[-4:] if label else ""
+        base = label[-4:] if label else ""
+        vz = vz_label()
+        return f"{base} {vz}".strip() if vz else base
 
     def render_tracks(
         self,
@@ -330,10 +381,12 @@ class BraillePpiRenderer:
                             plot_px(x, y, style=vector_style, priority=20)
 
             if labels_enabled:
+                vz_mps = self._velocity_z_mps(payload)
                 label = self._label_text(
                     track_id=track_id,
                     view_norm=view_norm,
                     z_m=z_m,
+                    vz_mps=vz_mps,
                 )
                 if label:
                     cell_x = px // 2
