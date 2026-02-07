@@ -80,6 +80,10 @@
   - `................. [100%]`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
   - `Found 150 errors in 8 files (checked 214 source files)`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/operator_console/tests/test_qiki_response_handling.py src/qiki/services/operator_console/tests/test_record_replay_commands.py src/qiki/services/operator_console/tests/test_events_rowkey_normalization.py src/qiki/services/operator_console/tests/test_incidents_store.py tests/unit/test_orion_proposal_actions.py tests/unit/test_orion_control_provenance.py`
+  - `...................... [100%]`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
+  - `Found 135 errors in 8 files (checked 214 source files)`
 
 ## Notes / Risks
 
@@ -96,4 +100,6 @@
 5) Week 1 batch-5 completed: reduced baseline from `171/10` to `169/8` via `test_incidents_store.py` + yaml stub suppression.
 6) Week 1 batch-6 completed: reduced baseline from `169/8` to `159/8` via low-risk arg-type fixes in `main_orion.py` (QIKI request types + callback signatures).
 7) Week 1 batch-7 completed: reduced baseline from `159/8` to `150/8` via `main_orion.py` union-attr and optional-assignment cleanup in openai/record/replay/radar command paths.
-8) Week 1 batch-8: следующий хвост в `main_orion.py` around lines `~7088`, `~7238`, `~7276`, `~8055`.
+8) Week 1 batch-8 completed: reduced baseline from `150/8` to `144/8` via `main_orion.py` validation/focus/secret-key typing fixes.
+9) Week 1 batch-9 completed: reduced baseline from `144/8` to `135/8` via `main_orion.py` incident/radar/selection/secret-key/type narrowing fixes.
+10) Week 1 batch-10: следующий хвост в `main_orion.py` around lines `~4251`, `~5168`, `~5519`, `~5719`.

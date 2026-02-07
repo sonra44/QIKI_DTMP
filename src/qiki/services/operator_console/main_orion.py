@@ -26,7 +26,7 @@ from textual.widgets import Button, DataTable, Input, RichLog, Static
 from textual import events
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
-from qiki.services.operator_console.core.incident_rules import FileRulesRepository
+from qiki.services.operator_console.core.incident_rules import FileRulesRepository, IncidentRulesConfig
 from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.services.operator_console.ui.profile_panel import ProfilePanel
@@ -1686,7 +1686,7 @@ class OrionApp(App):
             os.getenv("OPERATOR_CONSOLE_INCIDENT_RULES", default_rules),
             history_path,
         )
-        self._incident_rules = None
+        self._incident_rules: IncidentRulesConfig | None = None
         self._incident_store: Optional[IncidentStore] = None
         # TTL is used only to mark tracks as stale in UI (no-mocks: we show last known + age).
         # Keep it reasonably large by default so operators can actually observe the pipeline.
@@ -5739,14 +5739,14 @@ class OrionApp(App):
                 ppi.image = img  # type: ignore[attr-defined]
             except Exception:
                 try:
-                    ppi.update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
+                    cast(Any, ppi).update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
                 except Exception:
                     pass
             self._render_radar_legend()
             return
         if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
             try:
-                ppi.update(
+                cast(Any, ppi).update(
                     self._ppi_renderer.render_tracks(
                         [],
                         view=self._radar_view,
@@ -6206,10 +6206,14 @@ class OrionApp(App):
                     env = self._snapshots.get_last(t)
                     if env is not None:
                         break
-                mission = {}
+                mission: dict[str, Any] = {}
                 if env is not None and isinstance(env.payload, dict):
                     payload = env.payload
-                    mission = payload.get("mission") if isinstance(payload.get("mission"), dict) else payload
+                    mission = (
+                        cast(dict[str, Any], payload.get("mission"))
+                        if isinstance(payload.get("mission"), dict)
+                        else cast(dict[str, Any], payload)
+                    )
                 designator = I18N.fmt_na(mission.get("designator") or mission.get("mission_id") or mission.get("id"))
                 objective = I18N.fmt_na(mission.get("objective") or mission.get("goal") or mission.get("name"))
                 priority = I18N.fmt_na(mission.get("priority") or mission.get("prio"))
@@ -6300,7 +6304,7 @@ class OrionApp(App):
                             (I18N.bidi("Title", "Название"), I18N.fmt_na(incident.title)),
                             (I18N.bidi("Description", "Описание"), I18N.fmt_na(incident.description)),
                             (I18N.bidi("Severity", "Серьезность"), incident.severity),
-                            (I18N.bidi("Type", "Тип"), self._event_type_label(incident.type)),
+                            (I18N.bidi("Type", "Тип"), self._event_type_label(str(incident.type or ""))),
                             (I18N.bidi("Source", "Источник"), I18N.fmt_na(incident.source)),
                             (I18N.bidi("Subject", "Тема"), I18N.fmt_na(incident.subject)),
                             (
@@ -6616,8 +6620,10 @@ class OrionApp(App):
 
         normalized_level = self._normalize_level(severity)
         ts_epoch = time.time()
-        if isinstance(payload, dict) and isinstance(payload.get("ts_epoch"), (int, float)):
-            ts_epoch = float(payload.get("ts_epoch"))
+        if isinstance(payload, dict):
+            ts_raw = payload.get("ts_epoch")
+            if isinstance(ts_raw, (int, float)):
+                ts_epoch = float(ts_raw)
         subj = str(subject or "")
         if subj == "qiki.events.v1.system_mode" and isinstance(payload, dict):
             mode = payload.get("mode")
@@ -7085,9 +7091,14 @@ class OrionApp(App):
             # Best-effort: keep request_id visible even if schema is invalid.
             request = I18N.NA if raw_req_id is None else str(raw_req_id)
             kind = payload.get("kind") or payload.get("type") or "response"
-            first = (e.errors() or [{}])[0]
-            loc = ".".join(str(x) for x in first.get("loc", []))
-            msg = first.get("msg", "invalid")
+            errors = e.errors()
+            if errors:
+                first = errors[0]
+                loc = ".".join(str(x) for x in first["loc"])
+                msg = str(first["msg"])
+            else:
+                loc = ""
+                msg = "invalid"
             detail = f"{loc}: {msg}" if loc else str(msg)
             self._console_log(f"QIKI: invalid {kind} ({I18N.bidi('request', 'запрос')}={request})")
             self._calm_log(f"QIKI schema error: {detail}")
@@ -7235,7 +7246,7 @@ class OrionApp(App):
 
         def safe_query(selector: str) -> Optional[Static]:
             try:
-                return self.query_one(selector)  # type: ignore[no-any-return]
+                return self.query_one(selector, Static)
             except Exception:
                 return None
 
@@ -7272,10 +7283,7 @@ class OrionApp(App):
             return
 
         focused = self.focused
-        try:
-            idx = order.index(focused) if focused in order else -1
-        except Exception:
-            idx = -1
+        idx = order.index(focused) if isinstance(focused, Static) and focused in order else -1
         target = order[(idx + 1) % len(order)]
         try:
             self.set_focus(target)
@@ -8049,12 +8057,19 @@ class OrionApp(App):
         # Secret entry mode: treat the next non-system line as the secret value.
         if self._secret_entry_mode == "openai_api_key" and cmd[:2].lower() != "s:":
             api_key = cmd
+            nats = self.nats_client
+            if nats is None:
+                self._console_log(
+                    f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}",
+                    level="warning",
+                )
+                return
             try:
                 payload = {"op": "set_key", "api_key": api_key, "ts_epoch_ms": int(time.time() * 1000)}
                 acked = False
-                if self.nats_client.nc is not None:
+                if nats.nc is not None:
                     try:
-                        msg = await self.nats_client.nc.request(
+                        msg = await nats.nc.request(
                             OPENAI_API_KEY_UPDATE,
                             json.dumps(payload).encode("utf-8"),
                             timeout=1.5,
@@ -8064,7 +8079,7 @@ class OrionApp(App):
                     except Exception:
                         acked = False
                 else:
-                    await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
+                    await nats.publish_command(OPENAI_API_KEY_UPDATE, payload)
 
                 self._console_log(
                     f"{I18N.bidi('OpenAI key set', 'OpenAI ключ установлен')}{' (ACK)' if acked else ''}",
