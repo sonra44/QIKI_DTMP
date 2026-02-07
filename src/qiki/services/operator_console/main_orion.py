@@ -3989,7 +3989,7 @@ class OrionApp(App):
                 )
             )
 
-            rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+            rad: dict[str, Any] = cast(dict[str, Any], sp.get("radiation")) if isinstance(sp.get("radiation"), dict) else {}
             rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
             rows.append(
                 (
@@ -4156,7 +4156,7 @@ class OrionApp(App):
                 ]
             )
 
-            prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+            prox: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
             rows.extend(
                 [
                     (
