@@ -50,6 +50,12 @@
   - `....... [100%]`
 - `bash scripts/quality_gate_docker.sh`
   - `[quality-gate] OK`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY' ...` (headless trust-filter smoke via `_run_command` + summary/diagnostics capture)
+  - `SMOKE_EN_SUMMARY_TRUST= untrusted`
+  - `SMOKE_EN_DIAG_TRUST= untrusted`
+  - `SMOKE_RU_SUMMARY_TRUST= trusted`
+  - `SMOKE_RU_DIAG_TRUST= trusted`
+  - `OK`
 
 ## Notes / Risks
 
