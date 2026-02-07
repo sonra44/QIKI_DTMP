@@ -23,4 +23,3 @@ async def test_radar_renderer_kitty_falls_back_to_unicode_when_textual_image_mis
     app = OrionApp()
     assert app._radar_renderer_requested == "kitty"
     assert app._radar_renderer_effective == "unicode"
-

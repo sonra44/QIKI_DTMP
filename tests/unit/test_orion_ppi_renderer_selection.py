@@ -9,4 +9,3 @@ def test_orion_prefers_braille_ppi_renderer() -> None:
 
     app = OrionApp()
     assert isinstance(app._ppi_renderer, BraillePpiRenderer)
-

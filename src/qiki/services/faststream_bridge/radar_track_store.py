@@ -86,9 +86,7 @@ class RadarTrackStore:
         """Process frame and return current set of tracks."""
 
         ingest_ts = datetime.now(UTC)
-        frame_ts = (
-            getattr(frame, "ts_event", None) or frame.timestamp or datetime.now(UTC)
-        )
+        frame_ts = getattr(frame, "ts_event", None) or frame.timestamp or datetime.now(UTC)
         detections = self._fuse_lr_sr_detections(frame.detections)
         associations = self._associate(detections, frame_ts)
         self._update_associated_tracks(associations, frame_ts)
@@ -98,19 +96,9 @@ class RadarTrackStore:
         self._prune_lost_tracks()
         return self._serialize_tracks(frame_ts, ingest_ts)
 
-    def _fuse_lr_sr_detections(
-        self, detections: List[RadarDetectionModel]
-    ) -> List[RadarDetectionModel]:
-        sr_indices = [
-            idx
-            for idx, det in enumerate(detections)
-            if det.range_band == RangeBand.RR_SR
-        ]
-        lr_indices = [
-            idx
-            for idx, det in enumerate(detections)
-            if det.range_band == RangeBand.RR_LR
-        ]
+    def _fuse_lr_sr_detections(self, detections: List[RadarDetectionModel]) -> List[RadarDetectionModel]:
+        sr_indices = [idx for idx, det in enumerate(detections) if det.range_band == RangeBand.RR_SR]
+        lr_indices = [idx for idx, det in enumerate(detections) if det.range_band == RangeBand.RR_LR]
         if not sr_indices or not lr_indices:
             return detections
 
@@ -177,9 +165,7 @@ class RadarTrackStore:
     ) -> Optional[_TrackState]:
         if not candidates:
             return None
-        det_position = _polar_to_cartesian(
-            detection.range_m, detection.bearing_deg, detection.elev_deg
-        )
+        det_position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
         best_track: Optional[_TrackState] = None
         best_distance = self._max_association_distance
 
@@ -189,10 +175,7 @@ class RadarTrackStore:
             distance = _euclidean_distance(predicted_position, det_position)
             if distance > best_distance:
                 continue
-            radial_delta = abs(
-                detection.vr_mps
-                - _project_velocity_to_radial(state.velocity, det_position)
-            )
+            radial_delta = abs(detection.vr_mps - _project_velocity_to_radial(state.velocity, det_position))
             if radial_delta > self._max_radial_velocity_delta:
                 continue
             best_distance = distance
@@ -208,9 +191,7 @@ class RadarTrackStore:
             if state is None:
                 continue
             dt = max((frame_ts - state.last_update).total_seconds(), 0.05)
-            measured_position = _polar_to_cartesian(
-                detection.range_m, detection.bearing_deg, detection.elev_deg
-            )
+            measured_position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
             predicted_position = state.position.add(state.velocity.scale(dt))
             residual = _Vec3(
                 measured_position.x - predicted_position.x,
@@ -221,9 +202,7 @@ class RadarTrackStore:
             state.position = predicted_position.add(residual.scale(self._alpha))
             unit_vector = _unit_vector(measured_position)
             measured_velocity = unit_vector.scale(detection.vr_mps)
-            state.velocity = _blend_velocity(
-                state.velocity, measured_velocity, self._beta
-            )
+            state.velocity = _blend_velocity(state.velocity, measured_velocity, self._beta)
             state.snr_db = (state.snr_db + detection.snr_db) / 2.0
             state.rcs_dbsm = detection.rcs_dbsm
             state.range_band = detection.range_band
@@ -254,9 +233,7 @@ class RadarTrackStore:
         for detection, state in associations:
             if state is not None:
                 continue
-            position = _polar_to_cartesian(
-                detection.range_m, detection.bearing_deg, detection.elev_deg
-            )
+            position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
             velocity = _unit_vector(position).scale(detection.vr_mps)
             track_id = uuid4()
             id_present: Optional[bool] = None
@@ -268,9 +245,7 @@ class RadarTrackStore:
                 transponder_mode = detection.transponder_mode
                 transponder_id = detection.transponder_id
                 id_present = (
-                    bool(detection.id_present)
-                    if detection.id_present is not None
-                    else bool(detection.transponder_id)
+                    bool(detection.id_present) if detection.id_present is not None else bool(detection.transponder_id)
                 )
             elif detection.range_band == RangeBand.RR_LR:
                 id_present = False
@@ -292,26 +267,16 @@ class RadarTrackStore:
             )
 
     def _prune_lost_tracks(self) -> None:
-        to_delete = [
-            track_id
-            for track_id, state in self._tracks.items()
-            if state.miss_count > self._max_misses
-        ]
+        to_delete = [track_id for track_id, state in self._tracks.items() if state.miss_count > self._max_misses]
         for track_id in to_delete:
             del self._tracks[track_id]
 
-    def _serialize_tracks(
-        self, frame_ts: datetime, ingest_ts: datetime
-    ) -> List[RadarTrackModel]:
+    def _serialize_tracks(self, frame_ts: datetime, ingest_ts: datetime) -> List[RadarTrackModel]:
         tracks: List[RadarTrackModel] = []
         for state in self._tracks.values():
             confirmed = state.hits >= self._min_hits_to_confirm
             if not confirmed:
-                status = (
-                    RadarTrackStatusEnum.NEW
-                    if state.miss_count == 0
-                    else RadarTrackStatusEnum.LOST
-                )
+                status = RadarTrackStatusEnum.NEW if state.miss_count == 0 else RadarTrackStatusEnum.LOST
             else:
                 if state.miss_count == 0:
                     status = RadarTrackStatusEnum.TRACKED
@@ -325,9 +290,7 @@ class RadarTrackStore:
             range_band = state.range_band
             id_present = state.id_present
             if range_band == RangeBand.RR_LR and (
-                state.transponder_id
-                or (id_present is True)
-                or state.transponder_mode != TransponderModeEnum.OFF
+                state.transponder_id or (id_present is True) or state.transponder_mode != TransponderModeEnum.OFF
             ):
                 range_band = RangeBand.RR_UNSPECIFIED
             tracks.append(
@@ -382,7 +345,7 @@ def _polar_to_cartesian(range_m: float, bearing_deg: float, elev_deg: float) -> 
 
 
 def _cartesian_to_range(vec: _Vec3) -> float:
-    return math.sqrt(vec.x ** 2 + vec.y ** 2 + vec.z ** 2)
+    return math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
 
 
 def _cartesian_to_bearing(vec: _Vec3) -> float:
@@ -390,7 +353,7 @@ def _cartesian_to_bearing(vec: _Vec3) -> float:
 
 
 def _cartesian_to_elevation(vec: _Vec3) -> float:
-    hyp = math.sqrt(vec.x ** 2 + vec.y ** 2)
+    hyp = math.sqrt(vec.x**2 + vec.y**2)
     return math.degrees(math.atan2(vec.z, hyp))
 
 
@@ -399,7 +362,7 @@ def _euclidean_distance(a: _Vec3, b: _Vec3) -> float:
 
 
 def _unit_vector(vec: _Vec3) -> _Vec3:
-    norm = math.sqrt(vec.x ** 2 + vec.y ** 2 + vec.z ** 2)
+    norm = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
     if norm == 0:
         return _Vec3(0.0, 0.0, 0.0)
     return _Vec3(vec.x / norm, vec.y / norm, vec.z / norm)

@@ -64,4 +64,3 @@ def test_orion_unicode_ppi_polar_fallback_respects_elevation_in_side_view() -> N
     assert isinstance(out_flat, str)
     assert isinstance(out_up, str)
     assert out_flat != out_up
-

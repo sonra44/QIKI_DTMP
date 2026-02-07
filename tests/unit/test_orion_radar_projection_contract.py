@@ -40,4 +40,3 @@ def test_projection_views_use_z_for_3d_views() -> None:
     iso0 = project_xyz_to_uv_m(x_m=x, y_m=y, z_m=z0, view="iso", iso_yaw_deg=45.0, iso_pitch_deg=35.0)
     iso1 = project_xyz_to_uv_m(x_m=x, y_m=y, z_m=z1, view="iso", iso_yaw_deg=45.0, iso_pitch_deg=35.0)
     assert iso0 != iso1
-

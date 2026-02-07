@@ -29,4 +29,3 @@ async def test_orion_seed_radar_ppi_draws_overlays() -> None:
 
     assert "ppi" in captured
     assert _has_braille(captured["ppi"])
-

@@ -33,4 +33,3 @@ def test_orion_qiki_seed_row_has_clear_message() -> None:
     assert "seed" in captured
     cells = captured["seed"]
     assert I18N.bidi("No proposals", "Нет предложений") in str(cells)
-

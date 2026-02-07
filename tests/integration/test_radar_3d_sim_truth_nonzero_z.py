@@ -123,4 +123,3 @@ async def test_radar_3d_sim_truth_nonzero_z() -> None:
         await sub_track.unsubscribe()
         await nc.drain()
         await nc.close()
-

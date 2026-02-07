@@ -54,4 +54,3 @@ def test_pick_returns_none_when_far() -> None:
         pick_radius_cells=1.0,
     )
     assert picked is None
-

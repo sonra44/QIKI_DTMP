@@ -35,4 +35,3 @@ async def test_publish_system_mode_uses_jetstream_when_available(monkeypatch: py
     assert subject == SYSTEM_MODE_EVENT
     payload = json.loads(payload_bytes.decode("utf-8"))
     assert payload["mode"] == "FACTORY"
-

@@ -1187,7 +1187,6 @@ class RadarPpi(_RadarMouseMixin, Static):
 
 
 if _RadarAutoImage is not None:
-
     # textual-image>=0.8.5 uses a base Image class with a metaclass that requires a `Renderable=...`
     # argument on *subclassing* (even when subclassing an already-concrete widget like AutoImage/TGPImage).
     # Older versions don't require it, so we keep a compatibility fallback.
@@ -1211,7 +1210,6 @@ else:  # pragma: no cover
 
 
 if _RadarTGPImage is not None:
-
     try:
 
         class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage, Renderable=_RadarTGPImage._Renderable):  # type: ignore[misc,attr-defined,call-arg]
@@ -1232,7 +1230,6 @@ else:  # pragma: no cover
 
 
 if _RadarSixelImage is not None:
-
     try:
 
         class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage, Renderable=_RadarSixelImage._Renderable):  # type: ignore[misc,attr-defined,call-arg]
@@ -2706,8 +2703,7 @@ class OrionApp(App):
         t.append("\n")
 
         t.append(
-            f"{I18N.bidi('View', 'Вид')}: {self._radar_view}  "
-            f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}",
+            f"{I18N.bidi('View', 'Вид')}: {self._radar_view}  {I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}",
             hint_style,
         )
         radar_sel = self._selection_by_app.get("radar")
@@ -3064,7 +3060,11 @@ class OrionApp(App):
             mission: dict[str, Any] = {}
             if isinstance(payload, dict):
                 mission_raw = payload.get("mission")
-                mission = cast(dict[str, Any], mission_raw) if isinstance(mission_raw, dict) else cast(dict[str, Any], payload)
+                mission = (
+                    cast(dict[str, Any], mission_raw)
+                    if isinstance(mission_raw, dict)
+                    else cast(dict[str, Any], payload)
+                )
             designator = mission.get("designator") or mission.get("mission_id") or mission.get("id")
             objective = mission.get("objective") or mission.get("goal") or mission.get("name")
             if designator and objective:
@@ -4026,7 +4026,9 @@ class OrionApp(App):
                 )
             )
 
-            rad: dict[str, Any] = cast(dict[str, Any], sp.get("radiation")) if isinstance(sp.get("radiation"), dict) else {}
+            rad: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("radiation")) if isinstance(sp.get("radiation"), dict) else {}
+            )
             rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
             rows.append(
                 (
@@ -4040,7 +4042,9 @@ class OrionApp(App):
                 )
             )
 
-            prox: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
+            prox: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
+            )
             prox_value = I18N.fmt_na(prox.get("contacts"))
             if prox_value == I18N.NA:
                 prox_value = I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2)
@@ -4069,7 +4073,9 @@ class OrionApp(App):
                 )
             )
 
-            st: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
+            st: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
+            )
             st_status = st.get("status") if isinstance(st.get("status"), str) else None
             st_value = I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA
             rows.append(
@@ -4093,7 +4099,11 @@ class OrionApp(App):
                 x_raw = field.get("x")
                 y_raw = field.get("y")
                 z_raw = field.get("z")
-                if isinstance(x_raw, (int, float)) and isinstance(y_raw, (int, float)) and isinstance(z_raw, (int, float)):
+                if (
+                    isinstance(x_raw, (int, float))
+                    and isinstance(y_raw, (int, float))
+                    and isinstance(z_raw, (int, float))
+                ):
                     x = float(x_raw)
                     y = float(y_raw)
                     z = float(z_raw)
@@ -4200,7 +4210,9 @@ class OrionApp(App):
                 ]
             )
 
-            prox_detail: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
+            prox_detail: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
+            )
             rows.extend(
                 [
                     (
@@ -4233,7 +4245,9 @@ class OrionApp(App):
                 ]
             )
 
-            solar_detail: dict[str, Any] = cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
+            solar_detail: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
+            )
             rows.extend(
                 [
                     (
@@ -4257,7 +4271,9 @@ class OrionApp(App):
                 ]
             )
 
-            st_detail: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
+            st_detail: dict[str, Any] = (
+                cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
+            )
             st_status = st_detail.get("status") if isinstance(st_detail.get("status"), str) else None
             rows.extend(
                 [
@@ -4292,15 +4308,23 @@ class OrionApp(App):
             )
 
             mag_detail_raw = sp.get("magnetometer")
-            mag_detail: dict[str, Any] = cast(dict[str, Any], mag_detail_raw) if isinstance(mag_detail_raw, dict) else {}
+            mag_detail: dict[str, Any] = (
+                cast(dict[str, Any], mag_detail_raw) if isinstance(mag_detail_raw, dict) else {}
+            )
             field_raw = mag_detail.get("field_ut")
-            field_detail: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
+            field_detail: dict[str, Any] | None = (
+                cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
+            )
             field_txt = I18N.NA
             if isinstance(field_detail, dict):
                 x_mag = field_detail.get("x")
                 y_mag = field_detail.get("y")
                 z_mag = field_detail.get("z")
-                if isinstance(x_mag, (int, float)) and isinstance(y_mag, (int, float)) and isinstance(z_mag, (int, float)):
+                if (
+                    isinstance(x_mag, (int, float))
+                    and isinstance(y_mag, (int, float))
+                    and isinstance(z_mag, (int, float))
+                ):
                     field_txt = f"x={float(x_mag):.2f}, y={float(y_mag):.2f}, z={float(z_mag):.2f}"
                 else:
                     field_txt = I18N.INVALID
@@ -4395,9 +4419,7 @@ class OrionApp(App):
         )
         events_filter_type = system_payload.get("events_filter_type") if isinstance(system_payload, dict) else None
         events_filter_text = system_payload.get("events_filter_text") if isinstance(system_payload, dict) else None
-        events_filter_trust = (
-            system_payload.get("events_filter_trust") if isinstance(system_payload, dict) else None
-        )
+        events_filter_trust = system_payload.get("events_filter_trust") if isinstance(system_payload, dict) else None
         events_filter_trust = self._normalize_events_trust_filter_token(
             events_filter_trust if events_filter_trust is not None else events_filter_text
         )
@@ -5937,7 +5959,6 @@ class OrionApp(App):
                     ids=(first_key,),
                 )
             )
-
 
     def _seed_summary_table(self) -> None:
         try:
@@ -7922,8 +7943,7 @@ class OrionApp(App):
             level="info",
         )
         self._console_log(
-            f"{I18N.bidi('Mouse', 'Мышь')}: "
-            f"mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
+            f"{I18N.bidi('Mouse', 'Мышь')}: mouse on/off | {I18N.bidi('selection', 'выделение')}: Shift+drag",
             level="info",
         )
         self._console_log(
@@ -8330,11 +8350,15 @@ class OrionApp(App):
                 onoff = (arg or "").strip().lower()
                 if onoff in {"on", "1", "true", "yes", "вкл", "включить"}:
                     self._output_apply_follow(True)
-                    self._console_log(f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow on', 'следить вкл')}", level="info")
+                    self._console_log(
+                        f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow on', 'следить вкл')}", level="info"
+                    )
                     return
                 if onoff in {"off", "0", "false", "no", "выкл", "выключить"}:
                     self._output_apply_follow(False)
-                    self._console_log(f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow off', 'следить выкл')}", level="info")
+                    self._console_log(
+                        f"{I18N.bidi('Output', 'Вывод')}: {I18N.bidi('follow off', 'следить выкл')}", level="info"
+                    )
                     return
                 self._console_log(
                     f"{I18N.bidi('Output follow', 'Вывод следить')}: on/off",
@@ -8442,7 +8466,9 @@ class OrionApp(App):
 
                 output_path = parts[2].strip() if len(parts) > 2 else ""
                 if not output_path:
-                    out_dir = os.getenv("OPERATOR_CONSOLE_RECORD_DIR", "/tmp/qiki_records").strip() or "/tmp/qiki_records"
+                    out_dir = (
+                        os.getenv("OPERATOR_CONSOLE_RECORD_DIR", "/tmp/qiki_records").strip() or "/tmp/qiki_records"
+                    )
                     output_path = str(Path(out_dir) / f"qiki_record_{int(time.time())}.jsonl")
                 output_path = os.path.expanduser(output_path)
 
@@ -8523,8 +8549,7 @@ class OrionApp(App):
                 elif self._replay_task is not None and self._replay_task.done():
                     state = I18N.bidi("done", "готово")
                 self._console_log(
-                    f"{I18N.bidi('Replay', 'Реплей')}: {state} "
-                    f"(path={self._replay_input_path or I18N.NA})",
+                    f"{I18N.bidi('Replay', 'Реплей')}: {state} (path={self._replay_input_path or I18N.NA})",
                     level="info",
                 )
                 return
@@ -8910,7 +8935,17 @@ class OrionApp(App):
             op = "".join(ch for ch in raw_op if ch.isalnum()).lower()
             if op == "debug" and len(parts) >= 3:
                 flag = "".join(ch for ch in parts[2] if ch.isalnum()).lower()
-                self._mouse_debug = flag in {"on", "enable", "enabled", "1", "true", "да", "вкл", "включить", "включена"}
+                self._mouse_debug = flag in {
+                    "on",
+                    "enable",
+                    "enabled",
+                    "1",
+                    "true",
+                    "да",
+                    "вкл",
+                    "включить",
+                    "включена",
+                }
                 self._console_log(
                     f"{I18N.bidi('Mouse debug', 'Отладка мыши')}: "
                     f"{I18N.bidi('on', 'вкл') if self._mouse_debug else I18N.bidi('off', 'выкл')}",
@@ -9101,8 +9136,7 @@ class OrionApp(App):
             parts = cmd.split()
             if len(parts) < 3:
                 self._console_log(
-                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: "
-                    f"radar.overlay vectors|labels on|off|toggle",
+                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: radar.overlay vectors|labels on|off|toggle",
                     level="info",
                 )
                 return
@@ -9117,14 +9151,15 @@ class OrionApp(App):
                 enabled = None
             else:
                 self._console_log(
-                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: "
-                    f"radar.overlay vectors|labels on|off|toggle",
+                    f"{I18N.bidi('Radar overlays', 'Оверлеи радара')}: radar.overlay vectors|labels on|off|toggle",
                     level="info",
                 )
                 return
 
             if kind in {"vectors", "vec", "векторы", "вектор"}:
-                self._radar_overlay_vectors = (not bool(self._radar_overlay_vectors)) if enabled is None else bool(enabled)
+                self._radar_overlay_vectors = (
+                    (not bool(self._radar_overlay_vectors)) if enabled is None else bool(enabled)
+                )
                 self._console_log(
                     f"{I18N.bidi('Vectors enabled', 'Векторы включены')}: {I18N.yes_no(bool(self._radar_overlay_vectors))}",
                     level="info",
@@ -9132,7 +9167,9 @@ class OrionApp(App):
                 self._refresh_radar()
                 return
             if kind in {"labels", "lbl", "метки", "подписи", "лейблы"}:
-                self._radar_overlay_labels = (not bool(self._radar_overlay_labels)) if enabled is None else bool(enabled)
+                self._radar_overlay_labels = (
+                    (not bool(self._radar_overlay_labels)) if enabled is None else bool(enabled)
+                )
                 self._console_log(
                     f"{I18N.bidi('Labels enabled', 'Подписи включены')}: {I18N.yes_no(bool(self._radar_overlay_labels))}",
                     level="info",
@@ -9278,7 +9315,9 @@ class OrionApp(App):
                         level="warn",
                     )
                     return
-            await self._publish_sim_command("sim.start", parameters={} if start_speed is None else {"speed": start_speed})
+            await self._publish_sim_command(
+                "sim.start", parameters={} if start_speed is None else {"speed": start_speed}
+            )
             return
 
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
@@ -9737,8 +9776,7 @@ class OrionApp(App):
         try:
             await self.nats_client.publish_command(COMMANDS_CONTROL, cmd.model_dump(mode="json"))
             self._console_log(
-                f"{I18N.bidi('Published', 'Отправлено')}: {cmd_name} "
-                f"({I18N.bidi('request', 'запрос')}={request_id})",
+                f"{I18N.bidi('Published', 'Отправлено')}: {cmd_name} ({I18N.bidi('request', 'запрос')}={request_id})",
                 level="info",
             )
         except Exception as e:

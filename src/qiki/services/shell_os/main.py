@@ -59,6 +59,7 @@ class ShellOSApp(App):
     def compose(self) -> ComposeResult:
         # Lazy imports so unit tests can patch `textual.widgets.*` if needed.
         from textual.widgets import Header, Footer, TabbedContent, TabPane
+
         SystemPanel, ResourcesPanel, ServicesPanel = self._load_panels()
 
         yield Header()

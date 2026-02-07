@@ -20,4 +20,3 @@ def test_project_iso_responds_to_x_and_y() -> None:
 
     assert (ux, vx) != (u0, v0)
     assert (uy, vy) != (u0, v0)
-

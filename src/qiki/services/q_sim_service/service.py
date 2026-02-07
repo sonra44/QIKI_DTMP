@@ -562,9 +562,8 @@ class QSimService:
                 "source": "pdu",
                 "subject": "main",
                 "overcurrent": int(overcurrent),
-                "pdu_limit_w": float(getattr(self.world_model, "_max_bus_a", 0.0)) * float(
-                    getattr(self.world_model, "power_bus_v", 0.0)
-                ),
+                "pdu_limit_w": float(getattr(self.world_model, "_max_bus_a", 0.0))
+                * float(getattr(self.world_model, "power_bus_v", 0.0)),
                 "power_out_w": float(getattr(self.world_model, "power_out_w", 0.0)),
                 "bus_a": float(getattr(self.world_model, "power_bus_a", 0.0)),
                 "bus_v": float(getattr(self.world_model, "power_bus_v", 0.0)),
