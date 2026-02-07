@@ -326,8 +326,11 @@ class NATSClient:
         if not self.js:
             raise RuntimeError("Not connected to JetStream")
         msg = await self.js.get_last_msg(stream, subject)
+        raw = msg.data
+        if raw is None:
+            return None
         try:
-            data = json.loads(msg.data.decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"))
         except Exception:
             return None
         return data if isinstance(data, dict) else None

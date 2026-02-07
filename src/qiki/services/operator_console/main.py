@@ -35,9 +35,9 @@ if __package__:
     from qiki.services.operator_console.clients.metrics_client import MetricsClient
 else:
     # Legacy direct execution from this directory.
-    from ui.profile_panel import ProfilePanel
-    from widgets.metrics_panel import MetricsPanel
-    from clients.metrics_client import MetricsClient
+    from ui.profile_panel import ProfilePanel  # type: ignore[no-redef]
+    from widgets.metrics_panel import MetricsPanel  # type: ignore[no-redef]
+    from clients.metrics_client import MetricsClient  # type: ignore[no-redef]
 
 
 def _has_active_textual_app() -> bool:
@@ -64,7 +64,7 @@ class TelemetryPanel(Static):
         if not _has_active_textual_app():
             return
 
-        table = DataTable(id="telemetry-table")
+        table: DataTable = DataTable(id="telemetry-table")
         table.add_columns("Metric", "Value", "Unit", "Updated")
         # No-mocks: показываем схему метрик, но значения только N/A, пока не придёт реальная телеметрия.
         table.add_row("Position X", "N/A", "m", "—")
@@ -87,7 +87,7 @@ class RadarPanel(Static):
         if not _has_active_textual_app():
             return
 
-        table = DataTable(id="radar-table")
+        table: DataTable = DataTable(id="radar-table")
         table.add_columns("Track ID", "Range", "Bearing", "Velocity", "Type")
         yield table
 
@@ -277,7 +277,7 @@ class OperatorConsoleApp(App):
         if __package__:
             from qiki.services.operator_console.clients.nats_client import NATSClient
         else:
-            from clients.nats_client import NATSClient
+            from clients.nats_client import NATSClient  # type: ignore[no-redef]
 
         self.nats_client = NATSClient()
         try:
@@ -320,7 +320,7 @@ class OperatorConsoleApp(App):
                 QSimGrpcClient,
             )
         else:
-            from clients.grpc_client import QAgentGrpcClient, QSimGrpcClient
+            from clients.grpc_client import QAgentGrpcClient, QSimGrpcClient  # type: ignore[no-redef]
 
         # Initialize Q-Sim client
         self.grpc_sim_client = QSimGrpcClient()

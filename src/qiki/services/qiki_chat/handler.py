@@ -151,7 +151,7 @@ def handle_chat_request(request: QikiChatRequestV1, *, current_mode: QikiMode) -
         ),
     )
 
-    warnings = []
+    warnings: list[BilingualText] = []
 
     return QikiChatResponseV1(
         request_id=request.request_id,

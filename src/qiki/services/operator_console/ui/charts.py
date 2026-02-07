@@ -294,6 +294,8 @@ class PpiScopeRenderer:
                 continue
             r = t.get("range_m")
             b = t.get("bearing_deg")
+            if not isinstance(r, (int, float, str)) or not isinstance(b, (int, float, str)):
+                continue
             try:
                 r_f = float(r)
                 b_f = float(b)

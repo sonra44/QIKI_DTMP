@@ -68,14 +68,20 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
 
 def _extract_ts_epoch(subject: str, payload: Any) -> float:
     if isinstance(payload, dict) and payload.get("ts_epoch") is not None:
+        ts_epoch_raw = payload.get("ts_epoch")
+        if not isinstance(ts_epoch_raw, (int, float, str)):
+            return float(time.time())
         try:
-            return float(payload.get("ts_epoch"))
+            return float(ts_epoch_raw)
         except Exception:
             return float(time.time())
 
     if subject == "qiki.telemetry" and isinstance(payload, dict) and payload.get("ts_unix_ms") is not None:
+        ts_unix_ms_raw = payload.get("ts_unix_ms")
+        if not isinstance(ts_unix_ms_raw, (int, float, str)):
+            return float(time.time())
         try:
-            return float(payload.get("ts_unix_ms")) / 1000.0
+            return float(ts_unix_ms_raw) / 1000.0
         except Exception:
             return float(time.time())
 
