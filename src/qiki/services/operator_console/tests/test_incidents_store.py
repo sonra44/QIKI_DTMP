@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any, cast
 
 from qiki.services.operator_console.core.incident_rules import IncidentRulesConfig
 from qiki.services.operator_console.core.incident_rules import IncidentRule, IncidentRuleMatch, IncidentRuleThreshold
@@ -72,7 +73,7 @@ def test_max_incidents_caps_store_to_latest_by_last_seen() -> None:
 
     for i in range(10):
         event = base_event(ts + i, 80 + i)
-        payload = dict(event.get("payload") or {})
+        payload = cast(dict[str, Any], event.get("payload") or {})
         payload["id"] = f"id-{i}"
         event["payload"] = payload
         store.ingest(event)
