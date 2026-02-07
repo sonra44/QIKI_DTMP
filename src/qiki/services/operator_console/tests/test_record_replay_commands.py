@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -10,7 +11,7 @@ from qiki.services.operator_console.main_orion import OrionApp
 @pytest.mark.asyncio
 async def test_record_start_and_stop_creates_and_cancels_task(monkeypatch: pytest.MonkeyPatch) -> None:
     app = OrionApp()
-    app.nats_client = SimpleNamespace(url="nats://example:4222")
+    app.nats_client = cast(Any, SimpleNamespace(url="nats://example:4222"))
 
     started = asyncio.Event()
     cancelled = asyncio.Event()
@@ -19,6 +20,7 @@ async def test_record_start_and_stop_creates_and_cancels_task(monkeypatch: pytes
         started.set()
         try:
             await asyncio.sleep(60)
+            return {"published": 0}
         except asyncio.CancelledError:
             cancelled.set()
             raise
@@ -41,7 +43,7 @@ async def test_record_start_and_stop_creates_and_cancels_task(monkeypatch: pytes
 @pytest.mark.asyncio
 async def test_replay_start_and_stop_creates_and_cancels_task(monkeypatch: pytest.MonkeyPatch) -> None:
     app = OrionApp()
-    app.nats_client = SimpleNamespace(url="nats://example:4222")
+    app.nats_client = cast(Any, SimpleNamespace(url="nats://example:4222"))
 
     started = asyncio.Event()
     cancelled = asyncio.Event()
@@ -50,6 +52,7 @@ async def test_replay_start_and_stop_creates_and_cancels_task(monkeypatch: pytes
         started.set()
         try:
             await asyncio.sleep(60)
+            return {"published": 0}
         except asyncio.CancelledError:
             cancelled.set()
             raise
@@ -72,7 +75,7 @@ async def test_replay_start_and_stop_creates_and_cancels_task(monkeypatch: pytes
 @pytest.mark.asyncio
 async def test_replay_parses_speed_prefix_and_no_timing(monkeypatch: pytest.MonkeyPatch) -> None:
     app = OrionApp()
-    app.nats_client = SimpleNamespace(url="nats://example:4222")
+    app.nats_client = cast(Any, SimpleNamespace(url="nats://example:4222"))
 
     called = asyncio.Event()
     captured: dict[str, object] = {}

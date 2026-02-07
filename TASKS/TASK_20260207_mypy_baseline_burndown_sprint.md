@@ -64,6 +64,10 @@
   - `3 passed`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
   - `Found 176 errors in 11 files (checked 214 source files)`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/operator_console/tests/test_record_replay_commands.py`
+  - `3 passed`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
+  - `Found 171 errors in 10 files (checked 214 source files)`
 
 ## Notes / Risks
 
@@ -76,4 +80,5 @@
 1) Week 1 batch-1 completed: reduced baseline from `198/19` to `191/14`.
 2) Week 1 batch-2 completed: reduced baseline from `191/14` to `183/13`.
 3) Week 1 batch-3 completed: reduced baseline from `183/13` to `176/11` via low-risk `operator_console/tests`.
-4) Week 1 batch-4: взять `src/qiki/services/operator_console/tests/test_record_replay_commands.py` (текущий верх хвоста mypy).
+4) Week 1 batch-4 completed: reduced baseline from `176/11` to `171/10` via `test_record_replay_commands.py`.
+5) Week 1 batch-5: перейти к `src/qiki/services/operator_console/tests/test_incidents_store.py` (следующий верх хвоста mypy).
