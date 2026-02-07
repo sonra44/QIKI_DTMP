@@ -4,6 +4,7 @@ import os
 import platform
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 import psutil
 from textual.app import ComposeResult
@@ -80,7 +81,7 @@ class SystemPanel(Static):
         if not _has_active_textual_app():
             return
 
-        table = DataTable(id="system-table")
+        table: Any = DataTable(id="system-table")
         table.add_columns("Key", "Value")
         self._table_initialized = True
         yield table
@@ -94,7 +95,7 @@ class SystemPanel(Static):
         from textual.widgets import DataTable
 
         try:
-            table = self.query_one("#system-table", DataTable)
+            table: Any = self.query_one("#system-table", DataTable)
         except Exception:
             return
 
@@ -120,4 +121,3 @@ class SystemPanel(Static):
 
         for key, value in rows:
             table.add_row(key, value)
-

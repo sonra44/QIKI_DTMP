@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import grpc
 
-from generated.q_sim_api_pb2 import HealthCheckRequest
+from generated.q_sim_api_pb2 import HealthCheckRequest  # type: ignore[attr-defined]
 from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub
 
 

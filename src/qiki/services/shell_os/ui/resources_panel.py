@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import Any
 
 import psutil
 from textual.app import ComposeResult
@@ -46,7 +47,7 @@ class ResourcesPanel(Static):
         if not _has_active_textual_app():
             return
 
-        table = DataTable(id="resources-table")
+        table: Any = DataTable(id="resources-table")
         table.add_columns("Metric", "Value")
         self._table_initialized = True
         yield table
@@ -60,7 +61,7 @@ class ResourcesPanel(Static):
         from textual.widgets import DataTable
 
         try:
-            table = self.query_one("#resources-table", DataTable)
+            table: Any = self.query_one("#resources-table", DataTable)
         except Exception:
             return
 
@@ -124,4 +125,3 @@ class ResourcesPanel(Static):
 
         for key, value in rows:
             table.add_row(key, value)
-

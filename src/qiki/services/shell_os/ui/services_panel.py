@@ -5,6 +5,7 @@ import shutil
 import socket
 import subprocess
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 from textual.app import ComposeResult
@@ -43,7 +44,7 @@ class ServicesPanel(Static):
         if not _has_active_textual_app():
             return
 
-        table = DataTable(id="services-table")
+        table: Any = DataTable(id="services-table")
         table.add_columns("Service", "Status", "Details")
         self._table_initialized = True
         yield table
@@ -57,7 +58,7 @@ class ServicesPanel(Static):
         from textual.widgets import DataTable
 
         try:
-            table = self.query_one("#services-table", DataTable)
+            table: Any = self.query_one("#services-table", DataTable)
         except Exception:
             return
 
@@ -115,4 +116,3 @@ class ServicesPanel(Static):
 
         for svc, status, detail in rows:
             table.add_row(svc, status, detail)
-
