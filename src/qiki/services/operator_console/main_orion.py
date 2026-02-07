@@ -4003,7 +4003,7 @@ class OrionApp(App):
                 )
             )
 
-            prox = sp.get("proximity") if isinstance(sp.get("proximity"), dict) else {}
+            prox: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
             prox_value = I18N.fmt_na(prox.get("contacts"))
             if prox_value == I18N.NA:
                 prox_value = I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2)
@@ -4019,7 +4019,7 @@ class OrionApp(App):
                 )
             )
 
-            solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+            solar: dict[str, Any] = cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
             rows.append(
                 (
                     "solar",
@@ -4032,7 +4032,7 @@ class OrionApp(App):
                 )
             )
 
-            st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+            st: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
             st_status = st.get("status") if isinstance(st.get("status"), str) else None
             st_value = I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA
             rows.append(
@@ -4189,7 +4189,7 @@ class OrionApp(App):
                 ]
             )
 
-            solar = sp.get("solar") if isinstance(sp.get("solar"), dict) else {}
+            solar: dict[str, Any] = cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
             rows.extend(
                 [
                     (
@@ -4213,7 +4213,7 @@ class OrionApp(App):
                 ]
             )
 
-            st = sp.get("star_tracker") if isinstance(sp.get("star_tracker"), dict) else {}
+            st: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
             st_status = st.get("status") if isinstance(st.get("status"), str) else None
             rows.extend(
                 [
@@ -4247,15 +4247,18 @@ class OrionApp(App):
                 ]
             )
 
-            mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
-            field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
+            mag_raw = sp.get("magnetometer")
+            mag: dict[str, Any] = cast(dict[str, Any], mag_raw) if isinstance(mag_raw, dict) else {}
+            field_raw = mag.get("field_ut")
+            field: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
             field_txt = I18N.NA
             if isinstance(field, dict):
-                try:
-                    field_txt = (
-                        f"x={float(field.get('x')):.2f}, y={float(field.get('y')):.2f}, z={float(field.get('z')):.2f}"
-                    )
-                except Exception:
+                x_mag = field.get("x")
+                y_mag = field.get("y")
+                z_mag = field.get("z")
+                if isinstance(x_mag, (int, float)) and isinstance(y_mag, (int, float)) and isinstance(z_mag, (int, float)):
+                    field_txt = f"x={float(x_mag):.2f}, y={float(y_mag):.2f}, z={float(z_mag):.2f}"
+                else:
                     field_txt = I18N.INVALID
             rows.extend(
                 [
@@ -5211,7 +5214,7 @@ class OrionApp(App):
             prefix = "STDERR" if event.stderr else "STDOUT"
             self._console_log(f"{prefix}> {text}", level="warning" if event.stderr else "info")
 
-    def _on_boot_complete(self, result: bool) -> None:
+    def _on_boot_complete(self, result: bool | None) -> None:
         # Boot screen is informational; even on failure we proceed (no-mocks: values will stay N/A).
         try:
             self.set_focus(self.query_one("#command-dock", Input))
@@ -5516,7 +5519,7 @@ class OrionApp(App):
             if self._max_console_rows > 0:
                 try:
                     while table.row_count > self._max_console_rows:
-                        table.remove_row(0)
+                        cast(Any, table).remove_row(0)
                 except Exception:
                     pass
         except Exception:
@@ -5709,14 +5712,14 @@ class OrionApp(App):
             return
         if self._ppi_renderer is None:
             try:
-                ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
+                cast(Any, ppi).update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
             except Exception:
                 pass
             return
         if self._radar_renderer_effective != "unicode":
             if render_bitmap_ppi is None or not hasattr(ppi, "image"):
                 try:
-                    ppi.update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
+                    cast(Any, ppi).update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
                 except Exception:
                     pass
                 self._render_radar_legend()
