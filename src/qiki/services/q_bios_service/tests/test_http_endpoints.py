@@ -5,26 +5,27 @@ import threading
 from functools import partial
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
+from typing import Any, cast
 
 from qiki.services.q_bios_service.handlers import BiosHttpHandler
 
 MOTOR_LEFT_ID = "37dcb32c-ae13-5156-ae80-0f4c663824de"
 
 
-def _request_json(host: str, port: int, method: str, path: str) -> tuple[int, dict]:
+def _request_json(host: str, port: int, method: str, path: str) -> tuple[int, dict[str, Any]]:
     conn = HTTPConnection(host, port, timeout=3)
     try:
         conn.request(method, path)
         resp = conn.getresponse()
         raw = resp.read()
-        body = json.loads(raw.decode("utf-8")) if raw else {}
+        body = cast(dict[str, Any], json.loads(raw.decode("utf-8")) if raw else {})
         return resp.status, body
     finally:
         conn.close()
 
 
 def test_bios_http_endpoints_status_component_reload() -> None:
-    payload = {
+    payload: dict[str, Any] = {
         "bios_version": "1.0",
         "hardware_profile_hash": "sha256:test",
         "timestamp": "2026-01-01T00:00:00Z",
@@ -33,11 +34,11 @@ def test_bios_http_endpoints_status_component_reload() -> None:
         ],
     }
 
-    def get_status_payload() -> dict:
+    def get_status_payload() -> dict[str, Any]:
         return dict(payload)
 
-    def get_component_payload(device_id: str) -> dict:
-        rows = payload.get("post_results", [])
+    def get_component_payload(device_id: str) -> dict[str, Any]:
+        rows = cast(list[dict[str, Any]], payload.get("post_results", []))
         for row in rows:
             if row.get("device_id") == device_id:
                 return {"ok": True, "device": dict(row)}
@@ -45,7 +46,7 @@ def test_bios_http_endpoints_status_component_reload() -> None:
 
     did_reload = {"value": False}
 
-    def reload_config() -> dict:
+    def reload_config() -> dict[str, Any]:
         did_reload["value"] = True
         return {"ok": True, "reloaded": True}
 
@@ -59,7 +60,7 @@ def test_bios_http_endpoints_status_component_reload() -> None:
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     try:
-        host, port = server.server_address
+        host, port = cast(tuple[str, int], server.server_address)
 
         status, body = _request_json(host, port, "GET", "/healthz")
         assert status == 200

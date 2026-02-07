@@ -54,6 +54,12 @@
   - `..... [100%]`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
   - `Found 191 errors in 14 files (checked 214 source files)`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev mypy src/qiki/services/q_bios_service/tests/test_http_endpoints.py`
+  - `Success: no issues found in 1 source file`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/q_bios_service/tests/test_http_endpoints.py`
+  - `. [100%]`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 8'`
+  - `Found 183 errors in 13 files (checked 214 source files)`
 
 ## Notes / Risks
 
@@ -64,5 +70,5 @@
 ## Next
 
 1) Week 1 batch-1 completed: reduced baseline from `198/19` to `191/14`.
-2) Week 1 batch-2: закрыть оставшиеся быстрые ошибки в `q_bios_service/tests/test_http_endpoints.py`.
+2) Week 1 batch-2 completed: reduced baseline from `191/14` to `183/13`.
 3) Week 1 batch-3: перейти к low-risk `operator_console/tests` mypy issues (lambda typing / fixtures).
