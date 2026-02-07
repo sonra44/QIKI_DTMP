@@ -173,6 +173,9 @@ Commands are parsed in `OrionApp._run_command()`:
 - `trust|доверие trusted|untrusted|off|доверенный|недоверенный|выкл` — events trust filter alias (maps to text filter token; works without `S:` prefix)
 - `simulation.*` or `симуляция.*` — canonicalized and published to control bus (`sim.*` internally)
 
+Observability note:
+- System snapshot and diagnostics expose normalized trust state as `events_filter_trust` (`trusted|untrusted|off`).
+
 ### 6.4 Inspector provenance (no-mocks)
 
 For telemetry-backed screens (Power/Thermal/Sensors/Propulsion), Inspector shows `Source keys/Ключи источника`:

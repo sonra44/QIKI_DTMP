@@ -237,3 +237,46 @@ def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
     app._update_command_placeholder()
 
     assert "trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>" in fake_input.placeholder
+
+
+def test_system_snapshot_stores_normalized_trust_filter_value() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app._events_filter_text = "недоверенный"
+    app._update_system_snapshot()
+
+    env = app._snapshots.get_last_by_key("system", "system")
+    assert env is not None
+    payload = env.payload if isinstance(getattr(env, "payload", None), dict) else {}
+    assert payload.get("events_filter_trust") == "untrusted"
+
+
+def test_diagnostics_table_contains_normalized_trust_filter_block() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app._events_filter_text = "доверенный"
+    app._update_system_snapshot()
+
+    captured_rows: list[tuple[object, ...]] = []
+
+    class _FakeTable:
+        id = "diagnostics-table"
+        cursor_row = 0
+
+        def move_cursor(self, **_kwargs: object) -> None:
+            return
+
+    app.query_one = lambda _selector, _cls=None: _FakeTable()  # type: ignore[method-assign]
+    app._sync_datatable_rows = lambda _table, rows: captured_rows.extend(rows)  # type: ignore[method-assign]
+
+    app._render_diagnostics_table()
+
+    trust_rows = [row for row in captured_rows if str(row[0]) == "events_filter_trust"]
+    assert len(trust_rows) == 1
+    assert str(trust_rows[0][3]) == "trusted"

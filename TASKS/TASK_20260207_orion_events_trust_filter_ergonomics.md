@@ -60,6 +60,7 @@
 - Отдельный command provider/palette provider в ORION не найден; канон discoverability сейчас = routing + help + placeholder + unit tests.
 - Добавлен русскоязычный алиас `доверие` (routing + handler + help/placeholder + tests).
 - Добавлены русские значения trust-токенов: `доверенный/недоверенный/выкл` (с нормализацией в trust-маркер).
+- Добавлен явный normalized trust-state в snapshot/summary/diagnostics: `events_filter_trust` (`trusted|untrusted|off`).
 
 ## Next
 

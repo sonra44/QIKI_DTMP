@@ -1968,6 +1968,7 @@ class OrionApp(App):
                     "nats_connected": bool(self.nats_connected),
                     "events_filter_type": self._events_filter_type,
                     "events_filter_text": self._events_filter_text,
+                    "events_filter_trust": self._normalize_events_trust_filter_token(self._events_filter_text),
                 },
             ),
             key="system",
@@ -3063,8 +3064,19 @@ class OrionApp(App):
                 status="ok",
                 value=(
                     f"type={self._events_filter_type or I18N.bidi('off', 'выкл')}; "
-                    f"filter={self._events_filter_text or I18N.bidi('off', 'выкл')}"
+                    f"filter={self._events_filter_text or I18N.bidi('off', 'выкл')}; "
+                    f"trust={self._normalize_events_trust_filter_token(self._events_filter_text)}"
                 ),
+                ts_epoch=None,
+                envelope=None,
+            )
+        )
+        blocks.append(
+            SystemStateBlock(
+                block_id="events_filter_trust",
+                title=I18N.bidi("Events trust filter", "Фильтр событий по доверию"),
+                status="ok",
+                value=self._normalize_events_trust_filter_token(self._events_filter_text),
                 ts_epoch=None,
                 envelope=None,
             )
@@ -4334,6 +4346,12 @@ class OrionApp(App):
         )
         events_filter_type = system_payload.get("events_filter_type") if isinstance(system_payload, dict) else None
         events_filter_text = system_payload.get("events_filter_text") if isinstance(system_payload, dict) else None
+        events_filter_trust = (
+            system_payload.get("events_filter_trust") if isinstance(system_payload, dict) else None
+        )
+        events_filter_trust = self._normalize_events_trust_filter_token(
+            events_filter_trust if events_filter_trust is not None else events_filter_text
+        )
 
         telemetry_env = self._snapshots.get_last("telemetry")
         telemetry_age_s = self._snapshots.age_s("telemetry", now_epoch=now)
@@ -4447,6 +4465,14 @@ class OrionApp(App):
                 title=I18N.bidi("Events text filter", "Фильтр событий по тексту"),
                 status="ok",
                 value=str(events_filter_text or I18N.bidi("off", "выкл")),
+                ts_epoch=None if system_env is None else float(system_env.ts_epoch),
+                envelope=system_env,
+            ),
+            SystemStateBlock(
+                block_id="events_filter_trust",
+                title=I18N.bidi("Events trust filter", "Фильтр событий по доверию"),
+                status="ok",
+                value=str(events_filter_trust),
                 ts_epoch=None if system_env is None else float(system_env.ts_epoch),
                 envelope=system_env,
             ),
@@ -4780,22 +4806,12 @@ class OrionApp(App):
         def severity_rank(sev: str) -> int:
             return {"A": 0, "C": 1, "W": 2, "I": 3}.get((sev or "").upper(), 4)
 
-        def normalize_trust_token(token: str) -> str:
-            raw = (token or "").strip().lower()
-            if raw in {"trusted", "доверенный", "доверено"}:
-                return "trusted"
-            if raw in {"untrusted", "недоверенный", "недоверено"}:
-                return "untrusted"
-            if raw in {"off", "none", "all", "*", "выкл", "выключить", "откл", "сброс", "нет"}:
-                return "off"
-            return raw
-
         def passes(inc: Any) -> bool:
             if self._events_filter_type and (inc.type or "") != self._events_filter_type:
                 return False
             if not self._events_filter_text:
                 return True
-            needle = normalize_trust_token(self._events_filter_text)
+            needle = self._normalize_events_trust_filter_token(self._events_filter_text)
             trust_marker = str(self._provenance_marker(channel="events", subject=inc.subject)).lower()
             if needle in {"trusted", "untrusted"}:
                 return trust_marker == needle
@@ -6753,6 +6769,17 @@ class OrionApp(App):
             return "TRUSTED" if trusted_subject and subj == trusted_subject else "UNTRUSTED"
         return "UNTRUSTED"
 
+    @staticmethod
+    def _normalize_events_trust_filter_token(token: Any) -> str:
+        raw = str(token or "").strip().lower()
+        if raw in {"trusted", "доверенный", "доверено"}:
+            return "trusted"
+        if raw in {"untrusted", "недоверенный", "недоверено"}:
+            return "untrusted"
+        if raw in {"off", "none", "all", "*", "выкл", "выключить", "откл", "сброс", "нет", ""}:
+            return "off"
+        return raw
+
     def _ack_incident(self, key: str) -> bool:
         k = (key or "").strip()
         if not k:
@@ -8692,13 +8719,7 @@ class OrionApp(App):
         if low in {"trust", "доверие"} or low.startswith("trust ") or low.startswith("доверие "):
             _, _, tail = cmd.partition(" ")
             token_raw = tail.strip()
-            token = (token_raw or "").strip().lower()
-            if token in {"доверенный", "доверено"}:
-                token = "trusted"
-            elif token in {"недоверенный", "недоверено"}:
-                token = "untrusted"
-            elif token in {"выкл", "выключить", "откл", "сброс", "нет"}:
-                token = "off"
+            token = self._normalize_events_trust_filter_token(token_raw)
             if not token_raw:
                 current = self._events_filter_text or I18N.NA
                 self._console_log(

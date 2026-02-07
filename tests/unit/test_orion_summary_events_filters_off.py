@@ -18,4 +18,8 @@ def test_orion_summary_events_filters_show_off_when_unset() -> None:
     assert "type=" in str(b.value)
     assert "filter=" in str(b.value)
     assert "N/A" not in str(b.value)
+    assert "trust=off" in str(b.value)
 
+    trust_blocks = [x for x in blocks if getattr(x, "block_id", None) == "events_filter_trust"]
+    assert len(trust_blocks) == 1
+    assert str(trust_blocks[0].value) == "off"
