@@ -7729,6 +7729,7 @@ class OrionApp(App):
             "record",
             "replay",
             "trust",
+            "доверие",
         }:
             return True
 
@@ -7750,6 +7751,7 @@ class OrionApp(App):
                 "filter ",
                 "фильтр ",
                 "trust ",
+                "доверие ",
                 "ack ",
                 "acknowledge ",
                 "подтвердить ",
@@ -7838,7 +7840,7 @@ class OrionApp(App):
             f"{I18N.bidi('Filters', 'Фильтры')}: "
             f"type/тип <name/имя> | type off/тип отключить | "
             f"filter/фильтр <text/текст> | filter off/фильтр отключить | "
-            f"trust <trusted|untrusted|off>",
+            f"trust/доверие <trusted|untrusted|off>",
             level="info",
         )
         self._console_log(
@@ -8676,8 +8678,8 @@ class OrionApp(App):
                 self._render_diagnostics_table()
             return
 
-        # trust <trusted|untrusted|off>
-        if low == "trust" or low.startswith("trust "):
+        # trust/доверие <trusted|untrusted|off>
+        if low in {"trust", "доверие"} or low.startswith("trust ") or low.startswith("доверие "):
             _, _, tail = cmd.partition(" ")
             token = tail.strip().lower()
             if not token:
@@ -9342,7 +9344,7 @@ class OrionApp(App):
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
-        trust_part = "trust <trusted|untrusted|off>"
+        trust_part = "trust/доверие <trusted|untrusted|off>"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
         sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
         if self._secret_entry_mode == "openai_api_key":

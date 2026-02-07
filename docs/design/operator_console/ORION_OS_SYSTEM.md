@@ -170,7 +170,7 @@ Commands are parsed in `OrionApp._run_command()`:
 - bare screen aliases: `system`, `система`, `events`, …
 - `filter <text>` / `filter off` / `filter` (clears) — events text filter
 - `type <name>` / `type off` — events type filter
-- `trust trusted|untrusted|off` — events trust filter alias (maps to text filter token; works without `S:` prefix)
+- `trust|доверие trusted|untrusted|off` — events trust filter alias (maps to text filter token; works without `S:` prefix)
 - `simulation.*` or `симуляция.*` — canonicalized and published to control bus (`sim.*` internally)
 
 ### 6.4 Inspector provenance (no-mocks)

@@ -183,6 +183,28 @@ async def test_trust_command_routes_to_system_without_prefix() -> None:
     assert app._events_filter_text == "untrusted"
 
 
+@pytest.mark.asyncio
+async def test_ru_trust_alias_routes_to_system_without_prefix() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app._console_log = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    app._update_system_snapshot = lambda: None  # type: ignore[method-assign]
+    app._render_events_table = lambda: None  # type: ignore[method-assign]
+    app._render_summary_table = lambda: None  # type: ignore[method-assign]
+    app._render_diagnostics_table = lambda: None  # type: ignore[method-assign]
+
+    async def _unexpected_qiki(_text: str) -> None:
+        raise AssertionError("доверие команда должна идти в system path")
+
+    app._publish_qiki_intent = _unexpected_qiki  # type: ignore[method-assign]
+
+    await app._run_command("доверие untrusted")
+    assert app._events_filter_text == "untrusted"
+
+
 def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
     pytest.importorskip("textual")
 
@@ -200,4 +222,4 @@ def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
 
     app._update_command_placeholder()
 
-    assert "trust <trusted|untrusted|off>" in fake_input.placeholder
+    assert "trust/доверие <trusted|untrusted|off>" in fake_input.placeholder
