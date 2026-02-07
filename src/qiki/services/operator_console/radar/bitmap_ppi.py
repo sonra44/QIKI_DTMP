@@ -6,6 +6,15 @@ from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
 
 
+def _to_float_maybe(value: Any) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def _iff_kind(payload: dict[str, Any]) -> str | None:
     raw = payload.get("iff", payload.get("iff_class", payload.get("iffClass")))
     if isinstance(raw, str):
@@ -94,8 +103,8 @@ def render_bitmap_ppi(
         # Range rings.
         base_r = max(6, min(width_px, height_px) // 2 - 4)
         for ratio in (0.25, 0.5, 0.75, 1.0):
-            r = int(round(base_r * ratio))
-            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=overlay, width=1)
+            ring_r = int(round(base_r * ratio))
+            draw.ellipse((cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r), outline=overlay, width=1)
 
     sel = str(selected_track_id) if selected_track_id is not None else None
 
@@ -109,25 +118,20 @@ def render_bitmap_ppi(
 
         pos = payload.get("position")
         if isinstance(pos, dict):
-            try:
-                x_m = float(pos.get("x"))
-                y_m = float(pos.get("y"))
-                z_m = float(pos.get("z"))
-            except Exception:
-                x_m = y_m = z_m = None
+            x_m = _to_float_maybe(pos.get("x"))
+            y_m = _to_float_maybe(pos.get("y"))
+            z_m = _to_float_maybe(pos.get("z"))
 
         if x_m is None or y_m is None:
-            r = payload.get("range_m")
-            b = payload.get("bearing_deg")
+            range_raw = payload.get("range_m")
+            bearing_raw = payload.get("bearing_deg")
             e = payload.get("elev_deg", 0.0)
-            try:
-                r_f = float(r)
-                b_f = float(b)
-            except Exception:
+            r_f = _to_float_maybe(range_raw)
+            b_f = _to_float_maybe(bearing_raw)
+            if r_f is None or b_f is None:
                 continue
-            try:
-                e_f = float(e)
-            except Exception:
+            e_f = _to_float_maybe(e)
+            if e_f is None:
                 e_f = 0.0
             xyz = polar_to_xyz_m(
                 range_m=float(r_f),

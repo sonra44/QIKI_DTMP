@@ -11,6 +11,15 @@ from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
 
 
+def _to_float_maybe(value: Any) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def radar_z_m_if_present(payload: dict[str, Any]) -> float | None:
     """Return Z altitude (meters) only when explicitly present (no-mocks).
 
@@ -20,19 +29,17 @@ def radar_z_m_if_present(payload: dict[str, Any]) -> float | None:
     """
     pos = payload.get("position")
     if isinstance(pos, dict) and "z" in pos:
-        try:
-            z = float(pos.get("z"))
-            return z if math.isfinite(z) else None
-        except Exception:
+        z = _to_float_maybe(pos.get("z"))
+        if z is None:
             return None
+        return z if math.isfinite(z) else None
 
     if "elev_deg" not in payload:
         return None
-    try:
-        r_f = float(payload.get("range_m"))
-        b_f = float(payload.get("bearing_deg"))
-        e_f = float(payload.get("elev_deg"))
-    except Exception:
+    r_f = _to_float_maybe(payload.get("range_m"))
+    b_f = _to_float_maybe(payload.get("bearing_deg"))
+    e_f = _to_float_maybe(payload.get("elev_deg"))
+    if r_f is None or b_f is None or e_f is None:
         return None
     if not (math.isfinite(r_f) and math.isfinite(b_f) and math.isfinite(e_f)):
         return None
@@ -48,11 +55,10 @@ def radar_vz_mps_if_present(payload: dict[str, Any]) -> float | None:
     """
     vel = payload.get("velocity")
     if isinstance(vel, dict) and "z" in vel:
-        try:
-            z = float(vel.get("z"))
-            return z if math.isfinite(z) else None
-        except Exception:
+        z = _to_float_maybe(vel.get("z"))
+        if z is None:
             return None
+        return z if math.isfinite(z) else None
 
     for keys in (
         ("vx_mps", "vy_mps", "vz_mps"),
@@ -61,11 +67,10 @@ def radar_vz_mps_if_present(payload: dict[str, Any]) -> float | None:
     ):
         if keys[2] not in payload:
             continue
-        try:
-            z = float(payload.get(keys[2]))
-            return z if math.isfinite(z) else None
-        except Exception:
+        z = _to_float_maybe(payload.get(keys[2]))
+        if z is None:
             return None
+        return z if math.isfinite(z) else None
 
     return None
 
@@ -157,10 +162,11 @@ class BraillePpiRenderer:
     def _velocity_xyz_mps(payload: dict[str, Any]) -> tuple[float, float, float] | None:
         vel = payload.get("velocity")
         if isinstance(vel, dict):
-            try:
-                return (float(vel.get("x")), float(vel.get("y")), float(vel.get("z")))
-            except Exception:
-                pass
+            vx_d = _to_float_maybe(vel.get("x"))
+            vy_d = _to_float_maybe(vel.get("y"))
+            vz_d = _to_float_maybe(vel.get("z"))
+            if vx_d is not None and vy_d is not None and vz_d is not None:
+                return (vx_d, vy_d, vz_d)
         for keys in (
             ("vx_mps", "vy_mps", "vz_mps"),
             ("vx", "vy", "vz"),
@@ -318,31 +324,23 @@ class BraillePpiRenderer:
 
             pos = payload.get("position")
             if isinstance(pos, dict):
-                try:
-                    x_m = float(pos.get("x"))
-                    y_m = float(pos.get("y"))
-                except Exception:
-                    x_m = None
-                    y_m = None
+                x_m = _to_float_maybe(pos.get("x"))
+                y_m = _to_float_maybe(pos.get("y"))
+                if x_m is None or y_m is None:
                     z_m = None
                 if "z" in pos:
-                    try:
-                        z_m = float(pos.get("z"))
-                    except Exception:
-                        z_m = None
+                    z_m = _to_float_maybe(pos.get("z"))
 
             if x_m is None or y_m is None:
                 r = payload.get("range_m")
                 b = payload.get("bearing_deg")
                 e = payload.get("elev_deg", 0.0)
-                try:
-                    r_f = float(r)
-                    b_f = float(b)
-                except Exception:
+                r_f = _to_float_maybe(r)
+                b_f = _to_float_maybe(b)
+                if r_f is None or b_f is None:
                     continue
-                try:
-                    e_f = float(e)
-                except Exception:
+                e_f = _to_float_maybe(e)
+                if e_f is None:
                     e_f = 0.0
                 xyz = polar_to_xyz_m(
                     range_m=float(r_f),
@@ -449,14 +447,14 @@ class BraillePpiRenderer:
         for y in range(height_cells):
             base = y * stride
             for x in range(width_cells):
-                style = cell_styles[y][x]
-                if style is None:
+                cell_style = cell_styles[y][x]
+                if cell_style is None:
                     continue
                 ch = lines[y][x]
                 if ch == " ":
                     continue
                 i = base + x
-                text.stylize(style, i, i + 1)
+                text.stylize(cell_style, i, i + 1)
         return text
 
 
@@ -524,30 +522,23 @@ def pick_nearest_track_id(
 
         pos = payload.get("position")
         if isinstance(pos, dict):
-            try:
-                x_m = float(pos.get("x"))
-                y_m = float(pos.get("y"))
-            except Exception:
-                x_m = y_m = None
+            x_m = _to_float_maybe(pos.get("x"))
+            y_m = _to_float_maybe(pos.get("y"))
+            if x_m is None or y_m is None:
                 z_m = None
             if "z" in pos:
-                try:
-                    z_m = float(pos.get("z"))
-                except Exception:
-                    z_m = None
+                z_m = _to_float_maybe(pos.get("z"))
 
         if x_m is None or y_m is None:
             r = payload.get("range_m")
             b = payload.get("bearing_deg")
             e = payload.get("elev_deg", 0.0)
-            try:
-                r_f = float(r)
-                b_f = float(b)
-            except Exception:
+            r_f = _to_float_maybe(r)
+            b_f = _to_float_maybe(b)
+            if r_f is None or b_f is None:
                 continue
-            try:
-                e_f = float(e)
-            except Exception:
+            e_f = _to_float_maybe(e)
+            if e_f is None:
                 e_f = 0.0
             xyz = polar_to_xyz_m(
                 range_m=float(r_f),

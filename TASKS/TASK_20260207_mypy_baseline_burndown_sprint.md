@@ -110,6 +110,12 @@
   - `..................... [100%]`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 28'`
   - `Found 23 errors in 2 files (checked 214 source files)`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src/qiki/services/operator_console/radar/bitmap_ppi.py src/qiki/services/operator_console/radar/unicode_ppi.py 2>&1'`
+  - `Success: no issues found in 2 source files`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/operator_console/tests/test_incidents_store.py src/qiki/services/operator_console/tests/test_record_replay_commands.py src/qiki/services/operator_console/tests/test_qiki_response_handling.py tests/unit/test_orion_control_provenance.py tests/unit/test_orion_proposal_actions.py`
+  - `..................... [100%]`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 40'`
+  - `Success: no issues found in 214 source files`
 
 ## Notes / Risks
 
@@ -134,4 +140,5 @@
 13) Week 2 batch-13 completed: reduced baseline from `82/8` to `59/8` via `main_orion.py` medium-risk cleanup (`selection` optional guards, widget/app typed dispatch, mission payload narrowing, and local no-redef normalization in sensor-plane/command paths).
 14) Week 2 batch-14 completed: reduced baseline from `59/8` to `37/7` via early-file `main_orion.py` cluster cleanup (`post_results` list narrowing, speed parsing guard, `_RadarMouseMixin` app/button-safe access, and radar bitmap fallback typing ignores) + yaml import typing.
 15) Week 2 batch-15 completed: reduced baseline from `37/7` to `23/2` by cleaning cross-file residual cluster (`operator_console/main.py`, `qiki_chat/handler.py`, `operator_console/clients/nats_client.py`, `shared/record_replay.py`, `operator_console/ui/charts.py`) with local type guards/annotations.
-16) Week 2 batch-16: finish sprint by typing the final two files in tail (`src/qiki/services/operator_console/main_enhanced.py`, `src/qiki/services/operator_console/main_full.py`) with narrow fixes and no behavior changes.
+16) Week 2 batch-16 completed: reduced baseline from `23/2` to `0/0` by cleaning the final radar typing cluster (`src/qiki/services/operator_console/radar/bitmap_ppi.py`, `src/qiki/services/operator_console/radar/unicode_ppi.py`) with safe numeric narrowing and local style-variable hygiene.
+17) Post-sprint guard: keep rule "changed file must remain mypy-clean" and run `mypy src` in regular quality gate.
