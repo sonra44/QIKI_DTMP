@@ -7728,6 +7728,7 @@ class OrionApp(App):
             "очистить",
             "record",
             "replay",
+            "trust",
         }:
             return True
 
@@ -7748,6 +7749,7 @@ class OrionApp(App):
                 "тип ",
                 "filter ",
                 "фильтр ",
+                "trust ",
                 "ack ",
                 "acknowledge ",
                 "подтвердить ",

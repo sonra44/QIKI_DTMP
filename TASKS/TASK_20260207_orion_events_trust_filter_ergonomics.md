@@ -33,9 +33,10 @@
 1) Подтвердить pain point и текущую реализацию фильтров в `OrionApp._events_filtered_sorted`.
 2) Исправить trust-матчинг на точное сравнение для `trusted/untrusted`.
 3) Добавить alias-команду `trust ...` в `_run_command`.
-4) Добавить unit tests на фильтрацию и на parsing path команды.
-5) Прогнать Docker-проверки и quality gate.
-6) Синхронизировать help и docs.
+4) Добавить default routing для `trust` без `S:` в `_should_route_to_system_by_default`.
+5) Добавить unit tests на фильтрацию, parsing path и routing без префикса.
+6) Прогнать Docker-проверки и quality gate.
+7) Синхронизировать help и docs.
 
 ## Definition of Done (DoD)
 
@@ -46,7 +47,7 @@
 ## Evidence (commands -> output)
 
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests/unit/test_orion_control_provenance.py`
-  - `..... [100%]`
+  - `...... [100%]`
 - `bash scripts/quality_gate_docker.sh`
   - `[quality-gate] OK`
 
@@ -54,8 +55,8 @@
 
 - Риск ложноположительного матчинга устранен: `trusted` больше не захватывает `untrusted`.
 - Реализация `trust ...` намеренно переиспользует существующий events text filter (без дублирования состояния).
+- Routing риск устранен: `trust ...` теперь обрабатывается как system-команда и без `S:`.
 
 ## Next
 
-1) При необходимости добавить discoverability в Command Palette для `trust` алиаса.
-2) После одобрения — commit/push этого среза.
+1) После одобрения — commit/push follow-up (routing fix + тест).

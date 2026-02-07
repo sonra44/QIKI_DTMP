@@ -159,3 +159,25 @@ async def test_trust_command_alias_sets_and_clears_events_filter_text() -> None:
 
     await app._run_command("s: trust off")
     assert app._events_filter_text is None
+
+
+@pytest.mark.asyncio
+async def test_trust_command_routes_to_system_without_prefix() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app._console_log = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    app._update_system_snapshot = lambda: None  # type: ignore[method-assign]
+    app._render_events_table = lambda: None  # type: ignore[method-assign]
+    app._render_summary_table = lambda: None  # type: ignore[method-assign]
+    app._render_diagnostics_table = lambda: None  # type: ignore[method-assign]
+
+    async def _unexpected_qiki(_text: str) -> None:
+        raise AssertionError("trust command must route to system path")
+
+    app._publish_qiki_intent = _unexpected_qiki  # type: ignore[method-assign]
+
+    await app._run_command("trust untrusted")
+    assert app._events_filter_text == "untrusted"
