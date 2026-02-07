@@ -140,6 +140,14 @@ def test_events_text_filter_matches_trust_marker() -> None:
     untrusted = app._events_filtered_sorted()
     assert [str(inc.incident_id) for inc in untrusted] == ["inc-untrusted"]
 
+    app._events_filter_text = "доверенный"
+    trusted_ru = app._events_filtered_sorted()
+    assert [str(inc.incident_id) for inc in trusted_ru] == ["inc-trusted"]
+
+    app._events_filter_text = "недоверенный"
+    untrusted_ru = app._events_filtered_sorted()
+    assert [str(inc.incident_id) for inc in untrusted_ru] == ["inc-untrusted"]
+
 
 @pytest.mark.asyncio
 async def test_trust_command_alias_sets_and_clears_events_filter_text() -> None:
@@ -158,6 +166,12 @@ async def test_trust_command_alias_sets_and_clears_events_filter_text() -> None:
     assert app._events_filter_text == "untrusted"
 
     await app._run_command("s: trust off")
+    assert app._events_filter_text is None
+
+    await app._run_command("s: доверие недоверенный")
+    assert app._events_filter_text == "untrusted"
+
+    await app._run_command("s: доверие выкл")
     assert app._events_filter_text is None
 
 
@@ -201,7 +215,7 @@ async def test_ru_trust_alias_routes_to_system_without_prefix() -> None:
 
     app._publish_qiki_intent = _unexpected_qiki  # type: ignore[method-assign]
 
-    await app._run_command("доверие untrusted")
+    await app._run_command("доверие недоверенный")
     assert app._events_filter_text == "untrusted"
 
 
@@ -222,4 +236,4 @@ def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
 
     app._update_command_placeholder()
 
-    assert "trust/доверие <trusted|untrusted|off>" in fake_input.placeholder
+    assert "trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>" in fake_input.placeholder

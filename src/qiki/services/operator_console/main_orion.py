@@ -4780,12 +4780,22 @@ class OrionApp(App):
         def severity_rank(sev: str) -> int:
             return {"A": 0, "C": 1, "W": 2, "I": 3}.get((sev or "").upper(), 4)
 
+        def normalize_trust_token(token: str) -> str:
+            raw = (token or "").strip().lower()
+            if raw in {"trusted", "доверенный", "доверено"}:
+                return "trusted"
+            if raw in {"untrusted", "недоверенный", "недоверено"}:
+                return "untrusted"
+            if raw in {"off", "none", "all", "*", "выкл", "выключить", "откл", "сброс", "нет"}:
+                return "off"
+            return raw
+
         def passes(inc: Any) -> bool:
             if self._events_filter_type and (inc.type or "") != self._events_filter_type:
                 return False
             if not self._events_filter_text:
                 return True
-            needle = self._events_filter_text.lower()
+            needle = normalize_trust_token(self._events_filter_text)
             trust_marker = str(self._provenance_marker(channel="events", subject=inc.subject)).lower()
             if needle in {"trusted", "untrusted"}:
                 return trust_marker == needle
@@ -7840,7 +7850,7 @@ class OrionApp(App):
             f"{I18N.bidi('Filters', 'Фильтры')}: "
             f"type/тип <name/имя> | type off/тип отключить | "
             f"filter/фильтр <text/текст> | filter off/фильтр отключить | "
-            f"trust/доверие <trusted|untrusted|off>",
+            f"trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>",
             level="info",
         )
         self._console_log(
@@ -8678,11 +8688,18 @@ class OrionApp(App):
                 self._render_diagnostics_table()
             return
 
-        # trust/доверие <trusted|untrusted|off>
+        # trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>
         if low in {"trust", "доверие"} or low.startswith("trust ") or low.startswith("доверие "):
             _, _, tail = cmd.partition(" ")
-            token = tail.strip().lower()
-            if not token:
+            token_raw = tail.strip()
+            token = (token_raw or "").strip().lower()
+            if token in {"доверенный", "доверено"}:
+                token = "trusted"
+            elif token in {"недоверенный", "недоверено"}:
+                token = "untrusted"
+            elif token in {"выкл", "выключить", "откл", "сброс", "нет"}:
+                token = "off"
+            if not token_raw:
                 current = self._events_filter_text or I18N.NA
                 self._console_log(
                     f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: {current}",
@@ -8703,7 +8720,8 @@ class OrionApp(App):
                 )
             else:
                 self._console_log(
-                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: trusted|untrusted|off",
+                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: "
+                    f"trusted|untrusted|off|доверенный|недоверенный|выкл",
                     level="info",
                 )
                 return
@@ -9344,7 +9362,7 @@ class OrionApp(App):
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
-        trust_part = "trust/доверие <trusted|untrusted|off>"
+        trust_part = "trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
         sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
         if self._secret_entry_mode == "openai_api_key":
