@@ -12,8 +12,14 @@ async def test_handle_qiki_response_invalid_payload_does_not_crash() -> None:
     app = OrionApp()
     logs: list[str] = []
 
-    app._console_log = lambda msg, level="info": logs.append(f"{level}:{msg}")  # type: ignore[method-assign]
-    app._calm_log = lambda msg: logs.append(f"calm:{msg}")  # type: ignore[method-assign]
+    def _console_log(msg: str, level: str = "info") -> None:
+        logs.append(f"{level}:{msg}")
+
+    def _calm_log(msg: str, *, level: str = "info") -> None:
+        logs.append(f"{level}:{msg}")
+
+    app._console_log = _console_log  # type: ignore[method-assign]
+    app._calm_log = _calm_log  # type: ignore[method-assign]
 
     req_id = uuid4()
     await app.handle_qiki_response({"data": {"request_id": str(req_id), "version": 1}})
@@ -25,8 +31,14 @@ async def test_handle_qiki_response_error_logs_and_clears_pending() -> None:
     app = OrionApp()
     logs: list[str] = []
 
-    app._console_log = lambda msg, level="info": logs.append(f"{level}:{msg}")  # type: ignore[method-assign]
-    app._calm_log = lambda msg: logs.append(f"calm:{msg}")  # type: ignore[method-assign]
+    def _console_log(msg: str, level: str = "info") -> None:
+        logs.append(f"{level}:{msg}")
+
+    def _calm_log(msg: str, *, level: str = "info") -> None:
+        logs.append(f"{level}:{msg}")
+
+    app._console_log = _console_log  # type: ignore[method-assign]
+    app._calm_log = _calm_log  # type: ignore[method-assign]
 
     req_id = uuid4()
     app._qiki_pending[str(req_id)] = (time.time(), "ping")

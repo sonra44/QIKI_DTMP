@@ -61,6 +61,6 @@ async def test_events_row_highlight_uses_row_key_value(tmp_path: Path, monkeypat
     dummy_table = SimpleNamespace(id="events-table")
     event = SimpleNamespace(data_table=dummy_table, row_key=_RowKey(inc_id))
 
-    app.on_data_table_row_highlighted(event)
+    app.on_data_table_row_highlighted(event)  # type: ignore[arg-type]
 
     assert app._selection_by_app["events"].key == inc_id
