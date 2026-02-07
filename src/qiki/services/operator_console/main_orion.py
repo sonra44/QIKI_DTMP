@@ -8121,13 +8121,20 @@ class OrionApp(App):
             if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"} or key_inline is not None:
                 api_key_inline = key_inline
                 if api_key_inline is not None:
+                    nats = self.nats_client
+                    if nats is None:
+                        self._console_log(
+                            f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}",
+                            level="warning",
+                        )
+                        return
                     # Set key from command line; do not echo the key.
                     payload = {"op": "set_key", "api_key": api_key_inline, "ts_epoch_ms": int(time.time() * 1000)}
                     try:
                         acked = False
-                        if self.nats_client.nc is not None:
+                        if nats.nc is not None:
                             try:
-                                msg = await self.nats_client.nc.request(
+                                msg = await nats.nc.request(
                                     OPENAI_API_KEY_UPDATE,
                                     json.dumps(payload).encode("utf-8"),
                                     timeout=1.5,
@@ -8137,7 +8144,7 @@ class OrionApp(App):
                             except Exception:
                                 acked = False
                         else:
-                            await self.nats_client.publish_command(OPENAI_API_KEY_UPDATE, payload)
+                            await nats.publish_command(OPENAI_API_KEY_UPDATE, payload)
                         self._console_log(
                             f"{I18N.bidi('OpenAI key set', 'OpenAI ключ установлен')}{' (ACK)' if acked else ''}",
                             level="info" if acked else "warning",
@@ -8176,14 +8183,15 @@ class OrionApp(App):
                 return
 
             if low_cmd in {"openai.status", "openai.check", "openai.ping"}:
-                if self.nats_client.nc is None:
+                nats = self.nats_client
+                if nats is None or nats.nc is None:
                     self._console_log(
                         f"{I18N.bidi('NATS not connected', 'NATS не подключен')}",
                         level="warning",
                     )
                     return
                 try:
-                    msg = await self.nats_client.nc.request(
+                    msg = await nats.nc.request(
                         OPENAI_API_KEY_UPDATE,
                         json.dumps({"op": "status"}).encode("utf-8"),
                         timeout=1.5,
@@ -8368,6 +8376,7 @@ class OrionApp(App):
                         level="warning",
                     )
                     return
+                nats_client = self.nats_client
 
                 output_path = parts[2].strip() if len(parts) > 2 else ""
                 if not output_path:
@@ -8397,7 +8406,7 @@ class OrionApp(App):
 
                 async def _record_job() -> dict[str, Any]:
                     return await record_jsonl(
-                        nats_url=self.nats_client.url,
+                        nats_url=nats_client.url,
                         subjects=subjects,
                         duration_s=float(duration_s or 0.0),
                         output_path=output_path,
@@ -8489,6 +8498,7 @@ class OrionApp(App):
                     level="warning",
                 )
                 return
+            nats_client = self.nats_client
 
             speed = 1.0
             subject_prefix: str | None = None
@@ -8527,7 +8537,7 @@ class OrionApp(App):
 
             async def _replay_job() -> dict[str, Any]:
                 return await replay_jsonl(
-                    nats_url=self.nats_client.url,
+                    nats_url=nats_client.url,
                     input_path=input_path,
                     speed=float(speed),
                     subject_prefix=subject_prefix,
@@ -8951,7 +8961,7 @@ class OrionApp(App):
         if low.startswith(("radar.zoom", "радар.зум", "радар.масштаб")):
             parts = cmd.split()
             token = parts[1].strip().lower() if len(parts) >= 2 else ""
-            op = {
+            zoom_op = {
                 "in": "in",
                 "plus": "in",
                 "+": "in",
@@ -8964,16 +8974,16 @@ class OrionApp(App):
                 "0": "reset",
                 "сброс": "reset",
             }.get(token)
-            if op is None:
+            if zoom_op is None:
                 self._console_log(
                     f"{I18N.bidi('Radar zoom', 'Масштаб радара')}: x{round(float(self._radar_zoom), 2)} "
                     f"({I18N.bidi('use', 'используйте')}: radar.zoom in|out|reset)",
                     level="info",
                 )
                 return
-            if op == "reset":
+            if zoom_op == "reset":
                 self._radar_zoom = 1.0
-            elif op == "in":
+            elif zoom_op == "in":
                 self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) * 1.25))
             else:
                 self._radar_zoom = max(0.1, min(100.0, float(self._radar_zoom) / 1.25))
@@ -9004,7 +9014,7 @@ class OrionApp(App):
         if low.startswith(("radar.select", "радар.выбор", "радар.выбрать")):
             parts = cmd.split()
             token = parts[1].strip().lower() if len(parts) >= 2 else ""
-            op = {
+            select_op = {
                 "next": "next",
                 "n": "next",
                 "след": "next",
@@ -9014,14 +9024,14 @@ class OrionApp(App):
                 "пред": "prev",
                 "предыдущий": "prev",
             }.get(token)
-            if op is None:
+            if select_op is None:
                 self._console_log(
                     f"{I18N.bidi('Radar select', 'Выбор радара')}: "
                     f"{I18N.bidi('use', 'используйте')}: radar.select next|prev",
                     level="info",
                 )
                 return
-            self._radar_select_relative(delta=1 if op == "next" else -1)
+            self._radar_select_relative(delta=1 if select_op == "next" else -1)
             return
 
         # radar.overlay <vectors|labels> <on|off|toggle>
