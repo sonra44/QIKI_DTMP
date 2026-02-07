@@ -57,7 +57,8 @@
 - Реализация `trust ...` намеренно переиспользует существующий events text filter (без дублирования состояния).
 - Routing риск устранен: `trust ...` теперь обрабатывается как system-команда и без `S:`.
 - Discoverability улучшена: `trust <trusted|untrusted|off>` добавлен в placeholder-подсказки для `narrow/normal/wide`.
+- Отдельный command provider/palette provider в ORION не найден; канон discoverability сейчас = routing + help + placeholder + unit tests.
 
 ## Next
 
-1) При необходимости добавить отдельную запись `trust` в command palette/system commands provider (если появится такой provider).
+1) Если в будущем появится отдельный command provider, добавить туда `trust` и отдельный unit-тест provider-вывода.
