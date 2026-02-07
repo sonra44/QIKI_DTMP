@@ -181,3 +181,23 @@ async def test_trust_command_routes_to_system_without_prefix() -> None:
 
     await app._run_command("trust untrusted")
     assert app._events_filter_text == "untrusted"
+
+
+def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
+    pytest.importorskip("textual")
+
+    from qiki.services.operator_console.main_orion import OrionApp
+
+    app = OrionApp()
+    app._density = "normal"
+    app._size = SimpleNamespace(width=400)
+
+    class _FakeInput:
+        placeholder = ""
+
+    fake_input = _FakeInput()
+    app.query_one = lambda _selector, _cls=None: fake_input  # type: ignore[method-assign]
+
+    app._update_command_placeholder()
+
+    assert "trust <trusted|untrusted|off>" in fake_input.placeholder

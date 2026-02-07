@@ -47,7 +47,7 @@
 ## Evidence (commands -> output)
 
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests/unit/test_orion_control_provenance.py`
-  - `...... [100%]`
+  - `....... [100%]`
 - `bash scripts/quality_gate_docker.sh`
   - `[quality-gate] OK`
 
@@ -56,7 +56,8 @@
 - Риск ложноположительного матчинга устранен: `trusted` больше не захватывает `untrusted`.
 - Реализация `trust ...` намеренно переиспользует существующий events text filter (без дублирования состояния).
 - Routing риск устранен: `trust ...` теперь обрабатывается как system-команда и без `S:`.
+- Discoverability улучшена: `trust <trusted|untrusted|off>` добавлен в placeholder-подсказки для `narrow/normal/wide`.
 
 ## Next
 
-1) После одобрения — commit/push follow-up (routing fix + тест).
+1) При необходимости добавить отдельную запись `trust` в command palette/system commands provider (если появится такой provider).

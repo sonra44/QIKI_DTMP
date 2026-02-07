@@ -9342,6 +9342,7 @@ class OrionApp(App):
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
+        trust_part = "trust <trusted|untrusted|off>"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
         sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
         if self._secret_entry_mode == "openai_api_key":
@@ -9351,7 +9352,7 @@ class OrionApp(App):
         if density == "tiny":
             parts = [help_part, screen_part]
         elif density == "narrow":
-            parts = [help_part, screen_part, sim_part, sys_part, qiki_part]
+            parts = [help_part, screen_part, sim_part, sys_part, trust_part, qiki_part]
         elif density == "normal":
             docking_parts: list[str] = []
             if getattr(self, "_dev_docking_commands_enabled", False):
@@ -9364,6 +9365,7 @@ class OrionApp(App):
                 screen_part,
                 sim_part,
                 sys_part,
+                trust_part,
                 *docking_parts,
                 "xpdr.mode <on|off|silent|spoof>",
                 "ответчик.режим <on|off|silent|spoof>",
@@ -9384,6 +9386,7 @@ class OrionApp(App):
                 screen_part,
                 sim_part,
                 sys_part,
+                trust_part,
                 *docking_parts,
                 "nbl.on/off",
                 "nbl.max <W>",
