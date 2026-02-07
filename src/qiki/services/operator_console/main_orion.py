@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import Any, Optional
+from typing import Any, Literal, Optional, cast
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -31,7 +31,9 @@ from qiki.services.operator_console.core.incidents import IncidentStore
 from qiki.services.operator_console.ui import i18n as I18N
 from qiki.services.operator_console.ui.profile_panel import ProfilePanel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
-from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
+from qiki.shared.models.qiki_chat import QikiChatInput, QikiChatRequestV1, QikiChatResponseV1
+from qiki.shared.models.qiki_chat import QikiProposalDecisionV1, SelectionContext as QikiSelectionContext
+from qiki.shared.models.qiki_chat import UiContext
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.record_replay import record_jsonl, replay_jsonl
 from qiki.shared.nats_subjects import (
@@ -6867,7 +6869,7 @@ class OrionApp(App):
 
         prompt = f"{I18N.bidi('Acknowledge incident?', 'Подтвердить инцидент?')} {key} ({I18N.bidi('Y/N', 'Да/Нет')})"
 
-        def after(decision: bool) -> None:
+        def after(decision: bool | None) -> None:
             if decision:
                 self.action_acknowledge_selected_incident()
             else:
@@ -6911,7 +6913,7 @@ class OrionApp(App):
             f"({I18N.bidi('Y/N', 'Да/Нет')})"
         )
 
-        def after(decision: bool) -> None:
+        def after(decision: bool | None) -> None:
             if not decision:
                 self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                 return
@@ -7028,7 +7030,7 @@ class OrionApp(App):
             f"({I18N.bidi('Y/N', 'Да/Нет')})"
         )
 
-        def after(decision: bool) -> None:
+        def after(decision: bool | None) -> None:
             if decision:
                 self._apply_rule_enabled_change(rid, target_enabled)
             else:
@@ -9218,7 +9220,7 @@ class OrionApp(App):
                     f"({I18N.bidi('Y/N', 'Да/Нет')})"
                 )
 
-                def after(decision: bool) -> None:
+                def after(decision: bool | None) -> None:
                     if not decision:
                         self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                         return
@@ -9271,6 +9273,7 @@ class OrionApp(App):
         dec = (decision or "").strip().upper()
         if not pid or dec not in {"ACCEPT", "REJECT"}:
             return
+        dec_lit = cast(Literal["ACCEPT", "REJECT"], dec)
         if not self.nats_client:
             self._console_log(f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}", level="error")
             return
@@ -9279,9 +9282,9 @@ class OrionApp(App):
         req = QikiChatRequestV1(
             request_id=uuid4(),
             ts_epoch_ms=int(time.time() * 1000),
-            input={"text": f"proposal {dec.lower()} {pid}", "lang_hint": "auto"},
-            decision={"proposal_id": pid, "decision": dec},
-            ui_context={"screen": screen_label, "selection": {"kind": "proposal", "id": pid}},
+            input=QikiChatInput(text=f"proposal {dec_lit.lower()} {pid}", lang_hint="auto"),
+            decision=QikiProposalDecisionV1(proposal_id=pid, decision=dec_lit),
+            ui_context=UiContext(screen=screen_label, selection=QikiSelectionContext(kind="proposal", id=pid)),
         )
 
         try:
@@ -9317,17 +9320,17 @@ class OrionApp(App):
     def _build_qiki_chat_request(self, text: str) -> QikiChatRequestV1:
         screen_label = next((app.title for app in ORION_APPS if app.screen == self.active_screen), "System/Система")
         sel = self._selection_by_app.get(self.active_screen)
-        kind = "none"
+        kind: Literal["event", "incident", "track", "snapshot", "proposal", "none"] = "none"
         sel_id = None
         if sel is not None:
             if sel.kind in {"event", "incident", "track", "snapshot", "proposal", "none"}:
-                kind = sel.kind
+                kind = cast(Literal["event", "incident", "track", "snapshot", "proposal", "none"], sel.kind)
             sel_id = sel.key
         return QikiChatRequestV1(
             request_id=uuid4(),
             ts_epoch_ms=int(time.time() * 1000),
-            input={"text": text, "lang_hint": "auto"},
-            ui_context={"screen": screen_label, "selection": {"kind": kind, "id": sel_id}},
+            input=QikiChatInput(text=text, lang_hint="auto"),
+            ui_context=UiContext(screen=screen_label, selection=QikiSelectionContext(kind=kind, id=sel_id)),
         )
 
     def action_accept_selected_proposal(self) -> None:
@@ -9346,7 +9349,7 @@ class OrionApp(App):
 
         prompt = f"{I18N.bidi('Accept proposal?', 'Принять предложение?')} {pid} ({I18N.bidi('Y/N', 'Да/Нет')})"
 
-        def after(decision: bool) -> None:
+        def after(decision: bool | None) -> None:
             if not decision:
                 self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                 return
@@ -9370,7 +9373,7 @@ class OrionApp(App):
 
         prompt = f"{I18N.bidi('Reject proposal?', 'Отклонить предложение?')} {pid} ({I18N.bidi('Y/N', 'Да/Нет')})"
 
-        def after(decision: bool) -> None:
+        def after(decision: bool | None) -> None:
             if not decision:
                 self._console_log(f"{I18N.bidi('Canceled', 'Отменено')}", level="info")
                 return
