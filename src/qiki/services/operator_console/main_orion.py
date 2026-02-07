@@ -50,7 +50,7 @@ from qiki.shared.nats_subjects import (
 )
 
 try:
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 except Exception:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
 
@@ -58,13 +58,13 @@ try:
     from qiki.services.operator_console.ui.charts import PpiScopeRenderer
 except Exception:
     # Radar is not a priority; ORION must still boot even if optional radar renderer is absent.
-    PpiScopeRenderer = None  # type: ignore[assignment]
+    PpiScopeRenderer = None  # type: ignore[assignment,misc]
 
 try:
     from qiki.services.operator_console.radar.unicode_ppi import BraillePpiRenderer
 except Exception:
     # Radar must never block ORION boot; keep a best-effort fallback.
-    BraillePpiRenderer = None  # type: ignore[assignment]
+    BraillePpiRenderer = None  # type: ignore[assignment,misc]
 
 try:
     from qiki.services.operator_console.radar.unicode_ppi import pick_nearest_track_id
@@ -478,21 +478,22 @@ class BootScreen(ModalScreen[bool]):
             payload = getattr(bios_env, "payload", None) if bios_env is not None else None
             if isinstance(payload, dict):
                 all_go = payload.get("all_systems_go")
-                post = payload.get("post_results") if isinstance(payload.get("post_results"), list) else []
+                post_raw = payload.get("post_results")
+                post_list: list[Any] = cast(list[Any], post_raw) if isinstance(post_raw, list) else []
                 if isinstance(all_go, bool):
                     if all_go:
                         log.add_line(
                             I18N.bidi(
-                                f"BIOS: POST complete [OK] (devices: {len(post)})",
-                                f"BIOS: POST завершён [OK] (устройств: {len(post)})",
+                                f"BIOS: POST complete [OK] (devices: {len(post_list)})",
+                                f"BIOS: POST завершён [OK] (устройств: {len(post_list)})",
                             ),
                             style="bold green",
                         )
                     else:
                         log.add_line(
                             I18N.bidi(
-                                f"BIOS: POST complete [FAIL] (devices: {len(post)})",
-                                f"BIOS: POST завершён [СБОЙ] (устройств: {len(post)})",
+                                f"BIOS: POST complete [FAIL] (devices: {len(post_list)})",
+                                f"BIOS: POST завершён [СБОЙ] (устройств: {len(post_list)})",
                             ),
                             style="bold red",
                         )
@@ -508,7 +509,7 @@ class BootScreen(ModalScreen[bool]):
 
                 bad: list[dict[str, Any]] = []
                 ok: list[dict[str, Any]] = []
-                for row in post:
+                for row in post_list:
                     if not isinstance(row, dict):
                         continue
                     status = row.get("status")
@@ -542,7 +543,7 @@ class BootScreen(ModalScreen[bool]):
                     if line_delay:
                         await self._sleep_chunked(line_delay)
 
-                remaining = len(post) - len(shown)
+                remaining = len(post_list) - len(shown)
                 if remaining > 0:
                     log.add_line(
                         I18N.bidi(
@@ -985,10 +986,11 @@ class OrionHeader(Container):
             paused = sim_state.get("paused")
             raw_speed = sim_state.get("speed")
             speed: float | None = None
-            try:
-                speed = float(raw_speed)
-            except Exception:
-                speed = None
+            if isinstance(raw_speed, (int, float, str)):
+                try:
+                    speed = float(raw_speed)
+                except Exception:
+                    speed = None
             state_norm = str(fsm_state).strip().upper() if isinstance(fsm_state, str) else ""
             if paused is True or state_norm == "PAUSED":
                 self.sim = I18N.bidi("Paused", "Пауза")
@@ -1024,7 +1026,9 @@ class _RadarMouseMixin:
 
     def _mouse_debug(self, msg: str) -> None:
         try:
-            app = self.app
+            app = getattr(self, "app", None)
+            if app is None:
+                return
             enabled = bool(getattr(app, "_mouse_debug", False))
             if not enabled:
                 return
@@ -1041,7 +1045,9 @@ class _RadarMouseMixin:
 
     def on_mouse_scroll_up(self, event) -> None:  # noqa: ANN001
         try:
-            app = self.app
+            app = getattr(self, "app", None)
+            if app is None:
+                return
             if hasattr(app, "_apply_radar_zoom"):
                 app._apply_radar_zoom("in")
             event.stop()
@@ -1050,7 +1056,9 @@ class _RadarMouseMixin:
 
     def on_mouse_scroll_down(self, event) -> None:  # noqa: ANN001
         try:
-            app = self.app
+            app = getattr(self, "app", None)
+            if app is None:
+                return
             if hasattr(app, "_apply_radar_zoom"):
                 app._apply_radar_zoom("out")
             event.stop()
@@ -1060,10 +1068,19 @@ class _RadarMouseMixin:
     def on_mouse_down(self, event) -> None:  # noqa: ANN001
         try:
             button = getattr(event, "button", None)
-            if int(button) != 1:
+            if not isinstance(button, (int, float, str)):
                 return
             try:
-                self.app.capture_mouse(self)  # keep delivering move events while dragging
+                button_i = int(button)
+            except Exception:
+                return
+            if button_i != 1:
+                return
+            app = getattr(self, "app", None)
+            if app is None:
+                return
+            try:
+                app.capture_mouse(self)  # keep delivering move events while dragging
             except Exception:
                 pass
             self._dragging = True
@@ -1071,7 +1088,6 @@ class _RadarMouseMixin:
             self._drag_start_y = int(getattr(event, "y", 0) or 0)
             self._drag_last_x = self._drag_start_x
             self._drag_last_y = self._drag_start_y
-            app = self.app
             self._drag_start_pan_u_m = float(getattr(app, "_radar_pan_u_m", 0.0) or 0.0)
             self._drag_start_pan_v_m = float(getattr(app, "_radar_pan_v_m", 0.0) or 0.0)
             self._drag_start_iso_yaw_deg = float(getattr(app, "_radar_iso_yaw_deg", 45.0) or 45.0)
@@ -1107,7 +1123,9 @@ class _RadarMouseMixin:
             dy = y - self._drag_start_y
             if dx == 0 and dy == 0:
                 return
-            app = self.app
+            app = getattr(self, "app", None)
+            if app is None:
+                return
             if hasattr(app, "_apply_radar_drag_from_mouse"):
                 self._mouse_debug(f"move x={x} y={y} dx={dx} dy={dy}")
                 app._apply_radar_drag_from_mouse(
@@ -1125,24 +1143,37 @@ class _RadarMouseMixin:
     def on_mouse_up(self, event) -> None:  # noqa: ANN001
         try:
             button = getattr(event, "button", None)
-            if button is not None and int(button) != 1:
-                return
+            if button is not None:
+                if not isinstance(button, (int, float, str)):
+                    return
+                try:
+                    button_i = int(button)
+                except Exception:
+                    return
+                if button_i != 1:
+                    return
             dx = self._drag_last_x - self._drag_start_x
             dy = self._drag_last_y - self._drag_start_y
             if abs(dx) + abs(dy) <= 1:
-                app = self.app
+                app = getattr(self, "app", None)
+                if app is None:
+                    return
                 if hasattr(app, "_handle_radar_ppi_click"):
                     app._handle_radar_ppi_click(self._drag_last_x, self._drag_last_y)
             self._dragging = False
             try:
-                self.app.capture_mouse(None)
+                app = getattr(self, "app", None)
+                if app is not None:
+                    app.capture_mouse(None)
             except Exception:
                 pass
             self._mouse_debug(f"up x={self._drag_last_x} y={self._drag_last_y} dx={dx} dy={dy}")
         except Exception:
             self._dragging = False
             try:
-                self.app.capture_mouse(None)
+                app = getattr(self, "app", None)
+                if app is not None:
+                    app.capture_mouse(None)
             except Exception:
                 pass
 
@@ -1162,14 +1193,14 @@ if _RadarAutoImage is not None:
     # Older versions don't require it, so we keep a compatibility fallback.
     try:
 
-        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage, Renderable=_RadarAutoImage._Renderable):  # type: ignore[misc,attr-defined]
+        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage, Renderable=_RadarAutoImage._Renderable):  # type: ignore[misc,attr-defined,call-arg]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()
 
     except (TypeError, AttributeError):
 
-        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage):  # type: ignore[misc]
+        class RadarBitmapAuto(_RadarMouseMixin, _RadarAutoImage):  # type: ignore[misc,no-redef]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()

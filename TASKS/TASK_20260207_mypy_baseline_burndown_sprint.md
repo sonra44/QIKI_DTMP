@@ -100,6 +100,10 @@
   - `..................... [100%]`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 24'`
   - `Found 59 errors in 8 files (checked 214 source files)`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q src/qiki/services/operator_console/tests/test_incidents_store.py src/qiki/services/operator_console/tests/test_record_replay_commands.py src/qiki/services/operator_console/tests/test_qiki_response_handling.py tests/unit/test_orion_control_provenance.py tests/unit/test_orion_proposal_actions.py`
+  - `..................... [100%]`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev bash -lc 'mypy src 2>&1 | tail -n 28'`
+  - `Found 37 errors in 7 files (checked 214 source files)`
 
 ## Notes / Risks
 
@@ -122,4 +126,5 @@
 11) Week 1 batch-11 completed: reduced baseline from `113/8` to `105/8` via additional `main_orion.py` sensor-plane narrowing (`radiation/proximity` typed extraction).
 12) Week 1 batch-12 completed: reduced baseline from `105/8` to `82/8` via `main_orion.py` sensor-plane typing cleanup (`imu/radiation/magnetometer` extraction + numeric narrowing).
 13) Week 2 batch-13 completed: reduced baseline from `82/8` to `59/8` via `main_orion.py` medium-risk cleanup (`selection` optional guards, widget/app typed dispatch, mission payload narrowing, and local no-redef normalization in sensor-plane/command paths).
-14) Week 2 batch-14: continue on early-file `main_orion.py` cluster now visible in tail (`~486-545`, `~989-1165`, `_RadarMouseMixin` attr typing) with same small-batch method.
+14) Week 2 batch-14 completed: reduced baseline from `59/8` to `37/7` via early-file `main_orion.py` cluster cleanup (`post_results` list narrowing, speed parsing guard, `_RadarMouseMixin` app/button-safe access, and radar bitmap fallback typing ignores) + yaml import typing.
+15) Week 2 batch-15: continue cross-file residual cluster now in tail (`src/qiki/services/operator_console/main.py`, `src/qiki/services/qiki_chat/handler.py`, `src/qiki/services/operator_console/clients/nats_client.py`, `src/qiki/shared/record_replay.py`) using same micro-batch/test/recount loop.
