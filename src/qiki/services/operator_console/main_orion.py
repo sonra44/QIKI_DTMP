@@ -4786,11 +4786,15 @@ class OrionApp(App):
             if not self._events_filter_text:
                 return True
             needle = self._events_filter_text.lower()
+            trust_marker = str(self._provenance_marker(channel="events", subject=inc.subject)).lower()
+            if needle in {"trusted", "untrusted"}:
+                return trust_marker == needle
             hay = " ".join(
                 [
                     str(inc.type or ""),
                     str(inc.source or ""),
                     str(inc.subject or ""),
+                    trust_marker,
                     str(inc.title or ""),
                     str(inc.description or ""),
                 ]
@@ -7830,7 +7834,9 @@ class OrionApp(App):
         )
         self._console_log(
             f"{I18N.bidi('Filters', 'Фильтры')}: "
-            f"type/тип <name/имя> | type off/тип отключить | filter/фильтр <text/текст> | filter off/фильтр отключить",
+            f"type/тип <name/имя> | type off/тип отключить | "
+            f"filter/фильтр <text/текст> | filter off/фильтр отключить | "
+            f"trust <trusted|untrusted|off>",
             level="info",
         )
         self._console_log(
@@ -8660,6 +8666,43 @@ class OrionApp(App):
                 return
             self._events_filter_type = token
             self._console_log(f"{I18N.bidi('Events type filter', 'Фильтр событий по типу')}: {token}", level="info")
+            self._update_system_snapshot()
+            self._render_events_table()
+            if self.active_screen == "summary":
+                self._render_summary_table()
+            if self.active_screen == "diagnostics":
+                self._render_diagnostics_table()
+            return
+
+        # trust <trusted|untrusted|off>
+        if low == "trust" or low.startswith("trust "):
+            _, _, tail = cmd.partition(" ")
+            token = tail.strip().lower()
+            if not token:
+                current = self._events_filter_text or I18N.NA
+                self._console_log(
+                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: {current}",
+                    level="info",
+                )
+                return
+            if token in {"off", "none", "all", "*"}:
+                self._events_filter_text = None
+                self._console_log(
+                    f"{I18N.bidi('Events trust filter cleared', 'Фильтр событий по доверию снят')}",
+                    level="info",
+                )
+            elif token in {"trusted", "untrusted"}:
+                self._events_filter_text = token
+                self._console_log(
+                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: {token}",
+                    level="info",
+                )
+            else:
+                self._console_log(
+                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: trusted|untrusted|off",
+                    level="info",
+                )
+                return
             self._update_system_snapshot()
             self._render_events_table()
             if self.active_screen == "summary":
