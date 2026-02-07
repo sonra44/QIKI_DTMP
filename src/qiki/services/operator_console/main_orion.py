@@ -1176,49 +1176,49 @@ if _RadarAutoImage is not None:
 
 
 else:  # pragma: no cover
-    RadarBitmapAuto = None  # type: ignore[assignment]
+    RadarBitmapAuto = None  # type: ignore[assignment,misc]
 
 
 if _RadarTGPImage is not None:
 
     try:
 
-        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage, Renderable=_RadarTGPImage._Renderable):  # type: ignore[misc,attr-defined]
+        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage, Renderable=_RadarTGPImage._Renderable):  # type: ignore[misc,attr-defined,call-arg]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()
 
     except (TypeError, AttributeError):
 
-        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage):  # type: ignore[misc]
+        class RadarBitmapTGP(_RadarMouseMixin, _RadarTGPImage):  # type: ignore[misc,no-redef]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()
 
 
 else:  # pragma: no cover
-    RadarBitmapTGP = None  # type: ignore[assignment]
+    RadarBitmapTGP = None  # type: ignore[assignment,misc]
 
 
 if _RadarSixelImage is not None:
 
     try:
 
-        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage, Renderable=_RadarSixelImage._Renderable):  # type: ignore[misc,attr-defined]
+        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage, Renderable=_RadarSixelImage._Renderable):  # type: ignore[misc,attr-defined,call-arg]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()
 
     except (TypeError, AttributeError):
 
-        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage):  # type: ignore[misc]
+        class RadarBitmapSixel(_RadarMouseMixin, _RadarSixelImage):  # type: ignore[misc,no-redef]
             def __init__(self, *args, **kwargs) -> None:  # noqa: ANN001
                 super().__init__(*args, **kwargs)
                 self._init_radar_mouse()
 
 
 else:  # pragma: no cover
-    RadarBitmapSixel = None  # type: ignore[assignment]
+    RadarBitmapSixel = None  # type: ignore[assignment,misc]
 
 
 class OrionSidebar(Static):
@@ -1423,7 +1423,7 @@ class OrionDataTable(DataTable):
         if key in {"tab", "shift+tab", "backtab", "ctrl+i"} or char == "\t":
             event.stop()
             try:
-                self.app.action_cycle_focus()
+                cast(Any, self.app).action_cycle_focus()
             except Exception:
                 pass
             return
@@ -1437,7 +1437,7 @@ class OrionCommandInput(Input):
         if key in {"tab", "shift+tab", "backtab", "ctrl+i"} or char == "\t":
             event.stop()
             try:
-                self.app.action_cycle_focus()
+                cast(Any, self.app).action_cycle_focus()
             except Exception:
                 pass
             return
@@ -1886,7 +1886,8 @@ class OrionApp(App):
             return
 
         ordered_ids = [str(track_id) for track_id, _payload, _seen in items]
-        current = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        radar_sel = self._selection_by_app.get("radar")
+        current = radar_sel.key if radar_sel is not None else None
         if current in ordered_ids:
             idx = ordered_ids.index(str(current))
             new_id = ordered_ids[(idx + int(delta)) % len(ordered_ids)]
@@ -2391,7 +2392,8 @@ class OrionApp(App):
             )
             return
 
-        selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        radar_sel = self._selection_by_app.get("radar")
+        selected_track_id = radar_sel.key if radar_sel is not None else None
 
         by_track_id: dict[str, tuple[dict[str, Any], float]] = {
             str(track_id): (payload, float(seen)) for track_id, payload, seen in items
@@ -2513,7 +2515,8 @@ class OrionApp(App):
             return
 
         tracks_items = self._active_tracks_sorted()
-        selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        radar_sel = self._selection_by_app.get("radar")
+        selected_track_id = radar_sel.key if radar_sel is not None else None
         tracks = [(str(tid), payload) for tid, payload, _seen in tracks_items]
         payloads = [payload for _tid, payload, _seen in tracks_items]
         if self._ppi_renderer is None:
@@ -2551,7 +2554,7 @@ class OrionApp(App):
             return
         if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
             try:
-                ppi.update(
+                cast(Any, ppi).update(
                     self._ppi_renderer.render_tracks(
                         tracks,
                         view=self._radar_view,
@@ -2676,7 +2679,8 @@ class OrionApp(App):
             f"{I18N.bidi('Zoom', 'Масштаб')}: x{self._radar_zoom:.2f}",
             hint_style,
         )
-        selected_track_id = self._selection_by_app.get("radar").key if "radar" in self._selection_by_app else None
+        radar_sel = self._selection_by_app.get("radar")
+        selected_track_id = radar_sel.key if radar_sel is not None else None
         t.append(
             f"  {I18N.bidi('Sel', 'Выбор')}: {str(selected_track_id) if selected_track_id is not None else I18N.NA}",
             hint_style,
@@ -3028,7 +3032,8 @@ class OrionApp(App):
             payload = mission_env.payload
             mission: dict[str, Any] = {}
             if isinstance(payload, dict):
-                mission = payload.get("mission") if isinstance(payload.get("mission"), dict) else payload
+                mission_raw = payload.get("mission")
+                mission = cast(dict[str, Any], mission_raw) if isinstance(mission_raw, dict) else cast(dict[str, Any], payload)
             designator = mission.get("designator") or mission.get("mission_id") or mission.get("id")
             objective = mission.get("objective") or mission.get("goal") or mission.get("name")
             if designator and objective:
@@ -4077,15 +4082,15 @@ class OrionApp(App):
             )
         else:
             imu_raw = sp.get("imu")
-            imu: dict[str, Any] = cast(dict[str, Any], imu_raw) if isinstance(imu_raw, dict) else {}
-            imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
+            imu_detail: dict[str, Any] = cast(dict[str, Any], imu_raw) if isinstance(imu_raw, dict) else {}
+            imu_status = imu_detail.get("status") if isinstance(imu_detail.get("status"), str) else None
             rows.extend(
                 [
                     (
                         "imu_enabled",
                         I18N.bidi("IMU enabled", "ИМУ включено"),
-                        I18N.yes_no(bool(imu.get("enabled"))),
-                        imu.get("enabled"),
+                        I18N.yes_no(bool(imu_detail.get("enabled"))),
+                        imu_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.imu.enabled",),
@@ -4093,17 +4098,17 @@ class OrionApp(App):
                     (
                         "imu_ok",
                         I18N.bidi("IMU ok", "ИМУ ок"),
-                        I18N.yes_no(bool(imu.get("ok"))) if imu.get("ok") is not None else I18N.NA,
-                        imu.get("ok"),
-                        bool(imu.get("ok") is False),
+                        I18N.yes_no(bool(imu_detail.get("ok"))) if imu_detail.get("ok") is not None else I18N.NA,
+                        imu_detail.get("ok"),
+                        bool(imu_detail.get("ok") is False),
                         imu_status,
                         ("sensor_plane.imu.ok", "sensor_plane.imu.status"),
                     ),
                     (
                         "imu_roll_rate",
                         I18N.bidi("Roll rate", "Скор. крена"),
-                        I18N.num_unit(imu.get("roll_rate_rps"), "rad/s", "рад/с", digits=3),
-                        imu.get("roll_rate_rps"),
+                        I18N.num_unit(imu_detail.get("roll_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu_detail.get("roll_rate_rps"),
                         False,
                         imu_status,
                         ("sensor_plane.imu.roll_rate_rps", "sensor_plane.imu.status"),
@@ -4111,8 +4116,8 @@ class OrionApp(App):
                     (
                         "imu_pitch_rate",
                         I18N.bidi("Pitch rate", "Скор. тангажа"),
-                        I18N.num_unit(imu.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3),
-                        imu.get("pitch_rate_rps"),
+                        I18N.num_unit(imu_detail.get("pitch_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu_detail.get("pitch_rate_rps"),
                         False,
                         imu_status,
                         ("sensor_plane.imu.pitch_rate_rps", "sensor_plane.imu.status"),
@@ -4120,8 +4125,8 @@ class OrionApp(App):
                     (
                         "imu_yaw_rate",
                         I18N.bidi("Yaw rate", "Скор. рыск"),
-                        I18N.num_unit(imu.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3),
-                        imu.get("yaw_rate_rps"),
+                        I18N.num_unit(imu_detail.get("yaw_rate_rps"), "rad/s", "рад/с", digits=3),
+                        imu_detail.get("yaw_rate_rps"),
                         False,
                         imu_status,
                         ("sensor_plane.imu.yaw_rate_rps", "sensor_plane.imu.status"),
@@ -4130,15 +4135,15 @@ class OrionApp(App):
             )
 
             rad_raw = sp.get("radiation")
-            rad: dict[str, Any] = cast(dict[str, Any], rad_raw) if isinstance(rad_raw, dict) else {}
-            rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
+            rad_detail: dict[str, Any] = cast(dict[str, Any], rad_raw) if isinstance(rad_raw, dict) else {}
+            rad_status = rad_detail.get("status") if isinstance(rad_detail.get("status"), str) else None
             rows.extend(
                 [
                     (
                         "rad_enabled",
                         I18N.bidi("Radiation enabled", "Радиация вкл"),
-                        I18N.yes_no(bool(rad.get("enabled"))),
-                        rad.get("enabled"),
+                        I18N.yes_no(bool(rad_detail.get("enabled"))),
+                        rad_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.radiation.enabled",),
@@ -4146,8 +4151,8 @@ class OrionApp(App):
                     (
                         "rad_background",
                         I18N.bidi("Background", "Фон"),
-                        I18N.num_unit(rad.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2),
-                        rad.get("background_usvh"),
+                        I18N.num_unit(rad_detail.get("background_usvh"), "µSv/h", "мкЗв/ч", digits=2),
+                        rad_detail.get("background_usvh"),
                         False,
                         rad_status,
                         ("sensor_plane.radiation.background_usvh", "sensor_plane.radiation.status"),
@@ -4155,8 +4160,8 @@ class OrionApp(App):
                     (
                         "rad_dose",
                         I18N.bidi("Dose total", "Доза сумм"),
-                        I18N.num_unit(rad.get("dose_total_usv"), "µSv", "мкЗв", digits=3),
-                        rad.get("dose_total_usv"),
+                        I18N.num_unit(rad_detail.get("dose_total_usv"), "µSv", "мкЗв", digits=3),
+                        rad_detail.get("dose_total_usv"),
                         False,
                         None,
                         ("sensor_plane.radiation.dose_total_usv",),
@@ -4164,14 +4169,14 @@ class OrionApp(App):
                 ]
             )
 
-            prox: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
+            prox_detail: dict[str, Any] = cast(dict[str, Any], sp.get("proximity")) if isinstance(sp.get("proximity"), dict) else {}
             rows.extend(
                 [
                     (
                         "prox_enabled",
                         I18N.bidi("Proximity enabled", "Близость вкл"),
-                        I18N.yes_no(bool(prox.get("enabled"))),
-                        prox.get("enabled"),
+                        I18N.yes_no(bool(prox_detail.get("enabled"))),
+                        prox_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.proximity.enabled",),
@@ -4179,8 +4184,8 @@ class OrionApp(App):
                     (
                         "prox_min",
                         I18N.bidi("Min range", "Мин. дальн"),
-                        I18N.num_unit(prox.get("min_range_m"), "m", "м", digits=2),
-                        prox.get("min_range_m"),
+                        I18N.num_unit(prox_detail.get("min_range_m"), "m", "м", digits=2),
+                        prox_detail.get("min_range_m"),
                         False,
                         None,
                         ("sensor_plane.proximity.min_range_m",),
@@ -4188,8 +4193,8 @@ class OrionApp(App):
                     (
                         "prox_contacts",
                         I18N.bidi("Contacts", "Контакты"),
-                        I18N.fmt_na(prox.get("contacts")),
-                        prox.get("contacts"),
+                        I18N.fmt_na(prox_detail.get("contacts")),
+                        prox_detail.get("contacts"),
                         False,
                         None,
                         ("sensor_plane.proximity.contacts",),
@@ -4197,14 +4202,14 @@ class OrionApp(App):
                 ]
             )
 
-            solar: dict[str, Any] = cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
+            solar_detail: dict[str, Any] = cast(dict[str, Any], sp.get("solar")) if isinstance(sp.get("solar"), dict) else {}
             rows.extend(
                 [
                     (
                         "solar_enabled",
                         I18N.bidi("Solar enabled", "Солнце вкл"),
-                        I18N.yes_no(bool(solar.get("enabled"))),
-                        solar.get("enabled"),
+                        I18N.yes_no(bool(solar_detail.get("enabled"))),
+                        solar_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.solar.enabled",),
@@ -4212,8 +4217,8 @@ class OrionApp(App):
                     (
                         "solar_illum",
                         I18N.bidi("Illumination", "Освещённ"),
-                        I18N.pct(solar.get("illumination_pct"), digits=1),
-                        solar.get("illumination_pct"),
+                        I18N.pct(solar_detail.get("illumination_pct"), digits=1),
+                        solar_detail.get("illumination_pct"),
                         False,
                         None,
                         ("sensor_plane.solar.illumination_pct",),
@@ -4221,15 +4226,15 @@ class OrionApp(App):
                 ]
             )
 
-            st: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
-            st_status = st.get("status") if isinstance(st.get("status"), str) else None
+            st_detail: dict[str, Any] = cast(dict[str, Any], sp.get("star_tracker")) if isinstance(sp.get("star_tracker"), dict) else {}
+            st_status = st_detail.get("status") if isinstance(st_detail.get("status"), str) else None
             rows.extend(
                 [
                     (
                         "st_enabled",
                         I18N.bidi("Star tracker enabled", "Звёздн. трекер"),
-                        I18N.yes_no(bool(st.get("enabled"))),
-                        st.get("enabled"),
+                        I18N.yes_no(bool(st_detail.get("enabled"))),
+                        st_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.star_tracker.enabled",),
@@ -4237,17 +4242,17 @@ class OrionApp(App):
                     (
                         "st_locked",
                         I18N.bidi("Star lock", "Звёзд. захват"),
-                        I18N.yes_no(bool(st.get("locked"))) if st.get("locked") is not None else I18N.NA,
-                        st.get("locked"),
-                        bool(st.get("locked") is False),
+                        I18N.yes_no(bool(st_detail.get("locked"))) if st_detail.get("locked") is not None else I18N.NA,
+                        st_detail.get("locked"),
+                        bool(st_detail.get("locked") is False),
                         st_status,
                         ("sensor_plane.star_tracker.locked", "sensor_plane.star_tracker.status"),
                     ),
                     (
                         "st_err",
                         I18N.bidi("Att err", "Ошибка атт"),
-                        I18N.num_unit(st.get("attitude_err_deg"), "deg", "°", digits=2),
-                        st.get("attitude_err_deg"),
+                        I18N.num_unit(st_detail.get("attitude_err_deg"), "deg", "°", digits=2),
+                        st_detail.get("attitude_err_deg"),
                         False,
                         st_status,
                         ("sensor_plane.star_tracker.attitude_err_deg", "sensor_plane.star_tracker.status"),
@@ -4258,12 +4263,12 @@ class OrionApp(App):
             mag_detail_raw = sp.get("magnetometer")
             mag_detail: dict[str, Any] = cast(dict[str, Any], mag_detail_raw) if isinstance(mag_detail_raw, dict) else {}
             field_raw = mag_detail.get("field_ut")
-            field: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
+            field_detail: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
             field_txt = I18N.NA
-            if isinstance(field, dict):
-                x_mag = field.get("x")
-                y_mag = field.get("y")
-                z_mag = field.get("z")
+            if isinstance(field_detail, dict):
+                x_mag = field_detail.get("x")
+                y_mag = field_detail.get("y")
+                z_mag = field_detail.get("z")
                 if isinstance(x_mag, (int, float)) and isinstance(y_mag, (int, float)) and isinstance(z_mag, (int, float)):
                     field_txt = f"x={float(x_mag):.2f}, y={float(y_mag):.2f}, z={float(z_mag):.2f}"
                 else:
@@ -4283,7 +4288,7 @@ class OrionApp(App):
                         "mag_field",
                         I18N.bidi("Mag field", "Поле магн"),
                         field_txt,
-                        field,
+                        field_detail,
                         field_txt == I18N.INVALID,
                         None,
                         ("sensor_plane.magnetometer.field_ut",),
@@ -8613,7 +8618,7 @@ class OrionApp(App):
                 return
             if self._ack_incident(key):
                 inc = self._incident_store.get(key) if self._incident_store is not None else None
-                audit_payload: dict[str, Any] = {
+                audit_payload_ru: dict[str, Any] = {
                     "schema_version": 1,
                     "category": "audit",
                     "kind": "incident_ack",
@@ -8623,11 +8628,11 @@ class OrionApp(App):
                     "incident_key": key,
                 }
                 if inc is not None:
-                    audit_payload["incident_id"] = str(getattr(inc, "incident_id", "")) or None
-                    audit_payload["rule_id"] = str(getattr(inc, "rule_id", "")) or None
-                    audit_payload["severity"] = str(getattr(inc, "severity", "")) or None
+                    audit_payload_ru["incident_id"] = str(getattr(inc, "incident_id", "")) or None
+                    audit_payload_ru["rule_id"] = str(getattr(inc, "rule_id", "")) or None
+                    audit_payload_ru["severity"] = str(getattr(inc, "severity", "")) or None
                 try:
-                    await self._publish_audit_event(audit_payload)
+                    await self._publish_audit_event(audit_payload_ru)
                 except Exception:
                     pass
                 self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
@@ -9225,7 +9230,7 @@ class OrionApp(App):
         # NOTE: `simulation.reset` is handled separately and requires confirmation.
         if low.startswith(("simulation.start", "sim.start", "симуляция.старт")):
             parts = cmd.split()
-            speed: float | None = None
+            start_speed: float | None = None
             if len(parts) >= 2:
                 token = parts[1].strip().lower()
                 if token.startswith("speed="):
@@ -9235,14 +9240,14 @@ class OrionApp(App):
                 if token.endswith("x"):
                     token = token[:-1].strip()
                 try:
-                    speed = float(token)
+                    start_speed = float(token)
                 except Exception:
                     self._console_log(
                         f"{I18N.bidi('Invalid speed', 'Некорректная скорость')}: {parts[1]}",
                         level="warn",
                     )
                     return
-            await self._publish_sim_command("sim.start", parameters={} if speed is None else {"speed": speed})
+            await self._publish_sim_command("sim.start", parameters={} if start_speed is None else {"speed": start_speed})
             return
 
         if (sim_cmd := self._canonicalize_sim_command(low)) is not None:
