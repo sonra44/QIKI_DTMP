@@ -48,13 +48,24 @@
 
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests/unit/test_orion_control_provenance.py`
   - `....... [100%]`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests/unit/test_orion_control_provenance.py tests/unit/test_orion_summary_events_filters_off.py src/qiki/services/operator_console/tests/test_command_routing.py`
+  - `.............. [100%]`
 - `bash scripts/quality_gate_docker.sh`
   - `[quality-gate] OK`
+- `QUALITY_GATE_PROFILE=full QUALITY_GATE_RUFF_FORMAT_CHECK=0 bash scripts/quality_gate_docker.sh`
+  - `[quality-gate] OK` (integration: `15 passed, 7 skipped`; mypy remained disabled by env in this run)
+- `QUALITY_GATE_RUN_MYPY=1 QUALITY_GATE_RUN_INTEGRATION=0 QUALITY_GATE_RUFF_FORMAT_CHECK=0 bash scripts/quality_gate_docker.sh`
+  - `mypy: Found 198 errors in 19 files (baseline project debt; outside this trust-filter slice)`
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY' ...` (headless trust-filter smoke via `_run_command` + summary/diagnostics capture)
   - `SMOKE_EN_SUMMARY_TRUST= untrusted`
   - `SMOKE_EN_DIAG_TRUST= untrusted`
   - `SMOKE_RU_SUMMARY_TRUST= trusted`
   - `SMOKE_RU_DIAG_TRUST= trusted`
+  - `OK`
+- `docker compose -f docker-compose.phase1.yml exec -T qiki-dev python - <<'PY' ...` (runtime smoke for status aliases)
+  - `SMOKE_TRUST_STATUS_EN= Events trust filter/Фильтр событий по доверию: untrusted`
+  - `SMOKE_TRUST_STATUS_RU= Events trust filter/Фильтр событий по доверию: trusted`
+  - `SMOKE_SUMMARY_TRUST= trusted`
   - `OK`
 
 ## Notes / Risks
@@ -67,6 +78,7 @@
 - Добавлен русскоязычный алиас `доверие` (routing + handler + help/placeholder + tests).
 - Добавлены русские значения trust-токенов: `доверенный/недоверенный/выкл` (с нормализацией в trust-маркер).
 - Добавлен явный normalized trust-state в snapshot/summary/diagnostics: `events_filter_trust` (`trusted|untrusted|off`).
+- Добавлены read-only команды статуса trust-фильтра: `trust status` / `доверие статус` (`info/инфо`), выводящие каноническое состояние `trusted|untrusted|off` без мутации фильтра.
 
 ## Next
 

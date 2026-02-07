@@ -156,7 +156,8 @@ async def test_trust_command_alias_sets_and_clears_events_filter_text() -> None:
     from qiki.services.operator_console.main_orion import OrionApp
 
     app = OrionApp()
-    app._console_log = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    logs: list[str] = []
+    app._console_log = lambda message, **_kwargs: logs.append(str(message))  # type: ignore[method-assign]
     app._update_system_snapshot = lambda: None  # type: ignore[method-assign]
     app._render_events_table = lambda: None  # type: ignore[method-assign]
     app._render_summary_table = lambda: None  # type: ignore[method-assign]
@@ -168,8 +169,16 @@ async def test_trust_command_alias_sets_and_clears_events_filter_text() -> None:
     await app._run_command("s: trust off")
     assert app._events_filter_text is None
 
+    await app._run_command("s: trust status")
+    assert app._events_filter_text is None
+    assert any("off" in line.lower() for line in logs)
+
     await app._run_command("s: доверие недоверенный")
     assert app._events_filter_text == "untrusted"
+
+    await app._run_command("s: доверие статус")
+    assert app._events_filter_text == "untrusted"
+    assert any("untrusted" in line.lower() for line in logs)
 
     await app._run_command("s: доверие выкл")
     assert app._events_filter_text is None
@@ -236,7 +245,7 @@ def test_command_placeholder_includes_trust_alias_for_discoverability() -> None:
 
     app._update_command_placeholder()
 
-    assert "trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>" in fake_input.placeholder
+    assert "trust/доверие <trusted|untrusted|off|status|доверенный|недоверенный|выкл|статус>" in fake_input.placeholder
 
 
 def test_system_snapshot_stores_normalized_trust_filter_value() -> None:

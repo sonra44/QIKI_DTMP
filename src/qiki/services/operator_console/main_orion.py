@@ -7877,7 +7877,7 @@ class OrionApp(App):
             f"{I18N.bidi('Filters', 'Фильтры')}: "
             f"type/тип <name/имя> | type off/тип отключить | "
             f"filter/фильтр <text/текст> | filter off/фильтр отключить | "
-            f"trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>",
+            f"trust/доверие <trusted|untrusted|off|status|доверенный|недоверенный|выкл|статус>",
             level="info",
         )
         self._console_log(
@@ -8715,11 +8715,10 @@ class OrionApp(App):
                 self._render_diagnostics_table()
             return
 
-        # trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>
+        # trust/доверие <trusted|untrusted|off|status|доверенный|недоверенный|выкл|статус>
         if low in {"trust", "доверие"} or low.startswith("trust ") or low.startswith("доверие "):
             _, _, tail = cmd.partition(" ")
             token_raw = tail.strip()
-            token = self._normalize_events_trust_filter_token(token_raw)
             if not token_raw:
                 current = self._events_filter_text or I18N.NA
                 self._console_log(
@@ -8727,6 +8726,14 @@ class OrionApp(App):
                     level="info",
                 )
                 return
+            if token_raw.lower() in {"status", "статус", "info", "инфо"}:
+                current = self._normalize_events_trust_filter_token(self._events_filter_text)
+                self._console_log(
+                    f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: {current}",
+                    level="info",
+                )
+                return
+            token = self._normalize_events_trust_filter_token(token_raw)
             if token in {"off", "none", "all", "*"}:
                 self._events_filter_text = None
                 self._console_log(
@@ -8742,7 +8749,7 @@ class OrionApp(App):
             else:
                 self._console_log(
                     f"{I18N.bidi('Events trust filter', 'Фильтр событий по доверию')}: "
-                    f"trusted|untrusted|off|доверенный|недоверенный|выкл",
+                    f"trusted|untrusted|off|status|доверенный|недоверенный|выкл|статус",
                     level="info",
                 )
                 return
@@ -9383,7 +9390,7 @@ class OrionApp(App):
         help_part = I18N.bidi("help", "помощь")
         screen_part = f"{I18N.bidi('screen', 'экран')} <name>/<имя>"
         sim_part = "simulation.start [speed]/симуляция.старт [скорость]"
-        trust_part = "trust/доверие <trusted|untrusted|off|доверенный|недоверенный|выкл>"
+        trust_part = "trust/доверие <trusted|untrusted|off|status|доверенный|недоверенный|выкл|статус>"
         qiki_part = f"{I18N.bidi('QIKI', 'QIKI')}: <text> ({I18N.bidi('default', 'по умолчанию')})"
         sys_part = f"S: <{I18N.bidi('command', 'команда')}>"
         if self._secret_entry_mode == "openai_api_key":

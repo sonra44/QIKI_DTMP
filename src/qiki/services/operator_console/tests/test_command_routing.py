@@ -22,8 +22,10 @@ def test_default_routing_prefers_system_for_help_and_screens() -> None:
     assert OrionApp._should_route_to_system_by_default("replay /tmp/x.jsonl") is True
     assert OrionApp._should_route_to_system_by_default("trust") is True
     assert OrionApp._should_route_to_system_by_default("trust untrusted") is True
+    assert OrionApp._should_route_to_system_by_default("trust status") is True
     assert OrionApp._should_route_to_system_by_default("доверие") is True
     assert OrionApp._should_route_to_system_by_default("доверие untrusted") is True
+    assert OrionApp._should_route_to_system_by_default("доверие статус") is True
     assert OrionApp._should_route_to_system_by_default("доверие недоверенный") is True
 
 
