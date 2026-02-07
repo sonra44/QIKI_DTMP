@@ -3963,7 +3963,8 @@ class OrionApp(App):
         rows: list[tuple[str, str, str, Any, bool, str | None, tuple[str, ...]]] = []
 
         if compact:
-            imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+            imu_raw = sp.get("imu")
+            imu: dict[str, Any] = cast(dict[str, Any], imu_raw) if isinstance(imu_raw, dict) else {}
             imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
             imu_rates = [
                 ("r", imu.get("roll_rate_rps")),
@@ -4047,16 +4048,21 @@ class OrionApp(App):
                 )
             )
 
-            mag = sp.get("magnetometer") if isinstance(sp.get("magnetometer"), dict) else {}
-            field = mag.get("field_ut") if isinstance(mag.get("field_ut"), dict) else None
+            mag_raw = sp.get("magnetometer")
+            mag: dict[str, Any] = cast(dict[str, Any], mag_raw) if isinstance(mag_raw, dict) else {}
+            field_raw = mag.get("field_ut")
+            field: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
             mag_value = I18N.NA
             if isinstance(field, dict):
-                try:
-                    x = float(field.get("x"))
-                    y = float(field.get("y"))
-                    z = float(field.get("z"))
+                x_raw = field.get("x")
+                y_raw = field.get("y")
+                z_raw = field.get("z")
+                if isinstance(x_raw, (int, float)) and isinstance(y_raw, (int, float)) and isinstance(z_raw, (int, float)):
+                    x = float(x_raw)
+                    y = float(y_raw)
+                    z = float(z_raw)
                     mag_value = f"|B|={math.sqrt(x * x + y * y + z * z):.2f} µT"
-                except Exception:
+                else:
                     mag_value = I18N.INVALID
             rows.append(
                 (
@@ -4070,7 +4076,8 @@ class OrionApp(App):
                 )
             )
         else:
-            imu = sp.get("imu") if isinstance(sp.get("imu"), dict) else {}
+            imu_raw = sp.get("imu")
+            imu: dict[str, Any] = cast(dict[str, Any], imu_raw) if isinstance(imu_raw, dict) else {}
             imu_status = imu.get("status") if isinstance(imu.get("status"), str) else None
             rows.extend(
                 [
@@ -4122,7 +4129,8 @@ class OrionApp(App):
                 ]
             )
 
-            rad = sp.get("radiation") if isinstance(sp.get("radiation"), dict) else {}
+            rad_raw = sp.get("radiation")
+            rad: dict[str, Any] = cast(dict[str, Any], rad_raw) if isinstance(rad_raw, dict) else {}
             rad_status = rad.get("status") if isinstance(rad.get("status"), str) else None
             rows.extend(
                 [
@@ -4247,9 +4255,9 @@ class OrionApp(App):
                 ]
             )
 
-            mag_raw = sp.get("magnetometer")
-            mag: dict[str, Any] = cast(dict[str, Any], mag_raw) if isinstance(mag_raw, dict) else {}
-            field_raw = mag.get("field_ut")
+            mag_detail_raw = sp.get("magnetometer")
+            mag_detail: dict[str, Any] = cast(dict[str, Any], mag_detail_raw) if isinstance(mag_detail_raw, dict) else {}
+            field_raw = mag_detail.get("field_ut")
             field: dict[str, Any] | None = cast(dict[str, Any], field_raw) if isinstance(field_raw, dict) else None
             field_txt = I18N.NA
             if isinstance(field, dict):
@@ -4265,8 +4273,8 @@ class OrionApp(App):
                     (
                         "mag_enabled",
                         I18N.bidi("Magnetometer enabled", "Магнитометр"),
-                        I18N.yes_no(bool(mag.get("enabled"))),
-                        mag.get("enabled"),
+                        I18N.yes_no(bool(mag_detail.get("enabled"))),
+                        mag_detail.get("enabled"),
                         False,
                         None,
                         ("sensor_plane.magnetometer.enabled",),
