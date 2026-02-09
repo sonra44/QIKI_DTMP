@@ -16,4 +16,3 @@ def test_orion_startup_readability_proxy_is_within_10s_sla() -> None:
     app = OrionApp()
     readability_s = _startup_readability_proxy_seconds(app)
     assert readability_s <= 10.0, f"startup readability SLA failed: {readability_s:.2f}s > 10.0s"
-

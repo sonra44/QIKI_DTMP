@@ -1,6 +1,6 @@
 import json
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import pytest
 
@@ -18,7 +18,7 @@ async def test_subscribe_system_telemetry_prefers_canonical_power_soc_pct() -> N
         captured["cb"] = cb
         return object()
 
-    client.nc = SimpleNamespace(subscribe=fake_subscribe)
+    client.nc = cast(Any, SimpleNamespace(subscribe=fake_subscribe))
     client.register_callback("telemetry", seen.append)
 
     await client.subscribe_system_telemetry()
@@ -53,7 +53,7 @@ async def test_subscribe_system_telemetry_fallbacks_to_legacy_battery_when_soc_m
         captured["cb"] = cb
         return object()
 
-    client.nc = SimpleNamespace(subscribe=fake_subscribe)
+    client.nc = cast(Any, SimpleNamespace(subscribe=fake_subscribe))
     await client.subscribe_system_telemetry()
 
     msg = SimpleNamespace(
