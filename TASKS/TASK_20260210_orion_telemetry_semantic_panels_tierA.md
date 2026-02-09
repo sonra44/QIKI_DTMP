@@ -142,7 +142,7 @@ PY
 ## Definition of Done (DoD)
 
 - [x] UI consumes canonical keys only (aliases resolved in adapter layer) for Tier A startup surfaces.
-- [ ] Startup screen presents 5 semantic blocks with Tier A signal-first view.
+- [x] Startup screen presents 5 semantic blocks with Tier A signal-first view.
 - [x] Minimal causal chains exist for Energy/Threats.
 - [x] Operator readability test passes (<=10s understanding) via deterministic startup proxy (`7.91s`).
 - [x] Before/After snapshot proof recorded.

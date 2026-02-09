@@ -364,3 +364,30 @@ Observed:
 
 - Tier A scope kept: startup summary only.
 - Causal output path used in critical blocks: `cause -> effect -> next`.
+
+## Deterministic Visual Startup Snapshot (Before/After Pair)
+
+Reproduction:
+
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev python tools/orion_summary_startup_snapshot_proof.py
+```
+
+Observed:
+
+- `SNAPSHOT_PROOF_MODE=deterministic`
+- `BEFORE_REFERENCE_SUMMARY_ROWS=10`
+- `BEFORE_REFERENCE_BLOCKS=Telemetry link,Telemetry age,Power systems,CPU usage,Memory usage,BIOS,Mission control,Last event age,Events filters,Events trust filter`
+- `AFTER_SUMMARY_ROWS=5`
+- `AFTER_SUMMARY_IDS=health,energy,motion_safety,threats,actions_incidents`
+- Snapshot lines:
+  - `health|ok|state=RUNNING; link=Online/В сети; age=0.0sec/0.0с`
+  - `energy|warn|SoC=18.5%; In/Out=20.0W/20.0Вт/48.0W/48.0Вт; cause=pdu_limit -> effect=shed=2 -> next=shed+trim/сброс+снижение`
+  - `motion_safety|ok|v=2.0 m/s/2.0 м/с; hdg=90.0°; rcs=yes/да`
+  - `threats|warn|rad=warn; trips=0; cause=radiation_warning -> effect=reduced safety margin -> next=exposure-down/экспозиция-ниже`
+  - `actions_incidents|ok|Next/Действие=monitor/наблюдать; XPDR=MODE_C/yes/да`
+
+Interpretation:
+
+- Startup view is fixed to 5 semantic blocks and shows signal-first causal picture instead of legacy 10-row technical summary.
+- The proof is deterministic and can be replayed in any session with one command.
