@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from typing import Any
 
 
@@ -106,7 +107,7 @@ async def main() -> int:
         try:
             await sub.unsubscribe()
         except Exception:
-            pass
+            print("WARN: bios_status_smoke unsubscribe failed", file=sys.stderr)
         await nc.drain()
         await nc.close()
 

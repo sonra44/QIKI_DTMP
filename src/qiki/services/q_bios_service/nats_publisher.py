@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import nats
+
+
+logger = logging.getLogger("q_bios_service.nats_publisher")
 
 
 class NatsJsonPublisher:
@@ -27,11 +31,11 @@ class NatsJsonPublisher:
         try:
             await self._nc.drain()
         except Exception:
-            pass
+            logger.debug("bios_nats_publisher_drain_failed", exc_info=True)
         try:
             await self._nc.close()
         except Exception:
-            pass
+            logger.debug("bios_nats_publisher_close_failed", exc_info=True)
         self._nc = None
 
     async def publish_json(self, *, subject: str, payload: dict[str, Any]) -> None:

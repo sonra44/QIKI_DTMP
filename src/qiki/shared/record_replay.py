@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable, Literal
+
+logger = logging.getLogger(__name__)
 
 
 RecordLineType = Literal["telemetry", "event", "radar_track", "control_ack", "unknown"]
@@ -169,16 +172,16 @@ async def record_jsonl(
         try:
             fh.flush()
         except Exception:
-            pass
+            logger.debug("exception_swallowed", exc_info=True)
         try:
             fh.close()
         except Exception:
-            pass
+            logger.debug("exception_swallowed", exc_info=True)
         for sub in subs:
             try:
                 await sub.unsubscribe()
             except Exception:
-                pass
+                logger.debug("exception_swallowed", exc_info=True)
         await nc.drain()
         await nc.close()
 

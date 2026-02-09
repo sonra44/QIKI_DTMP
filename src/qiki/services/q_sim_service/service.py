@@ -436,7 +436,7 @@ class QSimService:
                 if value > 0.0:
                     return value
             except Exception:
-                pass
+                logger.debug("RADAR_SR_THRESHOLD_M invalid: %r", raw, exc_info=True)
         return float(self.config.radar.sr_threshold_m)
 
     def run(self):

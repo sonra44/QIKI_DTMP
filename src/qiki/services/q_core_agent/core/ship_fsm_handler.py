@@ -63,6 +63,13 @@ class ShipState(Enum):
     SYSTEMS_ERROR = "SYSTEMS_ERROR"  # Ошибка систем корабля
 
 
+def _safe_set_context_data(context_data: Any, key: str, value: str) -> None:
+    try:
+        context_data[key] = value
+    except Exception:
+        logger.debug("ship_fsm_context_data_set_failed", exc_info=True)
+
+
 def _map_ship_state_to_fsm_state_enum(ship_state_name: str) -> int:
     if ship_state_name == ShipState.SHIP_STARTUP.value:
         return FSMStateEnum.BOOTING
@@ -362,10 +369,7 @@ class ShipFSMHandler(IFSMHandler):
 
             next_state.history.append(new_transition)
 
-        try:
-            next_state.context_data[_SHIP_STATE_CONTEXT_KEY] = new_state_name
-        except Exception:
-            pass
+        _safe_set_context_data(next_state.context_data, _SHIP_STATE_CONTEXT_KEY, new_state_name)
 
         next_state.current_state = _map_ship_state_to_fsm_state_enum(new_state_name)
 

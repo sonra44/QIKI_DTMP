@@ -183,11 +183,11 @@ async def control_commands_loop(sim_service: QSimService) -> None:
         try:
             await sub.unsubscribe()
         except Exception:
-            pass
+            logging.debug("q_sim_control_unsubscribe_failed", exc_info=True)
         try:
             await nc.close()
         except Exception:
-            pass
+            logging.debug("q_sim_control_nats_close_failed", exc_info=True)
 
 
 async def serve() -> None:

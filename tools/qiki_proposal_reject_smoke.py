@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+import sys
 from typing import Any
 from uuid import uuid4
 
@@ -49,7 +50,7 @@ async def _request_once(
         try:
             await sub.unsubscribe()
         except Exception:
-            pass
+            print("WARN: qiki_proposal_reject_smoke unsubscribe failed", file=sys.stderr)
 
 
 async def main() -> int:

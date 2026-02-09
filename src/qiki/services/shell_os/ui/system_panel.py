@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import platform
 from dataclasses import dataclass
@@ -9,6 +10,9 @@ from typing import Any
 import psutil
 from textual.app import ComposeResult
 from textual.widgets import Static
+
+
+logger = logging.getLogger(__name__)
 
 
 def _has_active_textual_app() -> bool:
@@ -28,7 +32,7 @@ def _read_os_release() -> str:
                 if line.startswith("PRETTY_NAME="):
                     return line.split("=", 1)[1].strip().strip('"')
     except Exception:
-        pass
+        logger.debug("shell_os_read_os_release_failed", exc_info=True)
     return "unknown"
 
 
@@ -117,7 +121,7 @@ class SystemPanel(Static):
             try:
                 table.clear()
             except Exception:
-                pass
+                logger.debug("shell_os_system_table_clear_failed", exc_info=True)
 
         for key, value in rows:
             table.add_row(key, value)

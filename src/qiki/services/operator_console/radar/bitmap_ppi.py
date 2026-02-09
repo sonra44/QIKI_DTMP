@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
+
+logger = logging.getLogger(__name__)
 
 
 def _to_float_maybe(value: Any) -> float | None:
@@ -158,7 +161,7 @@ def render_bitmap_ppi(
             u_m -= float(pan_u_m)
             v_m -= float(pan_v_m)
         except Exception:
-            pass
+            logger.debug("exception_swallowed", exc_info=True)
 
         nx = max(-1.0, min(1.0, u_m / effective_range_m))
         ny = max(-1.0, min(1.0, v_m / effective_range_m))
@@ -204,7 +207,7 @@ def render_bitmap_ppi(
                     vec = (color[0], color[1], color[2], 180)
                     draw.line((px, py, px2, py2), fill=vec, width=1)
             except Exception:
-                pass
+                logger.debug("exception_swallowed", exc_info=True)
 
         if draw_labels and zoom_f >= 2.0:
             try:
@@ -213,6 +216,6 @@ def render_bitmap_ppi(
                     label = label[-4:]
                     draw.text((px + 6, py - 8), label, fill=color)
             except Exception:
-                pass
+                logger.debug("exception_swallowed", exc_info=True)
 
     return img

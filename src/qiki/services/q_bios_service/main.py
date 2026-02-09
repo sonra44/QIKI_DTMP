@@ -115,6 +115,13 @@ class BiosService:
         self._stop.set()
 
 
+def _safe_http_server_shutdown(server: ThreadingHTTPServer) -> None:
+    try:
+        server.shutdown()
+    except Exception:
+        logger.debug("bios_http_server_shutdown_failed", exc_info=True)
+
+
 def main() -> None:
     cfg = BiosConfig()
     logging.basicConfig(level=getattr(logging, cfg.log_level.upper(), logging.INFO))
@@ -136,10 +143,7 @@ def main() -> None:
         pass
     finally:
         svc.stop()
-        try:
-            server.shutdown()
-        except Exception:
-            pass
+        _safe_http_server_shutdown(server)
         server.server_close()
         time.sleep(0.1)
 

@@ -6,6 +6,7 @@ Handles connection to NATS JetStream and subscribes to telemetry streams.
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -26,6 +27,15 @@ from qiki.shared.nats_subjects import (
     RESPONSES_CONTROL,
     QIKI_RESPONSES,
 )
+
+logger = logging.getLogger(__name__)
+
+
+async def _safe_ack(msg: Any, *, context: str) -> None:
+    try:
+        await msg.ack()
+    except Exception:
+        logger.debug("operator_nats_ack_failed context=%s", context, exc_info=True)
 
 
 class NATSClient:
@@ -81,13 +91,10 @@ class NATSClient:
             try:
                 data = json.loads(msg.data.decode())
                 await callback({"stream": "RADAR_SR", "timestamp": datetime.now().isoformat(), "data": data})
-                await msg.ack()
+                await _safe_ack(msg, context="RADAR_SR")
             except Exception:
-                # Never print from within a Textual/TUI process.
-                try:
-                    await msg.ack()
-                except Exception:
-                    pass
+                logger.debug("operator_nats_message_handler_failed stream=RADAR_SR", exc_info=True)
+                await _safe_ack(msg, context="RADAR_SR")
 
         # Subscribe to the stream
         try:
@@ -116,12 +123,10 @@ class NATSClient:
             try:
                 data = json.loads(msg.data.decode())
                 await callback({"stream": "RADAR_LR", "timestamp": datetime.now().isoformat(), "data": data})
-                await msg.ack()
+                await _safe_ack(msg, context="RADAR_LR")
             except Exception:
-                try:
-                    await msg.ack()
-                except Exception:
-                    pass
+                logger.debug("operator_nats_message_handler_failed stream=RADAR_LR", exc_info=True)
+                await _safe_ack(msg, context="RADAR_LR")
 
         # Subscribe to the stream
         try:
@@ -150,12 +155,10 @@ class NATSClient:
             try:
                 data = json.loads(msg.data.decode())
                 await callback({"stream": "TRACKS", "timestamp": datetime.now().isoformat(), "data": data})
-                await msg.ack()
+                await _safe_ack(msg, context="TRACKS")
             except Exception:
-                try:
-                    await msg.ack()
-                except Exception:
-                    pass
+                logger.debug("operator_nats_message_handler_failed stream=TRACKS", exc_info=True)
+                await _safe_ack(msg, context="TRACKS")
 
         # Subscribe to the stream
         try:
@@ -186,6 +189,7 @@ class NATSClient:
                     }
                 )
             except Exception:
+                logger.debug("operator_nats_message_handler_failed stream=SYSTEM_TELEMETRY", exc_info=True)
                 return
 
         subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", SYSTEM_TELEMETRY)
@@ -215,6 +219,7 @@ class NATSClient:
                     }
                 )
             except Exception:
+                logger.debug("operator_nats_message_handler_failed stream=EVENTS", exc_info=True)
                 return
 
         subject = os.getenv("EVENTS_SUBJECT", EVENTS_V1_WILDCARD)

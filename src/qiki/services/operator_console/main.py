@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 from datetime import datetime
 
 from textual.app import App, ComposeResult
@@ -38,6 +39,8 @@ else:
     from ui.profile_panel import ProfilePanel  # type: ignore[no-redef]
     from widgets.metrics_panel import MetricsPanel  # type: ignore[no-redef]
     from clients.metrics_client import MetricsClient  # type: ignore[no-redef]
+
+logger = logging.getLogger(__name__)
 
 
 def _has_active_textual_app() -> bool:
@@ -270,7 +273,7 @@ class OperatorConsoleApp(App):
         try:
             print(message, flush=True)
         except Exception:
-            pass
+            logger.debug("exception_swallowed", exc_info=True)
 
     async def init_nats_client(self) -> None:
         """Initialize NATS client and subscribe to streams."""
@@ -351,7 +354,7 @@ class OperatorConsoleApp(App):
                     try:
                         radar_table.add_columns("Track ID", "Range", "Bearing", "Velocity", "Type")
                     except Exception:
-                        pass
+                        logger.debug("exception_swallowed", exc_info=True)
 
                 track_data = data.get("data", {}) if isinstance(data, dict) else {}
                 if not isinstance(track_data, dict):
@@ -400,7 +403,7 @@ class OperatorConsoleApp(App):
                 try:
                     table.add_columns("Metric", "Value", "Unit", "Updated")
                 except Exception:
-                    pass
+                    logger.debug("exception_swallowed", exc_info=True)
 
             def _get(path: str, default: str = "N/A") -> str:
                 cur: object = self._latest_telemetry
@@ -517,7 +520,7 @@ class OperatorConsoleApp(App):
                 tabs.active = tab_id  # type: ignore[attr-defined]
                 return
             except Exception:
-                pass
+                logger.debug("exception_swallowed", exc_info=True)
         if hasattr(tabs, "show_tab"):
             try:
                 tabs.show_tab(tab_id)  # type: ignore[attr-defined]

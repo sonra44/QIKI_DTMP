@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+import sys
 from typing import Any
 from uuid import uuid4
 
@@ -66,7 +67,7 @@ async def main() -> int:
         try:
             await sub.unsubscribe()
         except Exception:
-            pass
+            print("WARN: qiki_intent_smoke unsubscribe failed", file=sys.stderr)
         await nc.drain()
         await nc.close()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import math
 from typing import Any
 
@@ -9,6 +10,8 @@ from rich.text import Text
 
 from qiki.shared.radar_coords import polar_to_xyz_m
 from qiki.services.operator_console.radar.projection import project_xyz_to_uv_m
+
+logger = logging.getLogger(__name__)
 
 
 def _to_float_maybe(value: Any) -> float | None:
@@ -368,7 +371,7 @@ class BraillePpiRenderer:
                 u_m -= float(pan_u_m)
                 v_m -= float(pan_v_m)
             except Exception:
-                pass
+                logger.debug("exception_swallowed", exc_info=True)
 
             # Map meters to pixels (square viewport, clamped).
             nx = max(-1.0, min(1.0, u_m / effective_range_m))
@@ -565,7 +568,7 @@ def pick_nearest_track_id(
             u_m -= float(pan_u_m)
             v_m -= float(pan_v_m)
         except Exception:
-            pass
+            logger.debug("exception_swallowed", exc_info=True)
 
         nx = max(-1.0, min(1.0, u_m / effective_range_m))
         ny = max(-1.0, min(1.0, v_m / effective_range_m))

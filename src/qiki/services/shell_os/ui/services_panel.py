@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import socket
@@ -10,6 +11,9 @@ from urllib.parse import urlparse
 
 from textual.app import ComposeResult
 from textual.widgets import Static
+
+
+logger = logging.getLogger(__name__)
 
 
 def _has_active_textual_app() -> bool:
@@ -112,7 +116,7 @@ class ServicesPanel(Static):
             try:
                 table.clear()
             except Exception:
-                pass
+                logger.debug("shell_os_services_table_clear_failed", exc_info=True)
 
         for svc, status, detail in rows:
             table.add_row(svc, status, detail)

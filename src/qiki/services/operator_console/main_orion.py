@@ -5,6 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from dataclasses import asdict
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -48,6 +49,8 @@ from qiki.shared.nats_subjects import (
     SYSTEM_MODE_EVENT,
     SYSTEM_TELEMETRY,
 )
+
+logger = logging.getLogger("orion")
 
 try:
     import yaml  # type: ignore[import-untyped]
@@ -402,7 +405,7 @@ class BootScreen(ModalScreen[bool]):
             try:
                 self._task.cancel()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
     async def _sleep_chunked(self, seconds: float) -> None:
         # Keep UI responsive.
@@ -1086,7 +1089,7 @@ class _RadarMouseMixin:
             try:
                 app.capture_mouse(self)  # keep delivering move events while dragging
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             self._dragging = True
             self._drag_start_x = int(getattr(event, "x", 0) or 0)
             self._drag_start_y = int(getattr(event, "y", 0) or 0)
@@ -1118,7 +1121,7 @@ class _RadarMouseMixin:
                         self._dragging = False
                         return
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
             x = int(getattr(event, "x", 0) or 0)
             y = int(getattr(event, "y", 0) or 0)
             self._drag_last_x = x
@@ -1170,7 +1173,7 @@ class _RadarMouseMixin:
                 if app is not None:
                     app.capture_mouse(None)
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             self._mouse_debug(f"up x={self._drag_last_x} y={self._drag_last_y} dx={dx} dy={dy}")
         except Exception:
             self._dragging = False
@@ -1179,7 +1182,7 @@ class _RadarMouseMixin:
                 if app is not None:
                     app.capture_mouse(None)
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
 
 class RadarPpi(_RadarMouseMixin, Static):
@@ -1457,7 +1460,7 @@ class OrionDataTable(DataTable):
             try:
                 cast(Any, self.app).action_cycle_focus()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
         await super()._on_key(event)
 
@@ -1471,7 +1474,7 @@ class OrionCommandInput(Input):
             try:
                 cast(Any, self.app).action_cycle_focus()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
         await super()._on_key(event)
 
@@ -1853,7 +1856,7 @@ class OrionApp(App):
             if isinstance(focused, _Input):
                 return False
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         return True
 
     def action_radar_view_top(self) -> None:
@@ -1957,7 +1960,7 @@ class OrionApp(App):
         try:
             log.auto_scroll = bool(enabled)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def _output_scroll_relative(self, delta_lines: int) -> None:
         log = self._output_log()
@@ -1978,7 +1981,7 @@ class OrionApp(App):
             if int(getattr(log, "scroll_y", 0)) >= int(getattr(log, "max_scroll_y", 0)):
                 self._output_apply_follow(True)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def _output_scroll_end(self) -> None:
         log = self._output_log()
@@ -1988,7 +1991,7 @@ class OrionApp(App):
         try:
             log.scroll_end(animate=False, immediate=True, x_axis=False, y_axis=True)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         self._output_apply_follow(True)
 
     def _update_system_snapshot(self) -> None:
@@ -2510,7 +2513,7 @@ class OrionApp(App):
                         scroll=False,
                     )
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
     def _render_radar_ppi(self) -> None:
         try:
@@ -2556,7 +2559,7 @@ class OrionApp(App):
             try:
                 ppi.update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
         if self._radar_renderer_effective != "unicode":
             if render_bitmap_ppi is None or not hasattr(ppi, "image"):
@@ -2641,9 +2644,9 @@ class OrionApp(App):
             try:
                 await existing.remove()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         kind = (desired_kind or "unicode").strip().lower()
         if kind == "unicode":
@@ -2679,7 +2682,7 @@ class OrionApp(App):
                 level="warn",
             )
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         self._schedule_radar_ppi_widget_swap("unicode")
 
     def _render_radar_legend(self) -> None:
@@ -2988,7 +2991,9 @@ class OrionApp(App):
             "reduce_propulsion": I18N.bidi("reduce propulsion demand", "снизить потребление двигателей"),
             "pause_radiation": I18N.bidi("pause + execute radiation protocol", "пауза + протокол радиации"),
             "minimize_exposure": I18N.bidi("minimize exposure", "снизить экспозицию"),
-            "cooling_thermal_check": I18N.bidi("cooling + inspect thermal nodes", "охлаждение + проверка thermal узлов"),
+            "cooling_thermal_check": I18N.bidi(
+                "cooling + inspect thermal nodes", "охлаждение + проверка thermal узлов"
+            ),
             "pause_threat": I18N.bidi("pause + threat protocol", "пауза + протокол угроз"),
         }
         return verbose_map.get(hint_id, verbose_map["monitor"])
@@ -3043,11 +3048,19 @@ class OrionApp(App):
                 normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
             except ValidationError:
                 normalized = {}
-        sim_state = cast(dict[str, Any], normalized.get("sim_state")) if isinstance(normalized.get("sim_state"), dict) else {}
+        sim_state = (
+            cast(dict[str, Any], normalized.get("sim_state")) if isinstance(normalized.get("sim_state"), dict) else {}
+        )
         power = cast(dict[str, Any], normalized.get("power")) if isinstance(normalized.get("power"), dict) else {}
-        propulsion = cast(dict[str, Any], normalized.get("propulsion")) if isinstance(normalized.get("propulsion"), dict) else {}
+        propulsion = (
+            cast(dict[str, Any], normalized.get("propulsion")) if isinstance(normalized.get("propulsion"), dict) else {}
+        )
         comms = cast(dict[str, Any], normalized.get("comms")) if isinstance(normalized.get("comms"), dict) else {}
-        sensor_plane = cast(dict[str, Any], normalized.get("sensor_plane")) if isinstance(normalized.get("sensor_plane"), dict) else {}
+        sensor_plane = (
+            cast(dict[str, Any], normalized.get("sensor_plane"))
+            if isinstance(normalized.get("sensor_plane"), dict)
+            else {}
+        )
         radiation = (
             cast(dict[str, Any], sensor_plane.get("radiation"))
             if isinstance(sensor_plane.get("radiation"), dict)
@@ -3064,9 +3077,7 @@ class OrionApp(App):
             health_status = "crit"
         if compact_summary:
             health_value = (
-                f"state={state_txt}; "
-                f"link={I18N.online_offline(online)}; "
-                f"age={I18N.fmt_age_compact(telemetry_age_s)}"
+                f"state={state_txt}; link={I18N.online_offline(online)}; age={I18N.fmt_age_compact(telemetry_age_s)}"
             )
         else:
             health_value = (
@@ -3294,7 +3305,7 @@ class OrionApp(App):
                 try:
                     table.move_cursor(row=desired_keys.index(cursor_key), column=0, animate=False, scroll=False)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
 
         if prev_keys != desired_keys:
             rebuild()
@@ -5150,7 +5161,7 @@ class OrionApp(App):
                         scroll=False,
                     )
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="orion-root"):
@@ -5348,7 +5359,7 @@ class OrionApp(App):
         try:
             self.begin_capture_print(self, stdout=True, stderr=True)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Cold-boot splash (no-mocks): it will render only proven statuses (NATS, BIOS event).
         self.push_screen(BootScreen(), callback=self._on_boot_complete)
@@ -5385,7 +5396,7 @@ class OrionApp(App):
             # Focus is set after boot screen dismisses to avoid stealing input during boot.
             pass
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def on_print(self, event: events.Print) -> None:
         # Default: drop captured print output to avoid redraw jitter.
@@ -5402,7 +5413,7 @@ class OrionApp(App):
         try:
             self.set_focus(self.query_one("#command-dock", Input))
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         if result:
             self._console_log(I18N.bidi("System online", "Система в сети"), level="info")
         else:
@@ -5465,14 +5476,14 @@ class OrionApp(App):
             header_grid = self.query_one("#orion-header-grid")
             header_grid.set_class(density in {"tiny", "narrow"}, "header-2x4")
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # System dashboard reflow: 2x2 -> 1x4 on narrow/tiny.
         try:
             dashboard = self.query_one("#system-dashboard")
             dashboard.set_class(density in {"tiny", "narrow"}, "dashboard-1x4")
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Sidebar / Inspector visibility: reduce chrome first, keep content stable.
         sidebar_visible = density != "tiny"
@@ -5489,7 +5500,7 @@ class OrionApp(App):
             if sidebar_visible:
                 sidebar.styles.width = sidebar_width
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         try:
             inspector = self.query_one("#orion-inspector", OrionInspector)
@@ -5497,20 +5508,20 @@ class OrionApp(App):
             if inspector_visible:
                 inspector.styles.width = inspector_width
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Radar: prefer the table on narrow terminals (PPI is dense and becomes unreadable).
         try:
             ppi = self.query_one("#radar-ppi", Static)
             ppi.styles.display = "none" if density in {"tiny", "narrow"} else "block"
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Compact tables on narrow panes by reducing fixed column widths.
         try:
             self._apply_table_column_widths(density=density, total_width=width)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Calm output strip should be visible, but must not crush content on short terminals.
         try:
@@ -5538,7 +5549,7 @@ class OrionApp(App):
             self.query_one("#command-output-log", RichLog).styles.height = output_height
             self.query_one("#bottom-bar").styles.height = bottom_bar_height
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Keep the command line readable at all densities.
         self._update_command_placeholder()
@@ -5594,11 +5605,11 @@ class OrionApp(App):
                 try:
                     cols[idx].width = int(w)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
             try:
                 table.refresh()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
         # These tables were created with fixed widths; narrow terminals need smaller presets.
         if density in {"tiny", "narrow"}:
@@ -5643,7 +5654,7 @@ class OrionApp(App):
         try:
             log.write(f"{ts} {level_label} {msg}")
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def _console_table_log(self, msg: str, *, level: str = "info") -> None:
         ts = time.strftime("%H:%M:%S")
@@ -5660,7 +5671,7 @@ class OrionApp(App):
             if table.row_count == 1:
                 table.clear()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         console_active = self.active_screen == "console"
         cursor_row_before = getattr(table, "cursor_row", None)
@@ -5697,16 +5708,16 @@ class OrionApp(App):
                 try:
                     table.move_cursor(row=table.row_count - 1, column=0, animate=False, scroll=True)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
 
             if self._max_console_rows > 0:
                 try:
                     while table.row_count > self._max_console_rows:
                         cast(Any, table).remove_row(0)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
         if console_active:
             self._refresh_inspector()
@@ -5785,15 +5796,31 @@ class OrionApp(App):
 
         # Power panel height may be small in tmux; keep the first rows as the most important.
         power_rows_raw = [
-            ("state_of_charge", I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
-            ("power_input", I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
+            (
+                "state_of_charge",
+                I18N.bidi("State of charge", "Уровень заряда"),
+                I18N.pct(get("power.soc_pct"), digits=2),
+            ),
+            (
+                "power_input",
+                I18N.bidi("Power input", "Входная мощность"),
+                I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1),
+            ),
             (
                 "power_output",
                 I18N.bidi("Power output", "Выходная мощность"),
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
             ),
-            ("bus_voltage", I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
-            ("bus_current", I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
+            (
+                "bus_voltage",
+                I18N.bidi("Bus voltage", "Напряжение шины"),
+                I18N.num_unit(get("power.bus_v"), "V", "В", digits=2),
+            ),
+            (
+                "bus_current",
+                I18N.bidi("Bus current", "Ток шины"),
+                I18N.num_unit(get("power.bus_a"), "A", "А", digits=2),
+            ),
         ]
 
         def thermal_nodes_map() -> dict[str, Any]:
@@ -5923,14 +5950,14 @@ class OrionApp(App):
             try:
                 cast(Any, ppi).update(I18N.bidi("Radar display unavailable", "Экран радара недоступен"))
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
         if self._radar_renderer_effective != "unicode":
             if render_bitmap_ppi is None or not hasattr(ppi, "image"):
                 try:
                     cast(Any, ppi).update(I18N.bidi("Bitmap radar unavailable", "Битмап-радар недоступен"))
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 self._render_radar_legend()
                 return
             try:
@@ -5953,7 +5980,7 @@ class OrionApp(App):
                 try:
                     cast(Any, ppi).update(I18N.bidi("Bitmap radar error", "Ошибка битмап-радара"))
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
             self._render_radar_legend()
             return
         if BraillePpiRenderer is not None and isinstance(self._ppi_renderer, BraillePpiRenderer):
@@ -6025,7 +6052,7 @@ class OrionApp(App):
                 log.clear()
                 log.write(f"— {I18N.bidi('Console ready', 'Консоль готова')} —")
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
     def _seed_qiki_table(self) -> None:
         try:
@@ -6263,7 +6290,7 @@ class OrionApp(App):
                         break
                 table.move_cursor(row=idx, column=0, animate=False, scroll=False)
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
     async def _init_nats(self) -> None:
         self._boot_nats_init_done = False
@@ -6587,7 +6614,7 @@ class OrionApp(App):
                         ]
                     )
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 try:
                     th = rule.threshold
                 except Exception:
@@ -6843,7 +6870,7 @@ class OrionApp(App):
                 try:
                     self.query_one("#orion-header", OrionHeader).update_mode(self._qiki_mode)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
 
         etype = "bios" if subj == "qiki.events.v1.bios_status" else self._derive_event_type(subject, payload)
         if etype == "bios" and not self._bios_loaded_announced:
@@ -6931,11 +6958,11 @@ class OrionApp(App):
             try:
                 self.query_one("#orion-sidebar", OrionSidebar).refresh()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             try:
                 self.query_one("#orion-keybar", OrionKeybar).refresh()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             # While paused, the table stays stable, but the operator still needs a live unread counter.
             # Refresh the inspector with a small throttle to avoid repaint storms under high event rates.
             if self.active_screen == "events":
@@ -7037,11 +7064,11 @@ class OrionApp(App):
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         try:
             self.query_one("#orion-keybar", OrionKeybar).refresh()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def action_acknowledge_selected_incident(self) -> None:
         if self.active_screen != "events":
@@ -7169,11 +7196,11 @@ class OrionApp(App):
         try:
             self.query_one("#orion-sidebar", OrionSidebar).refresh()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         try:
             self.query_one("#orion-keybar", OrionKeybar).refresh()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         if self.active_screen == "events":
             self._refresh_inspector()
         self._console_log(f"{I18N.bidi('Unread cleared', 'Непрочитано очищено')}", level="info")
@@ -7378,7 +7405,7 @@ class OrionApp(App):
             try:
                 self.query_one("#orion-header", OrionHeader).update_mode(self._qiki_mode)
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
         self._qiki_last_response = resp
         self._render_qiki_table()
@@ -7391,13 +7418,13 @@ class OrionApp(App):
         try:
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         try:
             # Keybar is a pure renderer; it won't necessarily re-render on app state changes
             # unless explicitly refreshed.
             self.query_one("#orion-keybar", OrionKeybar).refresh()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         for sid in (
             "system",
             "radar",
@@ -7417,7 +7444,7 @@ class OrionApp(App):
             try:
                 self.query_one(f"#screen-{sid}", Container).display = sid == screen
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
 
         # Render the target screen immediately so the first frame is consistent.
         if screen == "events":
@@ -7499,13 +7526,13 @@ class OrionApp(App):
         try:
             self.set_focus(target)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def action_focus_command(self) -> None:
         try:
             self.set_focus(self.query_one("#command-dock", Input))
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def action_help(self) -> None:
         self._show_help()
@@ -7563,7 +7590,7 @@ class OrionApp(App):
                 table.action_cursor_down()
             event.stop()
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id == "rules-table":
@@ -8400,7 +8427,7 @@ class OrionApp(App):
                     dock.password = self._secret_entry_prev_password
                 dock.value = ""
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             self._update_command_placeholder()
             return
 
@@ -8481,7 +8508,7 @@ class OrionApp(App):
                     dock.value = ""
                     dock.focus()
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 self._update_command_placeholder()
                 return
 
@@ -8493,7 +8520,7 @@ class OrionApp(App):
                         dock.password = self._secret_entry_prev_password
                     dock.value = ""
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 self._update_command_placeholder()
                 self._console_log(I18N.bidi("Canceled", "Отменено"), level="info")
                 return
@@ -8839,7 +8866,7 @@ class OrionApp(App):
                         try:
                             speed = float(v)
                         except Exception:
-                            pass
+                            logger.debug("orion_exception_swallowed", exc_info=True)
                         continue
                     if k in {"prefix", "subject_prefix"}:
                         subject_prefix = v or None
@@ -8924,7 +8951,7 @@ class OrionApp(App):
                 try:
                     await self._publish_audit_event(audit_payload_ru)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
@@ -8963,7 +8990,7 @@ class OrionApp(App):
                 try:
                     await self._publish_audit_event(audit_payload)
                 except Exception:
-                    pass
+                    logger.debug("orion_exception_swallowed", exc_info=True)
                 self._console_log(f"{I18N.bidi('Acknowledged', 'Подтверждено')}: {key}", level="info")
                 self._render_events_table()
                 if self.active_screen == "events":
@@ -9006,7 +9033,7 @@ class OrionApp(App):
                     }
                 )
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             self._console_log(
                 f"{I18N.bidi('Cleared acknowledged incidents', 'Очищено подтвержденных инцидентов')}: {cleared}"
             )
@@ -9240,7 +9267,7 @@ class OrionApp(App):
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
 
         # radar.iso rotate <dyaw_deg> <dpitch_deg>
@@ -9273,7 +9300,7 @@ class OrionApp(App):
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
 
         # radar.iso reset
@@ -9285,7 +9312,7 @@ class OrionApp(App):
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
 
         # radar.zoom <in|out|reset>
@@ -9326,7 +9353,7 @@ class OrionApp(App):
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
 
         # radar.pan reset
@@ -9338,7 +9365,7 @@ class OrionApp(App):
                 if self.active_screen == "radar":
                     self._render_radar_ppi()
             except Exception:
-                pass
+                logger.debug("orion_exception_swallowed", exc_info=True)
             return
 
         # radar.select <next|prev>
@@ -9981,7 +10008,7 @@ class OrionApp(App):
             event.input.value = trimmed
             event.input.cursor_position = len(trimmed)
         except Exception:
-            pass
+            logger.debug("orion_exception_swallowed", exc_info=True)
         if not self._warned_command_trim:
             self._warned_command_trim = True
             self._console_log(

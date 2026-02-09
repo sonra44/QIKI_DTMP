@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any
@@ -115,7 +116,7 @@ async def main() -> int:
         try:
             await sub.unsubscribe()
         except Exception:
-            pass
+            print("WARN: telemetry_smoke unsubscribe failed", file=sys.stderr)
         await nc.drain()
         await nc.close()
 
