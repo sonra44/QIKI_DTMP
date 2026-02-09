@@ -391,3 +391,27 @@ Interpretation:
 
 - Startup view is fixed to 5 semantic blocks and shows signal-first causal picture instead of legacy 10-row technical summary.
 - The proof is deterministic and can be replayed in any session with one command.
+
+## Residual Non-Canonical Audit Outside Startup Summary
+
+Reproduction:
+
+```bash
+rg -n "get\\(\\s*['\\\"]battery['\\\"]|\\['battery'\\]|\\.get\\(\\s*['\\\"]battery['\\\"]" \
+  src/qiki/services/operator_console tests/unit
+```
+
+Observed:
+
+- Legacy `battery` reads found outside `main_orion.py` in legacy/alternate entrypoints:
+  - `src/qiki/services/operator_console/main_integrated.py`
+  - `src/qiki/services/operator_console/main_enhanced.py`
+  - `src/qiki/services/operator_console/main_full.py`
+  - `src/qiki/services/operator_console/main.py`
+  - `src/qiki/services/operator_console/clients/nats_realtime_client.py`
+- In canonical ORION startup path (`main_orion.py`) direct legacy `battery` truth reads were not detected.
+
+Interpretation:
+
+- Week-2 startup path is canonicalized.
+- Residual alias debt remains in non-canonical/legacy operator entrypoints and should be handled as separate cleanup slice.
