@@ -239,6 +239,31 @@ Changes:
 - Per panel, essential rows are always kept; rows with `N/A`-only noise are dropped.
 - Verbose behavior remains available via `ORION_SYSTEM_COMPACT_DEFAULT=0`.
 
+## Week-2 Kickoff: Residual Non-Canonical Startup Audit
+
+Goal: prove that startup-facing ORION surfaces do not read legacy top-level `battery`
+as truth source and keep canonical SoC path (`power.soc_pct`).
+
+Reproduction:
+
+```bash
+rg -n "\\bbattery\\b|power\\.soc_pct|state_of_charge" src/qiki/services/operator_console/main_orion.py
+rg -n "get\\(\\s*['\\\"]battery['\\\"]|\\['battery'\\]|\\.get\\(\\s*['\\\"]battery['\\\"]" src/qiki/services/operator_console/main_orion.py tests/unit
+```
+
+Observed:
+
+- Legacy source reads for `battery` in startup paths: **none** (empty result in second command).
+- Canonical source reads for startup energy/SoC:
+  - `power.soc_pct` used in summary/energy logic and system power rows.
+  - startup/system key: `state_of_charge`.
+- Remaining `battery` mentions are labels/help/thermal node naming, not SoC truth source.
+
+Interpretation:
+
+- Canonical-only SoC source for startup screens is preserved.
+- Next hardening slice should target visual proof automation and residual alias audit outside startup path.
+
 Operator impact:
 
 - Startup `system` view focuses first screen on operationally relevant fields (link/age/motion, core power, core temps, hull/radiation).
