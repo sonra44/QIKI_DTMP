@@ -1,6 +1,6 @@
 # QIKI_DTMP — индекс документации (порядок чтения)
 
-Цель: быстро понять **что такое QIKI**, зачем создаётся бот, как он управляется и где искать детали (без “утонуть” в сотнях файлов).
+Цель: быстро понять, что QIKI_DTMP — это симулятор и операторская платформа, где “истина мира” идёт из симуляции, а не из UI.
 
 ## Актуальный срез (2026-02-09)
 
@@ -11,22 +11,19 @@
 - Операционные правила anti-loop:
   - `docs/ops/ANTI_LOOP_POLICY.md`
   - `scripts/ops/anti_loop_gate.sh`
-- Если нужно быстро понять “где мы сейчас” без исторических слоёв:
-  - сначала прочитать блок выше,
-  - затем `README.md` (актуализированный быстрый старт и quality gate).
+- Если нужно быстро понять “где мы сейчас”:
+  - сначала `README.md` (что это за симулятор, как поднять и проверить),
+  - затем блок задач выше (текущий execution slice и доказательства).
 
-## 1) Must-read (концепция и смысл, 30–60 мин)
+## 1) Must-read (войти в контекст за 30–60 мин)
 
-1. `START_HERE_FOR_CONTEXT.md` — “куда смотреть вначале”.
-2. `docs/NEW_QIKI_PLATFORM_DESIGN.md` — зачем платформа и какие принципы (“суперплан”).
-3. `README.md` — как поднять Phase1 и что считается рабочим стеком.
-4. `docs/ARCHITECTURE.md` — фактическая архитектура Phase1 и потоки данных.
-5. `docs/design/q-core-agent/neuro_hybrid_core_design.md` — что такое Q-Mind (Rule+Neural+Arbiter) и почему “мозг” устроен так.
-6. `docs/design/q-core-agent/bot_core_design.ru.md` — что считается “ботом” как сущностью (ID, конфиг, raw I/O).
-7. `docs/design/hardware_and_physics/bot_physical_specs_design.md` — физический контракт (что “железо” означает в Digital Twin).
-8. `docs/design/game/qiki_operator_lore_notes.md` — текущие зафиксированные тезисы по лору “QIKI ↔ оператор”.
+1. `README.md` — что это за симулятор, quick start, quality gate.
+2. `docs/ARCHITECTURE.md` — контейнеры, dataflow, Radar LR/SR, health/readiness.
+3. `START_HERE_FOR_CONTEXT.md` — быстрый маршрут по проекту.
+4. `docs/NEW_QIKI_PLATFORM_DESIGN.md` — продуктовые принципы и направление.
+5. `docs/operator_console/REAL_DATA_MATRIX.md` — no-mocks матрица реальных данных в ORION.
 
-## 2) Should-read (как реально работает поведение/безопасность, 1–3 часа)
+## 2) Should-read (углубление, 1–3 часа)
 
 9. `CONTEXT/CURRENT_STATE.md` — архивный срез (2025-09-27); актуальный snapshot — `CURRENT_STATE.md`.
 10. `CURRENT_STATE.md` — актуальный snapshot (не канон приоритетов; сверять с ним).
@@ -35,7 +32,7 @@
 13. `docs/design/q-core-agent/proposal_evaluator.md` — как выбираются предложения (приоритет/уверенность).
 14. `docs/radar_phase2_roadmap.md` — куда развивается радар после v1.
 15. `docs/STEP_A_ROADMAP.md` — Step-A (propulsion/energy/docking) — если обсуждаем “бортовые подсистемы”.
-16. `docs/operator_console/REAL_DATA_MATRIX.md` — что Operator Console показывает и откуда (политика no-mocks).
+16. `docs/operator_console/REAL_DATA_MATRIX.md` — что Operator Console показывает и откуда.
 
 ## 3) Радар и безопасность (читать по задаче)
 

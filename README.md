@@ -1,210 +1,133 @@
-# QIKI Digital Twin Microservices Platform (QIKI_DTMP)
+# QIKI_DTMP
 
-**Версия: актуализировано на 2026-02-09 (Phase1 + ORION startup readability)**
+Платформа цифрового двойника и симуляции для операторских сценариев.
 
-Этот документ содержит основную информацию о проекте, его архитектуре и инструкции по запуску и проверке системы.
+QIKI_DTMP — это не просто набор микросервисов. Это симулятор с единой “истиной мира” (`q-sim-service`), потоком телеметрии через NATS JetStream и операторским интерфейсом ORION (TUI), где состояние системы должно быть понятно за секунды.
 
-## Описание
+## Что это за симулятор
 
-QIKI_DTMP — это высокопроизводительная, модульная платформа для разработки и симуляции интеллектуальных агентов, построенная на микросервисной архитектуре. Система включает полностью интегрированный радарный пайплайн (Radar v1) с обработкой данных через NATS JetStream.
+Система моделирует состояние аппарата/среды и публикует симуляционную правду в телеметрию и радарные потоки. Поверх этого:
+- ORION показывает оператору живое состояние (без моков и “красивых нулей”).
+- Q-Core/Bridge/Registrar обрабатывают события, треки, команды и аудит.
+- Решения принимаются на основе реальных payload из симуляции, а не из UI-фикций.
 
-## Что актуально сейчас (2026-02-09)
+## Актуальный статус (2026-02-09)
 
-- ORION Console перешёл на startup-oriented compact UX для ключевых Tier A поверхностей:
-  - `summary`: compact + causal badges + унифицированные action hints.
-  - `power`: compact-by-default с приоритетом критичных сигналов и dock-контекста.
-  - `system`: compact-by-default с essential-полями и подавлением `N/A`-шума.
-- Введён anti-loop gate в quality gate:
+- Startup UX ORION переведён в compact-by-default для Tier A поверхностей:
+  - `summary`: causal badges + унифицированные короткие action hints.
+  - `power`: компактный signal-first вывод, приоритет критичных сигналов и dock-контекста.
+  - `system`: essential-only представление с подавлением `N/A`-шума.
+- В quality gate встроен anti-loop контроль:
   - `scripts/ops/anti_loop_gate.sh`
-  - блокирует задачи без доказуемых секций (Scenario / Reproduction / Before-After / Metric).
-- Последний консолидированный checkpoint читаемости startup summary:
+  - проверяет доказуемость изменений (Scenario / Reproduction / Before-After / Impact Metric).
+- Последний checkpoint читаемости startup summary:
   - `READABILITY_SLA_SECONDS=7.49` (тренд: `7.91 -> 7.73 -> 7.49`).
-- Детальные доказательства и срезы:
-  - `TASKS/TASK_20260210_orion_telemetry_semantic_panels_tierA.md`
-  - `TASKS/ARTIFACT_20260210_orion_summary_weekly_before_after.md`
 
-## Source of Truth / Каноны
-- Канон приоритетов (Now/Next): `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
-- Состояние проекта (snapshot, не канон приоритетов): `CURRENT_STATE.md` (в `CONTEXT/` — архив).
-- Шаблоны docgen: `tools/qiki_docgen/templates/*` (файлы в `roadmap/*.template` — указатели, не редактировать).
-- Аналитика: редактировать только `docs/analysis/*` (`analysis/*` — заглушки).
-- Импорты радара: использовать `qiki.radar.*`; `radar.*` — устаревший shim, будет удалён в следующем мажоре.
+Детальные доказательства:
+- `TASKS/TASK_20260210_orion_telemetry_semantic_panels_tierA.md`
+- `TASKS/ARTIFACT_20260210_orion_summary_weekly_before_after.md`
 
-## Архитектура системы
+## Состав системы (Phase1)
 
-**Оптимизированная архитектура для эффективной разработки:**
+- `qiki-nats-phase1`: NATS + JetStream (`4222`, `8222`).
+- `q-sim-service`: источник симуляционной правды (gRPC + публикация радарных кадров).
+- `qiki-faststream-bridge-phase1`: обработка кадров/команд, публикация треков/ответов.
+- `qiki-dev-phase1`: контейнер разработки и запуска Q-Core логики.
+- `qiki-registrar-phase1`: аудит/события.
+- `qiki-operator-console`: ORION TUI.
+- `qiki-nats-js-init`: one-shot инициализация stream/consumers.
 
-Система состоит из следующих контейнеров:
-
--   **`qiki-nats-phase1`**: Брокер сообщений NATS с включенным JetStream (порты: 4222, 8222).
--   **`qiki-sim-phase1`**: Основной gRPC сервис симуляции, предоставляет данные сенсоров и публикует радарные кадры в NATS.
--   **`qiki-faststream-bridge-phase1`**: Приложение на FastStream, которое обрабатывает радарные кадры и генерирует треки.
--   **`qiki-dev-phase1`**: Основной контейнер для разработки и запуска Q-Core Agent.
--   **`qiki-nats-js-init`** (one-shot): Утилита инициализации потоков JetStream.
--   **`qiki-registrar-phase1`**: Сервис аудита событий.
-
-### LR/SR разделение радара
-
-- `q-sim-service` публикует радарные кадры в три NATS-топика: `qiki.radar.v1.frames.lr` (Long Range без ID/IFF), `qiki.radar.v1.tracks.sr` (Short Range с транспондерными данными) и совместимый `qiki.radar.v1.frames`.
-- Каждое сообщение содержит CloudEvents-хедеры и расширение `x-range-band` (`RR_LR`, `RR_SR`, `RR_UNSPECIFIED`).
-- Порог разделения задаётся через `radar.sr_threshold_m` в конфиге Q-Sim Service.
+LR/SR радар:
+- LR: `qiki.radar.v1.frames.lr`
+- SR: `qiki.radar.v1.tracks.sr`
+- совместимый поток: `qiki.radar.v1.frames`
 
 ## Быстрый старт
 
-Все команды выполняются из **корня git-репозитория `QIKI_DTMP`**.
-
-Если есть риск перепутать папку/клон, сначала зафиксируй корень репо:
+Все команды запускайте из корня репозитория:
 
 ```bash
-# Bash
 cd "$(git rev-parse --show-toplevel)"
 ```
 
-```powershell
-# PowerShell
-Set-Location (git rev-parse --show-toplevel)
-```
+Требования:
+- Docker запущен
+- есть Bash/PowerShell
+- protobuf сгенерирован в `generated/` (при необходимости см. Troubleshooting)
 
-**Требования:**
-- Docker Desktop запущен и работает
-- Protobuf файлы сгенерированы в папке `generated/`
-- Windows PowerShell или Bash
-
-### 1. Сборка и запуск
+### 1) Поднять Phase1
 
 ```bash
-# Стандартный запуск системы
-docker compose up -d --build
+docker compose -f docker-compose.phase1.yml up -d --build
+docker compose -f docker-compose.phase1.yml ps
 ```
 
-### 2. Проверка статуса контейнеров
+### 2) Поднять ORION Console
 
 ```bash
-docker compose ps
-```
-
-### 2.1 Operator Console (TUI) поверх Phase1
-
-Operator Console — интерактивная TUI-консоль (работает в терминале внутри контейнера).
-
-```bash
-# Запуск (интерактивно, без -d)
 docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up operator-console
 ```
 
-Альтернатива (в фоне) — поднять контейнер и подключиться к TUI:
+Фоновый вариант:
 
 ```bash
 docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d operator-console
 docker attach qiki-operator-console
 ```
 
-### 2.2 ORION startup compact toggles
+### 3) Быстрые health проверки
 
-Для диагностики/демо можно переключать плотность вывода:
-
-```bash
-# Summary compact (по умолчанию 1)
-ORION_SUMMARY_COMPACT_DEFAULT=0
-
-# System panels compact (по умолчанию 1)
-ORION_SYSTEM_COMPACT_DEFAULT=0
-
-# Power compact (по умолчанию 1)
-ORION_POWER_COMPACT_DEFAULT=0
-```
-
-Если переменные не заданы, используется compact-by-default поведение для операторского startup-scan.
-
-### 3. Проверка работоспособности (Health Checks)
-
-#### NATS Health Check
+NATS:
 
 ```bash
-# В Linux/WSL
 curl -sf http://localhost:8222/healthz
-
-# В Windows PowerShell
-Invoke-WebRequest -Uri http://localhost:8222/healthz -UseBasicParsing | Select-Object -ExpandProperty Content
 ```
 
-Ожидаемый ответ: `{"status":"ok"}`
-
-#### gRPC Health Check (q-sim-service)
+q-sim-service gRPC:
 
 ```bash
-docker compose exec q-sim-service python -c "import grpc; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); print(stub.HealthCheck(HealthCheckRequest(), timeout=3.0))"
+docker compose -f docker-compose.phase1.yml exec q-sim-service python -c "import grpc; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); print(stub.HealthCheck(HealthCheckRequest(), timeout=3.0))"
 ```
 
-### 4. Функциональное тестирование
-
-#### Интеграционные тесты радарного пайплайна
-
-Эти команды проверяют, что данные от радара корректно проходят через NATS JetStream и что LR/SR-разделение работает.
-
-```bash
-# NOTE: pytest.ini disables integration tests by default.
-# Use the wrapper to run integration-marked tests.
-
-./scripts/run_integration_tests_docker.sh tests/integration/test_radar_flow.py tests/integration/test_radar_tracks_flow.py
-
-./scripts/run_integration_tests_docker.sh tests/integration/test_radar_lr_sr_topics.py
-```
-
-#### Smoke-тесты Stage 0
-
-Комплексная проверка всех компонентов системы.
-
-```bash
-docker compose exec qiki-dev bash /workspace/scripts/smoke_test.sh
-```
-
-#### Полный набор тестов
-
-```bash
-docker compose exec qiki-dev pytest -v tests/
-```
-
-#### Рекомендуемый quality gate (основной)
+### 4) Основной quality gate
 
 ```bash
 bash scripts/quality_gate_docker.sh
 ```
 
-Гейт включает lint + unit + anti-loop checks (интеграция/mypy включаются отдельными флагами).
+По умолчанию: lint + unit + anti-loop; integration/mypy включаются флагами.
 
-### 5. Остановка системы
+## ORION compact toggles
+
+Для сравнения compact vs verbose:
 
 ```bash
-docker compose down
+ORION_SUMMARY_COMPACT_DEFAULT=0
+ORION_SYSTEM_COMPACT_DEFAULT=0
+ORION_POWER_COMPACT_DEFAULT=0
 ```
 
-## Устранение неисправностей
+Если не задано, используется compact-by-default startup режим.
 
-### Protobuf файлы
-Если система не запускается с ошибкой "ModuleNotFoundError: No module named 'generated'":
+## Troubleshooting
+
+Если нет `generated`:
 
 ```bash
-# Сгенерировать protobuf файлы (внутри dev-контейнера)
 docker compose -f docker-compose.phase1.yml run --rm qiki-dev bash -lc "bash tools/gen_protos.sh"
 ```
 
-### Просмотр логов
+Логи:
 
 ```bash
-# Логи конкретного сервиса
 docker logs qiki-sim-phase1 -f
-docker logs qiki-nats-phase1 --tail 50
-
-# Статус ресурсов
-docker stats
+docker logs qiki-nats-phase1 --tail 100
 ```
 
----
+## Где правда и что читать
 
-**Готово к разработке!** Система оптимизирована для быстрого запуска и эффективной разработки.
-
-## 📋 **Планирование Задач**
-
-- Канон приоритетов (Now/Next): `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
-- Исторические/справочные документы (не канон): `TASK_LIST.md`, `TASK_DETAILS.md`, `UPDATED_PRIORITIES_2025.md`
+- Канон приоритетов: `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
+- Текущий status snapshot: `CURRENT_STATE.md` (исторические snapshots в `CONTEXT/`)
+- Архитектура: `docs/ARCHITECTURE.md`
+- Индекс доков: `docs/INDEX.md`
+- Правила anti-loop: `docs/ops/ANTI_LOOP_POLICY.md`
