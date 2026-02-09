@@ -119,7 +119,10 @@
 
 ## 6) Radar/Радар — scope guard
 
-- ✅ No radar UX redesign is performed as part of validation. — изменений не вносилось
+- ✅ No radar UX redesign is performed as part of this checklist. — изменений не вносилось
+- If validating radar interaction (separate checklist): see `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+  and `docs/design/operator_console/TMUX_MOUSE_WHEEL_PASSTHROUGH.md`.
+
 
 ---
 

@@ -168,6 +168,8 @@ In the Phase1 Docker stack, these env vars (`RADAR_RENDERER`, `RADAR_VIEW`) are 
 In `tmux` with `mouse on`, the mouse wheel may be captured by tmux copy-mode scrolling instead of being forwarded to full-screen apps.
 If ORION does not receive wheel events, add the standard passthrough binds for `WheelUpPane/WheelDownPane` (forward when the pane is in alternate screen, otherwise keep tmux scrollback).
 
+See: `docs/design/operator_console/TMUX_MOUSE_WHEEL_PASSTHROUGH.md`.
+
 ## 11) Dependencies (allowed and expected)
 
 We allow adding dependencies for radar graphics:
