@@ -2,6 +2,19 @@
 
 Цель: быстро понять **что такое QIKI**, зачем создаётся бот, как он управляется и где искать детали (без “утонуть” в сотнях файлов).
 
+## Актуальный срез (2026-02-09)
+
+- Текущая активная работа по ORION startup readability и anti-loop guardrails:
+  - `TASKS/TASK_20260210_orion_telemetry_semantic_panels_tierA.md`
+  - `TASKS/ARTIFACT_20260210_orion_summary_weekly_before_after.md`
+  - `TASKS/TASK_20260209_antiloop_guardrails.md`
+- Операционные правила anti-loop:
+  - `docs/ops/ANTI_LOOP_POLICY.md`
+  - `scripts/ops/anti_loop_gate.sh`
+- Если нужно быстро понять “где мы сейчас” без исторических слоёв:
+  - сначала прочитать блок выше,
+  - затем `README.md` (актуализированный быстрый старт и quality gate).
+
 ## 1) Must-read (концепция и смысл, 30–60 мин)
 
 1. `START_HERE_FOR_CONTEXT.md` — “куда смотреть вначале”.

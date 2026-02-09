@@ -1,12 +1,27 @@
 # QIKI Digital Twin Microservices Platform (QIKI_DTMP)
 
-**Версия: Production Ready (октябрь 2025)**
+**Версия: актуализировано на 2026-02-09 (Phase1 + ORION startup readability)**
 
 Этот документ содержит основную информацию о проекте, его архитектуре и инструкции по запуску и проверке системы.
 
 ## Описание
 
 QIKI_DTMP — это высокопроизводительная, модульная платформа для разработки и симуляции интеллектуальных агентов, построенная на микросервисной архитектуре. Система включает полностью интегрированный радарный пайплайн (Radar v1) с обработкой данных через NATS JetStream.
+
+## Что актуально сейчас (2026-02-09)
+
+- ORION Console перешёл на startup-oriented compact UX для ключевых Tier A поверхностей:
+  - `summary`: compact + causal badges + унифицированные action hints.
+  - `power`: compact-by-default с приоритетом критичных сигналов и dock-контекста.
+  - `system`: compact-by-default с essential-полями и подавлением `N/A`-шума.
+- Введён anti-loop gate в quality gate:
+  - `scripts/ops/anti_loop_gate.sh`
+  - блокирует задачи без доказуемых секций (Scenario / Reproduction / Before-After / Metric).
+- Последний консолидированный checkpoint читаемости startup summary:
+  - `READABILITY_SLA_SECONDS=7.49` (тренд: `7.91 -> 7.73 -> 7.49`).
+- Детальные доказательства и срезы:
+  - `TASKS/TASK_20260210_orion_telemetry_semantic_panels_tierA.md`
+  - `TASKS/ARTIFACT_20260210_orion_summary_weekly_before_after.md`
 
 ## Source of Truth / Каноны
 - Канон приоритетов (Now/Next): `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`
@@ -84,6 +99,23 @@ docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d
 docker attach qiki-operator-console
 ```
 
+### 2.2 ORION startup compact toggles
+
+Для диагностики/демо можно переключать плотность вывода:
+
+```bash
+# Summary compact (по умолчанию 1)
+ORION_SUMMARY_COMPACT_DEFAULT=0
+
+# System panels compact (по умолчанию 1)
+ORION_SYSTEM_COMPACT_DEFAULT=0
+
+# Power compact (по умолчанию 1)
+ORION_POWER_COMPACT_DEFAULT=0
+```
+
+Если переменные не заданы, используется compact-by-default поведение для операторского startup-scan.
+
 ### 3. Проверка работоспособности (Health Checks)
 
 #### NATS Health Check
@@ -132,6 +164,14 @@ docker compose exec qiki-dev bash /workspace/scripts/smoke_test.sh
 ```bash
 docker compose exec qiki-dev pytest -v tests/
 ```
+
+#### Рекомендуемый quality gate (основной)
+
+```bash
+bash scripts/quality_gate_docker.sh
+```
+
+Гейт включает lint + unit + anti-loop checks (интеграция/mypy включаются отдельными флагами).
 
 ### 5. Остановка системы
 
