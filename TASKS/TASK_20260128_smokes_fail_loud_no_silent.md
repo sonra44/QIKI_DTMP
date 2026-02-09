@@ -1,23 +1,38 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Smoke tools are fail-loud (no silent exceptions)
 
 **ID:** TASK_20260128_SMOKES_FAIL_LOUD_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Smoke tools must not swallow exceptions silently in cleanup/unsubscribe paths; warnings must be visible to the operator.
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260128_smokes_fail_loud_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Replace silent passes with explicit warnings to stderr:
+  - `tools/telemetry_smoke.py`
+  - `tools/bios_status_smoke.py`
+  - `tools/qiki_intent_smoke.py`
+  - `tools/qiki_proposal_accept_smoke.py`
+  - `tools/qiki_proposal_reject_smoke.py`
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in tools/scripts:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" tools scripts`
+## Operator Scenario (visible outcome)
+- Developer runs smoke tools; cleanup/unsubscribe errors must be visible (stderr warning), not silent.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" tools scripts
+```
+
+## Before / After
+- Before: Unsubscribe cleanup errors could be swallowed silently.
+- After: Cleanup failures print WARN to stderr; no silent swallow patterns remain.
+
+## Impact Metric
+- Metric: silent-swallow patterns in tools/scripts
+- Baseline: >0
+- Actual: 0 (pattern not present)

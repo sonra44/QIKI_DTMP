@@ -1,23 +1,36 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: BIOS HTTP shutdown is no longer silent
 
 **ID:** TASK_20260127_BIOS_HTTP_SHUTDOWN_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+When stopping the BIOS HTTP server, do not swallow shutdown exceptions silently. Log at debug and continue cleanup.
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_bios_http_shutdown_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Safe shutdown helper: `src/qiki/services/q_bios_service/main.py`
+  - `_safe_http_server_shutdown()` logs `bios_http_server_shutdown_failed` with `exc_info=True`.
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in module:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/q_bios_service/main.py`
+- Unit test:
+  - `pytest -q tests/unit/test_bios_http_shutdown_no_silent.py`
+## Operator Scenario (visible outcome)
+- Developer stops BIOS HTTP server; shutdown exceptions must be visible (debug log), not silently swallowed.
+
+## Reproduction Command
+```bash
+pytest -q tests/unit/test_bios_http_shutdown_no_silent.py
+```
+
+## Before / After
+- Before: Shutdown exception was swallowed (no evidence).
+- After: Shutdown exception logs debug event `bios_http_server_shutdown_failed` and cleanup continues.
+
+## Impact Metric
+- Metric: silent-swallow blocks in BIOS HTTP shutdown path
+- Baseline: 1 silent swallow
+- Actual: 0 silent swallow; unit test asserts debug log record

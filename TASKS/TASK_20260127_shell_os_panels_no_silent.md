@@ -1,23 +1,36 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Shell OS panels do not swallow exceptions silently
 
 **ID:** TASK_20260127_SHELL_OS_PANELS_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Shell OS UI panels must not swallow exceptions silently in best-effort paths (e.g., data refresh / table clear).
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_shell_os_panels_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Debug logs replace silent passes in panel helpers:
+  - `src/qiki/services/shell_os/ui/system_panel.py`
+  - `src/qiki/services/shell_os/ui/services_panel.py`
+  - `src/qiki/services/shell_os/ui/resources_panel.py`
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in shell_os:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/shell_os`
+## Operator Scenario (visible outcome)
+- Shell OS panels refresh; best-effort failures should be visible (debug logs), not silently ignored.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/shell_os
+```
+
+## Before / After
+- Before: Panel helper failures could be swallowed silently.
+- After: Failures emit debug logs (e.g., table clear fallback / os-release read).
+
+## Impact Metric
+- Metric: silent-swallow patterns in shell_os
+- Baseline: >0
+- Actual: 0 (pattern not present)

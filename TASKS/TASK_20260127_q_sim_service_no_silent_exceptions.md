@@ -1,23 +1,36 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Q-Sim no longer swallows exceptions silently
 
 **ID:** TASK_20260127_Q_SIM_SERVICE_NO_SILENT_EXCEPTIONS  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Remove silent `except Exception: pass` in Q-Sim service lifecycle and control loop glue; replace with debug logging.
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_q_sim_service_no_silent_exceptions" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Control loop unsubscribe/close now logs debug on failures:
+  - `src/qiki/services/q_sim_service/grpc_server.py`
+- Invalid `RADAR_SR_THRESHOLD_M` now logs debug instead of silent pass:
+  - `src/qiki/services/q_sim_service/service.py`
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in q_sim_service:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/q_sim_service`
+## Operator Scenario (visible outcome)
+- Q-Sim service handles shutdown/control glue; cleanup failures must be visible (debug), not silent.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/q_sim_service
+```
+
+## Before / After
+- Before: Some cleanup paths had silent swallow.
+- After: Cleanup paths log debug on failure (unsubscribe/close; invalid env parsing logs debug).
+
+## Impact Metric
+- Metric: silent-swallow patterns in q_sim_service
+- Baseline: >0
+- Actual: 0 (pattern not present)

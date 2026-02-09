@@ -122,3 +122,18 @@ for e in entries:
 print(f'ANOMALIES={an}')
 PY
 ```
+
+## Update (2026-02-09): Placeholder Verification Progress
+
+After restoring missing evidence link targets (commit `62694bd`), all placeholder dossiers were upgraded to verified evidence (code-backed checks + unit tests where applicable).
+
+- Verified dossiers (18):
+  - BIOS shutdown, BIOS publisher close
+  - operator-console NATS client
+  - ship FSM context set
+  - q-sim no-silent
+  - shell_os panels
+  - smoke tools fail-loud
+  - requirements files present
+  - ORION no-silent exception logging slices (show_screen, UI input, responsive chrome, etc.)
+- Remaining placeholders: none.

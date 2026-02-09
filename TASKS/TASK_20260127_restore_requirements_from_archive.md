@@ -1,23 +1,31 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Restore requirements files for Docker build reproducibility
 
 **ID:** TASK_20260127_RESTORE_REQUIREMENTS_FROM_ARCHIVE  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Ensure Docker build has stable, present dependency lock entrypoints (requirements files exist and are referenced).
 
-## Verification note (must do before treating as 'done')
+## Evidence
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_restore_requirements_from_archive" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Files present in repo root:
+  - `requirements.txt`
+  - `requirements-dev.txt`
+  - `requirements-faststream.txt`
+## Operator Scenario (visible outcome)
+- Developer builds Docker from clean clone; requirements files must exist at repo root.
 
-## Next
+## Reproduction Command
+```bash
+ls -la requirements*.txt
+```
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+## Before / After
+- Before: Docker COPY requirements*.txt could fail on clean checkout.
+- After: Root requirements files exist and are discoverable by Dockerfiles.
+
+## Impact Metric
+- Metric: missing root requirements files
+- Baseline: missing
+- Actual: present (requirements*.txt)

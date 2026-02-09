@@ -1,23 +1,24 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: ORION responsive chrome sidebar/inspector/PPI is non-silent on failures
 
 **ID:** TASK_20260127_ORION_RESPONSIVE_CHROME_SIDEBAR_INSPECTOR_PPI_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Evidence
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+- `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/operator_console/main_orion.py`
+## Operator Scenario (visible outcome)
+- Operator uses ORION; UI exceptions must not be silently swallowed.
 
-## Verification note (must do before treating as 'done')
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/operator_console/main_orion.py
+```
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_orion_responsive_chrome_sidebar_inspector_ppi_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+## Before / After
+- Before: ORION had silent exception swallow blocks (`except Exception: pass`).
+- After: Silent swallow blocks were replaced with debug logging (`orion_exception_swallowed`).
 
-## Next
-
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+## Impact Metric
+- Metric: silent-swallow patterns in ORION (main_orion.py)
+- Baseline: >0
+- Actual: 0 (pattern not present)

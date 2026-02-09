@@ -1,23 +1,36 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Operator-safe exception logging (ORION)
 
 **ID:** TASK_20260127_OPERATOR_SAFE_EXCEPTION_LOGGING  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+ORION must not swallow exceptions silently inside the TUI runtime. Failures should be visible as debug logs (no TUI print jitter).
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_operator_safe_exception_logging" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- All `except Exception: pass` blocks in ORION were upgraded to debug logging:
+  - `src/qiki/services/operator_console/main_orion.py`
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in ORION:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/operator_console/main_orion.py`
+- Sanity test that imports/parses ORION source:
+  - `pytest -q tests/unit/test_telemetry_dictionary.py::test_orion_inspector_provenance_keys_are_covered_by_dictionary`
+## Operator Scenario (visible outcome)
+- Operator uses ORION; UI exceptions must not be silently swallowed.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/operator_console/main_orion.py
+```
+
+## Before / After
+- Before: ORION had silent exception swallow blocks (`except Exception: pass`).
+- After: Silent swallow blocks were replaced with debug logging (`orion_exception_swallowed`).
+
+## Impact Metric
+- Metric: silent-swallow patterns in ORION (main_orion.py)
+- Baseline: >0
+- Actual: 0 (pattern not present)

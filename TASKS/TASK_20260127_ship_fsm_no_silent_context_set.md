@@ -1,23 +1,36 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Ship FSM context set is no longer silent
 
 **ID:** TASK_20260127_SHIP_FSM_NO_SILENT_CONTEXT_SET  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Ship FSM must not swallow failures when writing to `context_data`. It should log debug and keep progressing.
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_ship_fsm_no_silent_context_set" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Safe setter: `src/qiki/services/q_core_agent/core/ship_fsm_handler.py`
+  - `_safe_set_context_data()` logs `ship_fsm_context_data_set_failed` with `exc_info=True`.
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in module:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/q_core_agent/core/ship_fsm_handler.py`
+- Unit test:
+  - `pytest -q tests/unit/test_ship_fsm_context_data_set_no_silent.py`
+## Operator Scenario (visible outcome)
+- Developer runs Ship FSM; failures to write context_data must be visible (debug), not silent.
+
+## Reproduction Command
+```bash
+pytest -q tests/unit/test_ship_fsm_context_data_set_no_silent.py
+```
+
+## Before / After
+- Before: context_data write failure was swallowed silently.
+- After: context_data write failure logs `ship_fsm_context_data_set_failed` at debug.
+
+## Impact Metric
+- Metric: silent-swallow blocks when writing FSM context_data
+- Baseline: 1 silent swallow
+- Actual: 0 silent swallow; unit test asserts debug log record

@@ -1,23 +1,33 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: ORION show_screen action is no longer silent on failures
 
 **ID:** TASK_20260127_ORION_ACTION_SHOW_SCREEN_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+Switching ORION screens must not silently ignore exceptions (sidebar/keybar/screen containers).
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_orion_action_show_screen_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Silent `except Exception: pass` blocks in `action_show_screen()` are replaced with debug logs:
+  - `src/qiki/services/operator_console/main_orion.py`
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/operator_console/main_orion.py`
+## Operator Scenario (visible outcome)
+- Operator uses ORION; UI exceptions must not be silently swallowed.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/operator_console/main_orion.py
+```
+
+## Before / After
+- Before: ORION had silent exception swallow blocks (`except Exception: pass`).
+- After: Silent swallow blocks were replaced with debug logging (`orion_exception_swallowed`).
+
+## Impact Metric
+- Metric: silent-swallow patterns in ORION (main_orion.py)
+- Baseline: >0
+- Actual: 0 (pattern not present)

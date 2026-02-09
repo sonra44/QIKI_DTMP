@@ -1,23 +1,35 @@
-# TASK (placeholder restored for canon evidence link integrity)
+# TASK: Operator console NATS client no longer swallows handler/ack errors
 
 **ID:** TASK_20260127_OPERATOR_NATS_CLIENT_NO_SILENT  
-**Status:** needs_verification  
-**Date restored:** 2026-02-09  
+**Status:** completed (verified 2026-02-09)  
 
-## Why this file exists
+## Goal
 
-`~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` referenced this dossier as evidence, but it was missing in the repository tree at the time of the 2026-02-09 audit.
-This placeholder restores the link target without claiming the underlying behavior is implemented in the current `main`.
+In the operator console NATS client, message handler failures and ack failures must not be swallowed silently.
 
-## Verification note (must do before treating as 'done')
+## Implementation
 
-Run a code-backed verification for this claim (Docker-first where applicable).
-Examples of safe checks:
-- locate implementation: `rg -n "<expected token>" src`
-- locate tests: `rg -n "TASK_20260127_operator_nats_client_no_silent" -S tests TASKS`
-- confirm no silent-swallow patterns (if relevant): `rg -U -n "except Exception:\\s*\\n\\s*pass" <area>`
+- Message handler errors are logged at debug:
+  - `src/qiki/services/operator_console/clients/nats_client.py`
+  - Uses `_safe_ack()`; ack failures log `operator_nats_ack_failed ...`.
 
-## Next
+## Evidence
 
-1) Replace this placeholder with a real dossier (template sections + Docker-first evidence).
-2) Update the canon board entry to point at the verified evidence (commit/tests/output).
+- No silent swallow in clients:
+  - `rg -U -n "except Exception:\\s*\\n\\s*pass" src/qiki/services/operator_console/clients`
+## Operator Scenario (visible outcome)
+- Operator console receives NATS messages; handler/ack failures must be visible in logs (debug), not silent.
+
+## Reproduction Command
+```bash
+rg -U -n "except Exception:\s*\n\s*pass" src/qiki/services/operator_console/clients/nats_client.py
+```
+
+## Before / After
+- Before: Message handler/ack errors could be swallowed silently.
+- After: Failures are logged at debug (handler failure + ack failure), while keeping best-effort ack.
+
+## Impact Metric
+- Metric: count of silent-swallow patterns in operator_console NATS client
+- Baseline: >0
+- Actual: 0 (pattern not present)
