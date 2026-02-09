@@ -24,4 +24,3 @@ async def test_nats_publisher_close_logs_exceptions(caplog) -> None:
     messages = {r.message for r in caplog.records}
     assert "bios_nats_publisher_drain_failed" in messages
     assert "bios_nats_publisher_close_failed" in messages
-

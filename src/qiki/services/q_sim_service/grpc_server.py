@@ -63,7 +63,9 @@ def _build_control_response_payload(
     return payload
 
 
-def _describe_control_command_result(cmd: CommandMessage, *, success: bool, sim_service: QSimService) -> tuple[str, str | None]:
+def _describe_control_command_result(
+    cmd: CommandMessage, *, success: bool, sim_service: QSimService
+) -> tuple[str, str | None]:
     if success:
         return ("applied", None)
 

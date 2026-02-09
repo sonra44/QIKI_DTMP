@@ -32,9 +32,7 @@ class BiosService:
             port=self._cfg.sim_grpc_port,
             timeout_s=self._cfg.sim_health_check_timeout_s,
         )
-        status = build_bios_status(
-            BiosPostInputs(bot_config_path=self._cfg.bot_config_path, sim_health=sim_health)
-        )
+        status = build_bios_status(BiosPostInputs(bot_config_path=self._cfg.bot_config_path, sim_health=sim_health))
         payload = status.model_dump(mode="json")
         payload["event_schema_version"] = 1
         payload["source"] = "q-bios-service"

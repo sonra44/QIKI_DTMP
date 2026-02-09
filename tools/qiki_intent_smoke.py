@@ -47,8 +47,10 @@ async def main() -> int:
             payload = json.loads(msg.data.decode("utf-8"))
         except Exception:
             return
-        if isinstance(payload, dict) and str(payload.get("request_id") or payload.get("requestId")) == str(req.request_id):
-            got.set_result(payload)
+        if isinstance(payload, dict):
+            msg_id = str(payload.get("request_id") or payload.get("requestId"))
+            if msg_id == str(req.request_id):
+                got.set_result(payload)
 
     sub = await nc.subscribe(responses_subject, cb=handler)
     try:
