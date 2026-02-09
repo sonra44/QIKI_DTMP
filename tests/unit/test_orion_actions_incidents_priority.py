@@ -95,3 +95,62 @@ def test_actions_incidents_warn_uses_energy_hint_when_threats_ok(monkeypatch: py
     actions = next(b for b in blocks if b.block_id == "actions_incidents")
     assert actions.status == "warn"
     assert "Next/Действие=shed+trim/сброс+снижение" in str(actions.value)
+
+
+def test_actions_incidents_warn_prefers_threat_hint_over_energy_verbose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("textual")
+    from qiki.services.operator_console.main_orion import EventEnvelope, OrionApp
+
+    monkeypatch.setenv("ORION_SUMMARY_COMPACT_DEFAULT", "0")
+    app = OrionApp()
+    app.nats_connected = True
+    payload = _sample_payload()
+    payload["power"]["pdu_throttled"] = True
+    payload["power"]["shed_loads"] = ["radar"]
+    payload["sensor_plane"]["radiation"]["status"] = "warn"
+    app._snapshots.put(
+        EventEnvelope(
+            event_id="telemetry-actions-priority-verbose",
+            type="telemetry",
+            source="telemetry",
+            ts_epoch=time.time(),
+            level="warn",
+            payload=payload,
+        )
+    )
+
+    blocks = app._build_summary_blocks()
+    actions = next(b for b in blocks if b.block_id == "actions_incidents")
+    assert actions.status == "warn"
+    assert "Next/Действие=minimize exposure/снизить экспозицию" in str(actions.value)
+
+
+def test_actions_incidents_warn_uses_energy_hint_when_threats_ok_verbose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("textual")
+    from qiki.services.operator_console.main_orion import EventEnvelope, OrionApp
+
+    monkeypatch.setenv("ORION_SUMMARY_COMPACT_DEFAULT", "0")
+    app = OrionApp()
+    app.nats_connected = True
+    payload = _sample_payload()
+    payload["power"]["pdu_throttled"] = True
+    payload["power"]["shed_loads"] = ["camera"]
+    app._snapshots.put(
+        EventEnvelope(
+            event_id="telemetry-actions-energy-verbose",
+            type="telemetry",
+            source="telemetry",
+            ts_epoch=time.time(),
+            level="warn",
+            payload=payload,
+        )
+    )
+
+    blocks = app._build_summary_blocks()
+    actions = next(b for b in blocks if b.block_id == "actions_incidents")
+    assert actions.status == "warn"
+    assert "Next/Действие=reduce loads/снизить нагрузку" in str(actions.value)

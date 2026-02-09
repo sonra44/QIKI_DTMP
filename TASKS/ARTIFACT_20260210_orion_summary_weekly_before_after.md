@@ -488,6 +488,7 @@ docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
 Observed:
 
 - `6 passed`
+- `bash scripts/quality_gate_docker.sh` -> `[quality-gate] OK`
 
 Regression tests added:
 

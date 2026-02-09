@@ -71,6 +71,8 @@ docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
 
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest -q tests/unit/test_orion_actions_incidents_priority.py tests/unit/test_orion_summary_action_hints.py tests/unit/test_orion_summary_semantic_causal.py`
   - Output: `6 passed`.
+- `bash scripts/quality_gate_docker.sh`
+  - Output: `[quality-gate] OK`.
 - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev pytest tests/unit/test_orion_actions_incidents_priority.py tests/unit/test_orion_summary_action_hints.py tests/unit/test_orion_summary_semantic_causal.py tests/unit/test_orion_summary_compact_noise.py tests/unit/test_orion_summary_uses_canonical_soc.py tests/unit/test_orion_power_compact.py tests/unit/test_orion_system_panels_compact.py`
   - Output: `19 passed in 1.12s`.
 
