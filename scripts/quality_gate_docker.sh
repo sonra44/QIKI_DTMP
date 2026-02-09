@@ -8,7 +8,7 @@ if [[ -n "${PROFILE}" ]]; then
   case "${PROFILE}" in
     full)
       # "Full" means: run the complete pytest set + integration suite.
-      # Mypy remains opt-in because the codebase is not mypy-clean yet.
+      # Mypy is intentionally kept opt-in in this profile to control runtime cost.
       export QUALITY_GATE_RUN_INTEGRATION="${QUALITY_GATE_RUN_INTEGRATION:-1}"
       export QUALITY_GATE_RUFF_FORMAT_CHECK="${QUALITY_GATE_RUFF_FORMAT_CHECK:-1}"
       ;;
