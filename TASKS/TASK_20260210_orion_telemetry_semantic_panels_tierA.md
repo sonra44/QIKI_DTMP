@@ -1,7 +1,7 @@
 # TASK: ORION Telemetry Semantic Panels (Tier A First)
 
 **ID:** TASK_20260210_ORION_TELEMETRY_SEMANTIC_PANELS_TIERA  
-**Status:** in_progress  
+**Status:** in_progress (Week 2 closed, Week 3 acceptance)  
 **Owner:** codex + user  
 **Date created:** 2026-02-10
 
@@ -296,7 +296,19 @@ PY
 
 ## Next
 
-1) Продолжить canonical-only политику: UI читает только canonical Tier A ключи, алиасы остаются только в adapter слое.
-2) Зафиксирован follow-up proof для live-telemetry режима (NATS connected + fresh payload) в weekly artifact.
-3) Подготовить следующий Tier A slice для стартового экрана (чистка лишних технических полей в power/system представлении).
-4) Подобрать следующий Tier A candidate для снижения визуального шума в `system` (не нарушая canonical-only и операторские сигналы).
+1) Week-3 acceptance: итоговый checkpoint по сценарию оператора (`<=10s`) с актуальными доказательствами из weekly artifact.
+2) Week-3 polish: выровнять формулировки/статусы в TASK + `MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` и закрыть milestone сводкой.
+3) Week-3 hardening (точечно): добить остаточные alias-path улучшения только если они влияют на операторскую понятность стартового экрана.
+4) После acceptance — зафиксировать следующий Tier-A candidate без расширения scope текущего цикла.
+
+## Week-2 Closure Checkpoint (captured 2026-02-10)
+
+- Canonical startup snapshot proof is reproducible by one command:
+  - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev python tools/orion_summary_startup_snapshot_proof.py`
+- Canonical SoC path propagated to legacy/alternate console entrypoints (`soc_pct` primary, legacy fallback only).
+- Regression protection added:
+  - `src/qiki/services/operator_console/tests/test_nats_realtime_client_soc_mapping.py`
+  - latest proof: `2 passed`.
+- Compact final verification slice:
+  - `pytest -q tests/unit/test_orion_summary_uses_canonical_soc.py tests/unit/test_orion_summary_compact_noise.py tests/unit/test_orion_system_panels_compact.py src/qiki/services/operator_console/tests/test_nats_realtime_client_soc_mapping.py`
+  - result: `9 passed`.
