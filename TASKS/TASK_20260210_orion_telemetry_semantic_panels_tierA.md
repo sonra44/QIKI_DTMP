@@ -1,7 +1,7 @@
 # TASK: ORION Telemetry Semantic Panels (Tier A First)
 
 **ID:** TASK_20260210_ORION_TELEMETRY_SEMANTIC_PANELS_TIERA  
-**Status:** in_progress (Week 2 closed, Week 3 acceptance)  
+**Status:** completed (Week 3 acceptance closed)  
 **Owner:** codex + user  
 **Date created:** 2026-02-10
 
@@ -294,12 +294,22 @@ PY
 - Риск ухода в “аудит ради аудита” снижается ограничением scope до Tier A.
 - Риск возврата hardcoded списков: запрещаем на уровне контракта и тестов.
 
-## Next
+## Week-3 Acceptance Checkpoint (captured 2026-02-10)
 
-1) Week-3 acceptance: итоговый checkpoint по сценарию оператора (`<=10s`) с актуальными доказательствами из weekly artifact.
-2) Week-3 polish: выровнять формулировки/статусы в TASK + `MEMORI/ACTIVE_TASKS_QIKI_DTMP.md` и закрыть milestone сводкой.
-3) Week-3 hardening (точечно): добить остаточные alias-path улучшения только если они влияют на операторскую понятность стартового экрана.
-4) После acceptance — зафиксировать следующий Tier-A candidate без расширения scope текущего цикла.
+- Final compact acceptance slice passed:
+  - `pytest -q tests/unit/test_orion_summary_uses_canonical_soc.py tests/unit/test_orion_summary_compact_noise.py tests/unit/test_orion_system_panels_compact.py src/qiki/services/operator_console/tests/test_nats_realtime_client_soc_mapping.py`
+  - result: `9 passed`.
+- Deterministic startup snapshot proof remains stable:
+  - `docker compose -f docker-compose.phase1.yml exec -T qiki-dev python tools/orion_summary_startup_snapshot_proof.py`
+  - confirms `AFTER_SUMMARY_ROWS=5` and stable semantic IDs.
+- Anti-loop gate state for closure check:
+  - `bash scripts/ops/anti_loop_gate.sh`
+  - result: `No changed files; skipping anti-loop checks` (expected for clean-tree acceptance run).
+
+## Next Tier-A Candidate (next cycle, scope-locked)
+
+1) `Actions/Incidents` prioritization under simultaneous WARN states:
+   make startup `Next` action deterministic by highest-severity cause (`threats` over `energy`) to avoid generic `monitor` when a concrete mitigation is already implied.
 
 ## Week-2 Closure Checkpoint (captured 2026-02-10)
 
