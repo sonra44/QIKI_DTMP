@@ -19,3 +19,11 @@
 - Запрещено: заводить второй “канонический план” приоритетов (Now/Next) в `TASKS/`.
 - Исторические отчёты/исследования — оставляем как есть; если они вводят в заблуждение как “current”, добавляем пометку “historical”.
 
+## Антипетлевой контракт (обязательный)
+
+- Любая задача с product-изменениями MUST содержать:
+  - `Operator Scenario (visible outcome)`
+  - `Reproduction Command`
+  - `Before / After`
+  - `Impact Metric`
+- Без этих секций анти-loop gate блокирует quality gate (`scripts/ops/anti_loop_gate.sh`).

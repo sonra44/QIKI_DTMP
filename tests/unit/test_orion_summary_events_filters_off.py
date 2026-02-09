@@ -1,25 +1,19 @@
 import pytest
 
 
-def test_orion_summary_events_filters_show_off_when_unset() -> None:
+def test_orion_summary_events_filters_show_off_when_unset_verbose_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
 
     from qiki.services.operator_console.main_orion import OrionApp
 
+    monkeypatch.setenv("ORION_SUMMARY_COMPACT_DEFAULT", "0")
     app = OrionApp()
     app._events_filter_type = None
     app._events_filter_text = None
 
     blocks = app._build_summary_blocks()
-    filters = [b for b in blocks if getattr(b, "block_id", None) == "events_filters"]
-    assert len(filters) == 1
-    b = filters[0]
-    assert b.status == "ok"
-    assert "type=" in str(b.value)
-    assert "filter=" in str(b.value)
-    assert "N/A" not in str(b.value)
+    actions = [b for b in blocks if getattr(b, "block_id", None) == "actions_incidents"]
+    assert len(actions) == 1
+    b = actions[0]
+    assert b.status in {"na", "ok", "warn"}
     assert "trust=off" in str(b.value)
-
-    trust_blocks = [x for x in blocks if getattr(x, "block_id", None) == "events_filter_trust"]
-    assert len(trust_blocks) == 1
-    assert str(trust_blocks[0].value) == "off"

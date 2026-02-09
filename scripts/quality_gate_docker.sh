@@ -119,4 +119,11 @@ else
   echo "[quality-gate] Mypy disabled (set QUALITY_GATE_RUN_MYPY=1 to enable)"
 fi
 
+echo "[quality-gate] Anti-loop gate"
+if [[ "${QUALITY_GATE_RUN_ANTI_LOOP:-1}" == "1" ]]; then
+  bash scripts/ops/anti_loop_gate.sh
+else
+  echo "[quality-gate] Anti-loop gate disabled (set QUALITY_GATE_RUN_ANTI_LOOP=1 to enable)"
+fi
+
 echo "[quality-gate] OK"

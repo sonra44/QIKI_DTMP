@@ -157,9 +157,6 @@ subsystems:
         why_operator: Deprecated alias of power.soc_pct; prefer power.soc_pct/Устаревший алиас power.soc_pct; используйте power.soc_pct
         related:
           - power.soc_pct
-        orion:
-          screen: power
-          row_key: battery_level
       - path: power.soc_pct
         label: SoC/Заряд
         unit: percent

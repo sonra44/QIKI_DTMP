@@ -70,3 +70,12 @@ Save:
 - `STATUS` (episodic), `TODO_NEXT` (episodic), `DECISIONS` (core if long-lived).
 
 Immediately recall by tags and capture returned IDs in the session report.
+
+## 7) Anti-loop gate (hard rule)
+```bash
+bash scripts/ops/anti_loop_gate.sh
+```
+
+Expected:
+- Product changes have a task dossier with visible operator scenario + before/after + impact metric.
+- No silent "evidence-only" cycle for product code.

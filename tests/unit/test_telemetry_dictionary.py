@@ -251,6 +251,7 @@ def test_orion_inspector_provenance_keys_are_covered_by_dictionary() -> None:
 
     keys = _extract_orion_provenance_source_keys()
     assert keys, "no provenance keys extracted from ORION"
+    assert "battery" not in keys, "ORION must not consume legacy alias key 'battery'; use power.soc_pct"
 
     missing: list[str] = []
     for key in sorted(keys):

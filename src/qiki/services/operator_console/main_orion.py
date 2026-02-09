@@ -963,7 +963,11 @@ class OrionHeader(Container):
         except ValidationError:
             return
 
-        self.battery = I18N.pct(normalized.get("battery"), digits=2)
+        power = normalized.get("power")
+        if isinstance(power, dict):
+            self.battery = I18N.pct(power.get("soc_pct"), digits=2)
+        else:
+            self.battery = I18N.NA
         hull = normalized.get("hull")
         if isinstance(hull, dict):
             self.hull = I18N.pct(hull.get("integrity"), digits=1)
@@ -1659,6 +1663,7 @@ class OrionApp(App):
         self.nats_client: Optional[NATSClient] = None
         self._density: str = "wide"
         self._sensors_compact_override: Optional[bool] = None
+        self._power_compact_override: Optional[bool] = None
         self._tracks_by_id: dict[str, tuple[dict[str, Any], float]] = {}
         self._last_event: Optional[dict[str, Any]] = None
         self._events_live: bool = True
@@ -2931,196 +2936,307 @@ class OrionApp(App):
             return "warn"
         return "crit"
 
+    def _summary_compact_enabled(self) -> bool:
+        # Keep startup summary glanceable by default; full verbose strings can be enabled explicitly.
+        raw_default = os.getenv("ORION_SUMMARY_COMPACT_DEFAULT", "1").strip().lower()
+        default_compact = raw_default not in {"0", "false", "no", "off"}
+        if self._density in {"tiny", "narrow"}:
+            return True
+        return default_compact
+
+    def _summary_value_with_causal_badge(self, block_id: str, value: Any) -> str:
+        text = str(value if value is not None else I18N.NA)
+        if not self._summary_compact_enabled():
+            return text
+        if block_id not in {"energy", "threats"}:
+            return text
+
+        match = re.search(r"cause=([^;]+?)\s*->\s*effect=([^;]+?)\s*->\s*next=(.+)$", text)
+        if match is None:
+            return text
+
+        cause = match.group(1).strip()
+        effect = match.group(2).strip()
+        next_step = match.group(3).strip()
+        head = text[: match.start()].strip().rstrip(";")
+        badge = f"[{cause}->{effect}]"
+        if head:
+            return f"{badge} {head}; next={next_step}"
+        return f"{badge} next={next_step}"
+
+    def _summary_action_hint(self, hint_id: str) -> str:
+        compact = self._summary_compact_enabled()
+        if compact:
+            compact_map = {
+                "monitor": I18N.bidi("monitor", "наблюдать"),
+                "pause_power_faults": I18N.bidi("pause+power", "пауза+питание"),
+                "reduce_loads": I18N.bidi("shed+trim", "сброс+снижение"),
+                "trim_non_critical": I18N.bidi("trim-noncritical", "снять вторичное"),
+                "reduce_propulsion": I18N.bidi("thrust-down", "тяга-ниже"),
+                "pause_radiation": I18N.bidi("pause+radiation", "пауза+радиация"),
+                "minimize_exposure": I18N.bidi("exposure-down", "экспозиция-ниже"),
+                "cooling_thermal_check": I18N.bidi("cool+inspect", "охладить+проверить"),
+                "pause_threat": I18N.bidi("pause+threat", "пауза+угроза"),
+            }
+            return compact_map.get(hint_id, compact_map["monitor"])
+
+        verbose_map = {
+            "monitor": I18N.bidi("monitor", "наблюдать"),
+            "pause_power_faults": I18N.bidi("pause + inspect power faults", "пауза + проверка аварий питания"),
+            "reduce_loads": I18N.bidi("reduce loads", "снизить нагрузку"),
+            "trim_non_critical": I18N.bidi("trim non-critical systems", "отключить вторичные системы"),
+            "reduce_propulsion": I18N.bidi("reduce propulsion demand", "снизить потребление двигателей"),
+            "pause_radiation": I18N.bidi("pause + execute radiation protocol", "пауза + протокол радиации"),
+            "minimize_exposure": I18N.bidi("minimize exposure", "снизить экспозицию"),
+            "cooling_thermal_check": I18N.bidi("cooling + inspect thermal nodes", "охлаждение + проверка thermal узлов"),
+            "pause_threat": I18N.bidi("pause + threat protocol", "пауза + протокол угроз"),
+        }
+        return verbose_map.get(hint_id, verbose_map["monitor"])
+
+    def _system_compact_enabled(self) -> bool:
+        # Startup system panels are compact by default; verbose mode remains opt-in via env.
+        raw_default = os.getenv("ORION_SYSTEM_COMPACT_DEFAULT", "1").strip().lower()
+        default_compact = raw_default not in {"0", "false", "no", "off"}
+        if self._density in {"tiny", "narrow"}:
+            return True
+        return default_compact
+
+    def _compact_system_panel_rows(
+        self,
+        rows: list[tuple[str, str, str]],
+        *,
+        essential_keys: set[str],
+        max_rows: int,
+    ) -> list[tuple[str, str, str]]:
+        if not rows or not self._system_compact_enabled():
+            return rows
+
+        def has_signal(value: str) -> bool:
+            txt = str(value).strip()
+            return bool(txt) and txt != I18N.NA
+
+        filtered = [row for row in rows if row[0] in essential_keys or has_signal(row[2])]
+        if not filtered:
+            return rows[:1]
+
+        if max_rows <= 0 or len(filtered) <= max_rows:
+            return filtered
+
+        essentials = [row for row in filtered if row[0] in essential_keys]
+        extras = [row for row in filtered if row[0] not in essential_keys]
+        if len(essentials) >= max_rows:
+            return essentials[:max_rows]
+        return essentials + extras[: (max_rows - len(essentials))]
+
     def _build_summary_blocks(self) -> list[SystemStateBlock]:
         now = time.time()
+        compact_summary = self._summary_compact_enabled()
 
         telemetry_env = self._snapshots.get_last("telemetry")
         telemetry_age_s = self._snapshots.age_s("telemetry", now_epoch=now)
         telemetry_freshness = self._snapshots.freshness("telemetry", now_epoch=now)
         online = bool(self.nats_connected and telemetry_freshness == "fresh")
         telemetry_status = self._freshness_to_status(telemetry_freshness)
-
-        blocks: list[SystemStateBlock] = []
-        blocks.append(
-            SystemStateBlock(
-                block_id="telemetry_link",
-                title=I18N.bidi("Telemetry link", "Канал телеметрии"),
-                status="ok" if online else ("na" if telemetry_env is None else telemetry_status),
-                value=f"{I18N.online_offline(online)} {self._snapshots.freshness_label('telemetry', now_epoch=now)}",
-                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
-                envelope=telemetry_env,
-            )
-        )
-        blocks.append(
-            SystemStateBlock(
-                block_id="telemetry_age",
-                title=I18N.bidi("Telemetry age", "Возраст телеметрии"),
-                status="na" if telemetry_age_s is None else telemetry_status,
-                value=I18N.fmt_age_compact(telemetry_age_s),
-                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
-                envelope=telemetry_env,
-            )
-        )
-
-        # Power is derived from telemetry (no-mocks): if telemetry is missing -> Not available/Нет данных.
-        power_value = I18N.NA
+        normalized: dict[str, Any] = {}
         if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
             try:
                 normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
             except ValidationError:
                 normalized = {}
-            if isinstance(normalized, dict):
-                power_value = I18N.pct(normalized.get("battery"), digits=2)
-        blocks.append(
+        sim_state = cast(dict[str, Any], normalized.get("sim_state")) if isinstance(normalized.get("sim_state"), dict) else {}
+        power = cast(dict[str, Any], normalized.get("power")) if isinstance(normalized.get("power"), dict) else {}
+        propulsion = cast(dict[str, Any], normalized.get("propulsion")) if isinstance(normalized.get("propulsion"), dict) else {}
+        comms = cast(dict[str, Any], normalized.get("comms")) if isinstance(normalized.get("comms"), dict) else {}
+        sensor_plane = cast(dict[str, Any], normalized.get("sensor_plane")) if isinstance(normalized.get("sensor_plane"), dict) else {}
+        radiation = (
+            cast(dict[str, Any], sensor_plane.get("radiation"))
+            if isinstance(sensor_plane.get("radiation"), dict)
+            else {}
+        )
+        thermal = cast(dict[str, Any], normalized.get("thermal")) if isinstance(normalized.get("thermal"), dict) else {}
+        thermal_nodes = cast(list[Any], thermal.get("nodes")) if isinstance(thermal.get("nodes"), list) else []
+        faults = cast(list[Any], power.get("faults")) if isinstance(power.get("faults"), list) else []
+        shed_loads = cast(list[Any], power.get("shed_loads")) if isinstance(power.get("shed_loads"), list) else []
+
+        state_txt = str(sim_state.get("fsm_state") or I18N.NA)
+        health_status = "na" if telemetry_env is None else telemetry_status
+        if telemetry_status == "crit":
+            health_status = "crit"
+        if compact_summary:
+            health_value = (
+                f"state={state_txt}; "
+                f"link={I18N.online_offline(online)}; "
+                f"age={I18N.fmt_age_compact(telemetry_age_s)}"
+            )
+        else:
+            health_value = (
+                f"{I18N.bidi('State', 'Состояние')}={state_txt}; "
+                f"{I18N.bidi('Link', 'Связь')}={I18N.online_offline(online)}; "
+                f"{I18N.bidi('Age', 'Возраст')}={I18N.fmt_age_compact(telemetry_age_s)}"
+            )
+
+        soc_raw = power.get("soc_pct")
+        soc_value = I18N.pct(soc_raw, digits=2)
+        low_soc = False
+        try:
+            if soc_raw is not None and float(soc_raw) < 20.0:
+                low_soc = True
+        except Exception:
+            low_soc = False
+        energy_status = "na" if telemetry_env is None else "ok"
+        if bool(power.get("load_shedding")):
+            energy_status = "warn"
+        if bool(power.get("pdu_throttled")):
+            energy_status = "warn"
+        if low_soc:
+            energy_status = "warn"
+        if len(faults) > 0:
+            energy_status = "crit"
+        energy_cause = "balanced"
+        energy_effect = "stable"
+        energy_next = self._summary_action_hint("monitor")
+        if len(faults) > 0:
+            energy_cause = "power_faults"
+            energy_effect = f"faults={len(faults)}"
+            energy_next = self._summary_action_hint("pause_power_faults")
+        elif bool(power.get("pdu_throttled")):
+            energy_cause = "pdu_limit"
+            energy_effect = f"shed={len(shed_loads)}"
+            energy_next = self._summary_action_hint("reduce_loads")
+        elif bool(power.get("load_shedding")):
+            energy_cause = "load_shedding"
+            energy_effect = f"shed={len(shed_loads)}"
+            energy_next = self._summary_action_hint("trim_non_critical")
+        elif low_soc:
+            energy_cause = "low_soc"
+            energy_effect = "reduced power margin"
+            energy_next = self._summary_action_hint("reduce_propulsion")
+        energy_value = (
+            f"SoC={soc_value}; "
+            f"In/Out={I18N.num_unit(power.get('power_in_w'), 'W', 'Вт', digits=0)}/"
+            f"{I18N.num_unit(power.get('power_out_w'), 'W', 'Вт', digits=0)}; "
+            f"cause={energy_cause} -> effect={energy_effect} -> next={energy_next}"
+        )
+
+        velocity = normalized.get("velocity")
+        vel_txt = I18N.num_unit(velocity, "m/s", "м/с", digits=1)
+        motion_status = "na" if telemetry_env is None else "ok"
+        rcs = cast(dict[str, Any], propulsion.get("rcs")) if isinstance(propulsion.get("rcs"), dict) else {}
+        if bool(rcs.get("throttled")):
+            motion_status = "warn"
+        if compact_summary:
+            motion_value = (
+                f"v={vel_txt}; hdg={I18N.num_unit(normalized.get('heading'), '°', '°', digits=1)}; "
+                f"rcs={I18N.yes_no(bool(rcs.get('active')))}"
+            )
+        else:
+            motion_value = (
+                f"V={vel_txt}; Hdg={I18N.num_unit(normalized.get('heading'), '°', '°', digits=1)}; "
+                f"RCS={I18N.yes_no(bool(rcs.get('active')))}"
+            )
+
+        trip_count = 0
+        for node in thermal_nodes:
+            if isinstance(node, dict) and bool(node.get("tripped")):
+                trip_count += 1
+        rad_status = str(radiation.get("status") or "").strip().lower()
+        limits = cast(dict[str, Any], radiation.get("limits")) if isinstance(radiation.get("limits"), dict) else {}
+        threats_status = "na" if telemetry_env is None else "ok"
+        if rad_status in {"warn", "warning"}:
+            threats_status = "warn"
+        if rad_status in {"crit", "critical"} or trip_count > 0:
+            threats_status = "crit"
+        threats_cause = "none"
+        threats_effect = "stable"
+        threats_next = self._summary_action_hint("monitor")
+        if rad_status in {"crit", "critical"}:
+            threats_cause = "radiation_critical"
+            threats_effect = "unsafe exposure risk"
+            threats_next = self._summary_action_hint("pause_radiation")
+        elif rad_status in {"warn", "warning"}:
+            threats_cause = "radiation_warning"
+            threats_effect = "reduced safety margin"
+            threats_next = self._summary_action_hint("minimize_exposure")
+        elif trip_count > 0:
+            threats_cause = "thermal_trip"
+            threats_effect = f"tripped_nodes={trip_count}"
+            threats_next = self._summary_action_hint("cooling_thermal_check")
+        if compact_summary:
+            threats_value = (
+                f"rad={str(radiation.get('status') or I18N.NA)}; "
+                f"trips={trip_count}; "
+                f"cause={threats_cause} -> effect={threats_effect} -> next={threats_next}"
+            )
+        else:
+            threats_value = (
+                f"{I18N.bidi('Radiation', 'Радиация')}={str(radiation.get('status') or I18N.NA)}; "
+                f"bg={I18N.num_unit(radiation.get('background_usvh'), 'uSv/h', 'мкЗв/ч', digits=2)} "
+                f"(warn={I18N.num_unit(limits.get('warn_usvh'), 'uSv/h', 'мкЗв/ч', digits=2)}, "
+                f"crit={I18N.num_unit(limits.get('crit_usvh'), 'uSv/h', 'мкЗв/ч', digits=2)}); "
+                f"cause={threats_cause} -> effect={threats_effect} -> next={threats_next}"
+            )
+
+        xpdr = cast(dict[str, Any], comms.get("xpdr")) if isinstance(comms.get("xpdr"), dict) else {}
+        actions_status = "na" if telemetry_env is None else "ok"
+        if len(faults) > 0:
+            actions_status = "warn"
+        if threats_status == "crit":
+            actions_status = "crit"
+        action_hint = self._summary_action_hint("pause_power_faults")
+        if len(faults) == 0:
+            action_hint = self._summary_action_hint("monitor")
+        if threats_status == "crit":
+            action_hint = self._summary_action_hint("pause_threat")
+        trust_token = self._normalize_events_trust_filter_token(self._events_filter_text)
+        actions_value = (
+            f"{I18N.bidi('Next', 'Действие')}={action_hint}; "
+            f"XPDR={str(xpdr.get('mode') or I18N.NA)}/{I18N.yes_no(bool(xpdr.get('allowed')))}"
+        )
+        if not compact_summary or trust_token not in {"all", "off"}:
+            actions_value = f"{actions_value}; trust={trust_token}"
+
+        return [
             SystemStateBlock(
-                block_id="power",
-                title=I18N.bidi("Power systems", "Система питания"),
-                status="na" if telemetry_env is None else telemetry_status,
-                value=power_value,
+                block_id="health",
+                title=I18N.bidi("Health", "Состояние"),
+                status=health_status,
+                value=health_value,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
-            )
-        )
-
-        # MCQPU utilization is telemetry-derived (virtual hardware, no-mocks).
-        cpu_value = I18N.NA
-        cpu_status = "na"
-        mem_value = I18N.NA
-        mem_status = "na"
-        if telemetry_env is not None and isinstance(telemetry_env.payload, dict):
-            try:
-                normalized = TelemetrySnapshotModel.normalize_payload(telemetry_env.payload)
-            except ValidationError:
-                normalized = {}
-            if isinstance(normalized, dict):
-                cpu_usage = normalized.get("cpu_usage")
-                memory_usage = normalized.get("memory_usage")
-                if cpu_usage is not None:
-                    cpu_status = "ok"
-                    cpu_value = I18N.pct(cpu_usage, digits=1)
-                if memory_usage is not None:
-                    mem_status = "ok"
-                    mem_value = I18N.pct(memory_usage, digits=1)
-        blocks.append(
+            ),
             SystemStateBlock(
-                block_id="cpu_usage",
-                title=I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"),
-                status=cpu_status,
-                value=cpu_value,
+                block_id="energy",
+                title=I18N.bidi("Energy", "Энергия"),
+                status=energy_status,
+                value=energy_value,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
-            )
-        )
-        blocks.append(
+            ),
             SystemStateBlock(
-                block_id="memory_usage",
-                title=I18N.bidi("Memory usage", "Загрузка памяти"),
-                status=mem_status,
-                value=mem_value,
+                block_id="motion_safety",
+                title=I18N.bidi("Motion/Safety", "Движение/Безопасность"),
+                status=motion_status,
+                value=motion_value,
                 ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
                 envelope=telemetry_env,
-            )
-        )
-
-        bios_env = self._snapshots.get_last("bios")
-        bios_status = "na"
-        bios_value = I18N.NA
-        if bios_env is not None and isinstance(bios_env.payload, dict):
-            all_go = bios_env.payload.get("all_systems_go")
-            if isinstance(all_go, bool):
-                bios_status = "ok" if all_go else "crit"
-                bios_value = I18N.bidi("OK", "ОК") if all_go else I18N.bidi("FAIL", "СБОЙ")
-            else:
-                bios_status = "warn"
-                bios_value = I18N.bidi("Unknown", "Неизвестно")
-        blocks.append(
+            ),
             SystemStateBlock(
-                block_id="bios",
-                title=I18N.bidi("BIOS", "БИОС"),
-                status=bios_status,
-                value=bios_value,
-                ts_epoch=None if bios_env is None else float(bios_env.ts_epoch),
-                envelope=bios_env,
-            )
-        )
-
-        mission_env: Optional[EventEnvelope] = None
-        for t in ("mission", "task"):
-            mission_env = self._snapshots.get_last(t)
-            if mission_env is not None:
-                break
-        mission_freshness = None
-        if mission_env is not None:
-            mission_freshness = self._snapshots.freshness(mission_env.type, now_epoch=now)
-        mission_status = self._freshness_to_status(mission_freshness)
-
-        mission_value = I18N.bidi("No mission/task data", "Нет данных миссии/задач")
-        if mission_env is not None:
-            payload = mission_env.payload
-            mission: dict[str, Any] = {}
-            if isinstance(payload, dict):
-                mission_raw = payload.get("mission")
-                mission = (
-                    cast(dict[str, Any], mission_raw)
-                    if isinstance(mission_raw, dict)
-                    else cast(dict[str, Any], payload)
-                )
-            designator = mission.get("designator") or mission.get("mission_id") or mission.get("id")
-            objective = mission.get("objective") or mission.get("goal") or mission.get("name")
-            if designator and objective:
-                mission_value = f"{designator} — {objective}"
-            elif designator:
-                mission_value = str(designator)
-            elif objective:
-                mission_value = str(objective)
-        blocks.append(
+                block_id="threats",
+                title=I18N.bidi("Threats", "Угрозы"),
+                status=threats_status,
+                value=threats_value,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            ),
             SystemStateBlock(
-                block_id="mission",
-                title=I18N.bidi("Mission control", "Управление миссией"),
-                status="non_goal" if mission_env is None else mission_status,
-                value=mission_value,
-                ts_epoch=None if mission_env is None else float(mission_env.ts_epoch),
-                envelope=mission_env,
-            )
-        )
-
-        last_event_age_s = self._snapshots.last_event_age_s(now_epoch=now)
-        blocks.append(
-            SystemStateBlock(
-                block_id="last_event_age",
-                title=I18N.bidi("Last event age", "Возраст последнего события"),
-                status="na" if last_event_age_s is None else "ok",
-                value=I18N.fmt_age_compact(last_event_age_s),
-                ts_epoch=self._snapshots.last_ts_epoch(),
-                envelope=None,
-            )
-        )
-        blocks.append(
-            SystemStateBlock(
-                block_id="events_filters",
-                title=I18N.bidi("Events filters", "Фильтры событий"),
-                status="ok",
-                value=(
-                    f"type={self._events_filter_type or I18N.bidi('off', 'выкл')}; "
-                    f"filter={self._events_filter_text or I18N.bidi('off', 'выкл')}; "
-                    f"trust={self._normalize_events_trust_filter_token(self._events_filter_text)}"
-                ),
-                ts_epoch=None,
-                envelope=None,
-            )
-        )
-        blocks.append(
-            SystemStateBlock(
-                block_id="events_filter_trust",
-                title=I18N.bidi("Events trust filter", "Фильтр событий по доверию"),
-                status="ok",
-                value=self._normalize_events_trust_filter_token(self._events_filter_text),
-                ts_epoch=None,
-                envelope=None,
-            )
-        )
-
-        return blocks
+                block_id="actions_incidents",
+                title=I18N.bidi("Actions/Incidents", "Действия/Инциденты"),
+                status=actions_status,
+                value=actions_value,
+                ts_epoch=None if telemetry_env is None else float(telemetry_env.ts_epoch),
+                envelope=telemetry_env,
+            ),
+        ]
 
     def _sync_datatable_rows(self, table: DataTable, *, rows: list[tuple[Any, ...]]) -> None:
         """
@@ -3208,12 +3324,13 @@ class OrionApp(App):
         for block in blocks:
             age_s = None if block.ts_epoch is None else max(0.0, now - float(block.ts_epoch))
             status_label = self._block_status_label(block.status)
-            rows.append((block.block_id, block.title, status_label, block.value, I18N.fmt_age_compact(age_s)))
+            value_for_table = self._summary_value_with_causal_badge(block.block_id, block.value)
+            rows.append((block.block_id, block.title, status_label, value_for_table, I18N.fmt_age_compact(age_s)))
             self._summary_by_key[block.block_id] = {
                 "block_id": block.block_id,
                 "title": block.title,
                 "status": status_label,
-                "value": block.value,
+                "value": value_for_table,
                 "age": I18N.fmt_age_compact(age_s),
                 "envelope": block.envelope,
             }
@@ -3342,12 +3459,6 @@ class OrionApp(App):
             return (row_key, label, value, raw, (source_path,))
 
         rows: list[tuple[str, str, str, Any, tuple[str, ...]]] = [
-            mk_row(
-                "battery_level",
-                I18N.bidi("Battery level", "Уровень батареи"),
-                "battery",
-                lambda v: I18N.pct(v, digits=2),
-            ),
             mk_row(
                 "state_of_charge",
                 I18N.bidi("State of charge", "Уровень заряда"),
@@ -3572,6 +3683,7 @@ class OrionApp(App):
                 ("power.bus_a",),
             ),
         ]
+        rows = self._compact_power_rows(rows)
 
         now = time.time()
         age_s = max(0.0, now - float(telemetry_env.ts_epoch))
@@ -5650,32 +5762,33 @@ class OrionApp(App):
         online = bool(self.nats_connected and self._snapshots.freshness("telemetry") == "fresh")
         age_value = I18N.fmt_age_compact(self._snapshots.age_s("telemetry"))
 
-        nav_rows = [
-            (I18N.bidi("Link", "Связь"), I18N.online_offline(online)),
-            (I18N.bidi("Updated", "Обновлено"), updated),
-            (I18N.bidi("Age", "Возраст"), age_value),
-            (I18N.bidi("Position", "Позиция"), fmt_pos()),
+        nav_rows_raw = [
+            ("link", I18N.bidi("Link", "Связь"), I18N.online_offline(online)),
+            ("updated", I18N.bidi("Updated", "Обновлено"), updated),
+            ("age", I18N.bidi("Age", "Возраст"), age_value),
+            ("position", I18N.bidi("Position", "Позиция"), fmt_pos()),
             (
+                "velocity",
                 I18N.bidi("Velocity", "Скорость"),
                 I18N.num_unit(get("velocity"), "m/s", "м/с", digits=2),
             ),
-            (I18N.bidi("Heading", "Курс"), I18N.num_unit(get("heading"), "°", "°", digits=1)),
-            (I18N.bidi("Roll", "Крен"), fmt_att_deg("roll_rad")),
-            (I18N.bidi("Pitch", "Тангаж"), fmt_att_deg("pitch_rad")),
-            (I18N.bidi("Yaw", "Рыскание"), fmt_att_deg("yaw_rad")),
+            ("heading", I18N.bidi("Heading", "Курс"), I18N.num_unit(get("heading"), "°", "°", digits=1)),
+            ("roll", I18N.bidi("Roll", "Крен"), fmt_att_deg("roll_rad")),
+            ("pitch", I18N.bidi("Pitch", "Тангаж"), fmt_att_deg("pitch_rad")),
+            ("yaw", I18N.bidi("Yaw", "Рыскание"), fmt_att_deg("yaw_rad")),
         ]
 
         # Power panel height may be small in tmux; keep the first rows as the most important.
-        power_rows = [
-            (I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
-            (I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
+        power_rows_raw = [
+            ("state_of_charge", I18N.bidi("State of charge", "Уровень заряда"), I18N.pct(get("power.soc_pct"), digits=2)),
+            ("power_input", I18N.bidi("Power input", "Входная мощность"), I18N.num_unit(get("power.power_in_w"), "W", "Вт", digits=1)),
             (
+                "power_output",
                 I18N.bidi("Power output", "Выходная мощность"),
                 I18N.num_unit(get("power.power_out_w"), "W", "Вт", digits=1),
             ),
-            (I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
-            (I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
-            (I18N.bidi("Battery", "Батарея"), I18N.pct(get("battery"), digits=2)),
+            ("bus_voltage", I18N.bidi("Bus voltage", "Напряжение шины"), I18N.num_unit(get("power.bus_v"), "V", "В", digits=2)),
+            ("bus_current", I18N.bidi("Bus current", "Ток шины"), I18N.num_unit(get("power.bus_a"), "A", "А", digits=2)),
         ]
 
         def thermal_nodes_map() -> dict[str, Any]:
@@ -5724,30 +5837,55 @@ class OrionApp(App):
         # Keep the panel compact: show a few most important nodes + canonical external/core temps.
         thermal_node_rows = thermal_node_rows[:4]
 
-        thermal_rows = [
-            *thermal_node_rows,
+        thermal_rows_raw = [
+            *((f"node_{idx}", label, value) for idx, (label, value) in enumerate(thermal_node_rows)),
             (
+                "external_temp",
                 I18N.bidi("External temperature", "Наружная температура"),
                 I18N.num_unit(get("temp_external_c"), "°C", "°C", digits=1),
             ),
             (
+                "core_temp",
                 I18N.bidi("Core temperature", "Температура ядра"),
                 I18N.num_unit(get("temp_core_c"), "°C", "°C", digits=1),
             ),
         ]
 
-        struct_rows = [
-            (I18N.bidi("Hull", "Корпус"), I18N.pct(get("hull.integrity"), digits=1)),
+        struct_rows_raw = [
+            ("hull", I18N.bidi("Hull", "Корпус"), I18N.pct(get("hull.integrity"), digits=1)),
             (
+                "radiation",
                 I18N.bidi("Radiation", "Радиация"),
                 I18N.num_unit(get("radiation_usvh"), "µSv/h", "мкЗв/ч", digits=2),
             ),
             (
+                "cpu",
                 I18N.bidi("Central processing unit usage", "Загрузка центрального процессора"),
                 I18N.pct(get("cpu_usage"), digits=1),
             ),
-            (I18N.bidi("Memory usage", "Загрузка памяти"), I18N.pct(get("memory_usage"), digits=1)),
+            ("memory", I18N.bidi("Memory usage", "Загрузка памяти"), I18N.pct(get("memory_usage"), digits=1)),
         ]
+
+        nav_rows = self._compact_system_panel_rows(
+            nav_rows_raw,
+            essential_keys={"link", "age", "velocity", "heading"},
+            max_rows=6,
+        )
+        power_rows = self._compact_system_panel_rows(
+            power_rows_raw,
+            essential_keys={"state_of_charge", "power_input", "power_output"},
+            max_rows=5,
+        )
+        thermal_rows = self._compact_system_panel_rows(
+            thermal_rows_raw,
+            essential_keys={"external_temp", "core_temp"},
+            max_rows=5,
+        )
+        struct_rows = self._compact_system_panel_rows(
+            struct_rows_raw,
+            essential_keys={"hull", "radiation"},
+            max_rows=3,
+        )
 
         for panel_id, rows in (
             ("#panel-nav", nav_rows),
@@ -5759,7 +5897,7 @@ class OrionApp(App):
                 panel = self.query_one(panel_id, Static)
             except Exception:
                 continue
-            panel.update(self._system_table(rows))
+            panel.update(self._system_table([(label, value) for _, label, value in rows]))
 
     def _seed_radar_table(self) -> None:
         try:
@@ -7797,6 +7935,97 @@ class OrionApp(App):
         current = self._sensors_compact_enabled()
         self._sensors_compact_override = not current
         self._render_sensors_table()
+
+    def _power_compact_enabled(self) -> bool:
+        if self._power_compact_override is not None:
+            return bool(self._power_compact_override)
+        # Compact by default for operator-first startup view; full list remains available via env toggle.
+        raw_default = os.getenv("ORION_POWER_COMPACT_DEFAULT", "1").strip().lower()
+        default_compact = raw_default not in {"0", "false", "no", "off"}
+        if self._density in {"tiny", "narrow"}:
+            return True
+        return default_compact
+
+    @staticmethod
+    def _power_row_has_signal(raw: Any) -> bool:
+        if raw is None:
+            return False
+        if isinstance(raw, bool):
+            return raw
+        if isinstance(raw, (int, float)):
+            try:
+                return abs(float(raw)) > 1e-9
+            except Exception:
+                return True
+        if isinstance(raw, str):
+            return bool(raw.strip())
+        if isinstance(raw, (list, dict, tuple, set)):
+            return len(raw) > 0
+        return True
+
+    def _compact_power_rows(
+        self,
+        rows: list[tuple[str, str, str, Any, tuple[str, ...]]],
+    ) -> list[tuple[str, str, str, Any, tuple[str, ...]]]:
+        if not rows or not self._power_compact_enabled():
+            return rows
+        tier_a_order = [
+            "state_of_charge",
+            "faults",
+            "pdu_throttled",
+            "load_shedding",
+            "shed_loads",
+            "power_input",
+            "power_consumption",
+        ]
+        tier_a_keys = set(tier_a_order)
+        tier_a_rank = {key: idx for idx, key in enumerate(tier_a_order)}
+        # Extras are sorted for operator startup triage:
+        # docking/available energy context first, low-level bus and NBL details later.
+        extra_order = [
+            "pdu_limit",
+            "dock_connected",
+            "docking_state",
+            "docking_port",
+            "dock_power",
+            "dock_v",
+            "dock_a",
+            "power_sources",
+            "power_loads",
+            "supercap_soc",
+            "bus_voltage",
+            "bus_current",
+            "nbl_active",
+            "nbl_allowed",
+            "nbl_budget",
+            "nbl_power",
+        ]
+        extra_rank = {key: idx for idx, key in enumerate(extra_order)}
+        row_pos = {row[0]: idx for idx, row in enumerate(rows)}
+        filtered = [row for row in rows if row[0] in tier_a_keys or self._power_row_has_signal(row[3])]
+        if not filtered:
+            return [rows[0]]
+
+        raw_max_rows = os.getenv("ORION_POWER_COMPACT_MAX_ROWS", "12").strip()
+        try:
+            max_rows = int(raw_max_rows)
+        except Exception:
+            max_rows = 12
+        tier_rows = sorted(
+            (row for row in filtered if row[0] in tier_a_keys),
+            key=lambda row: (tier_a_rank.get(row[0], 999), row_pos.get(row[0], 999)),
+        )
+        extra_rows = sorted(
+            (row for row in filtered if row[0] not in tier_a_keys),
+            key=lambda row: (extra_rank.get(row[0], 999), row_pos.get(row[0], 999)),
+        )
+        ordered = tier_rows + extra_rows
+        if max_rows <= 0 or len(ordered) <= max_rows:
+            return ordered
+
+        if len(tier_rows) >= max_rows:
+            return tier_rows[:max_rows]
+        return tier_rows + extra_rows[: (max_rows - len(tier_rows))]
 
     @staticmethod
     def _normalize_screen_token(token: str) -> Optional[str]:
