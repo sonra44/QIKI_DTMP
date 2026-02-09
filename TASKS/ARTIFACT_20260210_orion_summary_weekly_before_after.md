@@ -448,6 +448,9 @@ rg -n "soc_pct" \
   src/qiki/services/operator_console/main_enhanced.py \
   src/qiki/services/operator_console/main_integrated.py \
   src/qiki/services/operator_console/clients/nats_realtime_client.py
+
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  pytest -q src/qiki/services/operator_console/tests/test_nats_realtime_client_soc_mapping.py
 ```
 
 Observed:
@@ -455,3 +458,4 @@ Observed:
 - Compile check passed.
 - Canonical path `soc_pct` is present across all targeted legacy entrypoints.
 - Direct display truth source is canonicalized; alias usage remains only as compatibility fallback.
+- Regression test passed: `2 passed` (`test_nats_realtime_client_soc_mapping.py`).
