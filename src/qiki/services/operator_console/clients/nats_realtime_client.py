@@ -175,6 +175,11 @@ class RealtimeNATSClient:
             """Handle telemetry messages."""
             try:
                 data = json.loads(msg.data.decode())
+                power = data.get("power", {}) if isinstance(data.get("power"), dict) else {}
+                soc_pct = power.get("soc_pct")
+                if soc_pct is None:
+                    # Legacy compatibility: older publishers may still send top-level battery.
+                    soc_pct = data.get("battery", 100)
                 
                 # Update telemetry data
                 self.latest_data["telemetry"].update({
@@ -184,7 +189,8 @@ class RealtimeNATSClient:
                     "position_z": data.get("position", {}).get("z", 0),
                     "velocity": data.get("velocity", 0),
                     "heading": data.get("heading", 0),
-                    "battery": data.get("battery", 100),
+                    "soc_pct": soc_pct,
+                    "battery": soc_pct,  # legacy alias for older console variants
                     # no-mocks: keep missing values as None, don't invent 0%
                     "cpu_usage": data.get("cpu_usage"),
                     "memory_usage": data.get("memory_usage"),

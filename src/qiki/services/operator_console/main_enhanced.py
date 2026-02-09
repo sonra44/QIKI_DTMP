@@ -78,6 +78,15 @@ class QIKIOperatorConsoleEnhanced:
             "uptime_start": datetime.now(),
             "last_frame_time": None
         }
+
+    @staticmethod
+    def _telemetry_soc_pct(tel: Dict[str, Any]) -> float:
+        """Return canonical SoC with legacy compatibility fallback."""
+        raw = tel.get("soc_pct", tel.get("battery", 100))
+        try:
+            return float(raw)
+        except Exception:
+            return 100.0
         
     async def initialize(self):
         """Initialize all connections."""
@@ -151,8 +160,9 @@ class QIKIOperatorConsoleEnhanced:
             self.metrics_history.add_metric("Position Y", data["position_y"])
         if "velocity" in data:
             self.metrics_history.add_metric("Velocity", data["velocity"])
-        if "battery" in data:
-            self.metrics_history.add_metric("Battery", data["battery"])
+        soc_pct = data.get("soc_pct", data.get("battery"))
+        if soc_pct is not None:
+            self.metrics_history.add_metric("Battery", soc_pct)
             
         # Log telemetry
         self.data_logger.log_telemetry(data)
@@ -316,8 +326,8 @@ class QIKIOperatorConsoleEnhanced:
             table.add_row("Velocity", f"{velocity:.1f} m/s  {vel_spark}")
             
             # Battery with indicator
-            battery = tel.get('battery', 100)
-            battery_text = BatteryIndicator.render(battery, width=10)
+            soc_pct = self._telemetry_soc_pct(tel)
+            battery_text = BatteryIndicator.render(soc_pct, width=10)
             table.add_row("Battery", battery_text)
             
             # Signal strength

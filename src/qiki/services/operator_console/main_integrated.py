@@ -84,6 +84,15 @@ class QIKIOperatorConsole:
         """Handle system event."""
         self.stats["events_received"] += 1
         self.events_buffer.append(event)
+
+    @staticmethod
+    def _telemetry_soc_pct(tel: Dict[str, Any]) -> float:
+        """Return canonical SoC with legacy compatibility fallback."""
+        raw = tel.get("soc_pct", tel.get("battery", 100))
+        try:
+            return float(raw)
+        except Exception:
+            return 100.0
         
     def create_telemetry_table(self) -> Table:
         """Create telemetry display table with real data."""
@@ -99,8 +108,8 @@ class QIKIOperatorConsole:
             table.add_row("Position Y", f"{tel.get('position_y', 0):.2f} m", "🟢")
             table.add_row("Velocity", f"{tel.get('velocity', 0):.1f} m/s", "🟢")
             table.add_row("Heading", f"{tel.get('heading', 0):.1f}°", "🟢")
-            table.add_row("Battery", f"{tel.get('battery', 100)}%", 
-                         "🟢" if tel.get('battery', 100) > 30 else "🟡")
+            soc_pct = self._telemetry_soc_pct(tel)
+            table.add_row("Battery", f"{soc_pct:.1f}%", "🟢" if soc_pct > 30 else "🟡")
         else:
             table.add_row("Waiting for telemetry...", "-", "⏳")
         

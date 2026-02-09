@@ -415,3 +415,43 @@ Interpretation:
 
 - Week-2 startup path is canonicalized.
 - Residual alias debt remains in non-canonical/legacy operator entrypoints and should be handled as separate cleanup slice.
+
+## Legacy EntryPoints Canonical SoC Cleanup (no-demo)
+
+Scope:
+
+- `src/qiki/services/operator_console/main.py`
+- `src/qiki/services/operator_console/main_full.py`
+- `src/qiki/services/operator_console/main_enhanced.py`
+- `src/qiki/services/operator_console/main_integrated.py`
+- `src/qiki/services/operator_console/clients/nats_realtime_client.py`
+
+Changes:
+
+- Realtime NATS client now maps canonical `soc_pct` from telemetry `power.soc_pct`.
+- Legacy top-level `battery` is preserved only as compatibility alias in the client cache.
+- Legacy/alternate console entrypoints render battery from canonical `soc_pct` with fallback to alias only when needed.
+
+Verification:
+
+```bash
+python -m py_compile \
+  src/qiki/services/operator_console/main.py \
+  src/qiki/services/operator_console/main_full.py \
+  src/qiki/services/operator_console/main_enhanced.py \
+  src/qiki/services/operator_console/main_integrated.py \
+  src/qiki/services/operator_console/clients/nats_realtime_client.py
+
+rg -n "soc_pct" \
+  src/qiki/services/operator_console/main.py \
+  src/qiki/services/operator_console/main_full.py \
+  src/qiki/services/operator_console/main_enhanced.py \
+  src/qiki/services/operator_console/main_integrated.py \
+  src/qiki/services/operator_console/clients/nats_realtime_client.py
+```
+
+Observed:
+
+- Compile check passed.
+- Canonical path `soc_pct` is present across all targeted legacy entrypoints.
+- Direct display truth source is canonicalized; alias usage remains only as compatibility fallback.
