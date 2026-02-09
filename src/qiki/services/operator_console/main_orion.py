@@ -3178,13 +3178,18 @@ class OrionApp(App):
 
         xpdr = cast(dict[str, Any], comms.get("xpdr")) if isinstance(comms.get("xpdr"), dict) else {}
         actions_status = "na" if telemetry_env is None else "ok"
-        if len(faults) > 0:
+        if energy_status == "warn" or threats_status == "warn" or len(faults) > 0:
             actions_status = "warn"
         if threats_status == "crit":
             actions_status = "crit"
-        action_hint = self._summary_action_hint("pause_power_faults")
-        if len(faults) == 0:
-            action_hint = self._summary_action_hint("monitor")
+        action_hint = self._summary_action_hint("monitor")
+        # Deterministic startup priority: threat mitigation over energy mitigation.
+        if energy_status == "warn":
+            action_hint = energy_next
+        if threats_status == "warn":
+            action_hint = threats_next
+        if len(faults) > 0:
+            action_hint = self._summary_action_hint("pause_power_faults")
         if threats_status == "crit":
             action_hint = self._summary_action_hint("pause_threat")
         trust_token = self._normalize_events_trust_filter_token(self._events_filter_text)

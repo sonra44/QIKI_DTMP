@@ -459,3 +459,38 @@ Observed:
 - Canonical path `soc_pct` is present across all targeted legacy entrypoints.
 - Direct display truth source is canonicalized; alias usage remains only as compatibility fallback.
 - Regression test passed: `2 passed` (`test_nats_realtime_client_soc_mapping.py`).
+
+## Next-Cycle Candidate: Actions/Incidents WARN Priority (scope-locked)
+
+Goal:
+
+- remove ambiguous startup `Next=monitor` when WARN causes are already known in `energy`/`threats`.
+- apply deterministic priority for WARN: `threats` > `energy`.
+
+Changes:
+
+- `actions_incidents` status now reflects WARN from `energy` and `threats` (not only faults).
+- `actions_incidents` `Next` chooses deterministic mitigation:
+  - threats warn -> threat action hint,
+  - else energy warn -> energy action hint,
+  - critical/fault paths keep existing higher-priority behavior.
+
+Verification:
+
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  pytest -q \
+    tests/unit/test_orion_actions_incidents_priority.py \
+    tests/unit/test_orion_summary_action_hints.py \
+    tests/unit/test_orion_summary_semantic_causal.py
+```
+
+Observed:
+
+- `6 passed`
+
+Regression tests added:
+
+- `tests/unit/test_orion_actions_incidents_priority.py`
+  - simultaneous WARN (`threats + energy`) picks threat-oriented `Next`.
+  - energy-only WARN picks energy-oriented `Next`.
