@@ -494,3 +494,21 @@ Regression tests added:
 - `tests/unit/test_orion_actions_incidents_priority.py`
   - simultaneous WARN (`threats + energy`) picks threat-oriented `Next`.
   - energy-only WARN picks energy-oriented `Next`.
+
+Broader regression slice:
+
+```bash
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev \
+  pytest \
+    tests/unit/test_orion_actions_incidents_priority.py \
+    tests/unit/test_orion_summary_action_hints.py \
+    tests/unit/test_orion_summary_semantic_causal.py \
+    tests/unit/test_orion_summary_compact_noise.py \
+    tests/unit/test_orion_summary_uses_canonical_soc.py \
+    tests/unit/test_orion_power_compact.py \
+    tests/unit/test_orion_system_panels_compact.py
+```
+
+Observed:
+
+- `19 passed in 1.12s`
