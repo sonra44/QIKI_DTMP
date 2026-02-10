@@ -1,0 +1,136 @@
+{
+  "task_id": "TASK-0001",
+  "title": "Eliminate false green truth in mock/fallback paths",
+  "date": "2026-02-10",
+  "mode": "proposal_only_no_code_changes",
+  "policy": {
+    "truth_integrity": "If truth is unavailable, system must expose unavailable state or fail-fast; no silent substitution.",
+    "mock_policy": "Mock data is allowed only with explicit opt-in flags/config and explicit runtime labeling."
+  },
+  "unsafe_items": [
+    {
+      "id": "TS-001",
+      "file": "src/qiki/services/q_core_agent/core/ship_bios_handler.py",
+      "line": 51,
+      "type": "import_fallback_to_mock_classes",
+      "current_behavior": "ImportError silently swaps protobuf classes to Mock classes.",
+      "risk": "Production can run with synthetic BIOS entities without explicit operator knowledge.",
+      "proposed_change": "Replace broad ImportError fallback with fail-fast in package/runtime mode. Keep direct-script convenience only behind explicit DEV flag (e.g. QIKI_ALLOW_DEV_IMPORT_FALLBACK=1).",
+      "no_data_behavior": "Raise RuntimeError with clear message and stop module initialization.",
+      "canon_alignment": "Prevents silent truth substitution and enforces explicit availability semantics.",
+      "classification": "PROD_FORBIDDEN"
+    },
+    {
+      "id": "TS-002",
+      "file": "src/qiki/services/q_core_agent/core/ship_bios_handler.py",
+      "line": 73,
+      "type": "default_all_systems_go_true_in_mock",
+      "current_behavior": "Mock BIOS report starts as all_systems_go=True.",
+      "risk": "Combined with TS-001 can produce false green BIOS truth.",
+      "proposed_change": "In any fallback/mock class, default to explicit unavailable/degraded state (all_systems_go=False plus reason), or prohibit fallback classes in production completely.",
+      "no_data_behavior": "Expose unavailable/degraded sentinel, never green-by-default.",
+      "canon_alignment": "Green status becomes trustworthy only when backed by real data.",
+      "classification": "PROD_FORBIDDEN"
+    },
+    {
+      "id": "TS-003",
+      "file": "src/qiki/services/q_core_agent/core/ship_actuators.py",
+      "line": 46,
+      "type": "import_fallback_to_mock_actuator_classes",
+      "current_behavior": "ImportError silently replaces actuator protobuf classes with mock equivalents.",
+      "risk": "Control-plane commands can be generated through non-real schema without explicit mode marker.",
+      "proposed_change": "Fail-fast on missing generated protobuf classes unless explicit dev mock mode is enabled.",
+      "no_data_behavior": "Raise error and block command-path initialization.",
+      "canon_alignment": "Prevents fake command-path truth.",
+      "classification": "PROD_FORBIDDEN"
+    },
+    {
+      "id": "TS-009",
+      "file": "src/qiki/services/q_core_agent/core/grpc_data_provider.py",
+      "line": 86,
+      "type": "sensor_default_on_rpc_error",
+      "current_behavior": "On gRPC error returns synthetic SensorData with scalar_data=0.0.",
+      "risk": "Looks like valid data and can pollute downstream logic with fabricated zeros.",
+      "proposed_change": "Replace synthetic fallback with explicit unavailable state object (if schema supports it) or raise/retry policy that marks tick as degraded and skips decision logic.",
+      "no_data_behavior": "No synthetic scalar values; explicit unavailable status or failed tick.",
+      "canon_alignment": "No silent data fabrication when transport fails.",
+      "classification": "PROD_FORBIDDEN"
+    },
+    {
+      "id": "TS-010",
+      "file": "src/qiki/services/q_core_agent/core/interfaces.py",
+      "line": 123,
+      "type": "synthetic_fsm_snapshot_default",
+      "current_behavior": "QSimDataProvider fabricates BOOTING FSM snapshot/context when real FSM source is absent.",
+      "risk": "System state may appear valid while being synthetic.",
+      "proposed_change": "Require explicit provider capability declaration. If FSM source missing, return unavailable/error channel instead of fabricated BOOTING snapshot.",
+      "no_data_behavior": "FSM unavailable marker or fail-fast depending on runtime policy.",
+      "canon_alignment": "Single source of truth for FSM state.",
+      "classification": "PROD_FORBIDDEN"
+    },
+    {
+      "id": "TS-011",
+      "file": "src/qiki/services/faststream_bridge/app.py",
+      "line": 418,
+      "type": "publish_fallback_track_on_handler_exception",
+      "current_behavior": "On processing exception, publishes fallback track from empty detections.",
+      "risk": "Downstream consumers get synthetic track update that can be interpreted as valid stream state.",
+      "proposed_change": "Do not publish fallback track on exception. Emit structured incident/event and preserve previous valid state.",
+      "no_data_behavior": "Error event + no synthetic radar track emission.",
+      "canon_alignment": "No substitution of radar truth after ingest failure.",
+      "classification": "PROD_FORBIDDEN"
+    }
+  ],
+  "dev_only_items": [
+    {
+      "id": "TS-004",
+      "file": "src/qiki/services/q_core_agent/core/ship_bios_handler.py",
+      "line": 31,
+      "policy": "Allowed only for explicit direct script execution in development."
+    },
+    {
+      "id": "TS-005",
+      "file": "src/qiki/services/q_core_agent/core/ship_actuators.py",
+      "line": 35,
+      "policy": "Allowed only for explicit direct script execution in development."
+    },
+    {
+      "id": "TS-006",
+      "file": "src/qiki/services/q_core_agent/core/ship_fsm_handler.py",
+      "line": 30,
+      "policy": "Allowed only for explicit direct script execution in development."
+    },
+    {
+      "id": "TS-007",
+      "file": "src/qiki/services/q_core_agent/main.py",
+      "line": 155,
+      "policy": "Explicit `--mock` flag path; keep but visibly labeled as mock mode."
+    },
+    {
+      "id": "TS-008",
+      "file": "src/qiki/services/q_core_agent/core/neural_engine.py",
+      "line": 92,
+      "policy": "Config-gated mock proposal generation; should be denied in production profile."
+    }
+  ],
+  "implementation_plan_ordered": [
+    "Introduce a shared runtime guard utility: fail_if_mock_in_production().",
+    "Patch import fallback sites (TS-001/003/004/005/006) to explicit dev-only gating.",
+    "Patch data fallback sites (TS-009/010/011) to unavailable/error semantics without synthetic values.",
+    "Add targeted tests: production profile rejects mock/fallback imports and rejects synthetic sensor/fsm substitutions.",
+    "Add operator-visible diagnostics for unavailable truth paths (without fake green)."
+  ],
+  "canon_compliance_check": {
+    "second_source_of_truth_created": false,
+    "green_implies_real_data_after_changes": true,
+    "factory_stand_mode_preserved": true,
+    "notes": "Factory/mock remains explicit via flags/config; production paths become fail-fast or explicit unavailable."
+  },
+  "blockers": [
+    {
+      "id": "BL-001",
+      "description": "Runtime role of QSimDataProvider in current deployments must be confirmed before final enforcement level (hard fail vs unavailable marker).",
+      "impact": "Could affect startup behavior in legacy/stand environments."
+    }
+  ]
+}
