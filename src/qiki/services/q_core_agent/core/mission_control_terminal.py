@@ -37,6 +37,10 @@ from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E
     load_events_jsonl,
     render_terminal_screen,
 )
+from qiki.services.q_core_agent.core.terminal_input_backend import (  # noqa: E402
+    InputEvent,
+    select_input_backend,
+)
 from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController  # noqa: E402
 
 
@@ -198,7 +202,7 @@ class MissionControlTerminal:
             print(f"Radar backend configuration error: {exc}")
 
     @staticmethod
-    def replay_events(jsonl_path: str, *, interactive: bool = False) -> int:
+    def replay_events(jsonl_path: str, *, interactive: bool = False, real_input: bool = False) -> int:
         """Render HUD from exported EventStore JSONL trace."""
         path = Path(jsonl_path)
         if not path.exists():
@@ -210,8 +214,8 @@ class MissionControlTerminal:
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
-        if interactive:
-            return MissionControlTerminal._replay_interactive(events, pipeline)
+        if interactive or real_input:
+            return MissionControlTerminal._replay_interactive(events, pipeline, real_input=real_input)
         try:
             print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
         except RuntimeError as exc:
@@ -220,24 +224,86 @@ class MissionControlTerminal:
         return 0
 
     @staticmethod
-    def _replay_interactive(events: list[dict[str, object]], pipeline: RadarPipeline) -> int:
+    def _replay_interactive(
+        events: list[dict[str, object]],
+        pipeline: RadarPipeline,
+        *,
+        real_input: bool = False,
+    ) -> int:
         controller = RadarInputController()
         view_state = pipeline.view_state
-        print("Replay controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit.")
-        print("Mouse emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
-        while True:
-            print(render_terminal_screen(events, pipeline=pipeline, view_state=view_state))
-            raw = input("replay> ").strip().lower()
-            if not raw:
-                continue
+        backend, warning = select_input_backend(prefer_real=real_input)
+        if warning:
+            print(f"[WARN] {warning}")
+        print(
+            "Replay controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit."
+            " Mouse: wheel/click/drag in real-input mode."
+        )
+        print("Line mode emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
+
+        frame_interval = 1.0 / max(1, pipeline.config.fps_max)
+        last_render_ts = 0.0
+        needs_render = True
+        try:
+            while True:
+                now = time.monotonic()
+                timeout = max(1, int(max(0.0, frame_interval - (now - last_render_ts)) * 1000.0))
+                input_events = backend.poll_events(timeout_ms=timeout)
+                scene = build_scene_from_events(events)
+                should_quit = False
+                for event in input_events:
+                    view_state, should_quit = MissionControlTerminal._apply_input_event(
+                        controller=controller,
+                        view_state=view_state,
+                        event=event,
+                        scene=scene,
+                    )
+                    if should_quit:
+                        break
+                    needs_render = True
+                if should_quit:
+                    return 0
+                if needs_render and (time.monotonic() - last_render_ts) >= frame_interval:
+                    if backend.name == "real-terminal":
+                        print("\x1b[2J\x1b[H", end="")
+                    print(render_terminal_screen(events, pipeline=pipeline, view_state=view_state))
+                    last_render_ts = time.monotonic()
+                    needs_render = False
+        finally:
+            backend.close()
+
+    @staticmethod
+    def _apply_input_event(
+        *,
+        controller: RadarInputController,
+        view_state: RadarViewState,
+        event: InputEvent,
+        scene,
+    ) -> tuple[RadarViewState, bool]:
+        if event.kind == "key":
+            if event.key in {"q", "quit", "exit"}:
+                return view_state, True
+            return controller.apply_key(view_state, event.key, scene=scene), False
+        if event.kind == "wheel":
+            action = controller.handle_mouse(RadarMouseEvent(kind="wheel", delta=event.delta))
+            return controller.apply_action(view_state, action), False
+        if event.kind == "click":
+            action = controller.handle_mouse(RadarMouseEvent(kind="click", x=event.x, y=event.y, button="left"))
+            return controller.apply_action(view_state, action, scene=scene), False
+        if event.kind == "drag":
+            action = controller.handle_mouse(
+                RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=event.dx, dy=event.dy)
+            )
+            return controller.apply_action(view_state, action), False
+        if event.kind == "line":
+            raw = event.raw
             if raw in {"q", "quit", "exit"}:
-                return 0
+                return view_state, True
             if raw.startswith("wheel "):
                 direction = raw.split(" ", 1)[1].strip()
                 delta = 1.0 if direction == "up" else -1.0 if direction == "down" else 0.0
                 action = controller.handle_mouse(RadarMouseEvent(kind="wheel", delta=delta))
-                view_state = controller.apply_action(view_state, action)
-                continue
+                return controller.apply_action(view_state, action), False
             if raw.startswith("click "):
                 parts = raw.split()
                 if len(parts) == 3:
@@ -245,10 +311,10 @@ class MissionControlTerminal:
                         x = float(parts[1])
                         y = float(parts[2])
                     except ValueError:
-                        continue
+                        return view_state, False
                     action = controller.handle_mouse(RadarMouseEvent(kind="click", x=x, y=y, button="left"))
-                    view_state = controller.apply_action(view_state, action, scene=build_scene_from_events(events))
-                continue
+                    return controller.apply_action(view_state, action, scene=scene), False
+                return view_state, False
             if raw.startswith("drag "):
                 parts = raw.split()
                 if len(parts) == 3:
@@ -256,13 +322,13 @@ class MissionControlTerminal:
                         dx = float(parts[1])
                         dy = float(parts[2])
                     except ValueError:
-                        continue
+                        return view_state, False
                     action = controller.handle_mouse(
                         RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=dx, dy=dy)
                     )
-                    view_state = controller.apply_action(view_state, action)
-                continue
-            view_state = controller.apply_key(view_state, raw)
+                    return controller.apply_action(view_state, action), False
+            return controller.apply_key(view_state, raw, scene=scene), False
+        return view_state, False
 
     def handle_command(self, raw_command: str) -> bool:
         """Обрабатывает пользовательскую команду."""
@@ -436,9 +502,20 @@ def main() -> None:
         action="store_true",
         help="Interactive replay controls for --replay (hotkeys + mouse emulation).",
     )
+    parser.add_argument(
+        "--real-input",
+        action="store_true",
+        help="Enable real key/mouse terminal input backend; fallback to line mode when unavailable.",
+    )
     args = parser.parse_args()
     if args.replay:
-        raise SystemExit(MissionControlTerminal.replay_events(args.replay, interactive=args.interactive))
+        raise SystemExit(
+            MissionControlTerminal.replay_events(
+                args.replay,
+                interactive=args.interactive,
+                real_input=args.real_input,
+            )
+        )
     terminal = MissionControlTerminal()
     terminal.run()
 
