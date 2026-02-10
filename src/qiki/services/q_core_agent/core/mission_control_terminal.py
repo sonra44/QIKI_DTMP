@@ -26,6 +26,7 @@ from qiki.services.q_core_agent.core.ship_actuators import (  # noqa: E402
     PropulsionMode,
 )
 from qiki.services.q_core_agent.core.event_store import EventStore  # noqa: E402
+from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
     load_events_jsonl,
     render_terminal_screen,
@@ -40,6 +41,12 @@ class MissionControlTerminal:
         self.variant_name = variant_name
         q_core_agent_root = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
         self.event_store = EventStore.from_env()
+        self.radar_pipeline: RadarPipeline | None = None
+        self.radar_pipeline_error = ""
+        try:
+            self.radar_pipeline = RadarPipeline()
+        except RuntimeError as exc:
+            self.radar_pipeline_error = str(exc)
         self.ship_core = ShipCore(base_path=q_core_agent_root)
         self.actuator_controller = ShipActuatorController(self.ship_core, event_store=self.event_store)
         self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
@@ -173,7 +180,13 @@ class MissionControlTerminal:
     def render_event_hud(self) -> None:
         """Render EventStore-driven radar/HUD/log screen."""
         events = self.event_store.recent(300)
-        print(render_terminal_screen(events))
+        if self.radar_pipeline is None:
+            print(f"Radar backend configuration error: {self.radar_pipeline_error or 'unknown'}")
+            return
+        try:
+            print(render_terminal_screen(events, pipeline=self.radar_pipeline))
+        except RuntimeError as exc:
+            print(f"Radar backend configuration error: {exc}")
 
     @staticmethod
     def replay_events(jsonl_path: str) -> int:
@@ -183,7 +196,11 @@ class MissionControlTerminal:
             print(f"Replay trace not found: {path}")
             return 2
         events = load_events_jsonl(str(path))
-        print(render_terminal_screen(events))
+        try:
+            print(render_terminal_screen(events, pipeline=RadarPipeline()))
+        except RuntimeError as exc:
+            print(f"Radar backend configuration error: {exc}")
+            return 2
         return 0
 
     def handle_command(self, raw_command: str) -> bool:

@@ -1,0 +1,37 @@
+"""Kitty graphics backend for radar pipeline."""
+
+from __future__ import annotations
+
+import base64
+import os
+
+from .base import RadarBackend, RadarScene, RenderOutput
+from .bitmap_common import image_to_png_bytes, scene_to_image
+
+
+class KittyRadarBackend(RadarBackend):
+    name = "kitty"
+
+    def is_supported(self) -> bool:
+        if os.getenv("QIKI_FORCE_KITTY_SUPPORTED", "").strip() == "1":
+            return True
+        term = os.getenv("TERM", "").lower()
+        if "kitty" in term:
+            return True
+        # Conservative mode: explicit kitty window id also indicates support.
+        return bool(os.getenv("KITTY_WINDOW_ID", "").strip())
+
+    def render(self, scene: RadarScene, *, view: str, color: bool) -> RenderOutput:
+        if not self.is_supported():
+            raise RuntimeError("Kitty backend is unsupported in this terminal")
+        image = scene_to_image(scene, view=view, color=color)
+        png_bytes = image_to_png_bytes(image)
+        payload = base64.b64encode(png_bytes).decode("ascii")
+        # Kitty graphics protocol transfer (direct payload in single chunk).
+        escape = f"\x1b_Gf=100,t=d,m=0;{payload}\x1b\\"
+        lines = [
+            "[KITTY BITMAP FRAME]",
+            escape,
+            f"backend=kitty size={image.width}x{image.height}",
+        ]
+        return RenderOutput(backend=self.name, lines=lines)

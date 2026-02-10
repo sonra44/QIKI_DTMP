@@ -1,4 +1,4 @@
-"""ASCII terminal radar/HUD renderer driven by EventStore facts."""
+"""Terminal radar/HUD renderer driven by EventStore facts and radar backend pipeline."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from .radar_backends import RadarPoint, RadarScene
+from .radar_pipeline import RadarPipeline
 
 
 @dataclass(frozen=True)
@@ -188,63 +191,34 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
     return view
 
 
-def _render_radar(view: _ViewModel, width: int = 41, height: int = 13) -> list[str]:
-    width = max(21, width)
-    height = max(9, height)
-    grid = [[" " for _ in range(width)] for _ in range(height)]
-    center_x = width // 2
-    center_y = height // 2
-    max_radius = max(1, min(center_x, center_y) - 1)
-
-    for y in range(height):
-        for x in range(width):
-            dx = x - center_x
-            dy = y - center_y
-            radius = int(round(math.sqrt(dx * dx + dy * dy)))
-            if radius == max_radius:
-                grid[y][x] = "."
-    grid[center_y][center_x] = "+"
-
-    if not view.sensor_ok:
-        message = f"NO DATA: {view.sensor_reason}"
-        start_x = max(1, center_x - (len(message) // 2))
-        y = center_y
-        for idx, ch in enumerate(message):
-            if start_x + idx < width - 1:
-                grid[y][start_x + idx] = ch
-    elif view.range_m is not None and view.vr_mps is not None:
-        range_norm = min(1.0, max(0.0, view.range_m / 120.0))
-        if view.azimuth_deg is None:
-            azimuth_rad = 0.0
-        else:
-            azimuth_rad = math.radians(view.azimuth_deg)
-        radius_cells = int(round(range_norm * max_radius))
-        target_x = int(round(center_x + math.cos(azimuth_rad) * radius_cells))
-        target_y = int(round(center_y - math.sin(azimuth_rad) * radius_cells))
-        target_x = min(width - 2, max(1, target_x))
-        target_y = min(height - 2, max(1, target_y))
-
-        depth = 0.0
+def _view_to_scene(view: _ViewModel) -> RadarScene:
+    points: list[RadarPoint] = []
+    if view.sensor_ok and view.range_m is not None and view.vr_mps is not None:
+        azimuth_deg = view.azimuth_deg if view.azimuth_deg is not None else 0.0
+        azimuth = math.radians(azimuth_deg)
+        x = math.cos(azimuth) * view.range_m
+        y = math.sin(azimuth) * view.range_m
         if view.elevation_deg is not None:
-            depth = max(-1.0, min(1.0, view.elevation_deg / 90.0))
+            z = math.sin(math.radians(view.elevation_deg)) * view.range_m
         else:
-            depth = max(-1.0, min(1.0, (view.vr_mps or 0.0) / 2.0))
+            z = view.vr_mps * 5.0
+        points.append(
+            RadarPoint(
+                x=x,
+                y=y,
+                z=z,
+                vr_mps=view.vr_mps,
+                metadata={"range_m": view.range_m, "azimuth_deg": azimuth_deg, "elevation_deg": view.elevation_deg},
+            )
+        )
 
-        if depth < -0.5:
-            marker = "."
-        elif depth < 0.0:
-            marker = "o"
-        elif depth < 0.5:
-            marker = "O"
-        else:
-            marker = "@"
-
-        grid[target_y][target_x] = marker
-        arrow = ">" if (view.vr_mps or 0.0) >= 0 else "<"
-        if target_x + 1 < width - 1:
-            grid[target_y][target_x + 1] = arrow
-
-    return ["".join(row) for row in grid]
+    return RadarScene(
+        ok=view.sensor_ok,
+        reason=view.sensor_reason,
+        truth_state=view.sensor_truth_state or "NO_DATA",
+        is_fallback=view.sensor_is_fallback,
+        points=points,
+    )
 
 
 def _format_event_log(events: Sequence[Any], max_items: int = 10) -> list[str]:
@@ -259,9 +233,12 @@ def _format_event_log(events: Sequence[Any], max_items: int = 10) -> list[str]:
     return rows
 
 
-def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10) -> str:
+def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10, pipeline: RadarPipeline | None = None) -> str:
     view = _build_view(events)
-    radar_lines = _render_radar(view)
+    scene = _view_to_scene(view)
+    active_pipeline = pipeline or RadarPipeline()
+    radar_output = active_pipeline.render_scene(scene)
+    radar_lines = radar_output.lines
     log_lines = _format_event_log(events, max_items=event_log_size)
 
     safe_line = "SAFE: OFF"
@@ -279,7 +256,10 @@ def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10) -
 
     header = [
         "=" * 72,
-        "MISSION CONTROL TERMINAL :: RADAR 3D + HUD (EventStore Facts)",
+        (
+            "MISSION CONTROL TERMINAL :: RADAR 3D + HUD (EventStore Facts) "
+            f"backend={active_pipeline.active_backend_name} view={active_pipeline.config.view}"
+        ),
         "=" * 72,
     ]
     hud = [
@@ -303,4 +283,3 @@ def load_events_jsonl(path: str) -> list[dict[str, Any]]:
                 continue
             events.append(json.loads(row))
     return events
-
