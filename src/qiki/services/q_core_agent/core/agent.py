@@ -126,8 +126,18 @@ class QCoreAgent:
 
     def _handle_bios(self):
         try:
-            # Process BIOS status using the handler
-            self.context.bios_status = self.bios_handler.process_bios_status(self.context.bios_status)
+            # Prefer explicit result contract when BIOS handler supports it.
+            if hasattr(self.bios_handler, "process_bios_status_result"):
+                bios_result = self.bios_handler.process_bios_status_result(self.context.bios_status)
+                if not bios_result.ok or bios_result.report is None:
+                    logger.error(f"BIOS handler returned no data: {bios_result.reason}")
+                    self._switch_to_safe_mode()
+                    return
+                self.context.bios_status = bios_result.report
+                if bios_result.is_fallback:
+                    logger.warning(f"BIOS handler returned fallback report: {bios_result.reason}")
+            else:
+                self.context.bios_status = self.bios_handler.process_bios_status(self.context.bios_status)
             logger.debug(f"Handling BIOS status: {self.context.bios_status}")
         except Exception as e:
             logger.error(f"BIOS handler failed: {e}")

@@ -1,5 +1,7 @@
 import sys
 import os
+from dataclasses import dataclass
+from enum import Enum
 
 # NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
 # dangerous and can mask real import issues.
@@ -14,7 +16,7 @@ if not __package__:
     if generated_path not in sys.path:
         sys.path.append(generated_path)
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 try:
     from .interfaces import IBiosHandler
@@ -48,8 +50,15 @@ try:
     from generated.bios_status_pb2 import BiosStatusReport, DeviceStatus
     from generated.common_types_pb2 import UUID
     from google.protobuf.timestamp_pb2 import Timestamp
-except ImportError:
-    # Mock classes for development
+    BIOS_PROTO_FALLBACK_ACTIVE = False
+except ImportError as exc:
+    if os.getenv("QIKI_ALLOW_BIOS_FALLBACK", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise ImportError(
+            "BIOS protobuf imports failed. "
+            "Set QIKI_ALLOW_BIOS_FALLBACK=true only for explicit stand/dev fallback."
+        ) from exc
+    BIOS_PROTO_FALLBACK_ACTIVE = True
+    # Mock classes for explicit development fallback
     class MockDeviceStatus:
         def __init__(self, device_id="", status="OK", **kwargs):
             self.device_id = device_id
@@ -70,8 +79,9 @@ except ImportError:
     class MockBiosStatusReport:
         def __init__(self):
             self.post_results = []
-            self.all_systems_go = True
-            self.health_score = 1.0
+            self.all_systems_go = False
+            self.health_score = 0.0
+            self.timestamp = None
 
         def CopyFrom(self, other):
             pass
@@ -90,6 +100,26 @@ except ImportError:
     Timestamp = MockTimestamp
 
 
+class BiosReason(Enum):
+    """Explicit BIOS data availability reasons."""
+
+    OK = "OK"
+    UNAVAILABLE = "BIOS_UNAVAILABLE"
+    TIMEOUT = "BIOS_TIMEOUT"
+    INVALID_REPORT = "BIOS_INVALID_REPORT"
+    SIMULATED = "SIMULATED_BIOS"
+
+
+@dataclass
+class BiosFetchResult:
+    """Explicit result for BIOS report fetch/diagnostics."""
+
+    ok: bool
+    report: Optional[BiosStatusReport]
+    reason: str
+    is_fallback: bool = False
+
+
 class ShipBiosHandler(IBiosHandler):
     """
     Handles BIOS status for ship systems.
@@ -101,17 +131,104 @@ class ShipBiosHandler(IBiosHandler):
         self.ship_core = ship_core
         logger.info("ShipBiosHandler initialized for ship diagnostics.")
 
+    @staticmethod
+    def _allow_bios_fallback() -> bool:
+        return os.getenv("QIKI_ALLOW_BIOS_FALLBACK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _validate_bios_report(self, report: Optional[BiosStatusReport]) -> Optional[str]:
+        if report is None:
+            return "report_is_none"
+        if not hasattr(report, "timestamp"):
+            return "missing_timestamp"
+        if getattr(report, "timestamp", None) is None:
+            return "timestamp_is_none"
+        if not hasattr(report, "post_results"):
+            return "missing_post_results"
+        if not hasattr(report, "all_systems_go"):
+            return "missing_all_systems_go"
+
+        valid_statuses = {
+            getattr(DeviceStatus.Status, "OK", None),
+            getattr(DeviceStatus.Status, "WARNING", None),
+            getattr(DeviceStatus.Status, "ERROR", None),
+            getattr(DeviceStatus.Status, "NOT_FOUND", None),
+        }
+        valid_statuses.discard(None)
+        for index, device_status in enumerate(getattr(report, "post_results", [])):
+            if not hasattr(device_status, "status"):
+                return f"device_status_missing_status_at_{index}"
+            if valid_statuses and getattr(device_status, "status") not in valid_statuses:
+                return f"device_status_invalid_status_at_{index}"
+        return None
+
+    def process_bios_status_result(self, bios_status: BiosStatusReport) -> BiosFetchResult:
+        """Process comprehensive ship system diagnostics with explicit truth status."""
+        if bios_status is None:
+            logger.error("BIOS report unavailable: input bios_status is None")
+            return BiosFetchResult(ok=False, report=None, reason=BiosReason.UNAVAILABLE.value, is_fallback=False)
+
+        try:
+            report = self._build_bios_report(bios_status)
+        except TimeoutError as exc:
+            logger.error(f"BIOS diagnostics timeout: {exc}")
+            return BiosFetchResult(ok=False, report=None, reason=BiosReason.TIMEOUT.value, is_fallback=False)
+        except ConnectionError as exc:
+            logger.error(f"BIOS diagnostics unavailable: {exc}")
+            return BiosFetchResult(ok=False, report=None, reason=BiosReason.UNAVAILABLE.value, is_fallback=False)
+        except Exception as exc:
+            logger.error(f"BIOS diagnostics failed: {exc}")
+            return BiosFetchResult(ok=False, report=None, reason=BiosReason.UNAVAILABLE.value, is_fallback=False)
+
+        invalid_reason = self._validate_bios_report(report)
+        if invalid_reason is not None:
+            logger.error(f"Invalid BIOS report detected: {invalid_reason}")
+            return BiosFetchResult(
+                ok=False,
+                report=None,
+                reason=f"{BiosReason.INVALID_REPORT.value}:{invalid_reason}",
+                is_fallback=False,
+            )
+
+        is_fallback = BIOS_PROTO_FALLBACK_ACTIVE and self._allow_bios_fallback()
+        if is_fallback:
+            logger.warning("BIOS fallback enabled; marking report as simulated and non-green")
+            if hasattr(report, "all_systems_go"):
+                report.all_systems_go = False
+            return BiosFetchResult(ok=True, report=report, reason=BiosReason.SIMULATED.value, is_fallback=True)
+
+        return BiosFetchResult(ok=True, report=report, reason=BiosReason.OK.value, is_fallback=False)
+
     def process_bios_status(self, bios_status: BiosStatusReport) -> BiosStatusReport:
-        """Process comprehensive ship system diagnostics."""
+        """Legacy wrapper: returns report only for explicit OK/simulated fallback, else fail-fast."""
+        result = self.process_bios_status_result(bios_status)
+        if result.ok and result.report is not None:
+            return result.report
+        raise RuntimeError(f"BIOS data unavailable: {result.reason}")
+
+    def _build_bios_report(self, bios_status: BiosStatusReport) -> BiosStatusReport:
+        """Builds a BIOS report from live diagnostics."""
         logger.debug("Processing ship BIOS status - running full diagnostics.")
 
         # Create updated status report
         updated_bios_status = BiosStatusReport()
         if hasattr(updated_bios_status, "CopyFrom"):
             updated_bios_status.CopyFrom(bios_status)
+        if hasattr(updated_bios_status, "timestamp"):
+            timestamp_field = getattr(updated_bios_status, "timestamp")
+            if hasattr(timestamp_field, "GetCurrentTime"):
+                timestamp_field.GetCurrentTime()
+            else:
+                now = Timestamp()
+                if hasattr(now, "GetCurrentTime"):
+                    now.GetCurrentTime()
+                updated_bios_status.timestamp = now
 
         # Clear previous results for fresh diagnostics
-        updated_bios_status.post_results = []
+        post_results_field = getattr(updated_bios_status, "post_results", None)
+        if hasattr(post_results_field, "clear"):
+            post_results_field.clear()
+        else:
+            updated_bios_status.post_results = []
 
         # Run comprehensive ship diagnostics
         all_systems_go = True
