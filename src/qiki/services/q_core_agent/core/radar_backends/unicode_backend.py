@@ -7,6 +7,7 @@ from typing import Iterable
 
 from .base import RadarBackend, RadarScene, RenderOutput
 from .geometry import project_point
+from qiki.services.q_core_agent.core.radar_render_policy import RadarRenderPlan
 from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 
 _ANSI_RESET = "\x1b[0m"
@@ -22,9 +23,16 @@ class UnicodeRadarBackend(RadarBackend):
     def is_supported(self) -> bool:
         return True
 
-    def render(self, scene: RadarScene, *, view_state: RadarViewState, color: bool) -> RenderOutput:
-        lines = self._render_grid(scene, view_state=view_state, color=color, width=41, height=13)
-        return RenderOutput(backend=self.name, lines=lines)
+    def render(
+        self,
+        scene: RadarScene,
+        *,
+        view_state: RadarViewState,
+        color: bool,
+        render_plan: RadarRenderPlan | None = None,
+    ) -> RenderOutput:
+        lines = self._render_grid(scene, view_state=view_state, color=color, width=41, height=13, render_plan=render_plan)
+        return RenderOutput(backend=self.name, lines=lines, plan=render_plan, stats=(render_plan.stats if render_plan else None))
 
     def _render_grid(
         self,
@@ -34,6 +42,7 @@ class UnicodeRadarBackend(RadarBackend):
         color: bool,
         width: int,
         height: int,
+        render_plan: RadarRenderPlan | None,
     ) -> list[str]:
         width = max(21, width)
         height = max(9, height)
@@ -42,7 +51,23 @@ class UnicodeRadarBackend(RadarBackend):
         center_y = height // 2
         max_radius = max(1, min(center_x, center_y) - 1)
 
-        if view_state.overlays_enabled:
+        draw_grid = view_state.overlays_enabled
+        draw_rings = view_state.overlays_enabled
+        draw_vectors = view_state.overlays_enabled
+        draw_labels = False
+        draw_trails = view_state.overlays_enabled
+        if render_plan is not None:
+            draw_grid = render_plan.draw_grid
+            draw_rings = render_plan.draw_range_rings
+            draw_vectors = render_plan.draw_vectors
+            draw_labels = render_plan.draw_labels
+            draw_trails = render_plan.draw_trails
+        if draw_grid:
+            for y in range(height):
+                grid[y][center_x] = "│"
+            for x in range(width):
+                grid[center_y][x] = "─"
+        if draw_rings:
             for y in range(height):
                 for x in range(width):
                     dx = x - center_x
@@ -71,18 +96,43 @@ class UnicodeRadarBackend(RadarBackend):
         max_extent = max(1.0, max(max(abs(u), abs(v)) for _, u, v, _, _ in points))
         scale = (float(max_radius) / max_extent) * max(0.25, min(6.0, view_state.zoom))
 
+        if draw_trails:
+            for point_id, trail in scene.trails.items():
+                for trail_point in trail:
+                    p = project_point(
+                        trail_point,
+                        view_state.view,
+                        rot_yaw_deg=view_state.rot_yaw,
+                        rot_pitch_deg=view_state.rot_pitch,
+                    )
+                    tx = int(round(center_x + (p.u + view_state.pan_x) * scale))
+                    ty = int(round(center_y - (p.v + view_state.pan_y) * scale))
+                    tx = min(width - 2, max(1, tx))
+                    ty = min(height - 2, max(1, ty))
+                    if grid[ty][tx] == " ":
+                        grid[ty][tx] = "·"
+
         for point_id, u, v, depth, vr_mps in points:
             x = int(round(center_x + (u + view_state.pan_x) * scale))
             y = int(round(center_y - (v + view_state.pan_y) * scale))
             x = min(width - 2, max(1, x))
             y = min(height - 2, max(1, y))
             marker = self._depth_marker(depth)
-            if view_state.selected_target_id and point_id == view_state.selected_target_id:
+            if view_state.selected_target_id and point_id == view_state.selected_target_id and (
+                render_plan is None or render_plan.draw_selection_highlight
+            ):
                 marker = "◆"
             grid[y][x] = marker
-            arrow = "→" if vr_mps >= 0 else "←"
-            if x + 1 < width - 1:
-                grid[y][x + 1] = arrow
+            if draw_vectors:
+                arrow = "→" if vr_mps >= 0 else "←"
+                if x + 1 < width - 1:
+                    grid[y][x + 1] = arrow
+            if draw_labels:
+                label = point_id[:4]
+                start = min(width - len(label) - 1, x + 1)
+                if start > 0:
+                    for idx, ch in enumerate(label):
+                        grid[y][start + idx] = ch
 
         lines = ["".join(row) for row in grid]
         if color:

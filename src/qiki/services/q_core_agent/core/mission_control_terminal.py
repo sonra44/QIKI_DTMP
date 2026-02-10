@@ -292,7 +292,7 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Replay controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit."
+            "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
             " Mouse: wheel/click/drag in real-input mode."
         )
         print("Line mode emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
@@ -414,7 +414,7 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Live controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit."
+            "Live controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
             " Mouse: wheel/click/drag."
         )
 
@@ -502,7 +502,7 @@ class MissionControlTerminal:
             status = self.live_radar_loop(prefer_real=prefer_real)
             return status in {0, 3}
 
-        if cmd in {"1", "2", "3", "4", "r", "o", "c", "+", "-"}:
+        if cmd in {"1", "2", "3", "4", "r", "o", "g", "b", "v", "t", "l", "i", "c", "+", "-"}:
             self.view_state = self.radar_input.apply_key(self.view_state, cmd)
             return True
 
@@ -534,8 +534,10 @@ class MissionControlTerminal:
         print("  hud                  — рендер Radar/HUD/EventLog из EventStore")
         print("  radar [line]         — live cockpit loop (real input upgrade, q to exit)")
         print("  1|2|3|4              — вид радара top/side/front/iso")
-        print("  r                    — reset view")
+        print("  r                    — reset view + overlays + inspector")
         print("  o                    — toggle overlays")
+        print("  g|b|v|t|l            — toggle grid/rings/vectors/trails/labels")
+        print("  i                    — inspector: off -> on -> pinned -> off")
         print("  c                    — toggle color")
         print("  +|-                  — zoom in/out")
         print("  mouse wheel up|down  — zoom мышью (эмуляция)")

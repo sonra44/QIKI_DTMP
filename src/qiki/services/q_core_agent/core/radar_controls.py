@@ -47,6 +47,18 @@ class RadarInputController:
             return RadarAction(kind="RESET_VIEW")
         if token == "o":
             return RadarAction(kind="TOGGLE_OVERLAYS")
+        if token == "g":
+            return RadarAction(kind="TOGGLE_GRID")
+        if token == "b":
+            return RadarAction(kind="TOGGLE_RANGE_RINGS")
+        if token == "v":
+            return RadarAction(kind="TOGGLE_VECTORS")
+        if token == "t":
+            return RadarAction(kind="TOGGLE_TRAILS")
+        if token == "l":
+            return RadarAction(kind="TOGGLE_LABELS")
+        if token == "i":
+            return RadarAction(kind="TOGGLE_INSPECTOR")
         if token == "c":
             return RadarAction(kind="TOGGLE_COLOR")
         if token == "q":
@@ -110,6 +122,25 @@ class RadarInputController:
             return replace(state, selected_target_id=self._pick_target(scene, state, action.x, action.y))
         if kind == "TOGGLE_OVERLAYS":
             return replace(state, overlays_enabled=not state.overlays_enabled)
+        if kind == "TOGGLE_GRID":
+            return replace(state, overlays=replace(state.overlays, grid=not state.overlays.grid))
+        if kind == "TOGGLE_RANGE_RINGS":
+            return replace(state, overlays=replace(state.overlays, range_rings=not state.overlays.range_rings))
+        if kind == "TOGGLE_VECTORS":
+            return replace(state, overlays=replace(state.overlays, vectors=not state.overlays.vectors))
+        if kind == "TOGGLE_TRAILS":
+            return replace(state, overlays=replace(state.overlays, trails=not state.overlays.trails))
+        if kind == "TOGGLE_LABELS":
+            return replace(state, overlays=replace(state.overlays, labels=not state.overlays.labels))
+        if kind == "TOGGLE_INSPECTOR":
+            if state.inspector.mode == "off":
+                return replace(state, inspector=replace(state.inspector, mode="on"))
+            if state.inspector.mode == "on":
+                return replace(
+                    state,
+                    inspector=replace(state.inspector, mode="pinned", pinned_target_id=state.selected_target_id),
+                )
+            return replace(state, inspector=replace(state.inspector, mode="off", pinned_target_id=None))
         if kind == "TOGGLE_COLOR":
             return replace(state, color_enabled=not state.color_enabled)
         if kind == "RESET_VIEW":
@@ -121,6 +152,17 @@ class RadarInputController:
                 rot_yaw=0.0,
                 rot_pitch=0.0,
                 selected_target_id=None,
+                overlays_enabled=True,
+                overlays=replace(
+                    state.overlays,
+                    grid=True,
+                    range_rings=True,
+                    vectors=True,
+                    trails=True,
+                    labels=True,
+                    selection_highlight=True,
+                ),
+                inspector=replace(state.inspector, mode="off", pinned_target_id=None),
             )
         return state
 

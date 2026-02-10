@@ -6,7 +6,7 @@ import json
 import math
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -40,6 +40,9 @@ class _ViewModel:
     vr_mps: float | None = None
     azimuth_deg: float | None = None
     elevation_deg: float | None = None
+    age_s: float | None = None
+    quality: float | None = None
+    tracks: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 def _as_event_dict(event: Any) -> dict[str, Any]:
@@ -87,6 +90,47 @@ def _parse_confirmation(trigger: str) -> tuple[int, int]:
     return _parse_int(left, 0), _parse_int(right, 0)
 
 
+def _extract_tracks(sensor_data: dict[str, Any], view: _ViewModel) -> tuple[dict[str, Any], ...]:
+    raw_tracks = sensor_data.get("tracks")
+    tracks: list[dict[str, Any]] = []
+    if isinstance(raw_tracks, list):
+        for idx, item in enumerate(raw_tracks):
+            if not isinstance(item, dict):
+                continue
+            range_m = _parse_float(item.get("range_m"))
+            vr_mps = _parse_float(item.get("vr_mps"))
+            if range_m is None or vr_mps is None:
+                continue
+            azimuth_deg = _parse_float(item.get("azimuth_deg", 0.0))
+            elevation_deg = _parse_float(item.get("elevation_deg"))
+            tracks.append(
+                {
+                    "track_id": str(item.get("track_id") or f"track-{idx}"),
+                    "range_m": range_m,
+                    "vr_mps": vr_mps,
+                    "azimuth_deg": azimuth_deg if azimuth_deg is not None else 0.0,
+                    "elevation_deg": elevation_deg,
+                    "quality": _parse_float(item.get("quality")),
+                    "age_s": _parse_float(item.get("age_s")),
+                }
+            )
+    if tracks:
+        return tuple(tracks)
+    if view.range_m is not None and view.vr_mps is not None:
+        return (
+            {
+                "track_id": "station-track-0",
+                "range_m": view.range_m,
+                "vr_mps": view.vr_mps,
+                "azimuth_deg": view.azimuth_deg if view.azimuth_deg is not None else 0.0,
+                "elevation_deg": view.elevation_deg,
+                "quality": view.quality,
+                "age_s": view.age_s,
+            },
+        )
+    return ()
+
+
 def _build_view(events: Sequence[Any]) -> _ViewModel:
     view = _ViewModel(docking_required=max(1, _parse_int(os.getenv("QIKI_DOCKING_CONFIRMATION_COUNT", "3"), 3)))
     for raw_event in events:
@@ -130,6 +174,9 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 vr_mps=view.vr_mps,
                 azimuth_deg=view.azimuth_deg,
                 elevation_deg=view.elevation_deg,
+                age_s=view.age_s,
+                quality=view.quality,
+                tracks=view.tracks,
             )
         elif subsystem == "SAFE_MODE" and event_type == "SAFE_MODE":
             safe_reason = str(payload.get("reason", reason))
@@ -151,6 +198,9 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 vr_mps=view.vr_mps,
                 azimuth_deg=view.azimuth_deg,
                 elevation_deg=view.elevation_deg,
+                age_s=view.age_s,
+                quality=view.quality,
+                tracks=view.tracks,
             )
         elif subsystem == "ACTUATORS" and event_type == "ACTUATION_RECEIPT":
             view = _ViewModel(
@@ -171,12 +221,15 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 vr_mps=view.vr_mps,
                 azimuth_deg=view.azimuth_deg,
                 elevation_deg=view.elevation_deg,
+                age_s=view.age_s,
+                quality=view.quality,
+                tracks=view.tracks,
             )
         elif subsystem == "SENSORS" and event_type == "SENSOR_TRUST_VERDICT":
             sensor_data = payload.get("data", {})
             if not isinstance(sensor_data, dict):
                 sensor_data = {}
-            view = _ViewModel(
+            candidate = _ViewModel(
                 fsm_state=view.fsm_state,
                 safe_mode_reason=view.safe_mode_reason,
                 safe_exit_hits=view.safe_exit_hits,
@@ -194,35 +247,49 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 vr_mps=_parse_float(sensor_data.get("vr_mps", view.vr_mps)),
                 azimuth_deg=_parse_float(sensor_data.get("azimuth_deg", view.azimuth_deg)),
                 elevation_deg=_parse_float(sensor_data.get("elevation_deg", view.elevation_deg)),
+                age_s=_parse_float(payload.get("age_s", view.age_s)),
+                quality=_parse_float(payload.get("quality", view.quality)),
+                tracks=view.tracks,
+            )
+            view = _ViewModel(
+                **{**candidate.__dict__, "tracks": _extract_tracks(sensor_data, candidate)},
             )
     return view
 
 
 def _view_to_scene(view: _ViewModel) -> RadarScene:
     points: list[RadarPoint] = []
-    if view.sensor_ok and view.range_m is not None and view.vr_mps is not None:
-        azimuth_deg = view.azimuth_deg if view.azimuth_deg is not None else 0.0
-        azimuth = math.radians(azimuth_deg)
-        x = math.cos(azimuth) * view.range_m
-        y = math.sin(azimuth) * view.range_m
-        if view.elevation_deg is not None:
-            z = math.sin(math.radians(view.elevation_deg)) * view.range_m
-        else:
-            z = view.vr_mps * 5.0
-        points.append(
-            RadarPoint(
-                x=x,
-                y=y,
-                z=z,
-                vr_mps=view.vr_mps,
-                metadata={
-                    "target_id": "station-track-0",
-                    "range_m": view.range_m,
-                    "azimuth_deg": azimuth_deg,
-                    "elevation_deg": view.elevation_deg,
-                },
+    if view.sensor_ok:
+        for idx, track in enumerate(view.tracks):
+            range_m = _parse_float(track.get("range_m"))
+            vr_mps = _parse_float(track.get("vr_mps"))
+            azimuth_deg = _parse_float(track.get("azimuth_deg", 0.0))
+            if range_m is None or vr_mps is None:
+                continue
+            azimuth = math.radians(azimuth_deg if azimuth_deg is not None else 0.0)
+            x = math.cos(azimuth) * range_m
+            y = math.sin(azimuth) * range_m
+            elevation_deg = _parse_float(track.get("elevation_deg"))
+            if elevation_deg is not None:
+                z = math.sin(math.radians(elevation_deg)) * range_m
+            else:
+                z = vr_mps * 5.0
+            points.append(
+                RadarPoint(
+                    x=x,
+                    y=y,
+                    z=z,
+                    vr_mps=vr_mps,
+                    metadata={
+                        "target_id": str(track.get("track_id", f"station-track-{idx}")),
+                        "range_m": range_m,
+                        "azimuth_deg": azimuth_deg,
+                        "elevation_deg": elevation_deg,
+                        "quality": _parse_float(track.get("quality")),
+                        "age_s": _parse_float(track.get("age_s")),
+                    },
+                )
             )
-        )
 
     return RadarScene(
         ok=view.sensor_ok,
@@ -281,6 +348,43 @@ def _format_event_log(events: Sequence[Any], max_items: int = 10, *, color_enabl
     return rows
 
 
+def _overlay_legend(view_state: RadarViewState, disabled: Sequence[str]) -> str:
+    symbols = [
+        ("G", view_state.overlays.grid),
+        ("B", view_state.overlays.range_rings),
+        ("V", view_state.overlays.vectors),
+        ("T", view_state.overlays.trails),
+        ("L", view_state.overlays.labels),
+    ]
+    enabled = " ".join(symbol for symbol, on in symbols if on)
+    if not enabled:
+        enabled = "off"
+    if disabled:
+        return f"OVR: {enabled} dropped={','.join(disabled)}"
+    return f"OVR: {enabled}"
+
+
+def _build_inspector(scene: RadarScene, view_state: RadarViewState, view: _ViewModel) -> list[str]:
+    if view_state.inspector.mode == "off":
+        return ["INSPECTOR: off"]
+    selected_id = view_state.selected_target_id
+    if view_state.inspector.mode == "pinned" and view_state.inspector.pinned_target_id:
+        selected_id = view_state.inspector.pinned_target_id
+    if not selected_id:
+        return [f"INSPECTOR: {view_state.inspector.mode} no selection"]
+    for point in scene.points:
+        point_id = str(point.metadata.get("target_id", ""))
+        if point_id != selected_id:
+            continue
+        return [
+            f"INSPECTOR: {view_state.inspector.mode} id={point_id}",
+            f"  range={point.metadata.get('range_m', 'N/A')} vr={point.vr_mps:.3f}",
+            f"  age={point.metadata.get('age_s', view.age_s)} quality={point.metadata.get('quality', view.quality)}",
+            f"  trust={view.sensor_truth_state}/{view.sensor_reason}",
+        ]
+    return [f"INSPECTOR: {view_state.inspector.mode} id={selected_id} not found"]
+
+
 def render_terminal_screen(
     events: Sequence[Any],
     *,
@@ -294,6 +398,8 @@ def render_terminal_screen(
     active_view_state = view_state or active_pipeline.view_state
     radar_output = active_pipeline.render_scene(scene, view_state=active_view_state)
     radar_lines = radar_output.lines
+    stats = radar_output.stats
+    plan = radar_output.plan
     log_lines = _format_event_log(
         events,
         max_items=event_log_size,
@@ -325,6 +431,9 @@ def render_terminal_screen(
     if not color_enabled:
         trust_line = f"{trust_line} [MONO]"
     trust_line = _colorize_truth(trust_line, view.sensor_truth_state, color_enabled=color_enabled)
+    clutter_line = "CLUTTER: OFF"
+    if stats is not None and stats.clutter_on:
+        clutter_line = f"CLUTTER: ON reason={stats.clutter_reason} dropped={','.join(stats.dropped_overlays)}"
     hud = [
         f"FSM: {view.fsm_state}",
         f"DOCKING CONFIRM: {view.docking_hits}/{max(1, view.docking_required)}",
@@ -335,9 +444,12 @@ def render_terminal_screen(
         safe_line,
         act_line,
         trust_line,
+        clutter_line,
+        _overlay_legend(active_view_state, plan.dropped_overlays if plan else ()),
     ]
+    inspector_lines = _build_inspector(scene, active_view_state, view)
     radar_title = ["", "[ RADAR ]"]
-    log_title = ["", "[ EVENT LOG ]"]
+    log_title = ["", "[ INSPECTOR ]", *inspector_lines, "", "[ EVENT LOG ]"]
     return "\n".join(header + radar_title + radar_lines + [""] + hud + log_title + log_lines)
 
 
