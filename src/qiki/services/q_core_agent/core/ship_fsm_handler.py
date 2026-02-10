@@ -5,6 +5,8 @@ Ship FSM Handler - конечный автомат для управления �
 
 import os
 import sys
+import time
+import math
 
 # NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
 # dangerous and can mask real import issues.
@@ -19,8 +21,9 @@ if not __package__:
     if generated_path not in sys.path:
         sys.path.append(generated_path)
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from enum import Enum
+from dataclasses import dataclass
 
 try:
     from .interfaces import IFSMHandler
@@ -48,6 +51,13 @@ from fsm_state_pb2 import (
 )
 
 _SHIP_STATE_CONTEXT_KEY = "ship_state_name"
+_DOCKING_CONFIRM_HITS_KEY = "docking_confirm_hits"
+
+
+@dataclass(frozen=True)
+class SensorValidityResult:
+    ok: bool
+    reason: str = ""
 
 
 class ShipState(Enum):
@@ -165,25 +175,55 @@ class ShipContext:
         threshold_m = float(os.getenv("QIKI_DOCKING_TARGET_RANGE_M", "5000.0"))
         return range_m <= threshold_m
 
-    def is_docking_engaged(self) -> bool:
-        """Проверяет, выполнена ли стыковка (по данным сенсоров/радар трека)."""
-        track = self._get_best_station_track()
+    def validate_station_track(self, track: Optional[Any]) -> SensorValidityResult:
         if track is None:
-            return False
+            return SensorValidityResult(ok=False, reason="NO_READINGS")
+        if not hasattr(track, "range_m") or not hasattr(track, "vr_mps"):
+            return SensorValidityResult(ok=False, reason="MISSING_FIELDS")
         try:
-            range_m = float(getattr(track, "range_m", 0.0) or 0.0)
-            vr_mps = float(getattr(track, "vr_mps", 0.0) or 0.0)
+            range_m = float(getattr(track, "range_m"))
+            vr_mps = float(getattr(track, "vr_mps"))
         except Exception:
-            return False
+            return SensorValidityResult(ok=False, reason="MISSING_FIELDS")
+        if not math.isfinite(range_m) or not math.isfinite(vr_mps):
+            return SensorValidityResult(ok=False, reason="INVALID_VALUES")
         if range_m <= 0.0:
-            return False
+            return SensorValidityResult(ok=False, reason="INVALID_VALUES")
+        max_age_s = float(os.getenv("QIKI_SENSOR_MAX_AGE_S", "2.0"))
+        age_s = self._get_track_age_seconds(track)
+        if age_s is not None and age_s > max_age_s:
+            return SensorValidityResult(ok=False, reason="STALE")
+        quality = self._get_track_quality(track)
+        if quality is not None:
+            min_quality = float(os.getenv("QIKI_SENSOR_MIN_QUALITY", "0.5"))
+            if not math.isfinite(quality):
+                return SensorValidityResult(ok=False, reason="INVALID_VALUES")
+            if quality < min_quality:
+                return SensorValidityResult(ok=False, reason="LOW_QUALITY")
+        return SensorValidityResult(ok=True, reason="OK")
+
+    def is_docking_engaged(self, current_confirm_hits: int = 0) -> Tuple[bool, str, int]:
+        """Проверяет, выполнена ли стыковка (по валидным данным сенсоров/радар трека)."""
+        track = self._get_best_station_track()
+        validity = self.validate_station_track(track)
+        if not validity.ok:
+            return False, validity.reason, 0
+        assert track is not None
+        range_m = float(getattr(track, "range_m"))
+        vr_mps = float(getattr(track, "vr_mps"))
         engaged_range_m = float(os.getenv("QIKI_DOCKING_ENGAGED_RANGE_M", "20.0"))
         max_abs_vr_mps = float(os.getenv("QIKI_DOCKING_MAX_ABS_VR_MPS", "0.5"))
         if range_m > engaged_range_m:
-            return False
+            return False, "INVALID_VALUES", 0
         if abs(vr_mps) > max_abs_vr_mps:
-            return False
-        return True
+            return False, "INVALID_VALUES", 0
+        required_confirmations = max(1, int(os.getenv("QIKI_DOCKING_CONFIRMATION_COUNT", "3")))
+        if not self._track_has_timestamp(track) or not self._track_has_quality(track):
+            required_confirmations += 1
+        next_hits = current_confirm_hits + 1
+        if next_hits < required_confirmations:
+            return False, f"DOCKING_CONFIRMING_{next_hits}_OF_{required_confirmations}", next_hits
+        return True, "DOCKING_CONFIRMED", next_hits
 
     def _get_best_station_track(self) -> Optional[Any]:
         """Возвращает ближайший радар трек типа STATION, если доступен."""
@@ -215,6 +255,45 @@ class ShipContext:
                 best_track = track
                 best_range_m = range_m
         return best_track
+
+    @staticmethod
+    def _track_has_timestamp(track: Any) -> bool:
+        try:
+            if hasattr(track, "HasField"):
+                return bool(track.HasField("timestamp"))
+        except Exception:
+            return False
+        return False
+
+    @staticmethod
+    def _track_has_quality(track: Any) -> bool:
+        return hasattr(track, "quality")
+
+    @staticmethod
+    def _get_track_quality(track: Any) -> Optional[float]:
+        if not hasattr(track, "quality"):
+            return None
+        try:
+            return float(getattr(track, "quality"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _get_track_age_seconds(track: Any) -> Optional[float]:
+        try:
+            if hasattr(track, "HasField") and track.HasField("timestamp"):
+                ts = track.timestamp
+                published_s = float(ts.seconds) + (float(ts.nanos) / 1_000_000_000.0)
+                return max(0.0, time.time() - published_s)
+        except Exception:
+            return None
+        try:
+            age_s = float(getattr(track, "age_s"))
+            if math.isfinite(age_s) and age_s >= 0.0:
+                return age_s
+        except Exception:
+            return None
+        return None
 
     def get_current_propulsion_mode(self) -> PropulsionMode:
         """Получает текущий режим двигательной системы."""
@@ -324,19 +403,39 @@ class ShipFSMHandler(IFSMHandler):
 
         # Состояние: ПОДЛЕТ К СТЫКОВКЕ
         elif current_state == ShipState.DOCKING_APPROACH.value:
+            current_confirm_hits = 0
+            try:
+                current_confirm_hits = int(current_fsm_state.context_data.get(_DOCKING_CONFIRM_HITS_KEY, "0"))
+            except Exception:
+                current_confirm_hits = 0
             if not systems_ok:
                 new_state_name = ShipState.EMERGENCY_STOP.value
                 trigger_event = "EMERGENCY_DURING_DOCKING"
                 logger.error("🚨 Emergency during docking approach")
                 self._execute_emergency_stop()
-            elif self.ship_context.is_docking_engaged():
-                new_state_name = ShipState.DOCKING_ENGAGED.value
-                trigger_event = "DOCKING_COMPLETE"
-                logger.info("✅ Docking complete - engaged")
-            elif not docking_target:
-                new_state_name = ShipState.FLIGHT_MANEUVERING.value
-                trigger_event = "DOCKING_TARGET_LOST"
-                logger.warning("⚠️ Docking target lost - returning to maneuvering")
+                _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, "0")
+            else:
+                engaged, reason, next_confirm_hits = self.ship_context.is_docking_engaged(
+                    current_confirm_hits=current_confirm_hits
+                )
+                if engaged:
+                    new_state_name = ShipState.DOCKING_ENGAGED.value
+                    trigger_event = "DOCKING_CONFIRMED"
+                    logger.info("✅ Docking confirmed - engaged")
+                    _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, str(next_confirm_hits))
+                elif not docking_target:
+                    new_state_name = ShipState.FLIGHT_MANEUVERING.value
+                    trigger_event = "DOCKING_TARGET_LOST"
+                    logger.warning("⚠️ Docking target lost - returning to maneuvering")
+                    _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, "0")
+                elif reason.startswith("DOCKING_CONFIRMING_"):
+                    trigger_event = reason
+                    _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, str(next_confirm_hits))
+                else:
+                    trigger_event = "DOCKING_SENSOR_VALIDATION_FAILED"
+                    _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, "0")
+            if trigger_event == "":
+                _safe_set_context_data(next_state.context_data, _DOCKING_CONFIRM_HITS_KEY, str(current_confirm_hits))
 
         # Состояние: АВАРИЙНАЯ ОСТАНОВКА
         elif current_state == ShipState.EMERGENCY_STOP.value:
@@ -368,6 +467,16 @@ class ShipFSMHandler(IFSMHandler):
             new_transition.timestamp.GetCurrentTime()
 
             next_state.history.append(new_transition)
+        elif trigger_event:
+            from_fsm_state = _map_ship_state_to_fsm_state_enum(current_state)
+            observation_transition = StateTransition(
+                from_state=from_fsm_state,
+                to_state=from_fsm_state,
+                trigger_event=trigger_event,
+                status=FSMTransitionStatus.PENDING,
+            )
+            observation_transition.timestamp.GetCurrentTime()
+            next_state.history.append(observation_transition)
 
         _safe_set_context_data(next_state.context_data, _SHIP_STATE_CONTEXT_KEY, new_state_name)
 

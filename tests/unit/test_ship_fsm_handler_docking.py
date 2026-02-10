@@ -7,6 +7,8 @@ from qiki.services.q_core_agent.core.ship_fsm_handler import ShipFSMHandler, Shi
 from fsm_state_pb2 import FsmStateSnapshot, FSMStateEnum, FSMTransitionStatus
 from radar.v1 import radar_pb2
 from sensor_raw_in_pb2 import SensorReading
+import time
+import pytest
 
 
 class _HullStatus:
@@ -85,13 +87,18 @@ def _station_track_reading(range_m: float, vr_mps: float) -> SensorReading:
     track.object_type = radar_pb2.ObjectType.STATION
     track.range_m = float(range_m)
     track.vr_mps = float(vr_mps)
+    track.quality = 0.9
+    ts_now = time.time()
+    track.timestamp.seconds = int(ts_now)
+    track.timestamp.nanos = int((ts_now - int(ts_now)) * 1_000_000_000)
 
     reading = SensorReading()
     reading.radar_track.CopyFrom(track)
     return reading
 
 
-def test_docking_approach_transitions_to_engaged_when_docked() -> None:
+def test_docking_approach_transitions_to_engaged_when_docked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_DOCKING_CONFIRMATION_COUNT", "1")
     ship_core = _StubShipCore([_station_track_reading(range_m=10.0, vr_mps=0.1)])
     actuator_controller = _StubActuatorController()
     handler = ShipFSMHandler(ship_core, actuator_controller)
@@ -102,7 +109,7 @@ def test_docking_approach_transitions_to_engaged_when_docked() -> None:
     assert next_state.context_data["ship_state_name"] == ShipState.DOCKING_ENGAGED.value
     assert next_state.current_state == FSMStateEnum.ACTIVE
     assert len(next_state.history) == 1
-    assert next_state.history[0].trigger_event == "DOCKING_COMPLETE"
+    assert next_state.history[0].trigger_event == "DOCKING_CONFIRMED"
     assert next_state.history[0].status == FSMTransitionStatus.SUCCESS
 
 
