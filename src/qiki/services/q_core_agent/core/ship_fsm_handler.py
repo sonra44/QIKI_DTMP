@@ -29,7 +29,7 @@ try:
     from .interfaces import IFSMHandler
     from .agent_logger import logger
     from .ship_core import ShipCore
-    from .ship_actuators import ShipActuatorController, PropulsionMode
+    from .ship_actuators import ActuationResult, ActuationStatus, ShipActuatorController, PropulsionMode
 except ImportError:
     # For direct execution
     import interfaces
@@ -42,6 +42,8 @@ except ImportError:
     ShipCore = ship_core.ShipCore
     ShipActuatorController = ship_actuators.ShipActuatorController
     PropulsionMode = ship_actuators.PropulsionMode
+    ActuationResult = ship_actuators.ActuationResult
+    ActuationStatus = ship_actuators.ActuationStatus
 
 from fsm_state_pb2 import (
     FsmStateSnapshot as FSMState,
@@ -58,6 +60,12 @@ _SAFE_MODE_EXIT_HITS_KEY = "safe_mode_exit_hits"
 _SAFE_MODE_BIOS_OK_KEY = "safe_bios_ok"
 _SAFE_MODE_SENSORS_OK_KEY = "safe_sensors_ok"
 _SAFE_MODE_PROVIDER_OK_KEY = "safe_provider_ok"
+_LAST_ACTUATION_COMMAND_ID_KEY = "last_actuation_command_id"
+_LAST_ACTUATION_STATUS_KEY = "last_actuation_status"
+_LAST_ACTUATION_TIMESTAMP_KEY = "last_actuation_timestamp"
+_LAST_ACTUATION_REASON_KEY = "last_actuation_reason"
+_LAST_ACTUATION_IS_FALLBACK_KEY = "last_actuation_is_fallback"
+_LAST_ACTUATION_ACTION_KEY = "last_actuation_action"
 
 
 class SensorTrustReason(str, Enum):
@@ -77,6 +85,16 @@ class TrustedSensorFrame:
     quality: Optional[float] = None
     data: Optional[Dict[str, float]] = None
     is_fallback: bool = False
+
+
+@dataclass(frozen=True)
+class LastActuation:
+    command_id: str
+    status: ActuationStatus
+    timestamp: float
+    reason: str
+    is_fallback: bool = False
+    action: str = ""
 
 
 class ShipState(Enum):
@@ -127,6 +145,48 @@ def _safe_parse_bool(raw: str) -> Optional[bool]:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def _safe_parse_float(raw: str, *, default: float = 0.0) -> float:
+    try:
+        return float(raw)
+    except Exception:
+        return default
+
+
+def _safe_parse_actuation_status(raw: str) -> Optional[ActuationStatus]:
+    normalized = raw.strip().lower()
+    for status in ActuationStatus:
+        if normalized == status.value:
+            return status
+    return None
+
+
+def _is_truthy(raw: str) -> bool:
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _serialize_last_actuation(context_data: Any, actuation: LastActuation) -> None:
+    _safe_set_context_data(context_data, _LAST_ACTUATION_COMMAND_ID_KEY, actuation.command_id)
+    _safe_set_context_data(context_data, _LAST_ACTUATION_STATUS_KEY, actuation.status.value)
+    _safe_set_context_data(context_data, _LAST_ACTUATION_TIMESTAMP_KEY, f"{actuation.timestamp:.6f}")
+    _safe_set_context_data(context_data, _LAST_ACTUATION_REASON_KEY, actuation.reason)
+    _safe_set_context_data(context_data, _LAST_ACTUATION_IS_FALLBACK_KEY, "1" if actuation.is_fallback else "0")
+    _safe_set_context_data(context_data, _LAST_ACTUATION_ACTION_KEY, actuation.action)
+
+
+def _deserialize_last_actuation(context_data: Any) -> Optional[LastActuation]:
+    status = _safe_parse_actuation_status(_safe_get_context_data(context_data, _LAST_ACTUATION_STATUS_KEY))
+    if status is None:
+        return None
+    return LastActuation(
+        command_id=_safe_get_context_data(context_data, _LAST_ACTUATION_COMMAND_ID_KEY),
+        status=status,
+        timestamp=_safe_parse_float(_safe_get_context_data(context_data, _LAST_ACTUATION_TIMESTAMP_KEY), default=0.0),
+        reason=_safe_get_context_data(context_data, _LAST_ACTUATION_REASON_KEY),
+        is_fallback=_is_truthy(_safe_get_context_data(context_data, _LAST_ACTUATION_IS_FALLBACK_KEY)),
+        action=_safe_get_context_data(context_data, _LAST_ACTUATION_ACTION_KEY),
+    )
 
 
 def _normalize_safe_mode_reason(raw_reason: str) -> str:
@@ -372,6 +432,27 @@ class ShipContext:
         """Получает текущий режим двигательной системы."""
         return self.actuator_controller.current_mode
 
+    def get_last_actuation(self) -> Optional[LastActuation]:
+        """Returns the latest actuator fact if controller exposes it."""
+        try:
+            getter = getattr(self.actuator_controller, "get_last_actuation", None)
+            raw_result = getter() if callable(getter) else getattr(self.actuator_controller, "last_actuation", None)
+        except Exception:
+            logger.debug("ship_fsm_last_actuation_fetch_failed", exc_info=True)
+            return None
+        if raw_result is None:
+            return None
+        if not isinstance(raw_result, ActuationResult):
+            return None
+        return LastActuation(
+            command_id=str(raw_result.command_id),
+            status=raw_result.status,
+            timestamp=float(getattr(raw_result, "timestamp", 0.0) or 0.0),
+            reason=str(raw_result.reason or ""),
+            is_fallback=bool(raw_result.is_fallback),
+            action=str(getattr(raw_result, "action", "") or ""),
+        )
+
 
 class ShipFSMHandler(IFSMHandler):
     """
@@ -412,6 +493,26 @@ class ShipFSMHandler(IFSMHandler):
         provider_ok_hint = _safe_parse_bool(
             _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_PROVIDER_OK_KEY)
         )
+        last_actuation = self.ship_context.get_last_actuation() or _deserialize_last_actuation(current_fsm_state.context_data)
+        if last_actuation is not None:
+            _serialize_last_actuation(next_state.context_data, last_actuation)
+
+        def _matches_action(expected_prefix: str) -> bool:
+            if last_actuation is None:
+                return False
+            return last_actuation.action.startswith(expected_prefix)
+
+        def _actuation_gate(expected_prefix: str, pending_trigger: str, missing_trigger: str, rejected_trigger: str) -> tuple[bool, str]:
+            if last_actuation is None or not _matches_action(expected_prefix):
+                return False, missing_trigger
+            if last_actuation.status == ActuationStatus.EXECUTED:
+                return True, ""
+            if last_actuation.status == ActuationStatus.ACCEPTED:
+                return False, pending_trigger
+            if last_actuation.status == ActuationStatus.REJECTED:
+                return False, rejected_trigger
+            return False, f"{pending_trigger}_{last_actuation.status.name}"
+
         force_safe_mode = safe_mode_request_reason != SafeModeReason.UNKNOWN.value
         if not force_safe_mode and bios_ok_hint is False:
             force_safe_mode = True
@@ -422,6 +523,17 @@ class ShipFSMHandler(IFSMHandler):
         if not force_safe_mode and provider_ok_hint is False:
             force_safe_mode = True
             safe_mode_reason = SafeModeReason.PROVIDER_UNAVAILABLE.value
+        if (
+            not force_safe_mode
+            and last_actuation is not None
+            and last_actuation.status in {ActuationStatus.TIMEOUT, ActuationStatus.UNAVAILABLE, ActuationStatus.FAILED}
+            and (
+                last_actuation.action.startswith("set_main_drive_thrust")
+                or last_actuation.action.startswith("fire_rcs_thruster:")
+            )
+        ):
+            force_safe_mode = True
+            safe_mode_reason = SafeModeReason.ACTUATOR_UNAVAILABLE.value
 
         # Логика переходов состояний
         new_state_name = current_state
@@ -492,13 +604,31 @@ class ShipFSMHandler(IFSMHandler):
                 trigger_event = "SYSTEMS_DEGRADED"
                 logger.error("🚨 Systems failure detected - entering error state")
             elif propulsion_mode == PropulsionMode.CRUISE:
-                new_state_name = ShipState.FLIGHT_CRUISE.value
-                trigger_event = "MAIN_DRIVE_ENGAGED"
-                logger.info("🌟 Entering cruise flight mode")
+                can_transition, gate_trigger = _actuation_gate(
+                    expected_prefix="set_main_drive_thrust",
+                    pending_trigger="MAIN_DRIVE_ACCEPTED_PENDING_EXECUTION",
+                    missing_trigger="MAIN_DRIVE_NO_ACTUATION_FACT",
+                    rejected_trigger="MAIN_DRIVE_REJECTED",
+                )
+                if can_transition:
+                    new_state_name = ShipState.FLIGHT_CRUISE.value
+                    trigger_event = "MAIN_DRIVE_EXECUTED"
+                    logger.info("🌟 Entering cruise flight mode")
+                else:
+                    trigger_event = gate_trigger
             elif propulsion_mode == PropulsionMode.MANEUVERING:
-                new_state_name = ShipState.FLIGHT_MANEUVERING.value
-                trigger_event = "RCS_MANEUVERING_ACTIVE"
-                logger.info("🎯 Entering maneuvering mode")
+                can_transition, gate_trigger = _actuation_gate(
+                    expected_prefix="fire_rcs_thruster:",
+                    pending_trigger="RCS_ACCEPTED_PENDING_EXECUTION",
+                    missing_trigger="RCS_NO_ACTUATION_FACT",
+                    rejected_trigger="RCS_COMMAND_REJECTED",
+                )
+                if can_transition:
+                    new_state_name = ShipState.FLIGHT_MANEUVERING.value
+                    trigger_event = "RCS_EXECUTED_MANEUVERING_ACTIVE"
+                    logger.info("🎯 Entering maneuvering mode")
+                else:
+                    trigger_event = gate_trigger
             elif docking_target:
                 new_state_name = ShipState.DOCKING_APPROACH.value
                 trigger_event = "DOCKING_TARGET_ACQUIRED"
@@ -512,9 +642,18 @@ class ShipFSMHandler(IFSMHandler):
                 logger.error("🚨 Emergency stop - systems failure during cruise")
                 self._execute_emergency_stop()
             elif propulsion_mode == PropulsionMode.MANEUVERING:
-                new_state_name = ShipState.FLIGHT_MANEUVERING.value
-                trigger_event = "SWITCHING_TO_MANEUVERING"
-                logger.info("🎯 Switching from cruise to maneuvering")
+                can_transition, gate_trigger = _actuation_gate(
+                    expected_prefix="fire_rcs_thruster:",
+                    pending_trigger="RCS_ACCEPTED_PENDING_EXECUTION",
+                    missing_trigger="RCS_NO_ACTUATION_FACT",
+                    rejected_trigger="RCS_COMMAND_REJECTED",
+                )
+                if can_transition:
+                    new_state_name = ShipState.FLIGHT_MANEUVERING.value
+                    trigger_event = "SWITCHING_TO_MANEUVERING_EXECUTED"
+                    logger.info("🎯 Switching from cruise to maneuvering")
+                else:
+                    trigger_event = gate_trigger
             elif propulsion_mode == PropulsionMode.IDLE:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "FLIGHT_COMPLETED"
@@ -528,9 +667,18 @@ class ShipFSMHandler(IFSMHandler):
                 logger.error("🚨 Emergency stop during maneuvering")
                 self._execute_emergency_stop()
             elif propulsion_mode == PropulsionMode.CRUISE:
-                new_state_name = ShipState.FLIGHT_CRUISE.value
-                trigger_event = "SWITCHING_TO_CRUISE"
-                logger.info("🌟 Switching from maneuvering to cruise")
+                can_transition, gate_trigger = _actuation_gate(
+                    expected_prefix="set_main_drive_thrust",
+                    pending_trigger="MAIN_DRIVE_ACCEPTED_PENDING_EXECUTION",
+                    missing_trigger="MAIN_DRIVE_NO_ACTUATION_FACT",
+                    rejected_trigger="MAIN_DRIVE_REJECTED",
+                )
+                if can_transition:
+                    new_state_name = ShipState.FLIGHT_CRUISE.value
+                    trigger_event = "SWITCHING_TO_CRUISE_EXECUTED"
+                    logger.info("🌟 Switching from maneuvering to cruise")
+                else:
+                    trigger_event = gate_trigger
             elif propulsion_mode == PropulsionMode.IDLE:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "MANEUVERING_COMPLETED"

@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
+import time
 from qiki.services.q_core_agent.core.agent_logger import logger
 from qiki.services.q_core_agent.core.interfaces import (
     IDataProvider,
@@ -39,6 +40,11 @@ _SAFE_MODE_REQUEST_REASON_KEY = "safe_mode_request_reason"
 _SAFE_MODE_BIOS_OK_KEY = "safe_bios_ok"
 _SAFE_MODE_SENSORS_OK_KEY = "safe_sensors_ok"
 _SAFE_MODE_PROVIDER_OK_KEY = "safe_provider_ok"
+_LAST_ACTUATION_COMMAND_ID_KEY = "last_actuation_command_id"
+_LAST_ACTUATION_STATUS_KEY = "last_actuation_status"
+_LAST_ACTUATION_TIMESTAMP_KEY = "last_actuation_timestamp"
+_LAST_ACTUATION_REASON_KEY = "last_actuation_reason"
+_LAST_ACTUATION_IS_FALLBACK_KEY = "last_actuation_is_fallback"
 
 
 class AgentContext:
@@ -52,6 +58,7 @@ class AgentContext:
         self.fsm_state = fsm_state
         self.proposals = proposals if proposals is not None else []
         self.latest_sensor_data: Optional[SensorData] = None
+        self.last_actuation: Dict[str, Any] = {}
         self.guard_events: List[GuardEvaluationResult] = []
         self.world_snapshot: Dict[str, Any] = {}
 
@@ -218,14 +225,32 @@ class QCoreAgent:
         )
 
         for action in chosen_proposal.proposed_actions:
+            command_id = str(getattr(getattr(action, "command_id", None), "value", "") or "")
             try:
                 self.bot_core.send_actuator_command(action)
                 if data_provider is not None:
                     data_provider.send_actuator_command(action)
+                self._record_last_actuation(
+                    status="accepted",
+                    reason="COMMAND_ACCEPTED_NO_EXECUTION_ACK",
+                    command_id=command_id,
+                    is_fallback=False,
+                )
                 logger.info(f"Sent actuator command: {action.actuator_id} - {action.command_type.name}")
+            except TimeoutError as e:
+                self._record_last_actuation(status="timeout", reason=str(e), command_id=command_id, is_fallback=False)
+                self._switch_to_safe_mode(reason="ACTUATOR_UNAVAILABLE")
+                logger.error(f"Actuator timeout for command {action.actuator_id}: {e}")
+            except ConnectionError as e:
+                self._record_last_actuation(status="unavailable", reason=str(e), command_id=command_id, is_fallback=False)
+                self._switch_to_safe_mode(reason="ACTUATOR_UNAVAILABLE")
+                logger.error(f"Actuator unavailable for command {action.actuator_id}: {e}")
             except ValueError as e:
+                self._record_last_actuation(status="rejected", reason=str(e), command_id=command_id, is_fallback=False)
                 logger.error(f"Failed to send actuator command {action.actuator_id}: {e}")
             except Exception as e:
+                self._record_last_actuation(status="failed", reason=str(e), command_id=command_id, is_fallback=False)
+                self._switch_to_safe_mode(reason="ACTUATOR_UNAVAILABLE")
                 logger.error(f"Unexpected error sending command {action.actuator_id}: {e}")
 
     def _switch_to_safe_mode(self, reason: str = "UNKNOWN"):
@@ -243,6 +268,34 @@ class QCoreAgent:
             self.context.fsm_state = self.fsm_handler.process_fsm_state(fsm_state)
         except Exception as exc:
             logger.debug(f"SAFE_MODE transition request failed: {exc}")
+
+    def _record_last_actuation(
+        self,
+        *,
+        status: str,
+        reason: str,
+        command_id: str,
+        is_fallback: bool = False,
+    ) -> None:
+        payload = {
+            "command_id": str(command_id or ""),
+            "status": str(status or "").lower(),
+            "timestamp": float(time.time()),
+            "reason": str(reason or ""),
+            "is_fallback": bool(is_fallback),
+        }
+        self.context.last_actuation = payload
+        fsm_state = self.context.fsm_state
+        if fsm_state is None or not hasattr(fsm_state, "context_data"):
+            return
+        try:
+            fsm_state.context_data[_LAST_ACTUATION_COMMAND_ID_KEY] = payload["command_id"]
+            fsm_state.context_data[_LAST_ACTUATION_STATUS_KEY] = payload["status"]
+            fsm_state.context_data[_LAST_ACTUATION_TIMESTAMP_KEY] = f"{payload['timestamp']:.6f}"
+            fsm_state.context_data[_LAST_ACTUATION_REASON_KEY] = payload["reason"]
+            fsm_state.context_data[_LAST_ACTUATION_IS_FALLBACK_KEY] = "1" if payload["is_fallback"] else "0"
+        except Exception:
+            logger.debug("Failed to update last actuation context", exc_info=True)
 
     def _set_fsm_context_flag(self, key: str, value: bool) -> None:
         fsm_state = self.context.fsm_state

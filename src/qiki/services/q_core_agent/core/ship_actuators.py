@@ -6,6 +6,7 @@ Translates pilot commands into low-level actuator commands.
 
 import os
 import sys
+import time
 from uuid import uuid4
 
 # NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
@@ -165,6 +166,8 @@ class ActuationResult:
     command_id: str
     correlation_id: str
     is_fallback: bool = False
+    action: str = ""
+    timestamp: float = 0.0
 
 
 class ShipActuatorController:
@@ -176,6 +179,7 @@ class ShipActuatorController:
     def __init__(self, ship_core: ShipCore):
         self.ship_core = ship_core
         self.current_mode = PropulsionMode.IDLE
+        self.last_actuation: Optional[ActuationResult] = None
         logger.info("ShipActuatorController initialized.")
 
     @staticmethod
@@ -201,6 +205,31 @@ class ShipActuatorController:
         config = getattr(self.ship_core, "_config", {})
         return isinstance(config, dict) and config.get("mode") == "minimal"
 
+    def _build_actuation_result(
+        self,
+        *,
+        status: ActuationStatus,
+        reason: str,
+        command_id: str,
+        correlation_id: str,
+        action: str,
+        is_fallback: bool = False,
+    ) -> ActuationResult:
+        result = ActuationResult(
+            status=status,
+            reason=reason,
+            command_id=command_id,
+            correlation_id=correlation_id,
+            is_fallback=is_fallback,
+            action=action,
+            timestamp=time.time(),
+        )
+        self.last_actuation = result
+        return result
+
+    def get_last_actuation(self) -> Optional[ActuationResult]:
+        return self.last_actuation
+
     def _dispatch_command(self, command: Any, *, action: str) -> ActuationResult:
         command_id = self._set_command_id(command)
         if ACTUATOR_PROTO_FALLBACK_ACTIVE or self._is_minimal_mode():
@@ -210,19 +239,21 @@ class ShipActuatorController:
                     action,
                     command_id,
                 )
-                return ActuationResult(
+                return self._build_actuation_result(
                     status=ActuationStatus.ACCEPTED,
                     reason="SIMULATED_ACTUATION",
                     command_id=command_id,
                     correlation_id=command_id,
+                    action=action,
                     is_fallback=True,
                 )
             logger.error("Actuator channel unavailable (fallback/minimal mode), fail-fast: action=%s", action)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.UNAVAILABLE,
                 reason="ACTUATOR_CHANNEL_UNAVAILABLE",
                 command_id=command_id,
                 correlation_id=command_id,
+                action=action,
                 is_fallback=False,
             )
 
@@ -230,46 +261,51 @@ class ShipActuatorController:
             self.ship_core.send_actuator_command(command)
         except TimeoutError as exc:
             logger.error("Actuator command timeout: action=%s command_id=%s error=%s", action, command_id, exc)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.TIMEOUT,
                 reason=str(exc) or "ACTUATOR_TIMEOUT",
                 command_id=command_id,
                 correlation_id=command_id,
+                action=action,
                 is_fallback=False,
             )
         except ConnectionError as exc:
             logger.error("Actuator command unavailable: action=%s command_id=%s error=%s", action, command_id, exc)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.UNAVAILABLE,
                 reason=str(exc) or "ACTUATOR_UNAVAILABLE",
                 command_id=command_id,
                 correlation_id=command_id,
+                action=action,
                 is_fallback=False,
             )
         except ValueError as exc:
             logger.error("Actuator command rejected: action=%s command_id=%s error=%s", action, command_id, exc)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.REJECTED,
                 reason=str(exc),
                 command_id=command_id,
                 correlation_id=command_id,
+                action=action,
                 is_fallback=False,
             )
         except Exception as exc:
             logger.error("Actuator command failed: action=%s command_id=%s error=%s", action, command_id, exc)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.FAILED,
                 reason=str(exc),
                 command_id=command_id,
                 correlation_id=command_id,
+                action=action,
                 is_fallback=False,
             )
 
-        return ActuationResult(
+        return self._build_actuation_result(
             status=ActuationStatus.ACCEPTED,
             reason="COMMAND_ACCEPTED_NO_EXECUTION_ACK",
             command_id=command_id,
             correlation_id=command_id,
+            action=action,
             is_fallback=False,
         )
 
@@ -355,11 +391,12 @@ class ShipActuatorController:
         thruster_id = thruster_map.get(thruster_axis)
         if not thruster_id:
             logger.error("Unsupported thruster axis: %s", thruster_axis)
-            return ActuationResult(
+            return self._build_actuation_result(
                 status=ActuationStatus.REJECTED,
                 reason=f"unsupported thruster axis: {thruster_axis}",
                 command_id="",
                 correlation_id="",
+                action=f"fire_rcs_thruster:{thruster_axis}",
                 is_fallback=False,
             )
 
