@@ -149,9 +149,9 @@ def test_stale_track_does_not_increase_confirmation_counter(monkeypatch: pytest.
     state = _snapshot_with_ship_state(ShipState.DOCKING_APPROACH.value)
     next_state = _step(handler, state)
 
-    assert next_state.context_data["ship_state_name"] == ShipState.DOCKING_APPROACH.value
+    assert next_state.context_data["ship_state_name"] == ShipState.FLIGHT_MANEUVERING.value
     assert next_state.context_data["docking_confirm_hits"] == "0"
-    assert next_state.history[-1].trigger_event == "DOCKING_SENSOR_VALIDATION_FAILED"
+    assert next_state.history[-1].trigger_event == "DOCKING_TARGET_LOST"
 
 
 def test_invalid_values_do_not_confirm_docking() -> None:
@@ -177,8 +177,9 @@ def test_flapping_resets_confirmation_counter(monkeypatch: pytest.MonkeyPatch) -
     ship_core.set_readings([_station_track_reading(range_m=10.0, vr_mps=0.1, quality=0.1)])
     state = _step(handler, state)
     assert state.context_data["docking_confirm_hits"] == "0"
-    assert state.context_data["ship_state_name"] == ShipState.DOCKING_APPROACH.value
+    assert state.context_data["ship_state_name"] == ShipState.FLIGHT_MANEUVERING.value
 
+    state.context_data["ship_state_name"] = ShipState.DOCKING_APPROACH.value
     ship_core.set_readings([_station_track_reading(range_m=10.0, vr_mps=0.1)])
     state = _step(handler, state)
     assert state.context_data["docking_confirm_hits"] == "1"

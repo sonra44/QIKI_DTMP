@@ -60,10 +60,23 @@ _SAFE_MODE_SENSORS_OK_KEY = "safe_sensors_ok"
 _SAFE_MODE_PROVIDER_OK_KEY = "safe_provider_ok"
 
 
+class SensorTrustReason(str, Enum):
+    OK = "OK"
+    NO_DATA = "NO_DATA"
+    STALE = "STALE"
+    LOW_QUALITY = "LOW_QUALITY"
+    INVALID = "INVALID"
+    MISSING_FIELDS = "MISSING_FIELDS"
+
+
 @dataclass(frozen=True)
-class SensorValidityResult:
+class TrustedSensorFrame:
     ok: bool
-    reason: str = ""
+    reason: SensorTrustReason
+    age_s: Optional[float] = None
+    quality: Optional[float] = None
+    data: Optional[Dict[str, float]] = None
+    is_fallback: bool = False
 
 
 class ShipState(Enum):
@@ -208,62 +221,77 @@ class ShipContext:
 
     def is_docking_target_in_range(self) -> bool:
         """Проверяет, есть ли цель для стыковки в радиусе действия."""
-        track = self._get_best_station_track()
-        if track is None:
+        trusted = self.get_trusted_station_track()
+        if not trusted.ok or trusted.data is None:
             return False
-        try:
-            range_m = float(getattr(track, "range_m", 0.0) or 0.0)
-        except Exception:
-            return False
-        if range_m <= 0.0:
-            return False
+        range_m = float(trusted.data["range_m"])
         threshold_m = float(os.getenv("QIKI_DOCKING_TARGET_RANGE_M", "5000.0"))
         return range_m <= threshold_m
 
-    def validate_station_track(self, track: Optional[Any]) -> SensorValidityResult:
-        if track is None:
-            return SensorValidityResult(ok=False, reason="NO_READINGS")
-        if not hasattr(track, "range_m") or not hasattr(track, "vr_mps"):
-            return SensorValidityResult(ok=False, reason="MISSING_FIELDS")
+    def evaluate_sensor_frame(self, raw_frame: Optional[Any]) -> TrustedSensorFrame:
+        if raw_frame is None:
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.NO_DATA)
+        if not hasattr(raw_frame, "range_m") or not hasattr(raw_frame, "vr_mps"):
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
         try:
-            range_m = float(getattr(track, "range_m"))
-            vr_mps = float(getattr(track, "vr_mps"))
+            range_m = float(getattr(raw_frame, "range_m"))
+            vr_mps = float(getattr(raw_frame, "vr_mps"))
         except Exception:
-            return SensorValidityResult(ok=False, reason="MISSING_FIELDS")
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
         if not math.isfinite(range_m) or not math.isfinite(vr_mps):
-            return SensorValidityResult(ok=False, reason="INVALID_VALUES")
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
         if range_m <= 0.0:
-            return SensorValidityResult(ok=False, reason="INVALID_VALUES")
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
         max_age_s = float(os.getenv("QIKI_SENSOR_MAX_AGE_S", "2.0"))
-        age_s = self._get_track_age_seconds(track)
+        age_s = self._get_track_age_seconds(raw_frame)
         if age_s is not None and age_s > max_age_s:
-            return SensorValidityResult(ok=False, reason="STALE")
-        quality = self._get_track_quality(track)
+            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.STALE, age_s=age_s)
+        quality = self._get_track_quality(raw_frame)
         if quality is not None:
             min_quality = float(os.getenv("QIKI_SENSOR_MIN_QUALITY", "0.5"))
             if not math.isfinite(quality):
-                return SensorValidityResult(ok=False, reason="INVALID_VALUES")
+                return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID, age_s=age_s)
             if quality < min_quality:
-                return SensorValidityResult(ok=False, reason="LOW_QUALITY")
-        return SensorValidityResult(ok=True, reason="OK")
+                return TrustedSensorFrame(
+                    ok=False,
+                    reason=SensorTrustReason.LOW_QUALITY,
+                    age_s=age_s,
+                    quality=quality,
+                )
+        normalized: Dict[str, float] = {"range_m": range_m, "vr_mps": vr_mps}
+        if quality is not None:
+            normalized["quality"] = quality
+        return TrustedSensorFrame(
+            ok=True,
+            reason=SensorTrustReason.OK,
+            age_s=age_s,
+            quality=quality,
+            data=normalized,
+        )
+
+    def get_trusted_station_track(self) -> TrustedSensorFrame:
+        track = self._get_best_station_track()
+        return self.evaluate_sensor_frame(track)
+
+    def validate_station_track(self, track: Optional[Any]) -> TrustedSensorFrame:
+        # Backward-compatible wrapper used by legacy callers/tests.
+        return self.evaluate_sensor_frame(track)
 
     def is_docking_engaged(self, current_confirm_hits: int = 0) -> Tuple[bool, str, int]:
         """Проверяет, выполнена ли стыковка (по валидным данным сенсоров/радар трека)."""
-        track = self._get_best_station_track()
-        validity = self.validate_station_track(track)
-        if not validity.ok:
-            return False, validity.reason, 0
-        assert track is not None
-        range_m = float(getattr(track, "range_m"))
-        vr_mps = float(getattr(track, "vr_mps"))
+        trusted = self.get_trusted_station_track()
+        if not trusted.ok or trusted.data is None:
+            return False, trusted.reason.value, 0
+        range_m = float(trusted.data["range_m"])
+        vr_mps = float(trusted.data["vr_mps"])
         engaged_range_m = float(os.getenv("QIKI_DOCKING_ENGAGED_RANGE_M", "20.0"))
         max_abs_vr_mps = float(os.getenv("QIKI_DOCKING_MAX_ABS_VR_MPS", "0.5"))
         if range_m > engaged_range_m:
-            return False, "INVALID_VALUES", 0
+            return False, SensorTrustReason.INVALID.value, 0
         if abs(vr_mps) > max_abs_vr_mps:
-            return False, "INVALID_VALUES", 0
+            return False, SensorTrustReason.INVALID.value, 0
         required_confirmations = max(1, int(os.getenv("QIKI_DOCKING_CONFIRMATION_COUNT", "3")))
-        if not self._track_has_timestamp(track) or not self._track_has_quality(track):
+        if trusted.age_s is None or trusted.quality is None:
             required_confirmations += 1
         next_hits = current_confirm_hits + 1
         if next_hits < required_confirmations:
