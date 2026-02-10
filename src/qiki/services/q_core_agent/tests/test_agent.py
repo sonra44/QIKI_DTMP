@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 import os
 import json
@@ -38,13 +39,20 @@ def create_test_config(**overrides):
 @pytest.fixture
 def mock_data_provider():
     # Создаём реалистичный BIOS статус (может быть False)
-    mock_bios = BiosStatusReport()  # По умолчанию all_systems_go=False
+    mock_bios = BiosStatusReport()
+    mock_bios.all_systems_go = True
     mock_fsm = FsmStateSnapshot()
     mock_proposals = [Proposal(source_module_id="test", confidence=0.9)]
 
     provider = Mock(spec=IDataProvider)
     provider.get_bios_status.return_value = mock_bios
     provider.get_fsm_state.return_value = mock_fsm
+    provider.get_fsm_state_result.return_value = SimpleNamespace(
+        ok=True,
+        value=mock_fsm,
+        reason="OK",
+        is_fallback=False,
+    )
     provider.get_proposals.return_value = mock_proposals
     provider.get_sensor_data.return_value = SensorData(
         sensor_id="lidar_front",
@@ -128,6 +136,21 @@ def test_qcoreagent_evaluate_proposals_error_safe_mode(mock_data_provider):
 
     agent._evaluate_proposals.assert_called_once()
     agent._switch_to_safe_mode.assert_called()
+
+
+def test_qcoreagent_blocks_decision_when_safe_mode_active():
+    config = create_test_config()
+    agent = QCoreAgent(config)
+    agent.bot_core.send_actuator_command = Mock()
+
+    fsm = FsmStateSnapshot()
+    fsm.context_data["ship_state_name"] = "SAFE_MODE"
+    agent.context.fsm_state = fsm
+    agent.context.proposals = [Proposal(source_module_id="test", confidence=0.9)]
+
+    agent._make_decision()
+
+    agent.bot_core.send_actuator_command.assert_not_called()
 
 
 def test_bot_id_generated(monkeypatch):

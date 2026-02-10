@@ -52,6 +52,12 @@ from fsm_state_pb2 import (
 
 _SHIP_STATE_CONTEXT_KEY = "ship_state_name"
 _DOCKING_CONFIRM_HITS_KEY = "docking_confirm_hits"
+_SAFE_MODE_REASON_KEY = "safe_mode_reason"
+_SAFE_MODE_REQUEST_REASON_KEY = "safe_mode_request_reason"
+_SAFE_MODE_EXIT_HITS_KEY = "safe_mode_exit_hits"
+_SAFE_MODE_BIOS_OK_KEY = "safe_bios_ok"
+_SAFE_MODE_SENSORS_OK_KEY = "safe_sensors_ok"
+_SAFE_MODE_PROVIDER_OK_KEY = "safe_provider_ok"
 
 
 @dataclass(frozen=True)
@@ -69,8 +75,19 @@ class ShipState(Enum):
     FLIGHT_MANEUVERING = "FLIGHT_MANEUVERING"  # Маневрирование
     DOCKING_APPROACH = "DOCKING_APPROACH"  # Подлет к станции
     DOCKING_ENGAGED = "DOCKING_ENGAGED"  # Стыковка выполнена
+    SAFE_MODE = "SAFE_MODE"  # Безопасный удерживающий режим
     EMERGENCY_STOP = "EMERGENCY_STOP"  # Аварийная остановка
     SYSTEMS_ERROR = "SYSTEMS_ERROR"  # Ошибка систем корабля
+
+
+class SafeModeReason(Enum):
+    BIOS_UNAVAILABLE = "BIOS_UNAVAILABLE"
+    BIOS_INVALID = "BIOS_INVALID"
+    SENSORS_UNAVAILABLE = "SENSORS_UNAVAILABLE"
+    SENSORS_STALE = "SENSORS_STALE"
+    ACTUATOR_UNAVAILABLE = "ACTUATOR_UNAVAILABLE"
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    UNKNOWN = "UNKNOWN"
 
 
 def _safe_set_context_data(context_data: Any, key: str, value: str) -> None:
@@ -78,6 +95,33 @@ def _safe_set_context_data(context_data: Any, key: str, value: str) -> None:
         context_data[key] = value
     except Exception:
         logger.debug("ship_fsm_context_data_set_failed", exc_info=True)
+
+
+def _safe_get_context_data(context_data: Any, key: str, default: str = "") -> str:
+    try:
+        value = context_data.get(key, default)
+    except Exception:
+        return default
+    if value is None:
+        return default
+    return str(value)
+
+
+def _safe_parse_bool(raw: str) -> Optional[bool]:
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _normalize_safe_mode_reason(raw_reason: str) -> str:
+    normalized = raw_reason.strip().upper()
+    valid_reasons = {reason.value for reason in SafeModeReason}
+    if normalized in valid_reasons:
+        return normalized
+    return SafeModeReason.UNKNOWN.value
 
 
 def _map_ship_state_to_fsm_state_enum(ship_state_name: str) -> int:
@@ -88,6 +132,7 @@ def _map_ship_state_to_fsm_state_enum(ship_state_name: str) -> int:
     if ship_state_name in {
         ShipState.EMERGENCY_STOP.value,
         ShipState.SYSTEMS_ERROR.value,
+        ShipState.SAFE_MODE.value,
     }:
         return FSMStateEnum.ERROR_STATE
     return FSMStateEnum.ACTIVE
@@ -326,13 +371,79 @@ class ShipFSMHandler(IFSMHandler):
         nav_capable = self.ship_context.has_navigation_capability()
         docking_target = self.ship_context.is_docking_target_in_range()
         propulsion_mode = self.ship_context.get_current_propulsion_mode()
+        safe_mode_request_reason = _normalize_safe_mode_reason(
+            _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY)
+        )
+        safe_mode_reason = _normalize_safe_mode_reason(
+            _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_REASON_KEY)
+        )
+        bios_ok_hint = _safe_parse_bool(_safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_BIOS_OK_KEY))
+        sensors_ok_hint = _safe_parse_bool(
+            _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_SENSORS_OK_KEY)
+        )
+        provider_ok_hint = _safe_parse_bool(
+            _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_PROVIDER_OK_KEY)
+        )
+        force_safe_mode = safe_mode_request_reason != SafeModeReason.UNKNOWN.value
+        if not force_safe_mode and bios_ok_hint is False:
+            force_safe_mode = True
+            safe_mode_reason = SafeModeReason.BIOS_UNAVAILABLE.value
+        if not force_safe_mode and sensors_ok_hint is False:
+            force_safe_mode = True
+            safe_mode_reason = SafeModeReason.SENSORS_UNAVAILABLE.value
+        if not force_safe_mode and provider_ok_hint is False:
+            force_safe_mode = True
+            safe_mode_reason = SafeModeReason.PROVIDER_UNAVAILABLE.value
 
         # Логика переходов состояний
         new_state_name = current_state
         trigger_event = ""
+        if safe_mode_reason == SafeModeReason.UNKNOWN.value and safe_mode_request_reason != SafeModeReason.UNKNOWN.value:
+            safe_mode_reason = safe_mode_request_reason
+        if current_state != ShipState.SAFE_MODE.value and force_safe_mode:
+            new_state_name = ShipState.SAFE_MODE.value
+            trigger_event = f"SAFE_MODE_ENTER_{safe_mode_reason}"
+            _safe_set_context_data(next_state.context_data, _SAFE_MODE_REASON_KEY, safe_mode_reason)
+            _safe_set_context_data(next_state.context_data, _SAFE_MODE_EXIT_HITS_KEY, "0")
+            _safe_set_context_data(next_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY, "")
+            self._execute_emergency_stop()
+        elif current_state == ShipState.SAFE_MODE.value:
+            required_safe_exit_hits = max(1, int(os.getenv("QIKI_SAFE_EXIT_CONFIRMATION_COUNT", "3")))
+            try:
+                current_safe_exit_hits = int(
+                    _safe_get_context_data(current_fsm_state.context_data, _SAFE_MODE_EXIT_HITS_KEY, "0")
+                )
+            except Exception:
+                current_safe_exit_hits = 0
+            bios_ok = bios_ok_hint if bios_ok_hint is not None else systems_ok
+            sensors_ok = sensors_ok_hint if sensors_ok_hint is not None else nav_capable
+            provider_ok = provider_ok_hint if provider_ok_hint is not None else True
+            if bios_ok and sensors_ok and provider_ok:
+                next_safe_exit_hits = current_safe_exit_hits + 1
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_EXIT_HITS_KEY, str(next_safe_exit_hits))
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_REASON_KEY, safe_mode_reason)
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY, "")
+                if next_safe_exit_hits >= required_safe_exit_hits:
+                    new_state_name = ShipState.SHIP_IDLE.value
+                    trigger_event = "SAFE_MODE_EXIT_CONFIRMED"
+                else:
+                    trigger_event = f"SAFE_MODE_RECOVERING_{next_safe_exit_hits}_OF_{required_safe_exit_hits}"
+            else:
+                if not bios_ok:
+                    safe_mode_reason = SafeModeReason.BIOS_UNAVAILABLE.value
+                elif not sensors_ok:
+                    safe_mode_reason = SafeModeReason.SENSORS_UNAVAILABLE.value
+                elif not provider_ok:
+                    safe_mode_reason = SafeModeReason.PROVIDER_UNAVAILABLE.value
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_EXIT_HITS_KEY, "0")
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_REASON_KEY, safe_mode_reason)
+                _safe_set_context_data(next_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY, "")
+                trigger_event = f"SAFE_MODE_HOLD_{safe_mode_reason}"
 
         # Состояние: ЗАПУСК КОРАБЛЯ
-        if current_state == ShipState.SHIP_STARTUP.value:
+        if new_state_name != current_state:
+            pass
+        elif current_state == ShipState.SHIP_STARTUP.value:
             if systems_ok and nav_capable:
                 new_state_name = ShipState.SHIP_IDLE.value
                 trigger_event = "SHIP_SYSTEMS_ONLINE"

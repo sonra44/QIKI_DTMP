@@ -32,6 +32,15 @@ if TYPE_CHECKING:
     from qiki.shared.config_models import QCoreAgentConfig
 
 
+_SHIP_STATE_CONTEXT_KEY = "ship_state_name"
+_SAFE_MODE_STATE_NAME = "SAFE_MODE"
+_SAFE_MODE_REASON_KEY = "safe_mode_reason"
+_SAFE_MODE_REQUEST_REASON_KEY = "safe_mode_request_reason"
+_SAFE_MODE_BIOS_OK_KEY = "safe_bios_ok"
+_SAFE_MODE_SENSORS_OK_KEY = "safe_sensors_ok"
+_SAFE_MODE_PROVIDER_OK_KEY = "safe_provider_ok"
+
+
 class AgentContext:
     def __init__(
         self,
@@ -103,12 +112,19 @@ class QCoreAgent:
         logger.info("QCoreAgent initialized.")
 
     def _update_context(self, data_provider: IDataProvider):
-        self.context.update_from_provider(data_provider)
+        try:
+            self.context.update_from_provider(data_provider)
+        except Exception:
+            self._set_fsm_context_flag(_SAFE_MODE_PROVIDER_OK_KEY, False)
+            self._switch_to_safe_mode(reason="PROVIDER_UNAVAILABLE")
+            raise
+        self._set_fsm_context_flag(_SAFE_MODE_PROVIDER_OK_KEY, True)
         self._ingest_sensor_data(data_provider)
 
     def _update_context_without_fsm(self, data_provider: IDataProvider):
         """Обновляет контекст без FSM (для StateStore режима)"""
         self.context.update_from_provider_without_fsm(data_provider)
+        self._set_fsm_context_flag(_SAFE_MODE_PROVIDER_OK_KEY, True)
         self._ingest_sensor_data(data_provider)
 
     def _ingest_sensor_data(self, data_provider: IDataProvider) -> None:
@@ -116,11 +132,15 @@ class QCoreAgent:
             sensor_data = data_provider.get_sensor_data()
         except Exception as exc:  # noqa: BLE001
             logger.error(f"Failed to fetch sensor data: {exc}")
+            self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
+            self._switch_to_safe_mode(reason="SENSORS_UNAVAILABLE")
             return
 
         if sensor_data is None:
+            self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
             return
 
+        self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, True)
         self.context.latest_sensor_data = sensor_data
         try:
             self.bot_core.ingest_sensor_data(sensor_data)
@@ -141,17 +161,24 @@ class QCoreAgent:
                 bios_result = self.bios_handler.process_bios_status_result(self.context.bios_status)
                 if not bios_result.ok or bios_result.report is None:
                     logger.error(f"BIOS handler returned no data: {bios_result.reason}")
-                    self._switch_to_safe_mode()
+                    self._set_fsm_context_flag(_SAFE_MODE_BIOS_OK_KEY, False)
+                    reason = "BIOS_INVALID" if str(bios_result.reason).upper().endswith("INVALID") else "BIOS_UNAVAILABLE"
+                    self._switch_to_safe_mode(reason=reason)
                     return
                 self.context.bios_status = bios_result.report
+                self._set_fsm_context_flag(_SAFE_MODE_BIOS_OK_KEY, bool(getattr(bios_result.report, "all_systems_go", False)))
                 if bios_result.is_fallback:
                     logger.warning(f"BIOS handler returned fallback report: {bios_result.reason}")
             else:
                 self.context.bios_status = self.bios_handler.process_bios_status(self.context.bios_status)
+                self._set_fsm_context_flag(
+                    _SAFE_MODE_BIOS_OK_KEY, bool(getattr(self.context.bios_status, "all_systems_go", False))
+                )
             logger.debug(f"Handling BIOS status: {self.context.bios_status}")
         except Exception as e:
             logger.error(f"BIOS handler failed: {e}")
-            self._switch_to_safe_mode()
+            self._set_fsm_context_flag(_SAFE_MODE_BIOS_OK_KEY, False)
+            self._switch_to_safe_mode(reason="BIOS_UNAVAILABLE")
 
     def _handle_fsm(self):
         try:
@@ -159,7 +186,7 @@ class QCoreAgent:
             logger.debug(f"Handling FSM state: {self.context.fsm_state}")
         except Exception as e:
             logger.error(f"FSM handler failed: {e}")
-            self._switch_to_safe_mode()
+            self._switch_to_safe_mode(reason="UNKNOWN")
 
     def _evaluate_proposals(self):
         try:
@@ -173,10 +200,13 @@ class QCoreAgent:
             logger.debug(f"Evaluating {len(self.context.proposals)} proposals.")
         except Exception as e:
             logger.error(f"Proposal evaluator failed: {e}")
-            self._switch_to_safe_mode()
+            self._switch_to_safe_mode(reason="UNKNOWN")
 
     def _make_decision(self, data_provider: Optional[IDataProvider] = None):
         logger.debug("Making final decision and generating actuator commands...")
+        if self._is_fsm_in_safe_mode():
+            logger.warning("SAFE_MODE active: blocking active actuator commands")
+            return
         if not self.context.proposals:
             logger.debug("No accepted proposals to make a decision from.")
             return
@@ -198,8 +228,39 @@ class QCoreAgent:
             except Exception as e:
                 logger.error(f"Unexpected error sending command {action.actuator_id}: {e}")
 
-    def _switch_to_safe_mode(self):
-        logger.warning("Switched to SAFE MODE due to an error.")
+    def _switch_to_safe_mode(self, reason: str = "UNKNOWN"):
+        safe_reason = str(reason or "UNKNOWN").strip().upper() or "UNKNOWN"
+        logger.warning(f"Switched to SAFE MODE due to: {safe_reason}")
+        fsm_state = self.context.fsm_state
+        if fsm_state is None or not hasattr(fsm_state, "context_data"):
+            return
+        try:
+            fsm_state.context_data[_SAFE_MODE_REQUEST_REASON_KEY] = safe_reason
+            fsm_state.context_data[_SAFE_MODE_REASON_KEY] = safe_reason
+        except Exception:
+            return
+        try:
+            self.context.fsm_state = self.fsm_handler.process_fsm_state(fsm_state)
+        except Exception as exc:
+            logger.debug(f"SAFE_MODE transition request failed: {exc}")
+
+    def _set_fsm_context_flag(self, key: str, value: bool) -> None:
+        fsm_state = self.context.fsm_state
+        if fsm_state is None or not hasattr(fsm_state, "context_data"):
+            return
+        try:
+            fsm_state.context_data[key] = "1" if value else "0"
+        except Exception:
+            logger.debug("Failed to update FSM context flag", exc_info=True)
+
+    def _is_fsm_in_safe_mode(self) -> bool:
+        fsm_state = self.context.fsm_state
+        if fsm_state is None or not hasattr(fsm_state, "context_data"):
+            return False
+        try:
+            return str(fsm_state.context_data.get(_SHIP_STATE_CONTEXT_KEY, "")) == _SAFE_MODE_STATE_NAME
+        except Exception:
+            return False
 
     def get_health_snapshot(self) -> Dict[str, Any]:
         """Returns a dictionary with key health metrics of the agent."""
