@@ -28,17 +28,21 @@ from dataclasses import dataclass
 try:
     from .interfaces import IFSMHandler
     from .agent_logger import logger
+    from .event_store import EventStore, TruthState
     from .ship_core import ShipCore
     from .ship_actuators import ActuationResult, ActuationStatus, ShipActuatorController, PropulsionMode
 except ImportError:
     # For direct execution
     import interfaces
     import agent_logger
+    import event_store
     import ship_core
     import ship_actuators
 
     IFSMHandler = interfaces.IFSMHandler
     logger = agent_logger.logger
+    EventStore = event_store.EventStore
+    TruthState = event_store.TruthState
     ShipCore = ship_core.ShipCore
     ShipActuatorController = ship_actuators.ShipActuatorController
     PropulsionMode = ship_actuators.PropulsionMode
@@ -224,9 +228,12 @@ def _get_ship_state_name(snapshot: FSMState) -> str:
 class ShipContext:
     """Контекст состояния корабля для принятия решений FSM."""
 
-    def __init__(self, ship_core: ShipCore, actuator_controller: ShipActuatorController):
+    def __init__(
+        self, ship_core: ShipCore, actuator_controller: ShipActuatorController, event_store: Optional[EventStore] = None
+    ):
         self.ship_core = ship_core
         self.actuator_controller = actuator_controller
+        self.event_store = event_store or EventStore.from_env()
 
     def is_ship_systems_ok(self) -> bool:
         """Проверяет, в порядке ли основные системы корабля."""
@@ -289,44 +296,89 @@ class ShipContext:
         return range_m <= threshold_m
 
     def evaluate_sensor_frame(self, raw_frame: Optional[Any]) -> TrustedSensorFrame:
+        trusted: TrustedSensorFrame
         if raw_frame is None:
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.NO_DATA)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.NO_DATA)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         if not hasattr(raw_frame, "range_m") or not hasattr(raw_frame, "vr_mps"):
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         try:
             range_m = float(getattr(raw_frame, "range_m"))
             vr_mps = float(getattr(raw_frame, "vr_mps"))
         except Exception:
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.MISSING_FIELDS)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         if not math.isfinite(range_m) or not math.isfinite(vr_mps):
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         if range_m <= 0.0:
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         max_age_s = float(os.getenv("QIKI_SENSOR_MAX_AGE_S", "2.0"))
         age_s = self._get_track_age_seconds(raw_frame)
         if age_s is not None and age_s > max_age_s:
-            return TrustedSensorFrame(ok=False, reason=SensorTrustReason.STALE, age_s=age_s)
+            trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.STALE, age_s=age_s)
+            self._record_sensor_trust_event(trusted)
+            return trusted
         quality = self._get_track_quality(raw_frame)
         if quality is not None:
             min_quality = float(os.getenv("QIKI_SENSOR_MIN_QUALITY", "0.5"))
             if not math.isfinite(quality):
-                return TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID, age_s=age_s)
+                trusted = TrustedSensorFrame(ok=False, reason=SensorTrustReason.INVALID, age_s=age_s)
+                self._record_sensor_trust_event(trusted)
+                return trusted
             if quality < min_quality:
-                return TrustedSensorFrame(
+                trusted = TrustedSensorFrame(
                     ok=False,
                     reason=SensorTrustReason.LOW_QUALITY,
                     age_s=age_s,
                     quality=quality,
                 )
+                self._record_sensor_trust_event(trusted)
+                return trusted
         normalized: Dict[str, float] = {"range_m": range_m, "vr_mps": vr_mps}
         if quality is not None:
             normalized["quality"] = quality
-        return TrustedSensorFrame(
+        trusted = TrustedSensorFrame(
             ok=True,
             reason=SensorTrustReason.OK,
             age_s=age_s,
             quality=quality,
             data=normalized,
+        )
+        self._record_sensor_trust_event(trusted)
+        return trusted
+
+    def _record_sensor_trust_event(self, trusted: TrustedSensorFrame) -> None:
+        if trusted.is_fallback:
+            truth_state = TruthState.FALLBACK
+        elif trusted.ok:
+            truth_state = TruthState.OK
+        elif trusted.reason in {SensorTrustReason.INVALID, SensorTrustReason.MISSING_FIELDS}:
+            truth_state = TruthState.INVALID
+        else:
+            truth_state = TruthState.NO_DATA
+        self.event_store.append_new(
+            subsystem="SENSORS",
+            event_type="SENSOR_TRUST_VERDICT",
+            payload={
+                "sensor_kind": "station_track",
+                "ok": trusted.ok,
+                "reason": trusted.reason.value,
+                "age_s": trusted.age_s,
+                "quality": trusted.quality,
+                "data_present": trusted.data is not None,
+                "is_fallback": trusted.is_fallback,
+            },
+            truth_state=truth_state,
+            reason=trusted.reason.value,
+            tick_id=None,
         )
 
     def get_trusted_station_track(self) -> TrustedSensorFrame:
@@ -460,11 +512,69 @@ class ShipFSMHandler(IFSMHandler):
     Управляет переходами между состояниями: запуск, ожидание, полет, стыковка, аварийные режимы.
     """
 
-    def __init__(self, ship_core: ShipCore, actuator_controller: ShipActuatorController):
-        self.ship_context = ShipContext(ship_core, actuator_controller)
+    def __init__(
+        self,
+        ship_core: ShipCore,
+        actuator_controller: ShipActuatorController,
+        event_store: Optional[EventStore] = None,
+    ):
+        self.event_store = event_store or EventStore.from_env()
+        self.ship_context = ShipContext(ship_core, actuator_controller, event_store=self.event_store)
         self.ship_core = ship_core
         self.actuator_controller = actuator_controller
         logger.info("ShipFSMHandler initialized for spacecraft operations.")
+
+    def _record_fsm_transition_event(
+        self,
+        *,
+        from_state: str,
+        to_state: str,
+        trigger_event: str,
+        status: str,
+        context_data: Any,
+    ) -> None:
+        context_snapshot = {
+            "safe_mode_reason": _safe_get_context_data(context_data, _SAFE_MODE_REASON_KEY),
+            "safe_mode_exit_hits": _safe_get_context_data(context_data, _SAFE_MODE_EXIT_HITS_KEY),
+            "docking_confirm_hits": _safe_get_context_data(context_data, _DOCKING_CONFIRM_HITS_KEY),
+        }
+        self.event_store.append_new(
+            subsystem="FSM",
+            event_type="FSM_TRANSITION",
+            payload={
+                "from_state": from_state,
+                "to_state": to_state,
+                "trigger_event": trigger_event,
+                "status": status,
+                "context": context_snapshot,
+            },
+            truth_state=TruthState.OK,
+            reason=trigger_event,
+            tick_id=None,
+        )
+
+    def _record_safe_mode_event(
+        self,
+        *,
+        action: str,
+        reason: str,
+        exit_hits: str,
+        confirmation_count: int,
+    ) -> None:
+        truth_state = TruthState.NO_DATA if action in {"enter", "hold"} else TruthState.OK
+        self.event_store.append_new(
+            subsystem="SAFE_MODE",
+            event_type="SAFE_MODE",
+            payload={
+                "action": action,
+                "reason": reason,
+                "exit_hits": exit_hits,
+                "confirmation_count": confirmation_count,
+            },
+            truth_state=truth_state,
+            reason=reason,
+            tick_id=None,
+        )
 
     def process_fsm_state(self, current_fsm_state: FSMState) -> FSMState:
         """Обрабатывает текущее состояние FSM корабля и определяет следующее состояние."""
@@ -547,6 +657,12 @@ class ShipFSMHandler(IFSMHandler):
             _safe_set_context_data(next_state.context_data, _SAFE_MODE_EXIT_HITS_KEY, "0")
             _safe_set_context_data(next_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY, "")
             self._execute_emergency_stop()
+            self._record_safe_mode_event(
+                action="enter",
+                reason=safe_mode_reason,
+                exit_hits="0",
+                confirmation_count=max(1, int(os.getenv("QIKI_SAFE_EXIT_CONFIRMATION_COUNT", "3"))),
+            )
         elif current_state == ShipState.SAFE_MODE.value:
             required_safe_exit_hits = max(1, int(os.getenv("QIKI_SAFE_EXIT_CONFIRMATION_COUNT", "3")))
             try:
@@ -566,8 +682,20 @@ class ShipFSMHandler(IFSMHandler):
                 if next_safe_exit_hits >= required_safe_exit_hits:
                     new_state_name = ShipState.SHIP_IDLE.value
                     trigger_event = "SAFE_MODE_EXIT_CONFIRMED"
+                    self._record_safe_mode_event(
+                        action="exit",
+                        reason=safe_mode_reason,
+                        exit_hits=str(next_safe_exit_hits),
+                        confirmation_count=required_safe_exit_hits,
+                    )
                 else:
                     trigger_event = f"SAFE_MODE_RECOVERING_{next_safe_exit_hits}_OF_{required_safe_exit_hits}"
+                    self._record_safe_mode_event(
+                        action="recovering",
+                        reason=safe_mode_reason,
+                        exit_hits=str(next_safe_exit_hits),
+                        confirmation_count=required_safe_exit_hits,
+                    )
             else:
                 if not bios_ok:
                     safe_mode_reason = SafeModeReason.BIOS_UNAVAILABLE.value
@@ -579,6 +707,12 @@ class ShipFSMHandler(IFSMHandler):
                 _safe_set_context_data(next_state.context_data, _SAFE_MODE_REASON_KEY, safe_mode_reason)
                 _safe_set_context_data(next_state.context_data, _SAFE_MODE_REQUEST_REASON_KEY, "")
                 trigger_event = f"SAFE_MODE_HOLD_{safe_mode_reason}"
+                self._record_safe_mode_event(
+                    action="hold",
+                    reason=safe_mode_reason,
+                    exit_hits="0",
+                    confirmation_count=required_safe_exit_hits,
+                )
 
         # Состояние: ЗАПУСК КОРАБЛЯ
         if new_state_name != current_state:
@@ -754,6 +888,13 @@ class ShipFSMHandler(IFSMHandler):
             new_transition.timestamp.GetCurrentTime()
 
             next_state.history.append(new_transition)
+            self._record_fsm_transition_event(
+                from_state=current_state,
+                to_state=new_state_name,
+                trigger_event=trigger_event,
+                status="SUCCESS",
+                context_data=next_state.context_data,
+            )
         elif trigger_event:
             from_fsm_state = _map_ship_state_to_fsm_state_enum(current_state)
             observation_transition = StateTransition(
@@ -764,6 +905,13 @@ class ShipFSMHandler(IFSMHandler):
             )
             observation_transition.timestamp.GetCurrentTime()
             next_state.history.append(observation_transition)
+            self._record_fsm_transition_event(
+                from_state=current_state,
+                to_state=current_state,
+                trigger_event=trigger_event,
+                status="PENDING",
+                context_data=next_state.context_data,
+            )
 
         _safe_set_context_data(next_state.context_data, _SHIP_STATE_CONTEXT_KEY, new_state_name)
 

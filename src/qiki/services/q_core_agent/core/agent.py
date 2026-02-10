@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
 import time
 from qiki.services.q_core_agent.core.agent_logger import logger
+from qiki.services.q_core_agent.core.event_store import EventStore, TruthState
 from qiki.services.q_core_agent.core.interfaces import (
     IDataProvider,
     IBiosHandler,
@@ -59,6 +60,7 @@ class AgentContext:
         self.proposals = proposals if proposals is not None else []
         self.latest_sensor_data: Optional[SensorData] = None
         self.last_actuation: Dict[str, Any] = {}
+        self.event_store = EventStore.from_env()
         self.guard_events: List[GuardEvaluationResult] = []
         self.world_snapshot: Dict[str, Any] = {}
 
@@ -213,6 +215,14 @@ class QCoreAgent:
         logger.debug("Making final decision and generating actuator commands...")
         if self._is_fsm_in_safe_mode():
             logger.warning("SAFE_MODE active: blocking active actuator commands")
+            self.context.event_store.append_new(
+                subsystem="AGENT",
+                event_type="DECISION_BLOCKED",
+                payload={"reason": "SAFE_MODE_ACTIVE"},
+                truth_state=TruthState.NO_DATA,
+                reason="SAFE_MODE_ACTIVE",
+                tick_id=str(self.tick_id),
+            )
             return
         if not self.context.proposals:
             logger.debug("No accepted proposals to make a decision from.")
@@ -256,6 +266,14 @@ class QCoreAgent:
     def _switch_to_safe_mode(self, reason: str = "UNKNOWN"):
         safe_reason = str(reason or "UNKNOWN").strip().upper() or "UNKNOWN"
         logger.warning(f"Switched to SAFE MODE due to: {safe_reason}")
+        self.context.event_store.append_new(
+            subsystem="AGENT",
+            event_type="SAFE_MODE_REQUEST",
+            payload={"reason": safe_reason},
+            truth_state=TruthState.NO_DATA,
+            reason=safe_reason,
+            tick_id=str(self.tick_id),
+        )
         fsm_state = self.context.fsm_state
         if fsm_state is None or not hasattr(fsm_state, "context_data"):
             return

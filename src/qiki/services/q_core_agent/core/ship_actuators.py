@@ -34,12 +34,16 @@ RCS_STARBOARD_ID = "3ceca74a-2a9e-5aec-a308-4c24c9102324"
 try:
     from .ship_core import ShipCore
     from .agent_logger import logger
+    from .event_store import EventStore, TruthState
 except ImportError:
     import ship_core
     import agent_logger
+    import event_store
 
     ShipCore = ship_core.ShipCore
     logger = agent_logger.logger
+    EventStore = event_store.EventStore
+    TruthState = event_store.TruthState
 
 try:
     from generated.actuator_raw_out_pb2 import ActuatorCommand
@@ -176,10 +180,11 @@ class ShipActuatorController:
     Translates pilot commands into actuator commands.
     """
 
-    def __init__(self, ship_core: ShipCore):
+    def __init__(self, ship_core: ShipCore, event_store: Optional[EventStore] = None):
         self.ship_core = ship_core
         self.current_mode = PropulsionMode.IDLE
         self.last_actuation: Optional[ActuationResult] = None
+        self.event_store = event_store or EventStore.from_env()
         logger.info("ShipActuatorController initialized.")
 
     @staticmethod
@@ -225,10 +230,40 @@ class ShipActuatorController:
             timestamp=time.time(),
         )
         self.last_actuation = result
+        self._record_actuation_event(result)
         return result
 
     def get_last_actuation(self) -> Optional[ActuationResult]:
         return self.last_actuation
+
+    @staticmethod
+    def _truth_state_for_result(result: ActuationResult) -> TruthState:
+        if result.is_fallback:
+            return TruthState.FALLBACK
+        if result.status in {ActuationStatus.ACCEPTED, ActuationStatus.EXECUTED}:
+            return TruthState.OK
+        if result.status == ActuationStatus.REJECTED:
+            return TruthState.INVALID
+        return TruthState.NO_DATA
+
+    def _record_actuation_event(self, result: ActuationResult) -> None:
+        payload = {
+            "action": result.action,
+            "status": result.status.value,
+            "command_id": result.command_id,
+            "correlation_id": result.correlation_id,
+            "is_fallback": result.is_fallback,
+            "timestamp": result.timestamp,
+            "reason": result.reason,
+        }
+        self.event_store.append_new(
+            subsystem="ACTUATORS",
+            event_type="ACTUATION_RECEIPT",
+            payload=payload,
+            truth_state=self._truth_state_for_result(result),
+            reason=result.reason,
+            tick_id=None,
+        )
 
     def _dispatch_command(self, command: Any, *, action: str) -> ActuationResult:
         command_id = self._set_command_id(command)
