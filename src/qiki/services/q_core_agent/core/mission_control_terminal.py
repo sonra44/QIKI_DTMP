@@ -26,7 +26,10 @@ from qiki.services.q_core_agent.core.ship_actuators import (  # noqa: E402
     PropulsionMode,
 )
 from qiki.services.q_core_agent.core.event_store import EventStore  # noqa: E402
-from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline  # noqa: E402
+from qiki.services.q_core_agent.core.radar_pipeline import (  # noqa: E402
+    RadarPipeline,
+    RadarRenderConfig,
+)
 from qiki.services.q_core_agent.core.radar_controls import (  # noqa: E402
     RadarInputController,
     RadarMouseEvent,
@@ -39,6 +42,7 @@ from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E
 )
 from qiki.services.q_core_agent.core.terminal_input_backend import (  # noqa: E402
     InputEvent,
+    TerminalInputBackend,
     select_input_backend,
 )
 from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController  # noqa: E402
@@ -67,10 +71,14 @@ class MissionControlTerminal:
         self.running = True
         self.last_cycle: Optional[Dict[str, str]] = None
 
-    def run(self) -> None:
+    def run(self, *, real_input: bool = False) -> None:
         """Запускает основной цикл терминала."""
 
         print(f"{self.variant_name} готов. Команда 'help' покажет список команд.")
+        if real_input:
+            status = self.live_radar_loop(prefer_real=True)
+            if status == 0:
+                return
         try:
             while self.running:
                 if self.autopilot_enabled:
@@ -84,6 +92,31 @@ class MissionControlTerminal:
                     break
         except KeyboardInterrupt:
             print("\nСессия прервана пользователем.")
+
+    def configure_radar_pipeline(self, *, renderer: str | None = None, fps: int | None = None) -> None:
+        """Apply renderer/fps overrides for live/replay loops."""
+
+        base = RadarRenderConfig.from_env()
+        effective_renderer = (renderer or base.renderer).strip().lower()
+        if not effective_renderer:
+            effective_renderer = "auto"
+        effective_fps = base.fps_max
+        if fps is not None:
+            effective_fps = max(1, int(fps))
+        try:
+            self.radar_pipeline = RadarPipeline(
+                RadarRenderConfig(
+                    renderer=effective_renderer,
+                    view=base.view,
+                    fps_max=effective_fps,
+                    color=base.color,
+                )
+            )
+            self.radar_pipeline_error = ""
+            self.view_state = self.radar_pipeline.view_state
+        except RuntimeError as exc:
+            self.radar_pipeline = None
+            self.radar_pipeline_error = str(exc)
 
     def snapshot(self) -> Dict[str, Dict[str, float]]:
         """Возвращает снимок ключевых систем корабля."""
@@ -202,7 +235,14 @@ class MissionControlTerminal:
             print(f"Radar backend configuration error: {exc}")
 
     @staticmethod
-    def replay_events(jsonl_path: str, *, interactive: bool = False, real_input: bool = False) -> int:
+    def replay_events(
+        jsonl_path: str,
+        *,
+        interactive: bool = False,
+        real_input: bool = False,
+        renderer: str | None = None,
+        fps: int | None = None,
+    ) -> int:
         """Render HUD from exported EventStore JSONL trace."""
         path = Path(jsonl_path)
         if not path.exists():
@@ -210,7 +250,7 @@ class MissionControlTerminal:
             return 2
         events = load_events_jsonl(str(path))
         try:
-            pipeline = RadarPipeline()
+            pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps)
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
@@ -222,6 +262,22 @@ class MissionControlTerminal:
             print(f"Radar backend configuration error: {exc}")
             return 2
         return 0
+
+    @staticmethod
+    def _build_pipeline(*, renderer: str | None = None, fps: int | None = None) -> RadarPipeline:
+        base = RadarRenderConfig.from_env()
+        effective_renderer = (renderer or base.renderer).strip().lower()
+        if not effective_renderer:
+            effective_renderer = "auto"
+        effective_fps = base.fps_max if fps is None else max(1, int(fps))
+        return RadarPipeline(
+            RadarRenderConfig(
+                renderer=effective_renderer,
+                view=base.view,
+                fps_max=effective_fps,
+                color=base.color,
+            )
+        )
 
     @staticmethod
     def _replay_interactive(
@@ -330,6 +386,90 @@ class MissionControlTerminal:
             return controller.apply_key(view_state, raw, scene=scene), False
         return view_state, False
 
+    def live_radar_loop(
+        self,
+        *,
+        prefer_real: bool,
+        heartbeat_s: float = 1.0,
+        max_iterations: int | None = None,
+        backend_override: TerminalInputBackend | None = None,
+    ) -> int:
+        """Live cockpit loop driven by EventStore + input events."""
+
+        if self.radar_pipeline is None:
+            print(f"Radar backend configuration error: {self.radar_pipeline_error or 'unknown'}")
+            return 2
+
+        backend = backend_override
+        warning = ""
+        if backend is None:
+            backend, warning = select_input_backend(prefer_real=prefer_real)
+
+        if prefer_real and backend.name == "line":
+            if warning:
+                print(f"[WARN] {warning}")
+            print("[INFO] Real input unavailable; staying in command mode.")
+            return 3
+
+        if warning:
+            print(f"[WARN] {warning}")
+        print(
+            "Live controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit."
+            " Mouse: wheel/click/drag."
+        )
+
+        frame_interval = 1.0 / max(1, self.radar_pipeline.config.fps_max)
+        last_render_ts = -frame_interval
+        last_heartbeat_ts = 0.0
+        last_event_marker: tuple[int, str] | None = None
+        needs_render = True
+        iterations = 0
+        controller = self.radar_input
+
+        try:
+            while True:
+                iterations += 1
+                now = time.monotonic()
+                timeout = max(1, int(max(0.0, frame_interval - (now - last_render_ts)) * 1000.0))
+                input_events = backend.poll_events(timeout_ms=timeout)
+                events = self.event_store.recent(300)
+                marker = (len(events), events[-1].event_id if events else "")
+                has_new_events = marker != last_event_marker
+                if has_new_events:
+                    last_event_marker = marker
+
+                scene = build_scene_from_events(events)
+                should_quit = False
+                for event in input_events:
+                    self.view_state, should_quit = self._apply_input_event(
+                        controller=controller,
+                        view_state=self.view_state,
+                        event=event,
+                        scene=scene,
+                    )
+                    if should_quit:
+                        break
+
+                if should_quit:
+                    return 0
+
+                if input_events or has_new_events or (now - last_heartbeat_ts) >= heartbeat_s:
+                    needs_render = True
+
+                if needs_render and (now - last_render_ts) >= frame_interval:
+                    if backend.name == "real-terminal":
+                        print("\x1b[2J\x1b[H", end="")
+                    print(render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state))
+                    stamp = time.monotonic()
+                    last_render_ts = stamp
+                    last_heartbeat_ts = stamp
+                    needs_render = False
+
+                if max_iterations is not None and iterations >= max_iterations:
+                    return 0
+        finally:
+            backend.close()
+
     def handle_command(self, raw_command: str) -> bool:
         """Обрабатывает пользовательскую команду."""
 
@@ -354,6 +494,13 @@ class MissionControlTerminal:
         if cmd == "hud":
             self.render_event_hud()
             return True
+
+        if cmd == "radar":
+            prefer_real = True
+            if len(parts) > 1 and parts[1].lower() in {"line", "--line"}:
+                prefer_real = False
+            status = self.live_radar_loop(prefer_real=prefer_real)
+            return status in {0, 3}
 
         if cmd in {"1", "2", "3", "4", "r", "o", "c", "+", "-"}:
             self.view_state = self.radar_input.apply_key(self.view_state, cmd)
@@ -385,6 +532,7 @@ class MissionControlTerminal:
         print("  help                 — список команд")
         print("  status               — выполнить цикл логики и обновить статус")
         print("  hud                  — рендер Radar/HUD/EventLog из EventStore")
+        print("  radar [line]         — live cockpit loop (real input upgrade, q to exit)")
         print("  1|2|3|4              — вид радара top/side/front/iso")
         print("  r                    — reset view")
         print("  o                    — toggle overlays")
@@ -505,7 +653,17 @@ def main() -> None:
     parser.add_argument(
         "--real-input",
         action="store_true",
-        help="Enable real key/mouse terminal input backend; fallback to line mode when unavailable.",
+        help="Enable live cockpit with real key/mouse backend; fallback to command mode when unavailable.",
+    )
+    parser.add_argument(
+        "--renderer",
+        choices=["auto", "unicode", "kitty", "sixel"],
+        help="Radar renderer backend for replay/live loops.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        help="Override RADAR_FPS_MAX for replay/live loops.",
     )
     args = parser.parse_args()
     if args.replay:
@@ -514,10 +672,13 @@ def main() -> None:
                 args.replay,
                 interactive=args.interactive,
                 real_input=args.real_input,
+                renderer=args.renderer,
+                fps=args.fps,
             )
         )
     terminal = MissionControlTerminal()
-    terminal.run()
+    terminal.configure_radar_pipeline(renderer=args.renderer, fps=args.fps)
+    terminal.run(real_input=args.real_input)
 
 
 if __name__ == "__main__":
