@@ -374,6 +374,7 @@ class ShipContext:
                 "age_s": trusted.age_s,
                 "quality": trusted.quality,
                 "data_present": trusted.data is not None,
+                "data": dict(trusted.data) if trusted.data is not None else None,
                 "is_fallback": trusted.is_fallback,
             },
             truth_state=truth_state,

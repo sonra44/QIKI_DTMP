@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Optional
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +25,11 @@ from qiki.services.q_core_agent.core.ship_actuators import (  # noqa: E402
     ThrusterAxis,
     PropulsionMode,
 )
+from qiki.services.q_core_agent.core.event_store import EventStore  # noqa: E402
+from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
+    load_events_jsonl,
+    render_terminal_screen,
+)
 from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController  # noqa: E402
 
 
@@ -32,8 +39,9 @@ class MissionControlTerminal:
     def __init__(self, variant_name: str = "Mission Control Terminal"):
         self.variant_name = variant_name
         q_core_agent_root = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+        self.event_store = EventStore.from_env()
         self.ship_core = ShipCore(base_path=q_core_agent_root)
-        self.actuator_controller = ShipActuatorController(self.ship_core)
+        self.actuator_controller = ShipActuatorController(self.ship_core, event_store=self.event_store)
         self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
         self.autopilot_enabled = False
         self.running = True
@@ -162,6 +170,22 @@ class MissionControlTerminal:
         computing = snapshot["computing"]
         print(f"Вычисления: статус {computing.get('status', 'n/a')} | t={computing.get('temperature_k', 'n/a')} К")
 
+    def render_event_hud(self) -> None:
+        """Render EventStore-driven radar/HUD/log screen."""
+        events = self.event_store.recent(300)
+        print(render_terminal_screen(events))
+
+    @staticmethod
+    def replay_events(jsonl_path: str) -> int:
+        """Render HUD from exported EventStore JSONL trace."""
+        path = Path(jsonl_path)
+        if not path.exists():
+            print(f"Replay trace not found: {path}")
+            return 2
+        events = load_events_jsonl(str(path))
+        print(render_terminal_screen(events))
+        return 0
+
     def handle_command(self, raw_command: str) -> bool:
         """Обрабатывает пользовательскую команду."""
 
@@ -181,6 +205,10 @@ class MissionControlTerminal:
 
         if cmd == "status":
             self.last_cycle = self.logic_controller.process_logic_cycle()
+            return True
+
+        if cmd == "hud":
+            self.render_event_hud()
             return True
 
         if cmd == "autopilot" and len(parts) == 2:
@@ -205,6 +233,7 @@ class MissionControlTerminal:
         print("Доступные команды:")
         print("  help                 — список команд")
         print("  status               — выполнить цикл логики и обновить статус")
+        print("  hud                  — рендер Radar/HUD/EventLog из EventStore")
         print("  autopilot on|off     — включить или отключить автопилот")
         print("  thrust <0-100>       — установить тягу основного двигателя")
         rcs_help = "  rcs <axis> <0-100>   — импульс РДО (axis: forward/back/port/starboard)"
@@ -268,6 +297,15 @@ class MissionControlTerminal:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Mission Control Terminal (ASCII radar/HUD)")
+    parser.add_argument(
+        "--replay",
+        metavar="JSONL",
+        help="Render one truthful radar/HUD screen from EventStore JSONL trace.",
+    )
+    args = parser.parse_args()
+    if args.replay:
+        raise SystemExit(MissionControlTerminal.replay_events(args.replay))
     terminal = MissionControlTerminal()
     terminal.run()
 
