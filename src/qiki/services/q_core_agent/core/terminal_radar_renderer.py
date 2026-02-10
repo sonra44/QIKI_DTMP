@@ -432,8 +432,16 @@ def render_terminal_screen(
         trust_line = f"{trust_line} [MONO]"
     trust_line = _colorize_truth(trust_line, view.sensor_truth_state, color_enabled=color_enabled)
     clutter_line = "CLUTTER: OFF"
-    if stats is not None and stats.clutter_on:
-        clutter_line = f"CLUTTER: ON reason={stats.clutter_reason} dropped={','.join(stats.dropped_overlays)}"
+    perf_line = "PERF: n/a"
+    if stats is not None:
+        perf_line = (
+            f"PERF: {stats.frame_time_ms:.1f}ms (budget {active_pipeline.render_policy.frame_budget_ms:.0f}) "
+            f"lvl={stats.degradation_level} scale={stats.bitmap_scale:.2f}"
+        )
+        if stats.clutter_on:
+            reasons = ",".join(stats.clutter_reasons) if stats.clutter_reasons else "UNKNOWN"
+            dropped = ",".join(stats.dropped_overlays) if stats.dropped_overlays else "-"
+            clutter_line = f"CLUTTER: ON reasons=[{reasons}] dropped={dropped}"
     hud = [
         f"FSM: {view.fsm_state}",
         f"DOCKING CONFIRM: {view.docking_hits}/{max(1, view.docking_required)}",
@@ -444,6 +452,7 @@ def render_terminal_screen(
         safe_line,
         act_line,
         trust_line,
+        perf_line,
         clutter_line,
         _overlay_legend(active_view_state, plan.dropped_overlays if plan else ()),
     ]

@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from qiki.services.q_core_agent.core.event_store import EventStore
 from qiki.services.q_core_agent.core.radar_backends.base import RadarScene
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
 from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
@@ -172,3 +173,39 @@ def test_radar_view_changes_projection() -> None:
     assert "view=top" in top
     assert "view=side" in side
     assert top != side
+
+
+def test_render_tick_telemetry_event_is_written() -> None:
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    pipeline.render_scene(RadarScene(ok=False, reason="NO_DATA", truth_state="NO_DATA", is_fallback=False, points=[]))
+    ticks = store.filter(subsystem="RADAR", event_type="RADAR_RENDER_TICK")
+    assert ticks
+    payload = ticks[-1].payload
+    expected_keys = (
+        "frame_ms",
+        "fps_cap",
+        "targets_count",
+        "lod_level",
+        "degradation_level",
+        "bitmap_scale",
+        "clutter_reasons",
+        "backend",
+    )
+    for key in expected_keys:
+        assert key in payload
+
+
+def test_render_tick_telemetry_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_TELEMETRY", "0")
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    pipeline.render_scene(RadarScene(ok=True, reason="OK", truth_state="OK", is_fallback=False, points=[]))
+    ticks = store.filter(subsystem="RADAR", event_type="RADAR_RENDER_TICK")
+    assert not ticks

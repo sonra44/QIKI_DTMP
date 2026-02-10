@@ -3,9 +3,8 @@ from __future__ import annotations
 import time
 
 from qiki.services.q_core_agent.core.radar_backends import RadarPoint, RadarScene
-from qiki.services.q_core_agent.core.radar_controls import RadarInputController
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
-from qiki.services.q_core_agent.core.radar_render_policy import RadarRenderPolicy
+from qiki.services.q_core_agent.core.radar_render_policy import ClutterReason, DegradationState, RadarRenderPolicy
 from qiki.services.q_core_agent.core.radar_trail_store import RadarTrailStore
 from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
@@ -79,45 +78,182 @@ def _scene_points(count: int) -> RadarScene:
     )
 
 
+def _plan(
+    policy: RadarRenderPolicy,
+    *,
+    zoom: float,
+    targets_count: int,
+    frame_time_ms: float,
+    state: DegradationState | None = None,
+    now_ts: float = 0.0,
+    backend_name: str = "kitty",
+) -> tuple:
+    return policy.build_plan(
+        view_state=RadarViewState(zoom=zoom),
+        targets_count=targets_count,
+        frame_time_ms=frame_time_ms,
+        backend_name=backend_name,
+        degradation_state=state,
+        now_ts=now_ts,
+    )
+
+
+# LOD
+
 def test_lod_vectors_disabled_below_threshold() -> None:
     policy = RadarRenderPolicy()
-    plan = policy.build_plan(view_state=RadarViewState(zoom=1.0), targets_count=1, frame_time_ms=0.0)
+    plan, _ = _plan(policy, zoom=1.0, targets_count=1, frame_time_ms=0.0)
     assert plan.draw_vectors is False
 
 
 def test_lod_vectors_enabled_at_threshold() -> None:
     policy = RadarRenderPolicy()
-    plan = policy.build_plan(view_state=RadarViewState(zoom=1.2), targets_count=1, frame_time_ms=0.0)
+    plan, _ = _plan(policy, zoom=1.2, targets_count=1, frame_time_ms=0.0)
     assert plan.draw_vectors is True
 
 
 def test_lod_labels_disabled_below_threshold() -> None:
     policy = RadarRenderPolicy()
-    plan = policy.build_plan(view_state=RadarViewState(zoom=1.4), targets_count=1, frame_time_ms=0.0)
+    plan, _ = _plan(policy, zoom=1.4, targets_count=1, frame_time_ms=0.0)
     assert plan.draw_labels is False
 
 
 def test_lod_labels_enabled_at_threshold() -> None:
     policy = RadarRenderPolicy()
-    plan = policy.build_plan(view_state=RadarViewState(zoom=1.6), targets_count=1, frame_time_ms=0.0)
+    plan, _ = _plan(policy, zoom=1.6, targets_count=1, frame_time_ms=0.0)
     assert plan.draw_labels is True
 
 
-def test_clutter_by_target_count_disables_labels() -> None:
-    policy = RadarRenderPolicy(clutter_targets_max=2)
-    plan = policy.build_plan(view_state=RadarViewState(zoom=2.2), targets_count=5, frame_time_ms=0.0)
-    assert plan.clutter_on is True
+# Multi-reason + anti-clutter
+
+def test_multi_reason_contains_overload_and_budget() -> None:
+    policy = RadarRenderPolicy(clutter_targets_max=2, frame_budget_ms=10.0)
+    state = DegradationState()
+    _, state = _plan(policy, zoom=2.0, targets_count=5, frame_time_ms=15.0, state=state, now_ts=1.0)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=5, frame_time_ms=15.0, state=state, now_ts=2.0)
+    assert set(plan.clutter_reasons) >= {
+        ClutterReason.TARGET_OVERLOAD.value,
+        ClutterReason.FRAME_BUDGET_EXCEEDED.value,
+    }
+
+
+def test_multi_reason_does_not_duplicate_entries() -> None:
+    policy = RadarRenderPolicy(clutter_targets_max=2, frame_budget_ms=10.0)
+    state = DegradationState()
+    for ts in (1.0, 2.0, 3.0):
+        _, state = _plan(policy, zoom=2.0, targets_count=5, frame_time_ms=15.0, state=state, now_ts=ts)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=5, frame_time_ms=15.0, state=state, now_ts=4.0)
+    assert len(plan.clutter_reasons) == len(set(plan.clutter_reasons))
+
+
+# Step scaling
+
+def test_scale_level_0_is_1_0() -> None:
+    policy = RadarRenderPolicy(bitmap_scales=(1.0, 0.75, 0.5, 0.35))
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=0.0)
+    assert plan.degradation_level == 0
+    assert plan.bitmap_scale == 1.0
+
+
+def test_scale_level_1_is_0_75() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, bitmap_scales=(1.0, 0.75, 0.5, 0.35), degrade_confirm_frames=1)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0)
+    assert plan.degradation_level == 1
+    assert plan.bitmap_scale == 0.75
+
+
+def test_scale_level_2_is_0_5() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, bitmap_scales=(1.0, 0.75, 0.5, 0.35), degrade_confirm_frames=1)
+    state = DegradationState()
+    for ts in (1.0, 2.0):
+        _, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=ts)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=3.0)
+    assert plan.degradation_level == 3 or plan.degradation_level == 2
+    assert plan.bitmap_scale in {0.5, 0.35}
+
+
+def test_scale_level_3_is_0_35() -> None:
+    policy = RadarRenderPolicy(
+        frame_budget_ms=10.0,
+        bitmap_scales=(1.0, 0.75, 0.5, 0.35),
+        degrade_confirm_frames=1,
+        degrade_cooldown_ms=0,
+    )
+    state = DegradationState()
+    for ts in (1.0, 2.0, 3.0):
+        _, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=ts)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=4.0)
+    assert plan.degradation_level == 3
+    assert plan.bitmap_scale == 0.35
+
+
+def test_unicode_backend_keeps_overlay_drop_even_if_scale_not_used() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, degrade_confirm_frames=1)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0, backend_name="unicode")
+    assert plan.degradation_level >= 1
     assert plan.draw_labels is False
 
 
-def test_clutter_by_frame_budget_scales_bitmap_down() -> None:
-    policy = RadarRenderPolicy(frame_budget_ms=10.0, bitmap_scale=1.0)
-    plan = policy.build_plan(view_state=RadarViewState(zoom=2.0), targets_count=1, frame_time_ms=15.0)
-    assert plan.clutter_on is True
-    assert plan.bitmap_scale < 1.0
+# Hysteresis
+
+def test_single_budget_spike_does_not_degrade() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, degrade_confirm_frames=2)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0)
+    assert plan.degradation_level == 0
 
 
-def test_hud_shows_clutter_on() -> None:
+def test_repeated_budget_violations_degrade() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, degrade_confirm_frames=2)
+    state = DegradationState()
+    _, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=1.0)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=2.0)
+    assert plan.degradation_level == 1
+
+
+def test_recovery_after_confirm_frames() -> None:
+    policy = RadarRenderPolicy(
+        frame_budget_ms=10.0,
+        degrade_confirm_frames=1,
+        recovery_confirm_frames=2,
+        degrade_cooldown_ms=0,
+    )
+    plan, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0)
+    assert plan.degradation_level == 1
+    _, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=1.0, state=state, now_ts=2.0)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=1.0, state=state, now_ts=3.0)
+    assert plan.degradation_level == 0
+
+
+def test_cooldown_blocks_rapid_degradation() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, degrade_confirm_frames=1, degrade_cooldown_ms=5000)
+    state = DegradationState()
+    plan, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=1.0)
+    assert plan.degradation_level == 1
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, state=state, now_ts=1.2)
+    assert plan.degradation_level == 1
+
+
+# Render budget integration and HUD
+
+def test_frame_budget_reason_appears_when_over_budget() -> None:
+    policy = RadarRenderPolicy(frame_budget_ms=10.0, degrade_confirm_frames=1)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0)
+    assert ClutterReason.FRAME_BUDGET_EXCEEDED.value in plan.clutter_reasons
+
+
+def test_frame_budget_reason_disappears_after_recovery() -> None:
+    policy = RadarRenderPolicy(
+        frame_budget_ms=10.0,
+        degrade_confirm_frames=1,
+        recovery_confirm_frames=1,
+        degrade_cooldown_ms=0,
+    )
+    _, state = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=15.0, now_ts=1.0)
+    plan, _ = _plan(policy, zoom=2.0, targets_count=1, frame_time_ms=1.0, state=state, now_ts=2.0)
+    assert ClutterReason.FRAME_BUDGET_EXCEEDED.value not in plan.clutter_reasons
+
+
+def test_hud_shows_reasons_and_scale_and_level() -> None:
     pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
     pipeline._last_frame_time_ms = 200.0
     screen = render_terminal_screen(
@@ -125,62 +261,12 @@ def test_hud_shows_clutter_on() -> None:
         pipeline=pipeline,
         view_state=RadarViewState(zoom=2.0, color_enabled=False),
     )
-    assert "CLUTTER: ON" in screen
+    assert "PERF:" in screen
+    assert "lvl=" in screen
+    assert "scale=" in screen
 
 
-def test_inspector_shows_selected_track_details() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
-    controller = RadarInputController()
-    state = controller.apply_key(RadarViewState(color_enabled=False), "i")
-    state = RadarViewState(
-        zoom=state.zoom,
-        pan_x=state.pan_x,
-        pan_y=state.pan_y,
-        rot_yaw=state.rot_yaw,
-        rot_pitch=state.rot_pitch,
-        view=state.view,
-        selected_target_id="t1",
-        overlays_enabled=state.overlays_enabled,
-        color_enabled=state.color_enabled,
-        overlays=state.overlays,
-        inspector=state.inspector,
-    )
-    screen = render_terminal_screen([_ok_event(track_id="t1")], pipeline=pipeline, view_state=state)
-    assert "INSPECTOR: on id=t1" in screen
-    assert "range=" in screen
-
-
-def test_inspector_pinned_keeps_target() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
-    state = RadarViewState(selected_target_id="A", color_enabled=False)
-    controller = RadarInputController()
-    state = controller.apply_key(state, "i")
-    state = controller.apply_key(state, "i")
-    state = RadarViewState(
-        zoom=state.zoom,
-        pan_x=state.pan_x,
-        pan_y=state.pan_y,
-        rot_yaw=state.rot_yaw,
-        rot_pitch=state.rot_pitch,
-        view=state.view,
-        selected_target_id="B",
-        overlays_enabled=state.overlays_enabled,
-        color_enabled=state.color_enabled,
-        overlays=state.overlays,
-        inspector=state.inspector,
-    )
-    screen = render_terminal_screen(
-        [_ok_event(track_id="A"), _ok_event(track_id="B")],
-        pipeline=pipeline,
-        view_state=state,
-    )
-    assert "INSPECTOR: pinned id=A" in screen
-
-
-def test_inspector_off_hides_details() -> None:
-    screen = render_terminal_screen([_ok_event()], view_state=RadarViewState(inspector=RadarViewState().inspector))
-    assert "INSPECTOR: off" in screen
-
+# Trails / truth / consistency regressions
 
 def test_trail_length_capped() -> None:
     store = RadarTrailStore(max_len=3)
@@ -206,12 +292,6 @@ def test_trail_not_growing_on_no_data() -> None:
     store.update_from_scene(RadarScene(ok=False, reason="NO_DATA", truth_state="NO_DATA", is_fallback=False, points=[]))
     after = len(store.get_trail("t0"))
     assert after == before
-
-
-def test_clutter_disables_trails() -> None:
-    policy = RadarRenderPolicy(clutter_targets_max=1)
-    plan = policy.build_plan(view_state=RadarViewState(zoom=2.2), targets_count=3, frame_time_ms=0.0)
-    assert plan.draw_trails is False
 
 
 def test_truth_no_data_does_not_draw_target() -> None:

@@ -60,7 +60,7 @@ class MissionControlTerminal:
         self.radar_input = RadarInputController()
         self.view_state = RadarViewState.from_env()
         try:
-            self.radar_pipeline = RadarPipeline()
+            self.radar_pipeline = RadarPipeline(event_store=self.event_store)
             self.view_state = self.radar_pipeline.view_state
         except RuntimeError as exc:
             self.radar_pipeline_error = str(exc)
@@ -110,7 +110,8 @@ class MissionControlTerminal:
                     view=base.view,
                     fps_max=effective_fps,
                     color=base.color,
-                )
+                ),
+                event_store=self.event_store,
             )
             self.radar_pipeline_error = ""
             self.view_state = self.radar_pipeline.view_state

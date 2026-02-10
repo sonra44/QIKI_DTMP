@@ -14,7 +14,8 @@ from .radar_backends import (
     SixelRadarBackend,
     UnicodeRadarBackend,
 )
-from .radar_render_policy import RadarRenderPlan, RadarRenderPolicy
+from .event_store import EventStore, TruthState
+from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
 
@@ -44,12 +45,16 @@ class RadarRenderConfig:
 
 
 class RadarPipeline:
-    def __init__(self, config: RadarRenderConfig | None = None):
+    def __init__(self, config: RadarRenderConfig | None = None, *, event_store: EventStore | None = None):
         self.config = config or RadarRenderConfig.from_env()
+        telemetry_raw = os.getenv("RADAR_TELEMETRY", "1").strip().lower()
+        self.telemetry_enabled = telemetry_raw not in {"0", "false", "no", "off"}
+        self.event_store = event_store
         self.view_state = RadarViewState.from_env()
         self.render_policy = RadarRenderPolicy.from_env()
         self.trail_store = RadarTrailStore(max_len=self.render_policy.trail_len)
         self._last_frame_time_ms = 0.0
+        self._degradation_state = DegradationState(last_scale=self.render_policy.bitmap_scales[0])
         if self.config.view in _ALLOWED_VIEWS:
             self.view_state = RadarViewState(
                 zoom=self.view_state.zoom,
@@ -61,6 +66,8 @@ class RadarPipeline:
                 selected_target_id=self.view_state.selected_target_id,
                 overlays_enabled=self.view_state.overlays_enabled,
                 color_enabled=self.config.color and self.view_state.color_enabled,
+                overlays=self.view_state.overlays,
+                inspector=self.view_state.inspector,
             )
         self._unicode = UnicodeRadarBackend()
         self._kitty = KittyRadarBackend()
@@ -73,11 +80,16 @@ class RadarPipeline:
 
     def build_render_plan(self, scene: RadarScene, *, view_state: RadarViewState | None = None) -> RadarRenderPlan:
         active_view_state = view_state or self.view_state
-        return self.render_policy.build_plan(
+        plan, next_state = self.render_policy.build_plan(
             view_state=active_view_state,
             targets_count=len(scene.points),
             frame_time_ms=self._last_frame_time_ms,
+            backend_name=self._active_backend.name,
+            degradation_state=self._degradation_state,
+            now_ts=time.monotonic(),
         )
+        self._degradation_state = next_state
+        return plan
 
     def detect_best_backend(self) -> RadarBackend:
         requested = self.config.renderer
@@ -120,6 +132,7 @@ class RadarPipeline:
                 render_plan=plan,
             )
             self._last_frame_time_ms = (time.monotonic() - render_start) * 1000.0
+            self._append_render_tick_event(scene_with_trails, output)
             return output
         except Exception as exc:  # noqa: BLE001
             if self._active_backend.name == "unicode":
@@ -134,13 +147,49 @@ class RadarPipeline:
             )
             marker = f"[RADAR RUNTIME FALLBACK {previous}->unicode: {exc}]"
             self._last_frame_time_ms = (time.monotonic() - render_start) * 1000.0
-            return RenderOutput(
+            output = RenderOutput(
                 backend=fallback.backend,
                 lines=[marker, *fallback.lines],
                 used_runtime_fallback=True,
                 plan=plan,
                 stats=plan.stats,
             )
+            self._append_render_tick_event(scene_with_trails, output)
+            return output
+
+    def _append_render_tick_event(self, scene: RadarScene, output: RenderOutput) -> None:
+        if not self.telemetry_enabled or self.event_store is None:
+            return
+        stats = output.stats
+        plan = output.plan
+        if stats is None or plan is None:
+            return
+        truth_state = TruthState.OK
+        normalized = str(scene.truth_state or "").upper()
+        if normalized == TruthState.NO_DATA.value:
+            truth_state = TruthState.NO_DATA
+        elif normalized == TruthState.FALLBACK.value:
+            truth_state = TruthState.FALLBACK
+        elif normalized not in {TruthState.OK.value, TruthState.NO_DATA.value, TruthState.FALLBACK.value}:
+            truth_state = TruthState.INVALID
+        reasons = list(stats.clutter_reasons)
+        self.event_store.append_new(
+            subsystem="RADAR",
+            event_type="RADAR_RENDER_TICK",
+            payload={
+                "frame_ms": float(stats.frame_time_ms),
+                "fps_cap": int(self.config.fps_max),
+                "targets_count": int(stats.targets_count),
+                "lod_level": int(stats.lod_level),
+                "degradation_level": int(stats.degradation_level),
+                "bitmap_scale": float(stats.bitmap_scale),
+                "dropped_overlays": list(stats.dropped_overlays),
+                "clutter_reasons": reasons,
+                "backend": output.backend,
+            },
+            truth_state=truth_state,
+            reason=",".join(reasons) if reasons else "OK",
+        )
 
 
 def render_radar_scene(scene: RadarScene, *, pipeline: RadarPipeline | None = None) -> RenderOutput:
