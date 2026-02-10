@@ -34,7 +34,7 @@ class RadarTrackPublisher:
         return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
     @staticmethod
-    def build_headers(track: RadarTrackModel) -> dict[str, str]:
+    def build_headers(track: RadarTrackModel, *, extra_headers: dict[str, str] | None = None) -> dict[str, str]:
         headers = build_cloudevent_headers(
             event_id=str(track.track_id),
             event_type="qiki.radar.v1.Track",
@@ -42,6 +42,8 @@ class RadarTrackPublisher:
             event_time=track.timestamp,
         )
         headers["Nats-Msg-Id"] = str(track.track_id)
+        if extra_headers:
+            headers.update(extra_headers)
         return headers
 
     def _ensure_loop(self) -> None:
@@ -77,18 +79,26 @@ class RadarTrackPublisher:
         except Exception as exc:  # pragma: no cover
             logger.debug("NATS connect result: %s", exc)
 
-    async def _async_publish(self, data: bytes, headers: dict[str, str]) -> None:
+    async def _async_publish(self, data: bytes, headers: dict[str, str]) -> bool:
         if self._nc is None:
-            return
+            return False
         try:
             await self._nc.publish(self._subject, data, headers=headers)
+            await self._nc.flush(timeout=1.0)
+            return True
         except Exception as exc:  # pragma: no cover
             logger.debug("NATS publish failed: %s", exc)
+            return False
 
-    def publish_track(self, track: RadarTrackModel) -> None:
+    def publish_track(self, track: RadarTrackModel, *, extra_headers: dict[str, str] | None = None) -> bool:
         self._ensure_connection()
         if self._loop is None or self._nc is None:
-            return
+            return False
         data = self.build_payload(track)
-        headers = self.build_headers(track)
-        asyncio.run_coroutine_threadsafe(self._async_publish(data, headers), self._loop)
+        headers = self.build_headers(track, extra_headers=extra_headers)
+        fut = asyncio.run_coroutine_threadsafe(self._async_publish(data, headers), self._loop)
+        try:
+            return bool(fut.result(timeout=2.0))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("NATS publish result timeout/failure: %s", exc)
+            return False

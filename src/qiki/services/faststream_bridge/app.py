@@ -6,6 +6,7 @@ import os
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from uuid import uuid4
 
 from faststream import FastStream, Logger
 from faststream.nats import JStream, NatsBroker
@@ -70,6 +71,14 @@ class _StoredProposal:
 
 
 _proposal_store: dict[str, _StoredProposal] = {}
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    ok: bool
+    reason: str
+    event_id: str | None
+    is_fallback: bool = False
 
 
 # Proposal store limits (avoid magic numbers; env-overridable).
@@ -140,6 +149,56 @@ _lag_monitor = JetStreamLagMonitor(
     ],
     interval_sec=LAG_MONITOR_INTERVAL,
 )
+
+
+def _allow_bridge_fallback() -> bool:
+    return os.getenv("QIKI_ALLOW_BRIDGE_FALLBACK", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _resolve_frame_from_bridge_input(msg: object) -> tuple[RadarFrameModel | None, PublishResult | None]:
+    if isinstance(msg, RadarFrameModel):
+        return msg, None
+
+    # Explicit lower-layer contract input (InterfaceResult-like).
+    if hasattr(msg, "ok"):
+        ok = bool(getattr(msg, "ok"))
+        reason = str(getattr(msg, "reason", "NO_DATA"))
+        is_fallback = bool(getattr(msg, "is_fallback", False))
+        value = getattr(msg, "value", None)
+
+        if not ok:
+            if is_fallback and _allow_bridge_fallback():
+                frame = RadarFrameModel(sensor_id=uuid4(), detections=[])
+                return frame, None
+            return None, PublishResult(ok=False, reason=f"DROP:{reason}", event_id=None, is_fallback=is_fallback)
+
+        if value is None:
+            return None, PublishResult(ok=False, reason="DROP:OK_WITHOUT_VALUE", event_id=None, is_fallback=is_fallback)
+
+        try:
+            frame = RadarFrameModel.model_validate(value)
+        except ValidationError as exc:
+            return None, PublishResult(
+                ok=False,
+                reason=f"INVALID_INPUT_VALUE:{exc.__class__.__name__}",
+                event_id=None,
+                is_fallback=is_fallback,
+            )
+        return frame, None
+
+    try:
+        frame = RadarFrameModel.model_validate(msg)
+    except ValidationError as exc:
+        return None, PublishResult(ok=False, reason=f"INVALID_PAYLOAD:{exc.__class__.__name__}", event_id=None)
+    return frame, None
+
+
+def _validate_publishable_track(track: RadarTrackModel) -> None:
+    # Keep bridge-level guard explicit: event without ID/time is not a valid fact.
+    if track.track_id is None:
+        raise ValueError("track_id is required")
+    if track.timestamp is None:
+        raise ValueError("timestamp is required")
 
 
 def _parse_mode_change(text: str) -> QikiMode | None:
@@ -389,22 +448,43 @@ async def on_shutdown():
     stream=JStream(name=RADAR_STREAM, declare=False),
     pull_sub=True,
 )
-async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
+async def handle_radar_frame(msg: object, logger: Logger) -> PublishResult:
     """
     Минимальный потребитель кадров радара.
     На данном этапе — только логирование метрик кадра.
     """
+    frame, rejected = _resolve_frame_from_bridge_input(msg)
+    if rejected is not None:
+        logger.warning("Radar frame dropped: reason=%s", rejected.reason)
+        return rejected
+    assert frame is not None
+
+    fallback_allowed = _allow_bridge_fallback()
+    input_is_fallback = bool(getattr(msg, "is_fallback", False))
+    effective_fallback = input_is_fallback and fallback_allowed
+
     try:
-        count = len(msg.detections)
+        count = len(frame.detections)
         logger.info(
             "Radar frame received: frame_id=%s sensor_id=%s detections=%d",
-            msg.frame_id,
-            msg.sensor_id,
+            frame.frame_id,
+            frame.sensor_id,
             count,
         )
         # Минимальная агрегация: кадр -> трек
-        track = frame_to_track(msg)
-        _track_publisher.publish_track(track)
+        track = frame_to_track(frame)
+        _validate_publishable_track(track)
+        published = _track_publisher.publish_track(
+            track,
+            extra_headers={
+                "x-qiki-truth-state": "NO_DATA" if effective_fallback else "OK",
+                "x-qiki-fallback": "true" if effective_fallback else "false",
+            },
+        )
+        if not published:
+            logger.warning("Track publish failed: track_id=%s", track.track_id)
+            return PublishResult(ok=False, reason="UNAVAILABLE", event_id=None, is_fallback=effective_fallback)
+
         logger.debug("Track published with CloudEvents headers: track_id=%s", track.track_id)
 
         # Radar guards -> events -> ORION incidents (opt-in; no-mocks).
@@ -413,10 +493,30 @@ async def handle_radar_frame(msg: RadarFrameModel, logger: Logger) -> None:
                 _guard_publisher.publish_guard_alert(
                     _build_radar_guard_event_payload(track=track, evaluation=evaluation)
                 )
+        return PublishResult(
+            ok=True,
+            reason="PUBLISHED" if not effective_fallback else "SIMULATED_EVENT",
+            event_id=str(track.track_id),
+            is_fallback=effective_fallback,
+        )
     except Exception as exc:  # pragma: no cover
         logger.warning("Failed to handle radar frame: %s", exc)
-        fallback = frame_to_track(RadarFrameModel(sensor_id=msg.sensor_id, detections=[]))
-        _track_publisher.publish_track(fallback)
+        if fallback_allowed:
+            fallback_track = frame_to_track(RadarFrameModel(sensor_id=frame.sensor_id, detections=[]))
+            _validate_publishable_track(fallback_track)
+            published = _track_publisher.publish_track(
+                fallback_track,
+                extra_headers={"x-qiki-truth-state": "NO_DATA", "x-qiki-fallback": "true"},
+            )
+            if published:
+                logger.warning("Fallback event published: track_id=%s reason=SIMULATED_EVENT", fallback_track.track_id)
+                return PublishResult(
+                    ok=True,
+                    reason="SIMULATED_EVENT",
+                    event_id=str(fallback_track.track_id),
+                    is_fallback=True,
+                )
+        return PublishResult(ok=False, reason=f"DROP:{exc.__class__.__name__}", event_id=None, is_fallback=False)
 
 
 def _build_radar_guard_event_payload(*, track: RadarTrackModel, evaluation: GuardEvaluationResult) -> dict:
