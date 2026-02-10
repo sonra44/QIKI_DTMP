@@ -6,9 +6,17 @@ from io import BytesIO
 
 from .base import RadarScene
 from .geometry import project_point
+from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 
 
-def scene_to_image(scene: RadarScene, *, view: str, width: int = 240, height: int = 120, color: bool = True):
+def scene_to_image(
+    scene: RadarScene,
+    *,
+    view_state: RadarViewState,
+    width: int = 240,
+    height: int = 120,
+    color: bool = True,
+):
     try:
         from PIL import Image, ImageDraw
     except Exception as exc:  # noqa: BLE001
@@ -23,9 +31,10 @@ def scene_to_image(scene: RadarScene, *, view: str, width: int = 240, height: in
     draw = ImageDraw.Draw(image)
     cx, cy = width // 2, height // 2
     radius = min(cx, cy) - 8
-    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=fg, width=1)
-    draw.line((cx, cy - radius, cx, cy + radius), fill=(80, 90, 110, 255), width=1)
-    draw.line((cx - radius, cy, cx + radius, cy), fill=(80, 90, 110, 255), width=1)
+    if view_state.overlays_enabled:
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=fg, width=1)
+        draw.line((cx, cy - radius, cx, cy + radius), fill=(80, 90, 110, 255), width=1)
+        draw.line((cx - radius, cy, cx + radius, cy), fill=(80, 90, 110, 255), width=1)
 
     if not scene.ok:
         draw.text((12, cy - 6), f"NO DATA: {scene.reason or 'NO_DATA'}", fill=warn)
@@ -34,16 +43,30 @@ def scene_to_image(scene: RadarScene, *, view: str, width: int = 240, height: in
     if not scene.points:
         return image
 
-    projected = [project_point(p, view) for p in scene.points]
-    max_extent = max(1.0, max(max(abs(p.u), abs(p.v)) for p in projected))
-    scale = float(radius - 4) / max_extent
+    projected = [
+        (
+            str(p.metadata.get("target_id") or p.metadata.get("id") or f"target-{idx}"),
+            project_point(
+                p,
+                view_state.view,
+                rot_yaw_deg=view_state.rot_yaw,
+                rot_pitch_deg=view_state.rot_pitch,
+            ),
+        )
+        for idx, p in enumerate(scene.points)
+    ]
+    max_extent = max(1.0, max(max(abs(p.u), abs(p.v)) for _, p in projected))
+    scale = (float(radius - 4) / max_extent) * max(0.25, min(6.0, view_state.zoom))
 
-    for p in projected:
-        x = int(round(cx + p.u * scale))
-        y = int(round(cy - p.v * scale))
+    for point_id, p in projected:
+        x = int(round(cx + (p.u + view_state.pan_x) * scale))
+        y = int(round(cy - (p.v + view_state.pan_y) * scale))
         depth = max(-1.0, min(1.0, p.depth / 30.0))
         size = 2 if depth < -0.3 else 3 if depth < 0.4 else 4
         col = accent if p.vr_mps >= 0 else warn
+        if view_state.selected_target_id and view_state.selected_target_id == point_id:
+            col = (255, 230, 80, 255) if color else fg
+            size += 1
         draw.ellipse((x - size, y - size, x + size, y + size), fill=col)
         tail = 6 if p.vr_mps >= 0 else -6
         draw.line((x, y, x + tail, y), fill=col, width=1)

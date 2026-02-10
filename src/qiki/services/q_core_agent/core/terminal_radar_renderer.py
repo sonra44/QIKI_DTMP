@@ -12,6 +12,13 @@ from typing import Any, Mapping, Sequence
 
 from .radar_backends import RadarPoint, RadarScene
 from .radar_pipeline import RadarPipeline
+from .radar_view_state import RadarViewState
+
+_ANSI_RESET = "\x1b[0m"
+_ANSI_RED = "\x1b[31m"
+_ANSI_YELLOW = "\x1b[33m"
+_ANSI_GREEN = "\x1b[32m"
+_ANSI_CYAN = "\x1b[36m"
 
 
 @dataclass(frozen=True)
@@ -208,7 +215,12 @@ def _view_to_scene(view: _ViewModel) -> RadarScene:
                 y=y,
                 z=z,
                 vr_mps=view.vr_mps,
-                metadata={"range_m": view.range_m, "azimuth_deg": azimuth_deg, "elevation_deg": view.elevation_deg},
+                metadata={
+                    "target_id": "station-track-0",
+                    "range_m": view.range_m,
+                    "azimuth_deg": azimuth_deg,
+                    "elevation_deg": view.elevation_deg,
+                },
             )
         )
 
@@ -221,7 +233,33 @@ def _view_to_scene(view: _ViewModel) -> RadarScene:
     )
 
 
-def _format_event_log(events: Sequence[Any], max_items: int = 10) -> list[str]:
+def _colorize_truth(text: str, truth_state: str, *, color_enabled: bool) -> str:
+    if not color_enabled:
+        return text
+    state = (truth_state or "").upper()
+    if state == "OK":
+        return f"{_ANSI_GREEN}{text}{_ANSI_RESET}"
+    if state in {"NO_DATA", "STALE", "LOW_QUALITY"}:
+        return f"{_ANSI_YELLOW}{text}{_ANSI_RESET}"
+    if state in {"FALLBACK", "INVALID"}:
+        return f"{_ANSI_RED}{text}{_ANSI_RESET}"
+    return f"{_ANSI_CYAN}{text}{_ANSI_RESET}"
+
+
+def _event_severity(event: dict[str, Any]) -> str:
+    event_type = str(event.get("event_type", "")).upper()
+    reason = str(event.get("reason", "")).upper()
+    truth_state = str(event.get("truth_state", "")).upper()
+    if event_type == "SAFE_MODE":
+        return "SAFE"
+    if truth_state in {"NO_DATA", "STALE", "LOW_QUALITY", "FALLBACK", "INVALID"}:
+        return "WARN"
+    if any(token in reason for token in ("FAIL", "TIMEOUT", "UNAVAILABLE", "INVALID", "REJECTED")):
+        return "WARN"
+    return "INFO"
+
+
+def _format_event_log(events: Sequence[Any], max_items: int = 10, *, color_enabled: bool) -> list[str]:
     rows: list[str] = []
     for raw_event in list(events)[-max_items:]:
         event = _as_event_dict(raw_event)
@@ -229,17 +267,38 @@ def _format_event_log(events: Sequence[Any], max_items: int = 10) -> list[str]:
         ts_str = time.strftime("%H:%M:%S", time.localtime(ts)) if ts is not None and ts > 0 else "--:--:--"
         event_type = str(event.get("event_type", ""))
         reason = str(event.get("reason", ""))
-        rows.append(f"[{ts_str}] {event_type:<24} {reason}")
+        severity = _event_severity(event)
+        marker = f"[{severity}]"
+        row = f"[{ts_str}] {marker:<7} {event_type:<24} {reason}"
+        if color_enabled:
+            if severity == "WARN":
+                row = f"{_ANSI_YELLOW}{row}{_ANSI_RESET}"
+            elif severity == "SAFE":
+                row = f"{_ANSI_RED}{row}{_ANSI_RESET}"
+            else:
+                row = f"{_ANSI_CYAN}{row}{_ANSI_RESET}"
+        rows.append(row)
     return rows
 
 
-def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10, pipeline: RadarPipeline | None = None) -> str:
+def render_terminal_screen(
+    events: Sequence[Any],
+    *,
+    event_log_size: int = 10,
+    pipeline: RadarPipeline | None = None,
+    view_state: RadarViewState | None = None,
+) -> str:
     view = _build_view(events)
     scene = _view_to_scene(view)
     active_pipeline = pipeline or RadarPipeline()
-    radar_output = active_pipeline.render_scene(scene)
+    active_view_state = view_state or active_pipeline.view_state
+    radar_output = active_pipeline.render_scene(scene, view_state=active_view_state)
     radar_lines = radar_output.lines
-    log_lines = _format_event_log(events, max_items=event_log_size)
+    log_lines = _format_event_log(
+        events,
+        max_items=event_log_size,
+        color_enabled=active_pipeline.config.color and active_view_state.color_enabled,
+    )
 
     safe_line = "SAFE: OFF"
     if view.fsm_state == "SAFE_MODE" or view.safe_mode_reason:
@@ -258,13 +317,21 @@ def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10, p
         "=" * 72,
         (
             "MISSION CONTROL TERMINAL :: RADAR 3D + HUD (EventStore Facts) "
-            f"backend={active_pipeline.active_backend_name} view={active_pipeline.config.view}"
+            f"backend={active_pipeline.active_backend_name} view={active_view_state.view}"
         ),
         "=" * 72,
     ]
+    color_enabled = active_pipeline.config.color and active_view_state.color_enabled
+    if not color_enabled:
+        trust_line = f"{trust_line} [MONO]"
+    trust_line = _colorize_truth(trust_line, view.sensor_truth_state, color_enabled=color_enabled)
     hud = [
         f"FSM: {view.fsm_state}",
         f"DOCKING CONFIRM: {view.docking_hits}/{max(1, view.docking_required)}",
+        (
+            f"VIEW: {active_view_state.view} zoom={active_view_state.zoom:.2f} pan=({active_view_state.pan_x:.2f},"
+            f"{active_view_state.pan_y:.2f}) rot=({active_view_state.rot_yaw:.1f},{active_view_state.rot_pitch:.1f})"
+        ),
         safe_line,
         act_line,
         trust_line,
@@ -272,6 +339,11 @@ def render_terminal_screen(events: Sequence[Any], *, event_log_size: int = 10, p
     radar_title = ["", "[ RADAR ]"]
     log_title = ["", "[ EVENT LOG ]"]
     return "\n".join(header + radar_title + radar_lines + [""] + hud + log_title + log_lines)
+
+
+def build_scene_from_events(events: Sequence[Any]) -> RadarScene:
+    view = _build_view(events)
+    return _view_to_scene(view)
 
 
 def load_events_jsonl(path: str) -> list[dict[str, Any]]:

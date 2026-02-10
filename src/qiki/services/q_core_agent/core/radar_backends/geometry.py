@@ -16,7 +16,13 @@ class ProjectedPoint:
     vr_mps: float
 
 
-def project_point(point: RadarPoint, view: str) -> ProjectedPoint:
+def project_point(
+    point: RadarPoint,
+    view: str,
+    *,
+    rot_yaw_deg: float = 0.0,
+    rot_pitch_deg: float = 0.0,
+) -> ProjectedPoint:
     x = float(point.x)
     y = float(point.y)
     z = float(point.z)
@@ -27,8 +33,14 @@ def project_point(point: RadarPoint, view: str) -> ProjectedPoint:
     if view == "front":
         return ProjectedPoint(u=y, v=z, depth=x, vr_mps=point.vr_mps)
     if view == "iso":
-        # Clockwise rotation around +Y-like up-axis with simple pseudo-3D scaling.
-        u = (x - y) * math.sqrt(0.5)
-        v = ((x + y) * 0.35) - z * 0.75
-        return ProjectedPoint(u=u, v=v, depth=z, vr_mps=point.vr_mps)
+        yaw = math.radians(rot_yaw_deg)
+        pitch = math.radians(rot_pitch_deg)
+        xr = (x * math.cos(yaw)) - (y * math.sin(yaw))
+        yr = (x * math.sin(yaw)) + (y * math.cos(yaw))
+        zr = z
+        yp = (yr * math.cos(pitch)) - (zr * math.sin(pitch))
+        zp = (yr * math.sin(pitch)) + (zr * math.cos(pitch))
+        u = (xr - yp) * math.sqrt(0.5)
+        v = ((xr + yp) * 0.35) - zp * 0.75
+        return ProjectedPoint(u=u, v=v, depth=zp, vr_mps=point.vr_mps)
     return ProjectedPoint(u=x, v=y, depth=z, vr_mps=point.vr_mps)

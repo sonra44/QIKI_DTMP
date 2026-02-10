@@ -13,6 +13,7 @@ from .radar_backends import (
     SixelRadarBackend,
     UnicodeRadarBackend,
 )
+from .radar_view_state import RadarViewState
 
 _ALLOWED_VIEWS = {"top", "side", "front", "iso"}
 
@@ -42,6 +43,19 @@ class RadarRenderConfig:
 class RadarPipeline:
     def __init__(self, config: RadarRenderConfig | None = None):
         self.config = config or RadarRenderConfig.from_env()
+        self.view_state = RadarViewState.from_env()
+        if self.config.view in _ALLOWED_VIEWS:
+            self.view_state = RadarViewState(
+                zoom=self.view_state.zoom,
+                pan_x=self.view_state.pan_x,
+                pan_y=self.view_state.pan_y,
+                rot_yaw=self.view_state.rot_yaw,
+                rot_pitch=self.view_state.rot_pitch,
+                view=self.config.view,
+                selected_target_id=self.view_state.selected_target_id,
+                overlays_enabled=self.view_state.overlays_enabled,
+                color_enabled=self.config.color and self.view_state.color_enabled,
+            )
         self._unicode = UnicodeRadarBackend()
         self._kitty = KittyRadarBackend()
         self._sixel = SixelRadarBackend()
@@ -71,15 +85,24 @@ class RadarPipeline:
             return self._sixel
         return self._unicode
 
-    def render_scene(self, scene: RadarScene) -> RenderOutput:
+    def render_scene(self, scene: RadarScene, *, view_state: RadarViewState | None = None) -> RenderOutput:
+        active_view_state = view_state or self.view_state
         try:
-            return self._active_backend.render(scene, view=self.config.view, color=self.config.color)
+            return self._active_backend.render(
+                scene,
+                view_state=active_view_state,
+                color=(self.config.color and active_view_state.color_enabled),
+            )
         except Exception as exc:  # noqa: BLE001
             if self._active_backend.name == "unicode":
                 raise
             previous = self._active_backend.name
             self._active_backend = self._unicode
-            fallback = self._active_backend.render(scene, view=self.config.view, color=self.config.color)
+            fallback = self._active_backend.render(
+                scene,
+                view_state=active_view_state,
+                color=(self.config.color and active_view_state.color_enabled),
+            )
             marker = f"[RADAR RUNTIME FALLBACK {previous}->unicode: {exc}]"
             return RenderOutput(
                 backend=fallback.backend,

@@ -27,7 +27,13 @@ from qiki.services.q_core_agent.core.ship_actuators import (  # noqa: E402
 )
 from qiki.services.q_core_agent.core.event_store import EventStore  # noqa: E402
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline  # noqa: E402
+from qiki.services.q_core_agent.core.radar_controls import (  # noqa: E402
+    RadarInputController,
+    RadarMouseEvent,
+)
+from qiki.services.q_core_agent.core.radar_view_state import RadarViewState  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
+    build_scene_from_events,
     load_events_jsonl,
     render_terminal_screen,
 )
@@ -43,8 +49,11 @@ class MissionControlTerminal:
         self.event_store = EventStore.from_env()
         self.radar_pipeline: RadarPipeline | None = None
         self.radar_pipeline_error = ""
+        self.radar_input = RadarInputController()
+        self.view_state = RadarViewState.from_env()
         try:
             self.radar_pipeline = RadarPipeline()
+            self.view_state = self.radar_pipeline.view_state
         except RuntimeError as exc:
             self.radar_pipeline_error = str(exc)
         self.ship_core = ShipCore(base_path=q_core_agent_root)
@@ -184,12 +193,12 @@ class MissionControlTerminal:
             print(f"Radar backend configuration error: {self.radar_pipeline_error or 'unknown'}")
             return
         try:
-            print(render_terminal_screen(events, pipeline=self.radar_pipeline))
+            print(render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
 
     @staticmethod
-    def replay_events(jsonl_path: str) -> int:
+    def replay_events(jsonl_path: str, *, interactive: bool = False) -> int:
         """Render HUD from exported EventStore JSONL trace."""
         path = Path(jsonl_path)
         if not path.exists():
@@ -197,11 +206,63 @@ class MissionControlTerminal:
             return 2
         events = load_events_jsonl(str(path))
         try:
-            print(render_terminal_screen(events, pipeline=RadarPipeline()))
+            pipeline = RadarPipeline()
+        except RuntimeError as exc:
+            print(f"Radar backend configuration error: {exc}")
+            return 2
+        if interactive:
+            return MissionControlTerminal._replay_interactive(events, pipeline)
+        try:
+            print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
         return 0
+
+    @staticmethod
+    def _replay_interactive(events: list[dict[str, object]], pipeline: RadarPipeline) -> int:
+        controller = RadarInputController()
+        view_state = pipeline.view_state
+        print("Replay controls: 1/2/3/4 view, r reset, o overlays, c color, +/- zoom, q quit.")
+        print("Mouse emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
+        while True:
+            print(render_terminal_screen(events, pipeline=pipeline, view_state=view_state))
+            raw = input("replay> ").strip().lower()
+            if not raw:
+                continue
+            if raw in {"q", "quit", "exit"}:
+                return 0
+            if raw.startswith("wheel "):
+                direction = raw.split(" ", 1)[1].strip()
+                delta = 1.0 if direction == "up" else -1.0 if direction == "down" else 0.0
+                action = controller.handle_mouse(RadarMouseEvent(kind="wheel", delta=delta))
+                view_state = controller.apply_action(view_state, action)
+                continue
+            if raw.startswith("click "):
+                parts = raw.split()
+                if len(parts) == 3:
+                    try:
+                        x = float(parts[1])
+                        y = float(parts[2])
+                    except ValueError:
+                        continue
+                    action = controller.handle_mouse(RadarMouseEvent(kind="click", x=x, y=y, button="left"))
+                    view_state = controller.apply_action(view_state, action, scene=build_scene_from_events(events))
+                continue
+            if raw.startswith("drag "):
+                parts = raw.split()
+                if len(parts) == 3:
+                    try:
+                        dx = float(parts[1])
+                        dy = float(parts[2])
+                    except ValueError:
+                        continue
+                    action = controller.handle_mouse(
+                        RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=dx, dy=dy)
+                    )
+                    view_state = controller.apply_action(view_state, action)
+                continue
+            view_state = controller.apply_key(view_state, raw)
 
     def handle_command(self, raw_command: str) -> bool:
         """Обрабатывает пользовательскую команду."""
@@ -228,6 +289,13 @@ class MissionControlTerminal:
             self.render_event_hud()
             return True
 
+        if cmd in {"1", "2", "3", "4", "r", "o", "c", "+", "-"}:
+            self.view_state = self.radar_input.apply_key(self.view_state, cmd)
+            return True
+
+        if cmd == "mouse":
+            return self._handle_mouse(parts[1:])
+
         if cmd == "autopilot" and len(parts) == 2:
             return self._handle_autopilot(parts[1].lower())
 
@@ -251,6 +319,14 @@ class MissionControlTerminal:
         print("  help                 — список команд")
         print("  status               — выполнить цикл логики и обновить статус")
         print("  hud                  — рендер Radar/HUD/EventLog из EventStore")
+        print("  1|2|3|4              — вид радара top/side/front/iso")
+        print("  r                    — reset view")
+        print("  o                    — toggle overlays")
+        print("  c                    — toggle color")
+        print("  +|-                  — zoom in/out")
+        print("  mouse wheel up|down  — zoom мышью (эмуляция)")
+        print("  mouse click x y      — выбор ближайшей цели")
+        print("  mouse drag dx dy     — pan/rotate (iso)")
         print("  autopilot on|off     — включить или отключить автопилот")
         print("  thrust <0-100>       — установить тягу основного двигателя")
         rcs_help = "  rcs <axis> <0-100>   — импульс РДО (axis: forward/back/port/starboard)"
@@ -312,6 +388,41 @@ class MissionControlTerminal:
         else:
             print("Аварийная остановка завершилась ошибкой.")
 
+    def _handle_mouse(self, args: list[str]) -> bool:
+        if len(args) >= 2 and args[0] == "wheel":
+            delta = 1.0 if args[1] == "up" else -1.0 if args[1] == "down" else 0.0
+            action = self.radar_input.handle_mouse(RadarMouseEvent(kind="wheel", delta=delta))
+            self.view_state = self.radar_input.apply_action(self.view_state, action)
+            return True
+        if len(args) == 3 and args[0] == "click":
+            try:
+                x = float(args[1])
+                y = float(args[2])
+            except ValueError:
+                print("Пример: mouse click 0.2 -0.1")
+                return True
+            action = self.radar_input.handle_mouse(RadarMouseEvent(kind="click", x=x, y=y, button="left"))
+            self.view_state = self.radar_input.apply_action(
+                self.view_state,
+                action,
+                scene=build_scene_from_events(self.event_store.recent(300)),
+            )
+            return True
+        if len(args) == 3 and args[0] == "drag":
+            try:
+                dx = float(args[1])
+                dy = float(args[2])
+            except ValueError:
+                print("Пример: mouse drag 0.1 -0.1")
+                return True
+            action = self.radar_input.handle_mouse(
+                RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=dx, dy=dy)
+            )
+            self.view_state = self.radar_input.apply_action(self.view_state, action)
+            return True
+        print("mouse: wheel up|down | click <x> <y> | drag <dx> <dy>")
+        return True
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mission Control Terminal (ASCII radar/HUD)")
@@ -320,9 +431,14 @@ def main() -> None:
         metavar="JSONL",
         help="Render one truthful radar/HUD screen from EventStore JSONL trace.",
     )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Interactive replay controls for --replay (hotkeys + mouse emulation).",
+    )
     args = parser.parse_args()
     if args.replay:
-        raise SystemExit(MissionControlTerminal.replay_events(args.replay))
+        raise SystemExit(MissionControlTerminal.replay_events(args.replay, interactive=args.interactive))
     terminal = MissionControlTerminal()
     terminal.run()
 

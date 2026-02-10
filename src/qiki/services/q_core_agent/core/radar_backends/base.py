@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 
 @dataclass(frozen=True)
 class RadarPoint:
@@ -40,5 +41,5 @@ class RadarBackend(ABC):
         """Return True only when backend is confidently supported in current terminal."""
 
     @abstractmethod
-    def render(self, scene: RadarScene, *, view: str, color: bool) -> RenderOutput:
+    def render(self, scene: RadarScene, *, view_state: RadarViewState, color: bool) -> RenderOutput:
         """Render radar pane for provided scene and projection view."""

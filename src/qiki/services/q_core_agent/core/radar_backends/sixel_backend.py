@@ -6,6 +6,7 @@ import os
 
 from .base import RadarBackend, RadarScene, RenderOutput
 from .bitmap_common import image_to_sixel_text, scene_to_image
+from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 
 
 class SixelRadarBackend(RadarBackend):
@@ -17,10 +18,10 @@ class SixelRadarBackend(RadarBackend):
         term = os.getenv("TERM", "").lower()
         return "sixel" in term
 
-    def render(self, scene: RadarScene, *, view: str, color: bool) -> RenderOutput:
+    def render(self, scene: RadarScene, *, view_state: RadarViewState, color: bool) -> RenderOutput:
         if not self.is_supported():
             raise RuntimeError("SIXEL backend is unsupported in this terminal")
-        image = scene_to_image(scene, view=view, color=color)
+        image = scene_to_image(scene, view_state=view_state, color=color)
         sixel = image_to_sixel_text(image)
         lines = [
             "[SIXEL BITMAP FRAME]",
