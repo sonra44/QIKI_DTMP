@@ -6,6 +6,7 @@ Translates pilot commands into low-level actuator commands.
 
 import os
 import sys
+from uuid import uuid4
 
 # NOTE: This module is part of the qiki package. Mutating sys.path at import-time is
 # dangerous and can mask real import issues.
@@ -43,7 +44,14 @@ try:
     from generated.actuator_raw_out_pb2 import ActuatorCommand
     from generated.common_types_pb2 import UUID, Vector3, Unit
     from google.protobuf.timestamp_pb2 import Timestamp
-except ImportError:
+    ACTUATOR_PROTO_FALLBACK_ACTIVE = False
+except ImportError as exc:
+    if os.getenv("QIKI_ALLOW_ACTUATOR_FALLBACK", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise ImportError(
+            "Actuator protobuf imports failed. "
+            "Set QIKI_ALLOW_ACTUATOR_FALLBACK=true only for explicit stand/dev fallback."
+        ) from exc
+    ACTUATOR_PROTO_FALLBACK_ACTIVE = True
     # Mock classes for development
     class MockActuatorCommand:
         def __init__(self, **kwargs):
@@ -137,6 +145,28 @@ class PowerAllocation:
     shields: float = 4.0  # MW
 
 
+class ActuationStatus(Enum):
+    """Truthful command execution statuses."""
+
+    ACCEPTED = "accepted"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass
+class ActuationResult:
+    """Explicit result for actuator command dispatch."""
+
+    status: ActuationStatus
+    reason: str
+    command_id: str
+    correlation_id: str
+    is_fallback: bool = False
+
+
 class ShipActuatorController:
     """
     High-level interface for controlling ship systems.
@@ -148,9 +178,110 @@ class ShipActuatorController:
         self.current_mode = PropulsionMode.IDLE
         logger.info("ShipActuatorController initialized.")
 
+    @staticmethod
+    def _allow_actuator_fallback() -> bool:
+        return os.getenv("QIKI_ALLOW_ACTUATOR_FALLBACK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _is_success_status(status: ActuationStatus) -> bool:
+        return status in {ActuationStatus.ACCEPTED, ActuationStatus.EXECUTED}
+
+    @staticmethod
+    def _set_command_id(command: Any) -> str:
+        command_id = str(uuid4())
+        if hasattr(command, "command_id"):
+            command_field = getattr(command, "command_id")
+            if hasattr(command_field, "value"):
+                command_field.value = command_id
+            else:
+                setattr(command, "command_id", command_id)
+        return command_id
+
+    def _is_minimal_mode(self) -> bool:
+        config = getattr(self.ship_core, "_config", {})
+        return isinstance(config, dict) and config.get("mode") == "minimal"
+
+    def _dispatch_command(self, command: Any, *, action: str) -> ActuationResult:
+        command_id = self._set_command_id(command)
+        if ACTUATOR_PROTO_FALLBACK_ACTIVE or self._is_minimal_mode():
+            if self._allow_actuator_fallback():
+                logger.warning(
+                    "Actuator fallback enabled; simulated actuation accepted: action=%s command_id=%s",
+                    action,
+                    command_id,
+                )
+                return ActuationResult(
+                    status=ActuationStatus.ACCEPTED,
+                    reason="SIMULATED_ACTUATION",
+                    command_id=command_id,
+                    correlation_id=command_id,
+                    is_fallback=True,
+                )
+            logger.error("Actuator channel unavailable (fallback/minimal mode), fail-fast: action=%s", action)
+            return ActuationResult(
+                status=ActuationStatus.UNAVAILABLE,
+                reason="ACTUATOR_CHANNEL_UNAVAILABLE",
+                command_id=command_id,
+                correlation_id=command_id,
+                is_fallback=False,
+            )
+
+        try:
+            self.ship_core.send_actuator_command(command)
+        except TimeoutError as exc:
+            logger.error("Actuator command timeout: action=%s command_id=%s error=%s", action, command_id, exc)
+            return ActuationResult(
+                status=ActuationStatus.TIMEOUT,
+                reason=str(exc) or "ACTUATOR_TIMEOUT",
+                command_id=command_id,
+                correlation_id=command_id,
+                is_fallback=False,
+            )
+        except ConnectionError as exc:
+            logger.error("Actuator command unavailable: action=%s command_id=%s error=%s", action, command_id, exc)
+            return ActuationResult(
+                status=ActuationStatus.UNAVAILABLE,
+                reason=str(exc) or "ACTUATOR_UNAVAILABLE",
+                command_id=command_id,
+                correlation_id=command_id,
+                is_fallback=False,
+            )
+        except ValueError as exc:
+            logger.error("Actuator command rejected: action=%s command_id=%s error=%s", action, command_id, exc)
+            return ActuationResult(
+                status=ActuationStatus.REJECTED,
+                reason=str(exc),
+                command_id=command_id,
+                correlation_id=command_id,
+                is_fallback=False,
+            )
+        except Exception as exc:
+            logger.error("Actuator command failed: action=%s command_id=%s error=%s", action, command_id, exc)
+            return ActuationResult(
+                status=ActuationStatus.FAILED,
+                reason=str(exc),
+                command_id=command_id,
+                correlation_id=command_id,
+                is_fallback=False,
+            )
+
+        return ActuationResult(
+            status=ActuationStatus.ACCEPTED,
+            reason="COMMAND_ACCEPTED_NO_EXECUTION_ACK",
+            command_id=command_id,
+            correlation_id=command_id,
+            is_fallback=False,
+        )
+
     # === PROPULSION CONTROL ===
 
     def set_main_drive_thrust(self, thrust_percent: float, duration_sec: Optional[float] = None) -> bool:
+        result = self.set_main_drive_thrust_result(thrust_percent=thrust_percent, duration_sec=duration_sec)
+        return self._is_success_status(result.status)
+
+    def set_main_drive_thrust_result(
+        self, thrust_percent: float, duration_sec: Optional[float] = None
+    ) -> ActuationResult:
         """
         Set main drive thrust as percentage of maximum.
 
@@ -159,42 +290,30 @@ class ShipActuatorController:
             duration_sec: Optional duration limit
 
         Returns:
-            bool: Success status
+            ActuationResult: explicit dispatch fact (accepted/executed/rejected/failed/unavailable/timeout)
         """
-        try:
-            # Validate input
-            thrust_percent = max(0.0, min(100.0, thrust_percent))
+        thrust_percent = max(0.0, min(100.0, thrust_percent))
+        command = ActuatorCommand()
+        command.actuator_id.value = "ion_drive_array"
+        command.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+        command.float_value = thrust_percent
+        command.unit = Unit.PERCENT
+        command.confidence = 1.0
+        command.ack_required = True
 
-            # Create actuator command
-            command = ActuatorCommand()
-            command.actuator_id.value = "ion_drive_array"
+        if duration_sec:
+            command.timeout_ms = int(duration_sec * 1000)
 
-            # Skip timestamp for now - not critical for testing
-            # command.timestamp = timestamp
-
-            command.command_type = ActuatorCommand.CommandType.SET_VELOCITY
-            command.float_value = thrust_percent
-            command.unit = Unit.PERCENT
-            command.confidence = 1.0
-            command.ack_required = True
-
-            if duration_sec:
-                command.timeout_ms = int(duration_sec * 1000)
-
-            # Send command
-            self.ship_core.send_actuator_command(command)
-
-            if thrust_percent > 0:
-                self.current_mode = PropulsionMode.CRUISE
-            else:
-                self.current_mode = PropulsionMode.IDLE
-
-            logger.info(f"Main drive set to {thrust_percent:.1f}% thrust")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to set main drive thrust: {e}")
-            return False
+        result = self._dispatch_command(command, action="set_main_drive_thrust")
+        if self._is_success_status(result.status):
+            self.current_mode = PropulsionMode.CRUISE if thrust_percent > 0 else PropulsionMode.IDLE
+            logger.info(
+                "Main drive command accepted: thrust=%.1f%% command_id=%s fallback=%s",
+                thrust_percent,
+                result.command_id,
+                result.is_fallback,
+            )
+        return result
 
     def fire_rcs_thruster(
         self,
@@ -202,6 +321,19 @@ class ShipActuatorController:
         thrust_percent: float,
         duration_sec: float = 1.0,
     ) -> bool:
+        result = self.fire_rcs_thruster_result(
+            thruster_axis=thruster_axis,
+            thrust_percent=thrust_percent,
+            duration_sec=duration_sec,
+        )
+        return self._is_success_status(result.status)
+
+    def fire_rcs_thruster_result(
+        self,
+        thruster_axis: ThrusterAxis,
+        thrust_percent: float,
+        duration_sec: float = 1.0,
+    ) -> ActuationResult:
         """
         Fire RCS thruster in specified direction.
 
@@ -211,49 +343,48 @@ class ShipActuatorController:
             duration_sec: Duration of thrust
 
         Returns:
-            bool: Success status
+            ActuationResult: explicit dispatch fact (accepted/executed/rejected/failed/unavailable/timeout)
         """
-        try:
-            # Map axis to thruster ID
-            thruster_map = {
-                ThrusterAxis.FORWARD: RCS_FORWARD_ID,
-                ThrusterAxis.BACKWARD: RCS_AFT_ID,
-                ThrusterAxis.PORT: RCS_PORT_ID,
-                ThrusterAxis.STARBOARD: RCS_STARBOARD_ID,
-            }
+        thruster_map = {
+            ThrusterAxis.FORWARD: RCS_FORWARD_ID,
+            ThrusterAxis.BACKWARD: RCS_AFT_ID,
+            ThrusterAxis.PORT: RCS_PORT_ID,
+            ThrusterAxis.STARBOARD: RCS_STARBOARD_ID,
+        }
 
-            thruster_id = thruster_map.get(thruster_axis)
-            if not thruster_id:
-                logger.error(f"Unsupported thruster axis: {thruster_axis}")
-                return False
+        thruster_id = thruster_map.get(thruster_axis)
+        if not thruster_id:
+            logger.error("Unsupported thruster axis: %s", thruster_axis)
+            return ActuationResult(
+                status=ActuationStatus.REJECTED,
+                reason=f"unsupported thruster axis: {thruster_axis}",
+                command_id="",
+                correlation_id="",
+                is_fallback=False,
+            )
 
-            # Validate input
-            thrust_percent = max(0.0, min(100.0, thrust_percent))
+        thrust_percent = max(0.0, min(100.0, thrust_percent))
+        command = ActuatorCommand()
+        command.actuator_id.value = thruster_id
+        command.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+        command.float_value = thrust_percent
+        command.unit = Unit.PERCENT
+        command.confidence = 1.0
+        command.timeout_ms = int(duration_sec * 1000)
+        command.ack_required = True
 
-            # Create actuator command
-            command = ActuatorCommand()
-            command.actuator_id.value = thruster_id
-
-            # Skip timestamp for now - not critical for testing
-            # command.timestamp = timestamp
-
-            command.command_type = ActuatorCommand.CommandType.SET_VELOCITY
-            command.float_value = thrust_percent
-            command.unit = Unit.PERCENT
-            command.confidence = 1.0
-            command.timeout_ms = int(duration_sec * 1000)
-            command.ack_required = True
-
-            # Send command
-            self.ship_core.send_actuator_command(command)
-
+        result = self._dispatch_command(command, action=f"fire_rcs_thruster:{thruster_axis.value}")
+        if self._is_success_status(result.status):
             self.current_mode = PropulsionMode.MANEUVERING
-            logger.info(f"RCS {thruster_axis.value} fired at {thrust_percent:.1f}% for {duration_sec:.1f}s")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to fire RCS thruster: {e}")
-            return False
+            logger.info(
+                "RCS command accepted: axis=%s thrust=%.1f%% duration=%.1fs command_id=%s fallback=%s",
+                thruster_axis.value,
+                thrust_percent,
+                duration_sec,
+                result.command_id,
+                result.is_fallback,
+            )
+        return result
 
     def execute_maneuver(self, thrust_vector: ThrustVector, duration_sec: float = 2.0) -> bool:
         """
@@ -392,6 +523,10 @@ class ShipActuatorController:
     # === SENSOR CONTROL ===
 
     def activate_sensor(self, sensor_id: str) -> bool:
+        result = self.activate_sensor_result(sensor_id=sensor_id)
+        return self._is_success_status(result.status)
+
+    def activate_sensor_result(self, sensor_id: str) -> ActuationResult:
         """
         Activate a specific sensor.
 
@@ -399,29 +534,25 @@ class ShipActuatorController:
             sensor_id: ID of sensor to activate
 
         Returns:
-            bool: Success status
+            ActuationResult: explicit dispatch fact (accepted/executed/rejected/failed/unavailable/timeout)
         """
-        try:
-            command = ActuatorCommand()
-            command.actuator_id.value = sensor_id
+        command = ActuatorCommand()
+        command.actuator_id.value = sensor_id
+        command.command_type = ActuatorCommand.CommandType.ENABLE
+        command.bool_value = True
+        command.confidence = 1.0
+        command.ack_required = True
 
-            # Skip timestamp for now - not critical for testing
-            # command.timestamp = timestamp
-
-            command.command_type = ActuatorCommand.CommandType.ENABLE
-            command.bool_value = True
-            command.confidence = 1.0
-            command.ack_required = True
-
-            self.ship_core.send_actuator_command(command)
-            logger.info(f"Sensor activated: {sensor_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to activate sensor {sensor_id}: {e}")
-            return False
+        result = self._dispatch_command(command, action=f"activate_sensor:{sensor_id}")
+        if self._is_success_status(result.status):
+            logger.info("Sensor activation accepted: sensor_id=%s command_id=%s", sensor_id, result.command_id)
+        return result
 
     def deactivate_sensor(self, sensor_id: str) -> bool:
+        result = self.deactivate_sensor_result(sensor_id=sensor_id)
+        return self._is_success_status(result.status)
+
+    def deactivate_sensor_result(self, sensor_id: str) -> ActuationResult:
         """
         Deactivate a specific sensor.
 
@@ -429,27 +560,19 @@ class ShipActuatorController:
             sensor_id: ID of sensor to deactivate
 
         Returns:
-            bool: Success status
+            ActuationResult: explicit dispatch fact (accepted/executed/rejected/failed/unavailable/timeout)
         """
-        try:
-            command = ActuatorCommand()
-            command.actuator_id.value = sensor_id
+        command = ActuatorCommand()
+        command.actuator_id.value = sensor_id
+        command.command_type = ActuatorCommand.CommandType.DISABLE
+        command.bool_value = False
+        command.confidence = 1.0
+        command.ack_required = True
 
-            # Skip timestamp for now - not critical for testing
-            # command.timestamp = timestamp
-
-            command.command_type = ActuatorCommand.CommandType.DISABLE
-            command.bool_value = False
-            command.confidence = 1.0
-            command.ack_required = True
-
-            self.ship_core.send_actuator_command(command)
-            logger.info(f"Sensor deactivated: {sensor_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to deactivate sensor {sensor_id}: {e}")
-            return False
+        result = self._dispatch_command(command, action=f"deactivate_sensor:{sensor_id}")
+        if self._is_success_status(result.status):
+            logger.info("Sensor deactivation accepted: sensor_id=%s command_id=%s", sensor_id, result.command_id)
+        return result
 
     # === STATUS METHODS ===
 
