@@ -49,7 +49,17 @@ class AgentContext:
     def update_from_provider(self, data_provider: IDataProvider):
         self.bios_status = data_provider.get_bios_status()
         if self.fsm_state is None:
-            self.fsm_state = data_provider.get_fsm_state()
+            fsm_result = data_provider.get_fsm_state_result()
+            if not fsm_result.ok:
+                if fsm_result.is_fallback and fsm_result.value is not None:
+                    self.fsm_state = fsm_result.value
+                    logger.warning(f"FSM interface fallback used: {fsm_result.reason}")
+                else:
+                    raise RuntimeError(f"FSM interface returned no truth data: {fsm_result.reason}")
+            elif fsm_result.value is None:
+                raise RuntimeError("FSM interface returned ok=True but value=None")
+            else:
+                self.fsm_state = fsm_result.value
         self.proposals = data_provider.get_proposals()
         logger.debug("AgentContext updated from data provider.")
 

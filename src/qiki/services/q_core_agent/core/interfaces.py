@@ -1,8 +1,28 @@
 from abc import ABC, abstractmethod
-from typing import List, Any
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Generic, List, Optional, TypeVar
 
 from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand
 from qiki.services.q_core_agent.core.bios_http_client import fetch_bios_status
+
+T = TypeVar("T")
+
+
+class InterfaceReason(str, Enum):
+    OK = "OK"
+    NO_DATA = "NO_DATA"
+    UNAVAILABLE = "UNAVAILABLE"
+    INVALID = "INVALID"
+    FALLBACK = "FALLBACK"
+
+
+@dataclass(frozen=True)
+class InterfaceResult(Generic[T]):
+    ok: bool
+    value: Optional[T]
+    reason: str
+    is_fallback: bool = False
 
 
 class IDataProvider(ABC):
@@ -20,6 +40,20 @@ class IDataProvider(ABC):
     def get_fsm_state(self) -> PydanticFsmStateSnapshot:
         """Returns the current FSM state."""
         pass
+
+    def get_fsm_state_result(self) -> InterfaceResult[PydanticFsmStateSnapshot]:
+        fsm_state = self.get_fsm_state()
+        if fsm_state is None:
+            return InterfaceResult(
+                ok=False,
+                value=None,
+                reason=InterfaceReason.NO_DATA.value,
+            )
+        return InterfaceResult(
+            ok=True,
+            value=fsm_state,
+            reason=InterfaceReason.OK.value,
+        )
 
     @abstractmethod
     def get_proposals(self) -> List[Proposal]:
@@ -43,6 +77,12 @@ class MockDataProvider(IDataProvider):
     Provides dummy data for BIOS status, FSM state, and proposals.
     """
 
+    @staticmethod
+    def _allow_interface_fallback() -> bool:
+        import os
+
+        return os.getenv("QIKI_ALLOW_INTERFACE_FALLBACK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
     def __init__(
         self,
         mock_bios_status: BiosStatus,
@@ -60,7 +100,7 @@ class MockDataProvider(IDataProvider):
     def get_bios_status(self) -> BiosStatus:
         return self._mock_bios_status
 
-    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
+    def get_fsm_state_result(self) -> InterfaceResult[PydanticFsmStateSnapshot]:
         # При StateStore режиме возвращаем пустышку - FSM читается из StateStore
         import os
 
@@ -68,11 +108,33 @@ class MockDataProvider(IDataProvider):
             # Возвращаем минимальный Pydantic FsmStateSnapshot для совместимости
             from qiki.shared.models.core import FsmStateEnum
 
-            return PydanticFsmStateSnapshot(
+            fallback_state = PydanticFsmStateSnapshot(
                 current_state=FsmStateEnum.BOOTING,
                 previous_state=FsmStateEnum.OFFLINE,
             )
-        return self._mock_fsm_state
+            if self._allow_interface_fallback():
+                return InterfaceResult(
+                    ok=False,
+                    value=fallback_state,
+                    reason=InterfaceReason.FALLBACK.value,
+                    is_fallback=True,
+                )
+            return InterfaceResult(
+                ok=False,
+                value=None,
+                reason=InterfaceReason.NO_DATA.value,
+            )
+        return InterfaceResult(
+            ok=True,
+            value=self._mock_fsm_state,
+            reason=InterfaceReason.OK.value,
+        )
+
+    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
+        result = self.get_fsm_state_result()
+        if not result.ok or result.value is None:
+            raise RuntimeError(f"FSM state unavailable: {result.reason}")
+        return result.value
 
     def get_proposals(self) -> List[Proposal]:
         return self._mock_proposals
@@ -91,6 +153,12 @@ class QSimDataProvider(IDataProvider):
     For MVP, this will directly call methods of a QSimService instance.
     """
 
+    @staticmethod
+    def _allow_interface_fallback() -> bool:
+        import os
+
+        return os.getenv("QIKI_ALLOW_INTERFACE_FALLBACK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
     def __init__(self, qsim_service_instance):
         self.qsim_service = qsim_service_instance
 
@@ -107,36 +175,65 @@ class QSimDataProvider(IDataProvider):
         # No-mocks: BIOS comes from q-bios-service (BIOS_URL). Cached by default.
         return fetch_bios_status()
 
-    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
-        # При StateStore режиме возвращаем пустышку - FSM читается из StateStore
+    def get_fsm_state_result(self) -> InterfaceResult[PydanticFsmStateSnapshot]:
+        # При StateStore режиме FSM берётся из StateStore и не является truth этого интерфейса.
         import os
 
         if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
-            # Возвращаем минимальный Pydantic FsmStateSnapshot для совместимости
-            from qiki.shared.models.core import FsmStateEnum
+            if self._allow_interface_fallback():
+                from qiki.shared.models.core import FsmStateEnum
 
-            return PydanticFsmStateSnapshot(
-                current_state=FsmStateEnum.BOOTING,
-                previous_state=FsmStateEnum.OFFLINE,
+                fallback_state = PydanticFsmStateSnapshot(
+                    current_state=FsmStateEnum.BOOTING,
+                    previous_state=FsmStateEnum.OFFLINE,
+                    context_data={"mode": "interface_fallback", "source": "qsim_data_provider"},
+                )
+                return InterfaceResult(
+                    ok=False,
+                    value=fallback_state,
+                    reason=InterfaceReason.FALLBACK.value,
+                    is_fallback=True,
+                )
+            return InterfaceResult(
+                ok=False,
+                value=None,
+                reason=InterfaceReason.NO_DATA.value,
             )
 
-        # Q-Sim doesn't manage FSM state, so we'll return proper initial BOOTING state
-        from qiki.shared.models.core import FsmStateEnum
-        from uuid import uuid4
-        import time
+        # Q-Sim provider does not own FSM truth in legacy mode either.
+        if self._allow_interface_fallback():
+            from qiki.shared.models.core import FsmStateEnum
+            from uuid import uuid4
+            import time
 
-        fsm_state = PydanticFsmStateSnapshot(
-            current_state=FsmStateEnum.BOOTING,  # Начинаем с BOOTING как в Mock режиме
-            previous_state=FsmStateEnum.OFFLINE,
-            context_data={"mode": "legacy", "initialized": "true"},
-            snapshot_id=str(uuid4()),
-            fsm_instance_id=str(uuid4()),
-            source_module="qsim_data_provider",
-            attempt_count=1,
-            ts_wall=time.time(),
+            fallback_state = PydanticFsmStateSnapshot(
+                current_state=FsmStateEnum.BOOTING,
+                previous_state=FsmStateEnum.OFFLINE,
+                context_data={"mode": "interface_fallback", "initialized": "true"},
+                snapshot_id=str(uuid4()),
+                fsm_instance_id=str(uuid4()),
+                source_module="qsim_data_provider",
+                attempt_count=1,
+                ts_wall=time.time(),
+            )
+            return InterfaceResult(
+                ok=False,
+                value=fallback_state,
+                reason=InterfaceReason.FALLBACK.value,
+                is_fallback=True,
+            )
+
+        return InterfaceResult(
+            ok=False,
+            value=None,
+            reason=InterfaceReason.UNAVAILABLE.value,
         )
 
-        return fsm_state
+    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
+        result = self.get_fsm_state_result()
+        if not result.ok or result.value is None:
+            raise RuntimeError(f"FSM state unavailable: {result.reason}")
+        return result.value
 
     def get_proposals(self) -> List[Proposal]:
         # Q-Sim doesn't generate proposals, so return empty list

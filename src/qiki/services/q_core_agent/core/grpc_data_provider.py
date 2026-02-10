@@ -3,7 +3,7 @@ import os
 import grpc
 from typing import List
 
-from qiki.services.q_core_agent.core.interfaces import IDataProvider
+from qiki.services.q_core_agent.core.interfaces import IDataProvider, InterfaceReason, InterfaceResult
 from qiki.services.q_core_agent.core.agent_logger import logger
 
 from qiki.shared.models.core import BiosStatus, FsmStateSnapshot as PydanticFsmStateSnapshot, Proposal, SensorData, ActuatorCommand, SensorTypeEnum, FsmStateEnum
@@ -104,19 +104,43 @@ class GrpcDataProvider(IDataProvider):
         """
         return fetch_bios_status()
 
-    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
-        """Q-Sim не управляет FSM состоянием. При StateStore режиме возвращаем пустышку."""
-        if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
-            # Возвращаем минимальный Pydantic FsmStateSnapshot для совместимости
-            return PydanticFsmStateSnapshot(
+    @staticmethod
+    def _allow_interface_fallback() -> bool:
+        return os.getenv("QIKI_ALLOW_INTERFACE_FALLBACK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    def get_fsm_state_result(self) -> InterfaceResult[PydanticFsmStateSnapshot]:
+        """Q-Sim gRPC provider does not own FSM truth; expose explicit no-data semantics."""
+        if self._allow_interface_fallback():
+            fallback_state = PydanticFsmStateSnapshot(
                 current_state=FsmStateEnum.BOOTING,
                 previous_state=FsmStateEnum.OFFLINE,
+                context_data={"mode": "grpc_interface_fallback", "initialized": "true"},
             )
-        return PydanticFsmStateSnapshot(
-            current_state=FsmStateEnum.BOOTING,
-            previous_state=FsmStateEnum.OFFLINE,
-            context_data={"mode": "grpc", "initialized": "true"},
+            return InterfaceResult(
+                ok=False,
+                value=fallback_state,
+                reason=InterfaceReason.FALLBACK.value,
+                is_fallback=True,
+            )
+
+        if os.environ.get("QIKI_USE_STATESTORE", "false").lower() == "true":
+            return InterfaceResult(
+                ok=False,
+                value=None,
+                reason=InterfaceReason.NO_DATA.value,
+            )
+
+        return InterfaceResult(
+            ok=False,
+            value=None,
+            reason=InterfaceReason.UNAVAILABLE.value,
         )
+
+    def get_fsm_state(self) -> PydanticFsmStateSnapshot:
+        result = self.get_fsm_state_result()
+        if not result.ok or result.value is None:
+            raise RuntimeError(f"FSM state unavailable: {result.reason}")
+        return result.value
 
     def get_proposals(self) -> List[Proposal]:
         """Q-Sim не генерирует предложения, возвращаем пустой список"""
