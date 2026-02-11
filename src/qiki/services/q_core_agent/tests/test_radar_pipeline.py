@@ -233,7 +233,10 @@ def test_render_tick_telemetry_can_be_disabled(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_alert_selection_order_is_severity_then_recency_then_id() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=EventStore(),
+    )
     pipeline.situation_engine = RadarSituationEngine(
         SituationConfig(
             enabled=True,
@@ -254,18 +257,33 @@ def test_alert_selection_order_is_severity_then_recency_then_id() -> None:
         reason="OK",
         truth_state="OK",
         is_fallback=False,
-            points=[
-                RadarPoint(x=80.0, y=0.0, z=0.0, vr_mps=-14.0, metadata={"target_id": "critical", "object_type": "friend"}),
-                RadarPoint(x=100.0, y=5.0, z=0.0, vr_mps=-7.0, metadata={"target_id": "warn", "object_type": "friend"}),
-            ],
-        )
+        points=[
+            RadarPoint(
+                x=80.0,
+                y=0.0,
+                z=0.0,
+                vr_mps=-14.0,
+                metadata={"target_id": "critical", "object_type": "friend"},
+            ),
+            RadarPoint(
+                x=100.0,
+                y=5.0,
+                z=0.0,
+                vr_mps=-7.0,
+                metadata={"target_id": "warn", "object_type": "friend"},
+            ),
+        ],
+    )
     pipeline.render_scene(scene)
     assert pipeline.view_state.selected_target_id == "critical"
     assert pipeline.view_state.alerts.selected_situation_id is not None
 
 
 def test_focus_moves_when_selected_situation_resolved() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=EventStore(),
+    )
     pipeline.situation_engine = RadarSituationEngine(
         SituationConfig(
             enabled=True,
@@ -309,3 +327,17 @@ def test_focus_moves_when_selected_situation_resolved() -> None:
     time.sleep(0.03)
     pipeline.render_scene(warn_only_scene)
     assert pipeline.view_state.selected_target_id == "warn"
+
+
+def test_pipeline_loads_combat_profile_from_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_POLICY_PROFILE", "combat")
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+    assert pipeline.render_policy.frame_budget_ms == pytest.approx(60.0)
+    assert pipeline.render_policy.degrade_confirm_frames == 1
+
+
+def test_pipeline_env_override_has_priority_over_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_POLICY_PROFILE", "combat")
+    monkeypatch.setenv("RADAR_CLUTTER_TARGETS_MAX", "88")
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+    assert pipeline.render_policy.clutter_targets_max == 88

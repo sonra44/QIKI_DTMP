@@ -17,6 +17,7 @@ from .radar_backends import (
     UnicodeRadarBackend,
 )
 from .event_store import EventStore, TruthState
+from .radar_policy_loader import load_effective_render_policy
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
 from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity, SituationStatus
 from .radar_trail_store import RadarTrailStore
@@ -47,6 +48,16 @@ class RadarRenderConfig:
         return cls(renderer=renderer, view=view, fps_max=fps_max, color=color)
 
 
+@dataclass(frozen=True)
+class AdaptivePolicyState:
+    level: int = 0
+    ema_frame_ms: float | None = None
+    ema_targets: float | None = None
+    consecutive_high: int = 0
+    consecutive_low: int = 0
+    last_change_ts: float = 0.0
+
+
 class RadarPipeline:
     def __init__(self, config: RadarRenderConfig | None = None, *, event_store: EventStore | None = None):
         self.config = config or RadarRenderConfig.from_env()
@@ -54,13 +65,14 @@ class RadarPipeline:
         self.telemetry_enabled = telemetry_raw not in {"0", "false", "no", "off"}
         self.event_store = event_store
         self.view_state = RadarViewState.from_env()
-        self.render_policy = RadarRenderPolicy.from_env()
+        self.render_policy, self.adaptive_policy = load_effective_render_policy()
         self.trail_store = RadarTrailStore(max_len=self.render_policy.trail_len)
         self.situation_engine = RadarSituationEngine()
         self.last_situations: tuple[Situation, ...] = ()
         self.session_id = str(uuid4())
         self._last_frame_time_ms = 0.0
         self._degradation_state = DegradationState(last_scale=self.render_policy.bitmap_scales[0])
+        self._adaptive_state = AdaptivePolicyState()
         if self.config.view in _ALLOWED_VIEWS:
             self.view_state = RadarViewState(
                 zoom=self.view_state.zoom,
@@ -84,9 +96,82 @@ class RadarPipeline:
     def active_backend_name(self) -> str:
         return self._active_backend.name
 
+    def _effective_policy(self) -> RadarRenderPolicy:
+        if not self.adaptive_policy.enabled:
+            return self.render_policy
+        level = max(0, min(self._adaptive_state.level, self.adaptive_policy.max_level))
+        if level == 0:
+            return self.render_policy
+        clutter_multiplier = max(0.05, 1.0 - (self.adaptive_policy.clutter_reduction_per_level * float(level)))
+        clutter_targets = max(1, int(round(float(self.render_policy.clutter_targets_max) * clutter_multiplier)))
+        return replace(
+            self.render_policy,
+            clutter_targets_max=clutter_targets,
+            lod_label_zoom=self.render_policy.lod_label_zoom
+            + (self.adaptive_policy.lod_label_zoom_delta_per_level * float(level)),
+            lod_detail_zoom=self.render_policy.lod_detail_zoom
+            + (self.adaptive_policy.lod_detail_zoom_delta_per_level * float(level)),
+        )
+
+    def _update_adaptive_state(self, *, frame_time_ms: float, targets_count: int) -> None:
+        if not self.adaptive_policy.enabled:
+            return
+        alpha_frame = min(1.0, max(0.0, float(self.adaptive_policy.ema_alpha_frame_ms)))
+        alpha_targets = min(1.0, max(0.0, float(self.adaptive_policy.ema_alpha_targets)))
+        prev = self._adaptive_state
+        ema_frame = float(frame_time_ms) if prev.ema_frame_ms is None else (
+            (alpha_frame * float(frame_time_ms)) + ((1.0 - alpha_frame) * prev.ema_frame_ms)
+        )
+        ema_targets = float(targets_count) if prev.ema_targets is None else (
+            (alpha_targets * float(targets_count)) + ((1.0 - alpha_targets) * prev.ema_targets)
+        )
+        budget = float(self.render_policy.frame_budget_ms)
+        target_budget = float(self.render_policy.clutter_targets_max)
+        high = (
+            ema_frame > (budget * float(self.adaptive_policy.high_frame_ratio))
+            or ema_targets > (target_budget * float(self.adaptive_policy.overload_target_ratio))
+        )
+        low = (
+            ema_frame < (budget * float(self.adaptive_policy.low_frame_ratio))
+            and ema_targets < (target_budget * float(self.adaptive_policy.underload_target_ratio))
+        )
+        consecutive_high = (prev.consecutive_high + 1) if high else 0
+        consecutive_low = (prev.consecutive_low + 1) if low else 0
+        now = time.monotonic()
+        elapsed_ms = (
+            (now - prev.last_change_ts) * 1000.0 if prev.last_change_ts > 0.0 else float(self.adaptive_policy.cooldown_ms) + 1.0
+        )
+        can_change = elapsed_ms >= float(self.adaptive_policy.cooldown_ms)
+        level = prev.level
+        last_change_ts = prev.last_change_ts
+        if (
+            can_change
+            and high
+            and consecutive_high >= int(self.adaptive_policy.degrade_confirm_frames)
+            and level < int(self.adaptive_policy.max_level)
+        ):
+            level += 1
+            consecutive_high = 0
+            consecutive_low = 0
+            last_change_ts = now
+        elif can_change and low and consecutive_low >= int(self.adaptive_policy.recovery_confirm_frames) and level > 0:
+            level -= 1
+            consecutive_high = 0
+            consecutive_low = 0
+            last_change_ts = now
+        self._adaptive_state = AdaptivePolicyState(
+            level=level,
+            ema_frame_ms=ema_frame,
+            ema_targets=ema_targets,
+            consecutive_high=consecutive_high,
+            consecutive_low=consecutive_low,
+            last_change_ts=last_change_ts,
+        )
+
     def build_render_plan(self, scene: RadarScene, *, view_state: RadarViewState | None = None) -> RadarRenderPlan:
         active_view_state = view_state or self.view_state
-        plan, next_state = self.render_policy.build_plan(
+        effective_policy = self._effective_policy()
+        plan, next_state = effective_policy.build_plan(
             view_state=active_view_state,
             targets_count=len(scene.points),
             frame_time_ms=self._last_frame_time_ms,
@@ -157,6 +242,7 @@ class RadarPipeline:
                     render_plan=plan,
                 )
             self._last_frame_time_ms = (time.monotonic() - render_start) * 1000.0
+            self._update_adaptive_state(frame_time_ms=self._last_frame_time_ms, targets_count=len(scene_with_trails.points))
             self._append_render_tick_event(scene_with_trails, output)
             return output
         except Exception as exc:  # noqa: BLE001
@@ -173,6 +259,7 @@ class RadarPipeline:
             )
             marker = f"[RADAR RUNTIME FALLBACK {previous}->unicode: {exc}]"
             self._last_frame_time_ms = (time.monotonic() - render_start) * 1000.0
+            self._update_adaptive_state(frame_time_ms=self._last_frame_time_ms, targets_count=len(scene_with_trails.points))
             output = RenderOutput(
                 backend=fallback.backend,
                 lines=[marker, *fallback.lines],
@@ -282,6 +369,7 @@ class RadarPipeline:
                 "dropped_overlays": list(stats.dropped_overlays),
                 "clutter_reasons": reasons,
                 "backend": output.backend,
+                "adaptive_level": int(self._adaptive_state.level),
             },
             truth_state=truth_state,
             reason=",".join(reasons) if reasons else "OK",
