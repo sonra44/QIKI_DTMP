@@ -215,9 +215,28 @@ def test_render_tick_telemetry_event_is_written() -> None:
         "bitmap_scale",
         "clutter_reasons",
         "backend",
+        "policy_profile",
+        "policy_source",
+        "adaptive_level",
+        "effective_frame_budget_ms",
+        "effective_clutter_max",
     )
     for key in expected_keys:
         assert key in payload
+
+
+def test_render_tick_reflects_selected_policy_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_POLICY_PROFILE", "combat")
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    pipeline.render_scene(RadarScene(ok=True, reason="OK", truth_state="OK", is_fallback=False, points=[]))
+    tick = store.filter(subsystem="RADAR", event_type="RADAR_RENDER_TICK")[-1]
+    assert tick.payload["policy_profile"] == "combat"
+    assert tick.payload["policy_source"] == "yaml"
+    assert tick.payload["effective_frame_budget_ms"] == pytest.approx(60.0)
 
 
 def test_render_tick_telemetry_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,7 +252,10 @@ def test_render_tick_telemetry_can_be_disabled(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_alert_selection_order_is_severity_then_recency_then_id() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=EventStore(),
+    )
     pipeline.situation_engine = RadarSituationEngine(
         SituationConfig(
             enabled=True,
@@ -254,18 +276,33 @@ def test_alert_selection_order_is_severity_then_recency_then_id() -> None:
         reason="OK",
         truth_state="OK",
         is_fallback=False,
-            points=[
-                RadarPoint(x=80.0, y=0.0, z=0.0, vr_mps=-14.0, metadata={"target_id": "critical", "object_type": "friend"}),
-                RadarPoint(x=100.0, y=5.0, z=0.0, vr_mps=-7.0, metadata={"target_id": "warn", "object_type": "friend"}),
-            ],
-        )
+        points=[
+            RadarPoint(
+                x=80.0,
+                y=0.0,
+                z=0.0,
+                vr_mps=-14.0,
+                metadata={"target_id": "critical", "object_type": "friend"},
+            ),
+            RadarPoint(
+                x=100.0,
+                y=5.0,
+                z=0.0,
+                vr_mps=-7.0,
+                metadata={"target_id": "warn", "object_type": "friend"},
+            ),
+        ],
+    )
     pipeline.render_scene(scene)
     assert pipeline.view_state.selected_target_id == "critical"
     assert pipeline.view_state.alerts.selected_situation_id is not None
 
 
 def test_focus_moves_when_selected_situation_resolved() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=EventStore(),
+    )
     pipeline.situation_engine = RadarSituationEngine(
         SituationConfig(
             enabled=True,
@@ -309,3 +346,122 @@ def test_focus_moves_when_selected_situation_resolved() -> None:
     time.sleep(0.03)
     pipeline.render_scene(warn_only_scene)
     assert pipeline.view_state.selected_target_id == "warn"
+
+
+def test_pipeline_loads_combat_profile_from_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_POLICY_PROFILE", "combat")
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+    assert pipeline.render_policy.frame_budget_ms == pytest.approx(60.0)
+    assert pipeline.render_policy.degrade_confirm_frames == 1
+    assert pipeline.policy_profile == "combat"
+    assert pipeline.policy_source == "yaml"
+
+
+def test_pipeline_env_override_has_priority_over_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_POLICY_PROFILE", "combat")
+    monkeypatch.setenv("RADAR_CLUTTER_TARGETS_MAX", "88")
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+    assert pipeline.render_policy.clutter_targets_max == 88
+
+
+def test_pipeline_non_strict_invalid_yaml_emits_policy_fallback_event(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    broken = tmp_path / "broken_policy.yaml"
+    broken.write_text("schema_version: 99\n", encoding="utf-8")
+    monkeypatch.setenv("RADAR_POLICY_YAML", str(broken))
+    monkeypatch.setenv("RADAR_POLICY_STRICT", "0")
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=store,
+    )
+    assert pipeline.policy_source in {"default", "env"}
+    events = store.filter(subsystem="RADAR", event_type="POLICY_FALLBACK")
+    assert events
+    assert "POLICY_FALLBACK" in events[-1].reason
+
+
+def test_pipeline_strict_invalid_yaml_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    broken = tmp_path / "broken_policy.yaml"
+    broken.write_text("schema_version: 99\n", encoding="utf-8")
+    monkeypatch.setenv("RADAR_POLICY_YAML", str(broken))
+    monkeypatch.setenv("RADAR_POLICY_STRICT", "1")
+    with pytest.raises(RuntimeError, match="Failed to load radar policy v3"):
+        RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+
+
+def test_set_policy_profile_emits_change_event() -> None:
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=store,
+    )
+    ok, message = pipeline.set_policy_profile("combat")
+    assert ok is True
+    assert "profile=combat" in message
+    events = store.filter(subsystem="RADAR", event_type="POLICY_PROFILE_CHANGED")
+    assert events
+    payload = events[-1].payload
+    assert payload["previous_profile"] == "navigation"
+    assert payload["new_profile"] == "combat"
+
+
+def test_adaptive_hysteresis_and_cooldown_without_sleep() -> None:
+    class _Clock:
+        def __init__(self) -> None:
+            self.now = 0.0
+
+        def tick(self, dt: float = 0.1) -> float:
+            self.now += dt
+            return self.now
+
+        def __call__(self) -> float:
+            return self.now
+
+    clock = _Clock()
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        clock=clock,
+    )
+    pipeline.adaptive_policy = pipeline.adaptive_policy.__class__(
+        enabled=True,
+        ema_alpha_frame_ms=1.0,
+        ema_alpha_targets=1.0,
+        high_frame_ratio=1.1,
+        low_frame_ratio=0.8,
+        overload_target_ratio=1.0,
+        underload_target_ratio=0.8,
+        degrade_confirm_frames=3,
+        recovery_confirm_frames=4,
+        cooldown_ms=500,
+        max_level=2,
+        clutter_reduction_per_level=0.2,
+        lod_label_zoom_delta_per_level=0.1,
+        lod_detail_zoom_delta_per_level=0.1,
+    )
+    up_changes: list[float] = []
+    down_changes: list[float] = []
+    previous_level = pipeline._adaptive_state.level
+    for _ in range(120):
+        clock.tick(0.1)
+        pipeline._update_adaptive_state(frame_time_ms=400.0, targets_count=999)
+        level = pipeline._adaptive_state.level
+        if level != previous_level:
+            if level > previous_level:
+                up_changes.append(clock.now)
+            previous_level = level
+    for idx in range(1, len(up_changes)):
+        assert (up_changes[idx] - up_changes[idx - 1]) >= 0.5
+
+    for _ in range(120):
+        clock.tick(0.1)
+        pipeline._update_adaptive_state(frame_time_ms=2.0, targets_count=1)
+        level = pipeline._adaptive_state.level
+        if level != previous_level:
+            if level < previous_level:
+                down_changes.append(clock.now)
+            previous_level = level
+    for idx in range(1, len(down_changes)):
+        assert (down_changes[idx] - down_changes[idx - 1]) >= 0.5
+    assert pipeline._adaptive_state.level == 0

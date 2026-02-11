@@ -281,6 +281,17 @@ class MissionControlTerminal:
         )
 
     @staticmethod
+    def _emit_frame(frame: str, *, real_terminal: bool) -> None:
+        """Draw a frame without adding scroll drift in raw-terminal mode."""
+        if real_terminal:
+            sys.stdout.write("\x1b[2J\x1b[H")
+            sys.stdout.write(frame)
+            sys.stdout.write("\x1b[0m")
+            sys.stdout.flush()
+            return
+        print(frame)
+
+    @staticmethod
     def _replay_interactive(
         events: list[dict[str, object]],
         pipeline: RadarPipeline,
@@ -293,7 +304,8 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
+            "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, "
+            "a/A/s/j/k alerts, q quit."
             " Mouse: wheel/click/drag in real-input mode."
         )
         print("Line mode emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
@@ -321,9 +333,10 @@ class MissionControlTerminal:
                 if should_quit:
                     return 0
                 if needs_render and (time.monotonic() - last_render_ts) >= frame_interval:
-                    if backend.name == "real-terminal":
-                        print("\x1b[2J\x1b[H", end="")
-                    print(render_terminal_screen(events, pipeline=pipeline, view_state=view_state))
+                    MissionControlTerminal._emit_frame(
+                        render_terminal_screen(events, pipeline=pipeline, view_state=view_state),
+                        real_terminal=(backend.name == "real-terminal"),
+                    )
                     last_render_ts = time.monotonic()
                     needs_render = False
         finally:
@@ -415,7 +428,8 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Live controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
+            "Live controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, "
+            "a/A/s/j/k alerts, q quit."
             " Mouse: wheel/click/drag."
         )
 
@@ -458,9 +472,10 @@ class MissionControlTerminal:
                     needs_render = True
 
                 if needs_render and (now - last_render_ts) >= frame_interval:
-                    if backend.name == "real-terminal":
-                        print("\x1b[2J\x1b[H", end="")
-                    print(render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state))
+                    self._emit_frame(
+                        render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state),
+                        real_terminal=(backend.name == "real-terminal"),
+                    )
                     stamp = time.monotonic()
                     last_render_ts = stamp
                     last_heartbeat_ts = stamp
@@ -478,7 +493,8 @@ class MissionControlTerminal:
         if not parts:
             return True
 
-        cmd = parts[0].lower()
+        cmd_raw = parts[0]
+        cmd = cmd_raw.lower()
         if cmd in {"exit", "quit"}:
             self.running = False
             print("Завершение работы терминала.")
@@ -503,9 +519,36 @@ class MissionControlTerminal:
             status = self.live_radar_loop(prefer_real=prefer_real)
             return status in {0, 3}
 
-        if cmd in {"1", "2", "3", "4", "r", "o", "g", "b", "v", "t", "l", "i", "c", "+", "-"}:
-            self.view_state = self.radar_input.apply_key(self.view_state, cmd)
+        if cmd_raw in {
+            "1",
+            "2",
+            "3",
+            "4",
+            "r",
+            "o",
+            "g",
+            "b",
+            "v",
+            "t",
+            "l",
+            "i",
+            "c",
+            "+",
+            "-",
+            "]",
+            "[",
+            "F",
+            "a",
+            "A",
+            "s",
+            "j",
+            "k",
+        }:
+            self.view_state = self.radar_input.apply_key(self.view_state, cmd_raw)
             return True
+
+        if cmd == "policy":
+            return self._handle_policy(parts[1:])
 
         if cmd == "mouse":
             return self._handle_mouse(parts[1:])
@@ -540,6 +583,12 @@ class MissionControlTerminal:
         print("  g|b|v|t|l            — toggle grid/rings/vectors/trails/labels")
         print("  i                    — inspector: off -> on -> pinned -> off")
         print("  c                    — toggle color")
+        print("  ]|a|j / [|k          — next/prev alert")
+        print("  F                    — focus selected situation target")
+        print("  A                    — acknowledge selected situation (snooze)")
+        print("  s                    — toggle situation overlays")
+        print("  policy cycle         — переключить radar policy profile")
+        print("  policy set <name>    — set profile (navigation|docking|combat)")
         print("  +|-                  — zoom in/out")
         print("  mouse wheel up|down  — zoom мышью (эмуляция)")
         print("  mouse click x y      — выбор ближайшей цели")
@@ -638,6 +687,22 @@ class MissionControlTerminal:
             self.view_state = self.radar_input.apply_action(self.view_state, action)
             return True
         print("mouse: wheel up|down | click <x> <y> | drag <dx> <dy>")
+        return True
+
+    def _handle_policy(self, args: list[str]) -> bool:
+        if not args:
+            print(f"policy: profile={self.radar_pipeline.policy_profile} source={self.radar_pipeline.policy_source}")
+            return True
+        action = args[0].lower()
+        if action == "cycle":
+            ok, message = self.radar_pipeline.cycle_policy_profile()
+            print(f"policy: {message}" if ok else f"policy error: {message}")
+            return True
+        if action in {"set", "profile"} and len(args) >= 2:
+            ok, message = self.radar_pipeline.set_policy_profile(args[1])
+            print(f"policy: {message}" if ok else f"policy error: {message}")
+            return True
+        print("policy: cycle | set <navigation|docking|combat>")
         return True
 
 
