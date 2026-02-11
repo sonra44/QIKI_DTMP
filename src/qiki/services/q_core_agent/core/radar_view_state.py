@@ -26,6 +26,13 @@ class RadarInspectorState:
 
 
 @dataclass(frozen=True)
+class RadarAlertUiState:
+    situations_enabled: bool = True
+    cursor: int = 0
+    muted_target_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RadarViewState:
     zoom: float = 1.0
     pan_x: float = 0.0
@@ -38,6 +45,7 @@ class RadarViewState:
     color_enabled: bool = True
     overlays: RadarOverlayState = field(default_factory=RadarOverlayState)
     inspector: RadarInspectorState = field(default_factory=RadarInspectorState)
+    alerts: RadarAlertUiState = field(default_factory=RadarAlertUiState)
 
     @classmethod
     def from_env(cls) -> "RadarViewState":

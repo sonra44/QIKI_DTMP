@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 
 from .radar_backends import RadarPoint, RadarScene
 from .radar_pipeline import RadarPipeline
+from .radar_situation_engine import Situation, summarize_situations
 from .radar_view_state import RadarViewState
 
 _ANSI_RESET = "\x1b[0m"
@@ -317,8 +318,16 @@ def _event_severity(event: dict[str, Any]) -> str:
     event_type = str(event.get("event_type", "")).upper()
     reason = str(event.get("reason", "")).upper()
     truth_state = str(event.get("truth_state", "")).upper()
+    payload = event.get("payload", {})
     if event_type == "SAFE_MODE":
         return "SAFE"
+    if event_type.startswith("SITUATION_"):
+        severity = str(payload.get("severity", "INFO")).upper() if isinstance(payload, dict) else "INFO"
+        if severity == "CRITICAL":
+            return "SAFE"
+        if severity == "WARN":
+            return "WARN"
+        return "INFO"
     if truth_state in {"NO_DATA", "STALE", "LOW_QUALITY", "FALLBACK", "INVALID"}:
         return "WARN"
     if any(token in reason for token in ("FAIL", "TIMEOUT", "UNAVAILABLE", "INVALID", "REJECTED")):
@@ -364,7 +373,12 @@ def _overlay_legend(view_state: RadarViewState, disabled: Sequence[str]) -> str:
     return f"OVR: {enabled}"
 
 
-def _build_inspector(scene: RadarScene, view_state: RadarViewState, view: _ViewModel) -> list[str]:
+def _build_inspector(
+    scene: RadarScene,
+    view_state: RadarViewState,
+    view: _ViewModel,
+    situations: Sequence[Situation],
+) -> list[str]:
     if view_state.inspector.mode == "off":
         return ["INSPECTOR: off"]
     selected_id = view_state.selected_target_id
@@ -381,8 +395,48 @@ def _build_inspector(scene: RadarScene, view_state: RadarViewState, view: _ViewM
             f"  range={point.metadata.get('range_m', 'N/A')} vr={point.vr_mps:.3f}",
             f"  age={point.metadata.get('age_s', view.age_s)} quality={point.metadata.get('quality', view.quality)}",
             f"  trust={view.sensor_truth_state}/{view.sensor_reason}",
+            *_inspector_situations(point_id, situations),
         ]
     return [f"INSPECTOR: {view_state.inspector.mode} id={selected_id} not found"]
+
+
+def _inspector_situations(point_id: str, situations: Sequence[Situation]) -> list[str]:
+    rows: list[str] = []
+    for situation in situations:
+        if point_id not in situation.track_ids:
+            continue
+        metrics = []
+        if "time_to_cpa_s" in situation.metrics:
+            metrics.append(f"T-CPA={situation.metrics['time_to_cpa_s']}s")
+        if "distance_m" in situation.metrics:
+            metrics.append(f"D={situation.metrics['distance_m']}m")
+        if "closing_speed_mps" in situation.metrics:
+            metrics.append(f"V={situation.metrics['closing_speed_mps']}m/s")
+        if not metrics:
+            metrics.append("metrics=n/a")
+        rows.append(f"  situation={situation.type.value} severity={situation.severity.value} {' '.join(metrics)}")
+    if not rows:
+        rows.append("  situation=none")
+    return rows
+
+
+def _top_alert_line(situations: Sequence[Situation], view_state: RadarViewState) -> str:
+    if not situations:
+        return "ALERTS: none"
+    counts = summarize_situations(situations)
+    muted = set(view_state.alerts.muted_target_ids)
+    critical = counts.get("CRITICAL", 0)
+    warn = counts.get("WARN", 0)
+    top = sorted(
+        situations,
+        key=lambda s: (0 if s.severity.value == "CRITICAL" else 1 if s.severity.value == "WARN" else 2, s.id),
+    )[0]
+    target = top.track_ids[0] if top.track_ids else "n/a"
+    muted_mark = " [MUTED]" if target in muted else ""
+    return (
+        f"ALERTS: {critical} CRITICAL, {warn} WARN"
+        f" | top={top.type.value}#{target}{muted_mark}"
+    )
 
 
 def render_terminal_screen(
@@ -397,6 +451,7 @@ def render_terminal_screen(
     active_pipeline = pipeline or RadarPipeline()
     active_view_state = view_state or active_pipeline.view_state
     radar_output = active_pipeline.render_scene(scene, view_state=active_view_state)
+    situations = tuple(active_pipeline.last_situations)
     radar_lines = radar_output.lines
     stats = radar_output.stats
     plan = radar_output.plan
@@ -444,6 +499,7 @@ def render_terminal_screen(
             clutter_line = f"CLUTTER: ON reasons=[{reasons}] dropped={dropped}"
     hud = [
         f"FSM: {view.fsm_state}",
+        _top_alert_line(situations, active_view_state),
         f"DOCKING CONFIRM: {view.docking_hits}/{max(1, view.docking_required)}",
         (
             f"VIEW: {active_view_state.view} zoom={active_view_state.zoom:.2f} pan=({active_view_state.pan_x:.2f},"
@@ -455,8 +511,12 @@ def render_terminal_screen(
         perf_line,
         clutter_line,
         _overlay_legend(active_view_state, plan.dropped_overlays if plan else ()),
+        (
+            f"SITUATION OVERLAYS: {'ON' if active_view_state.alerts.situations_enabled else 'OFF'} "
+            f"cursor={active_view_state.alerts.cursor} muted={len(active_view_state.alerts.muted_target_ids)}"
+        ),
     ]
-    inspector_lines = _build_inspector(scene, active_view_state, view)
+    inspector_lines = _build_inspector(scene, active_view_state, view, situations)
     radar_title = ["", "[ RADAR ]"]
     log_title = ["", "[ INSPECTOR ]", *inspector_lines, "", "[ EVENT LOG ]"]
     return "\n".join(header + radar_title + radar_lines + [""] + hud + log_title + log_lines)

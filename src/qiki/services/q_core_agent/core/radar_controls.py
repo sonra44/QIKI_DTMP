@@ -40,7 +40,8 @@ class RadarMouseEvent:
 
 class RadarInputController:
     def handle_key(self, key: str) -> RadarAction:
-        token = (key or "").strip().lower()
+        raw = (key or "").strip()
+        token = raw.lower()
         if token in _VIEW_KEYS:
             return RadarAction(kind="SET_VIEW", value=_VIEW_KEYS[token])
         if token == "r":
@@ -63,6 +64,16 @@ class RadarInputController:
             return RadarAction(kind="TOGGLE_COLOR")
         if token == "q":
             return RadarAction(kind="QUIT")
+        if token == "a":
+            return RadarAction(kind="ALERT_NEXT")
+        if raw == "A":
+            return RadarAction(kind="ALERT_ACK")
+        if token == "s":
+            return RadarAction(kind="TOGGLE_SITUATIONS")
+        if token == "j":
+            return RadarAction(kind="ALERT_NEXT")
+        if token == "k":
+            return RadarAction(kind="ALERT_PREV")
         if token in {"+", "="}:
             return RadarAction(kind="ZOOM_IN")
         if token in {"-", "_"}:
@@ -71,9 +82,9 @@ class RadarInputController:
             return RadarAction(kind="PAN_LEFT")
         if token in {"l", "right"}:
             return RadarAction(kind="PAN_RIGHT")
-        if token in {"k", "up"}:
+        if token in {"up"}:
             return RadarAction(kind="PAN_UP")
-        if token in {"j", "down"}:
+        if token in {"down"}:
             return RadarAction(kind="PAN_DOWN")
         return RadarAction(kind="NOOP")
 
@@ -143,6 +154,22 @@ class RadarInputController:
             return replace(state, inspector=replace(state.inspector, mode="off", pinned_target_id=None))
         if kind == "TOGGLE_COLOR":
             return replace(state, color_enabled=not state.color_enabled)
+        if kind == "TOGGLE_SITUATIONS":
+            return replace(
+                state,
+                alerts=replace(state.alerts, situations_enabled=not state.alerts.situations_enabled),
+            )
+        if kind == "ALERT_NEXT":
+            return replace(state, alerts=replace(state.alerts, cursor=state.alerts.cursor + 1))
+        if kind == "ALERT_PREV":
+            return replace(state, alerts=replace(state.alerts, cursor=max(0, state.alerts.cursor - 1)))
+        if kind == "ALERT_ACK":
+            if not state.selected_target_id:
+                return state
+            muted = list(state.alerts.muted_target_ids)
+            if state.selected_target_id not in muted:
+                muted.append(state.selected_target_id)
+            return replace(state, alerts=replace(state.alerts, muted_target_ids=tuple(muted)))
         if kind == "RESET_VIEW":
             return replace(
                 state,
@@ -163,6 +190,7 @@ class RadarInputController:
                     selection_highlight=True,
                 ),
                 inspector=replace(state.inspector, mode="off", pinned_target_id=None),
+                alerts=replace(state.alerts, cursor=0, muted_target_ids=()),
             )
         return state
 

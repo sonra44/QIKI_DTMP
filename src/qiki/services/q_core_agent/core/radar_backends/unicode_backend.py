@@ -30,9 +30,23 @@ class UnicodeRadarBackend(RadarBackend):
         view_state: RadarViewState,
         color: bool,
         render_plan: RadarRenderPlan | None = None,
+        situations: tuple[object, ...] = (),
     ) -> RenderOutput:
-        lines = self._render_grid(scene, view_state=view_state, color=color, width=41, height=13, render_plan=render_plan)
-        return RenderOutput(backend=self.name, lines=lines, plan=render_plan, stats=(render_plan.stats if render_plan else None))
+        lines = self._render_grid(
+            scene,
+            view_state=view_state,
+            color=color,
+            width=41,
+            height=13,
+            render_plan=render_plan,
+            situations=situations,
+        )
+        return RenderOutput(
+            backend=self.name,
+            lines=lines,
+            plan=render_plan,
+            stats=(render_plan.stats if render_plan else None),
+        )
 
     def _render_grid(
         self,
@@ -43,6 +57,7 @@ class UnicodeRadarBackend(RadarBackend):
         width: int,
         height: int,
         render_plan: RadarRenderPlan | None,
+        situations: tuple[object, ...],
     ) -> list[str]:
         width = max(21, width)
         height = max(9, height)
@@ -112,6 +127,18 @@ class UnicodeRadarBackend(RadarBackend):
                     if grid[ty][tx] == " ":
                         grid[ty][tx] = "·"
 
+        critical_tracks: set[str] = set()
+        warn_tracks: set[str] = set()
+        muted_tracks = set(view_state.alerts.muted_target_ids)
+        for situation in situations:
+            track_ids = tuple(getattr(situation, "track_ids", ()) or ())
+            severity = str(getattr(getattr(situation, "severity", ""), "value", getattr(situation, "severity", ""))).upper()
+            for track_id in track_ids:
+                if severity == "CRITICAL":
+                    critical_tracks.add(str(track_id))
+                elif severity == "WARN":
+                    warn_tracks.add(str(track_id))
+
         for point_id, u, v, depth, vr_mps in points:
             x = int(round(center_x + (u + view_state.pan_x) * scale))
             y = int(round(center_y - (v + view_state.pan_y) * scale))
@@ -122,11 +149,21 @@ class UnicodeRadarBackend(RadarBackend):
                 render_plan is None or render_plan.draw_selection_highlight
             ):
                 marker = "◆"
+            if point_id in critical_tracks and view_state.alerts.situations_enabled and point_id not in muted_tracks:
+                marker = "✶"
             grid[y][x] = marker
             if draw_vectors:
                 arrow = "→" if vr_mps >= 0 else "←"
                 if x + 1 < width - 1:
                     grid[y][x + 1] = arrow
+            if (
+                point_id in warn_tracks
+                and view_state.alerts.situations_enabled
+                and point_id not in muted_tracks
+                and (view_state.zoom >= 1.5 or view_state.selected_target_id == point_id)
+            ):
+                if x - 1 > 0 and grid[y][x - 1] == " ":
+                    grid[y][x - 1] = "!"
             if draw_labels:
                 label = point_id[:4]
                 start = min(width - len(label) - 1, x + 1)
@@ -134,10 +171,44 @@ class UnicodeRadarBackend(RadarBackend):
                     for idx, ch in enumerate(label):
                         grid[y][start + idx] = ch
 
+        if view_state.alerts.situations_enabled:
+            for situation in situations:
+                situation_type = str(getattr(getattr(situation, "type", ""), "value", getattr(situation, "type", ""))).upper()
+                severity = str(getattr(getattr(situation, "severity", ""), "value", getattr(situation, "severity", ""))).upper()
+                if situation_type != "CPA_RISK" or severity != "CRITICAL":
+                    continue
+                track_ids = tuple(getattr(situation, "track_ids", ()) or ())
+                if not track_ids:
+                    continue
+                target_id = str(track_ids[0])
+                if target_id in muted_tracks:
+                    continue
+                for point_id, u, v, _depth, _vr in points:
+                    if point_id != target_id:
+                        continue
+                    tx = int(round(center_x + (u + view_state.pan_x) * scale))
+                    ty = int(round(center_y - (v + view_state.pan_y) * scale))
+                    self._draw_dotted_vector(grid, center_x, center_y, tx, ty)
+                    break
+
         lines = ["".join(row) for row in grid]
         if color:
             return [self._colorize_line(line, scene.truth_state) for line in lines]
         return lines
+
+    @staticmethod
+    def _draw_dotted_vector(grid: list[list[str]], x0: int, y0: int, x1: int, y1: int) -> None:
+        steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+        for i in range(1, steps):
+            t = i / float(steps)
+            x = int(round(x0 + ((x1 - x0) * t)))
+            y = int(round(y0 + ((y1 - y0) * t)))
+            if y <= 0 or y >= len(grid) - 1:
+                continue
+            if x <= 0 or x >= len(grid[0]) - 1:
+                continue
+            if grid[y][x] in {" ", "·"} and (i % 2 == 0):
+                grid[y][x] = ":"
 
     @staticmethod
     def _projected_points(points: list, *, view_state: RadarViewState) -> Iterable[tuple[str, float, float, float, float]]:
