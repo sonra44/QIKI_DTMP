@@ -29,11 +29,19 @@ class SituationSeverity(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class SituationStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    LOST = "LOST"
+    RESOLVED = "RESOLVED"
+
+
 @dataclass(frozen=True)
 class Situation:
     id: str
     type: SituationType
     severity: SituationSeverity
+    status: SituationStatus
+    reason: str
     track_ids: tuple[str, ...]
     metrics: dict[str, float | str]
     created_ts: float
@@ -56,8 +64,10 @@ class SituationConfig:
     closing_speed_warn: float
     near_dist: float
     near_recent_s: float
-    closing_confirm_frames: int
-    lost_contact_recent_s: float
+    confirm_frames: int
+    cooldown_s: float
+    lost_contact_window_s: float
+    auto_resolve_after_lost_s: float
 
     @classmethod
     def from_env(cls) -> "SituationConfig":
@@ -69,9 +79,21 @@ class SituationConfig:
             closing_speed_warn=_env_float("RADAR_CLOSING_SPEED_WARN", 5.0),
             near_dist=_env_float("RADAR_NEAR_DIST", 300.0),
             near_recent_s=_env_float("RADAR_NEAR_RECENT_S", 8.0),
-            closing_confirm_frames=max(2, _env_int("RADAR_CLOSING_CONFIRM_FRAMES", 3)),
-            lost_contact_recent_s=_env_float("RADAR_LOST_CONTACT_RECENT_S", 10.0),
+            confirm_frames=max(1, _env_int("SITUATION_CONFIRM_FRAMES", 3)),
+            cooldown_s=max(0.0, _env_float("SITUATION_COOLDOWN_S", 5.0)),
+            lost_contact_window_s=max(0.0, _env_float("LOST_CONTACT_WINDOW_S", 2.0)),
+            auto_resolve_after_lost_s=max(0.0, _env_float("SITUATION_AUTO_RESOLVE_AFTER_LOST_S", 2.0)),
         )
+
+
+@dataclass(frozen=True)
+class _SituationCandidate:
+    id: str
+    type: SituationType
+    severity: SituationSeverity
+    reason: str
+    track_ids: tuple[str, ...]
+    metrics: dict[str, float | str]
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -131,8 +153,8 @@ class RadarSituationEngine:
     def __init__(self, config: SituationConfig | None = None):
         self.config = config or SituationConfig.from_env()
         self._active: dict[str, Situation] = {}
-        self._last_seen_ts: dict[str, float] = {}
-        self._prev_track_ids: set[str] = set()
+        self._confirm_hits: dict[str, int] = {}
+        self._cooldown_until: dict[str, float] = {}
 
     def evaluate(
         self,
@@ -142,150 +164,179 @@ class RadarSituationEngine:
         view_state: RadarViewState,
         render_stats: RadarRenderStats | None,
     ) -> tuple[list[Situation], list[SituationDelta]]:
-        del view_state  # reserved for v2 contextual rules
+        del view_state  # reserved for contextual rules
         del render_stats
         if not self.config.enabled:
             return [], []
 
         now_ts = time.time()
-        candidates: dict[str, Situation] = {}
-
-        if scene.ok:
-            points_by_track: dict[str, RadarPoint] = {}
-            for idx, point in enumerate(scene.points):
-                points_by_track[_track_id(point, idx)] = point
-
-            for track_id, point in points_by_track.items():
-                self._last_seen_ts[track_id] = now_ts
-                dist = _distance(point)
-                closing = _closing_speed(point)
-                t_cpa = dist / closing if closing > 1e-9 else float("inf")
-
-                if closing > 0 and t_cpa < self.config.cpa_warn_t:
-                    severity = SituationSeverity.WARN
-                    if t_cpa < self.config.cpa_crit_t and dist < self.config.cpa_crit_dist:
-                        severity = SituationSeverity.CRITICAL
-                    candidates[f"cpa:{track_id}"] = Situation(
-                        id=f"cpa:{track_id}",
-                        type=SituationType.CPA_RISK,
-                        severity=severity,
-                        track_ids=(track_id,),
-                        metrics={
-                            "distance_m": round(dist, 3),
-                            "time_to_cpa_s": round(t_cpa, 3) if math.isfinite(t_cpa) else "inf",
-                            "closing_speed_mps": round(closing, 3),
-                        },
-                        created_ts=now_ts,
-                        last_update_ts=now_ts,
-                        is_active=True,
-                    )
-
-                if closing > self.config.closing_speed_warn and self._is_distance_decreasing(trail_store, track_id):
-                    candidates[f"closing:{track_id}"] = Situation(
-                        id=f"closing:{track_id}",
-                        type=SituationType.CLOSING_FAST,
-                        severity=SituationSeverity.WARN,
-                        track_ids=(track_id,),
-                        metrics={
-                            "distance_m": round(dist, 3),
-                            "closing_speed_mps": round(closing, 3),
-                        },
-                        created_ts=now_ts,
-                        last_update_ts=now_ts,
-                        is_active=True,
-                    )
-
-                age_s = _point_age_s(point)
-                if _is_unknown(point) and dist < self.config.near_dist and (age_s is None or age_s <= self.config.near_recent_s):
-                    candidates[f"unknown:{track_id}"] = Situation(
-                        id=f"unknown:{track_id}",
-                        type=SituationType.UNKNOWN_NEARBY,
-                        severity=SituationSeverity.WARN,
-                        track_ids=(track_id,),
-                        metrics={
-                            "distance_m": round(dist, 3),
-                            "age_s": round(age_s, 3) if age_s is not None else "n/a",
-                        },
-                        created_ts=now_ts,
-                        last_update_ts=now_ts,
-                        is_active=True,
-                    )
-
-            lost_tracks = sorted(self._prev_track_ids - set(points_by_track.keys()))
-            for track_id in lost_tracks:
-                seen_ts = self._last_seen_ts.get(track_id, 0.0)
-                if now_ts - seen_ts > self.config.lost_contact_recent_s:
-                    continue
-                candidates[f"lost:{track_id}"] = Situation(
-                    id=f"lost:{track_id}",
-                    type=SituationType.LOST_CONTACT,
-                    severity=SituationSeverity.WARN,
-                    track_ids=(track_id,),
-                    metrics={"last_seen_age_s": round(now_ts - seen_ts, 3)},
-                    created_ts=now_ts,
-                    last_update_ts=now_ts,
-                    is_active=True,
-                )
-            self._prev_track_ids = set(points_by_track.keys())
-        else:
-            # Truth rule: no-data frame does not create new situations.
-            candidates = {}
-
+        candidates = self._collect_candidates(scene, trail_store)
+        candidate_ids = set(candidates.keys())
         deltas: list[SituationDelta] = []
-        next_active: dict[str, Situation] = {}
 
+        # New/active/recovered situations.
         for situation_id, candidate in candidates.items():
+            cooldown_until = self._cooldown_until.get(situation_id, 0.0)
+            if cooldown_until > now_ts and situation_id not in self._active:
+                self._confirm_hits[situation_id] = 0
+                continue
+
             previous = self._active.get(situation_id)
             if previous is None:
+                hit = self._confirm_hits.get(situation_id, 0) + 1
+                self._confirm_hits[situation_id] = hit
+                if hit < self.config.confirm_frames:
+                    continue
                 created = Situation(
                     id=candidate.id,
                     type=candidate.type,
                     severity=candidate.severity,
+                    status=SituationStatus.ACTIVE,
+                    reason=candidate.reason,
                     track_ids=candidate.track_ids,
                     metrics=dict(candidate.metrics),
-                    created_ts=candidate.created_ts,
-                    last_update_ts=candidate.last_update_ts,
+                    created_ts=now_ts,
+                    last_update_ts=now_ts,
                     is_active=True,
                 )
-                deltas.append(SituationDelta(event_type="SITUATION_CREATED", situation=created))
-                next_active[situation_id] = created
+                self._active[situation_id] = created
+                deltas.append(SituationDelta(event_type="situation_created", situation=created))
                 continue
+
+            self._confirm_hits[situation_id] = self.config.confirm_frames
+            status = SituationStatus.ACTIVE
+            reason = candidate.reason
+            if previous.status == SituationStatus.LOST:
+                reason = "CONTACT_RESTORED"
             updated = Situation(
                 id=previous.id,
                 type=candidate.type,
                 severity=candidate.severity,
+                status=status,
+                reason=reason,
                 track_ids=candidate.track_ids,
                 metrics=dict(candidate.metrics),
                 created_ts=previous.created_ts,
                 last_update_ts=now_ts,
                 is_active=True,
             )
-            next_active[situation_id] = updated
+            self._active[situation_id] = updated
             if self._changed(previous, updated):
-                deltas.append(SituationDelta(event_type="SITUATION_UPDATED", situation=updated))
+                deltas.append(SituationDelta(event_type="situation_updated", situation=updated))
 
-        for situation_id, previous in self._active.items():
-            if situation_id in next_active:
+        # Missing candidates can become lost and then resolved.
+        for situation_id in sorted(list(self._active.keys())):
+            if situation_id in candidate_ids:
                 continue
-            resolved = Situation(
-                id=previous.id,
-                type=previous.type,
-                severity=previous.severity,
-                track_ids=previous.track_ids,
-                metrics=dict(previous.metrics),
-                created_ts=previous.created_ts,
-                last_update_ts=now_ts,
-                is_active=False,
-            )
-            deltas.append(SituationDelta(event_type="SITUATION_RESOLVED", situation=resolved))
+            self._confirm_hits[situation_id] = 0
+            previous = self._active[situation_id]
+            absent_for_s = now_ts - previous.last_update_ts
+            if previous.status == SituationStatus.ACTIVE:
+                if absent_for_s < self.config.lost_contact_window_s:
+                    continue
+                lost = Situation(
+                    id=previous.id,
+                    type=previous.type,
+                    severity=previous.severity,
+                    status=SituationStatus.LOST,
+                    reason="CONTACT_LOST",
+                    track_ids=previous.track_ids,
+                    metrics={**previous.metrics, "absent_for_s": round(absent_for_s, 3)},
+                    created_ts=previous.created_ts,
+                    last_update_ts=now_ts,
+                    is_active=True,
+                )
+                self._active[situation_id] = lost
+                deltas.append(SituationDelta(event_type="situation_lost_contact", situation=lost))
+                continue
 
-        self._active = next_active
-        situations = sorted(self._active.values(), key=lambda s: (_severity_rank(s.severity), s.id))
+            if previous.status == SituationStatus.LOST and absent_for_s >= self.config.auto_resolve_after_lost_s:
+                resolved = Situation(
+                    id=previous.id,
+                    type=previous.type,
+                    severity=previous.severity,
+                    status=SituationStatus.RESOLVED,
+                    reason="AUTO_RESOLVED_AFTER_LOST",
+                    track_ids=previous.track_ids,
+                    metrics={**previous.metrics, "absent_for_s": round(absent_for_s, 3)},
+                    created_ts=previous.created_ts,
+                    last_update_ts=now_ts,
+                    is_active=False,
+                )
+                del self._active[situation_id]
+                self._cooldown_until[situation_id] = now_ts + self.config.cooldown_s
+                deltas.append(SituationDelta(event_type="situation_resolved", situation=resolved))
+
+        # Keep confirm cache clean for stale keys.
+        for situation_id in list(self._confirm_hits.keys()):
+            if situation_id not in candidate_ids and situation_id not in self._active:
+                self._confirm_hits[situation_id] = 0
+
+        situations = sorted(self._active.values(), key=lambda s: (_severity_rank(s.severity), _status_rank(s.status), s.id))
         return situations, deltas
+
+    def _collect_candidates(self, scene: RadarScene, trail_store: RadarTrailStore) -> dict[str, _SituationCandidate]:
+        if not scene.ok:
+            # Truth rule: no-data frame does not create new situations.
+            return {}
+        points_by_track: dict[str, RadarPoint] = {}
+        for idx, point in enumerate(scene.points):
+            points_by_track[_track_id(point, idx)] = point
+
+        candidates: dict[str, _SituationCandidate] = {}
+        for track_id, point in points_by_track.items():
+            dist = _distance(point)
+            closing = _closing_speed(point)
+            t_cpa = dist / closing if closing > 1e-9 else float("inf")
+
+            if closing > 0 and t_cpa < self.config.cpa_warn_t:
+                severity = SituationSeverity.WARN
+                if t_cpa < self.config.cpa_crit_t and dist < self.config.cpa_crit_dist:
+                    severity = SituationSeverity.CRITICAL
+                candidates[f"cpa:{track_id}"] = _SituationCandidate(
+                    id=f"cpa:{track_id}",
+                    type=SituationType.CPA_RISK,
+                    severity=severity,
+                    reason="CPA_THRESHOLD_EXCEEDED",
+                    track_ids=(track_id,),
+                    metrics={
+                        "distance_m": round(dist, 3),
+                        "time_to_cpa_s": round(t_cpa, 3) if math.isfinite(t_cpa) else "inf",
+                        "closing_speed_mps": round(closing, 3),
+                    },
+                )
+
+            if closing > self.config.closing_speed_warn and self._is_distance_decreasing(trail_store, track_id):
+                candidates[f"closing:{track_id}"] = _SituationCandidate(
+                    id=f"closing:{track_id}",
+                    type=SituationType.CLOSING_FAST,
+                    severity=SituationSeverity.WARN,
+                    reason="CLOSING_SPEED_EXCEEDED",
+                    track_ids=(track_id,),
+                    metrics={
+                        "distance_m": round(dist, 3),
+                        "closing_speed_mps": round(closing, 3),
+                    },
+                )
+
+            age_s = _point_age_s(point)
+            if _is_unknown(point) and dist < self.config.near_dist and (age_s is None or age_s <= self.config.near_recent_s):
+                candidates[f"unknown:{track_id}"] = _SituationCandidate(
+                    id=f"unknown:{track_id}",
+                    type=SituationType.UNKNOWN_NEARBY,
+                    severity=SituationSeverity.WARN,
+                    reason="UNKNOWN_NEARBY",
+                    track_ids=(track_id,),
+                    metrics={
+                        "distance_m": round(dist, 3),
+                        "age_s": round(age_s, 3) if age_s is not None else "n/a",
+                    },
+                )
+        return candidates
 
     def _is_distance_decreasing(self, trail_store: RadarTrailStore, track_id: str) -> bool:
         trail = trail_store.get_trail(track_id)
-        required = self.config.closing_confirm_frames
+        required = self.config.confirm_frames
         if len(trail) < required:
             return False
         distances = [_distance(point) for point in trail[-required:]]
@@ -296,13 +347,27 @@ class RadarSituationEngine:
 
     @staticmethod
     def _changed(old: Situation, new: Situation) -> bool:
-        return old.severity != new.severity or old.metrics != new.metrics or old.track_ids != new.track_ids
+        return (
+            old.severity != new.severity
+            or old.metrics != new.metrics
+            or old.track_ids != new.track_ids
+            or old.status != new.status
+            or old.reason != new.reason
+        )
 
 
 def _severity_rank(severity: SituationSeverity) -> int:
     if severity == SituationSeverity.CRITICAL:
         return 0
     if severity == SituationSeverity.WARN:
+        return 1
+    return 2
+
+
+def _status_rank(status: SituationStatus) -> int:
+    if status == SituationStatus.ACTIVE:
+        return 0
+    if status == SituationStatus.LOST:
         return 1
     return 2
 

@@ -29,7 +29,9 @@ class RadarInspectorState:
 class RadarAlertUiState:
     situations_enabled: bool = True
     cursor: int = 0
-    muted_target_ids: tuple[str, ...] = ()
+    selected_situation_id: str | None = None
+    focus_track_id: str | None = None
+    acked_until_by_situation: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass, replace
 
 from .radar_backends import RadarScene
@@ -39,6 +41,11 @@ class RadarMouseEvent:
 
 
 class RadarInputController:
+    def __init__(self, *, ack_s: float | None = None):
+        if ack_s is None:
+            ack_s = _env_float("SITUATION_ACK_S", 10.0)
+        self.ack_s = max(0.0, float(ack_s))
+
     def handle_key(self, key: str) -> RadarAction:
         raw = (key or "").strip()
         token = raw.lower()
@@ -64,10 +71,14 @@ class RadarInputController:
             return RadarAction(kind="TOGGLE_COLOR")
         if token == "q":
             return RadarAction(kind="QUIT")
-        if token == "a":
-            return RadarAction(kind="ALERT_NEXT")
         if raw == "A":
             return RadarAction(kind="ALERT_ACK")
+        if raw == "F":
+            return RadarAction(kind="ALERT_FOCUS")
+        if token == "a" or raw == "]":
+            return RadarAction(kind="ALERT_NEXT")
+        if raw == "[":
+            return RadarAction(kind="ALERT_PREV")
         if token == "s":
             return RadarAction(kind="TOGGLE_SITUATIONS")
         if token == "j":
@@ -163,13 +174,16 @@ class RadarInputController:
             return replace(state, alerts=replace(state.alerts, cursor=state.alerts.cursor + 1))
         if kind == "ALERT_PREV":
             return replace(state, alerts=replace(state.alerts, cursor=max(0, state.alerts.cursor - 1)))
+        if kind == "ALERT_FOCUS":
+            return replace(state, selected_target_id=state.alerts.focus_track_id or state.selected_target_id)
         if kind == "ALERT_ACK":
-            if not state.selected_target_id:
+            situation_id = state.alerts.selected_situation_id
+            if not situation_id:
                 return state
-            muted = list(state.alerts.muted_target_ids)
-            if state.selected_target_id not in muted:
-                muted.append(state.selected_target_id)
-            return replace(state, alerts=replace(state.alerts, muted_target_ids=tuple(muted)))
+            ack_map = dict(state.alerts.acked_until_by_situation)
+            ack_map[situation_id] = time.time() + self.ack_s
+            ordered = tuple(sorted(ack_map.items()))
+            return replace(state, alerts=replace(state.alerts, acked_until_by_situation=ordered))
         if kind == "RESET_VIEW":
             return replace(
                 state,
@@ -190,12 +204,18 @@ class RadarInputController:
                     selection_highlight=True,
                 ),
                 inspector=replace(state.inspector, mode="off", pinned_target_id=None),
-                alerts=replace(state.alerts, cursor=0, muted_target_ids=()),
+                alerts=replace(
+                    state.alerts,
+                    cursor=0,
+                    selected_situation_id=None,
+                    focus_track_id=None,
+                    acked_until_by_situation=(),
+                ),
             )
         return state
 
     def apply_key(self, state: RadarViewState, key: str, *, scene: RadarScene | None = None) -> RadarViewState:
-        token = (key or "").strip().lower()
+        token = (key or "").strip()
         if token in _VIEW_KEYS:
             return replace(state, view=_VIEW_KEYS[token])
         return self.apply_action(state, self.handle_key(token), scene=scene)
@@ -215,3 +235,10 @@ class RadarInputController:
                 best_distance = distance
                 best_id = target_id
         return best_id
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except Exception:
+        return default

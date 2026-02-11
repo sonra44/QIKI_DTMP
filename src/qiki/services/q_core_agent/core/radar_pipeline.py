@@ -6,6 +6,7 @@ import os
 import time
 from dataclasses import dataclass
 from dataclasses import replace
+from uuid import uuid4
 
 from .radar_backends import (
     KittyRadarBackend,
@@ -57,6 +58,7 @@ class RadarPipeline:
         self.trail_store = RadarTrailStore(max_len=self.render_policy.trail_len)
         self.situation_engine = RadarSituationEngine()
         self.last_situations: tuple[Situation, ...] = ()
+        self.session_id = str(uuid4())
         self._last_frame_time_ms = 0.0
         self._degradation_state = DegradationState(last_scale=self.render_policy.bitmap_scales[0])
         if self.config.view in _ALLOWED_VIEWS:
@@ -134,6 +136,7 @@ class RadarPipeline:
             render_stats=plan.stats,
         )
         active_view_state = self._apply_alert_selection(active_view_state, situations)
+        self.view_state = active_view_state
         self.last_situations = tuple(situations)
         self._append_situation_events(scene_with_trails, deltas)
         render_start = time.monotonic()
@@ -181,23 +184,25 @@ class RadarPipeline:
             return output
 
     def _apply_alert_selection(self, view_state: RadarViewState, situations: list[Situation]) -> RadarViewState:
-        targets: list[str] = []
+        ordered: list[Situation] = []
         for severity in (SituationSeverity.CRITICAL, SituationSeverity.WARN, SituationSeverity.INFO):
             for situation in situations:
-                if situation.severity != severity:
-                    continue
-                if not situation.track_ids:
-                    continue
-                track_id = situation.track_ids[0]
-                if track_id not in targets:
-                    targets.append(track_id)
-        if not targets:
+                if situation.severity == severity:
+                    ordered.append(situation)
+        if not ordered:
             return view_state
-        cursor = view_state.alerts.cursor % len(targets)
-        selected = targets[cursor]
-        if selected == view_state.selected_target_id:
-            return view_state
-        return replace(view_state, selected_target_id=selected)
+        cursor = view_state.alerts.cursor % len(ordered)
+        selected_situation = ordered[cursor]
+        selected_track = selected_situation.track_ids[0] if selected_situation.track_ids else None
+        return replace(
+            view_state,
+            selected_target_id=selected_track or view_state.selected_target_id,
+            alerts=replace(
+                view_state.alerts,
+                selected_situation_id=selected_situation.id,
+                focus_track_id=selected_track,
+            ),
+        )
 
     def _append_situation_events(self, scene: RadarScene, deltas: list) -> None:
         if self.event_store is None or not deltas:
@@ -216,7 +221,11 @@ class RadarPipeline:
                 subsystem="SITUATION",
                 event_type=delta.event_type,
                 payload={
+                    "timestamp": float(situation.last_update_ts),
+                    "session_id": self.session_id,
+                    "track_id": situation.track_ids[0] if situation.track_ids else "",
                     "situation_id": situation.id,
+                    "status": situation.status.value,
                     "type": situation.type.value,
                     "severity": situation.severity.value,
                     "track_ids": list(situation.track_ids),
@@ -226,7 +235,7 @@ class RadarPipeline:
                     "is_active": bool(situation.is_active),
                 },
                 truth_state=truth_state,
-                reason=situation.type.value,
+                reason=situation.reason,
             )
 
     def _append_render_tick_event(self, scene: RadarScene, output: RenderOutput) -> None:

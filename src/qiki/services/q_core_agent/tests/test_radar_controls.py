@@ -7,7 +7,7 @@ import pytest
 from qiki.services.q_core_agent.core.radar_backends import RadarPoint, RadarScene
 from qiki.services.q_core_agent.core.radar_controls import RadarInputController, RadarMouseEvent
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
-from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
+from qiki.services.q_core_agent.core.radar_view_state import RadarAlertUiState, RadarViewState
 from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
 
 
@@ -159,6 +159,48 @@ def test_missing_mouse_events_are_noop() -> None:
     action = controller.handle_mouse(RadarMouseEvent(kind="drag", button="left", is_button_down=False, dx=1.0, dy=1.0))
     updated = controller.apply_action(state, action)
     assert updated == state
+
+
+def test_next_prev_hotkeys_brackets_work() -> None:
+    controller = RadarInputController()
+    state = RadarViewState()
+    next_state = controller.apply_key(state, "]")
+    prev_state = controller.apply_key(next_state, "[")
+    assert next_state.alerts.cursor == 1
+    assert prev_state.alerts.cursor == 0
+
+
+def test_focus_selected_situation_hotkey() -> None:
+    controller = RadarInputController()
+    state = RadarViewState(
+        selected_target_id=None,
+        alerts=RadarAlertUiState(
+            situations_enabled=True,
+            cursor=0,
+            selected_situation_id="cpa:t1",
+            focus_track_id="t1",
+            acked_until_by_situation=(),
+        ),
+    )
+    updated = controller.apply_key(state, "F")
+    assert updated.selected_target_id == "t1"
+
+
+def test_ack_sets_timer_for_selected_situation() -> None:
+    controller = RadarInputController(ack_s=3.0)
+    state = RadarViewState(
+        alerts=RadarAlertUiState(
+            situations_enabled=True,
+            cursor=0,
+            selected_situation_id="cpa:t1",
+            focus_track_id="t1",
+            acked_until_by_situation=(),
+        )
+    )
+    updated = controller.apply_key(state, "A")
+    ack_map = dict(updated.alerts.acked_until_by_situation)
+    assert "cpa:t1" in ack_map
+    assert ack_map["cpa:t1"] > time.time()
 
 
 def test_render_uses_view_state_view() -> None:

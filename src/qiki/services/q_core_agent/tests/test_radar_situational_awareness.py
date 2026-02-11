@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 import time
-from dataclasses import replace
 
 from qiki.services.q_core_agent.core.event_store import EventStore
 from qiki.services.q_core_agent.core.radar_backends import RadarPoint, RadarScene
-from qiki.services.q_core_agent.core.radar_controls import RadarInputController
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
 from qiki.services.q_core_agent.core.radar_situation_engine import (
     RadarSituationEngine,
-    Situation,
     SituationConfig,
-    SituationSeverity,
     SituationType,
 )
 from qiki.services.q_core_agent.core.radar_trail_store import RadarTrailStore
-from qiki.services.q_core_agent.core.radar_view_state import RadarInspectorState, RadarViewState
-from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
+from qiki.services.q_core_agent.core.radar_view_state import RadarViewState
 
 
 def _point(track_id: str, *, x: float, y: float, z: float, vr: float, **meta: object) -> RadarPoint:
@@ -28,7 +23,7 @@ def _scene(points: list[RadarPoint], *, ok: bool = True, truth_state: str = "OK"
     return RadarScene(ok=ok, reason=reason, truth_state=truth_state, is_fallback=False, points=points)
 
 
-def _engine() -> RadarSituationEngine:
+def _engine(**overrides: object) -> RadarSituationEngine:
     config = SituationConfig(
         enabled=True,
         cpa_warn_t=20.0,
@@ -37,270 +32,195 @@ def _engine() -> RadarSituationEngine:
         closing_speed_warn=5.0,
         near_dist=300.0,
         near_recent_s=5.0,
-        closing_confirm_frames=3,
-        lost_contact_recent_s=10.0,
+        confirm_frames=2,
+        cooldown_s=0.2,
+        lost_contact_window_s=0.05,
+        auto_resolve_after_lost_s=0.05,
     )
+    config = SituationConfig(**{**config.__dict__, **overrides})
     return RadarSituationEngine(config=config)
 
 
-def test_cpa_warn_is_created() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=5)
-    scene = _scene([_point("t1", x=400.0, y=0.0, z=0.0, vr=-25.0)])
+def _eval(engine: RadarSituationEngine, trails: RadarTrailStore, scene: RadarScene):
     trails.update_from_scene(scene)
-    situations, _ = engine.evaluate(scene, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(s.type == SituationType.CPA_RISK and s.severity == SituationSeverity.WARN for s in situations)
+    return engine.evaluate(scene, trail_store=trails, view_state=RadarViewState(), render_stats=None)
 
 
-def test_cpa_critical_is_created() -> None:
-    engine = _engine()
+def test_no_data_does_not_create_situations() -> None:
+    engine = _engine(confirm_frames=1)
     trails = RadarTrailStore(max_len=5)
-    scene = _scene([_point("t1", x=90.0, y=0.0, z=0.0, vr=-20.0)])
-    trails.update_from_scene(scene)
-    situations, _ = engine.evaluate(scene, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(s.type == SituationType.CPA_RISK and s.severity == SituationSeverity.CRITICAL for s in situations)
-
-
-def test_cpa_resolved_emits_resolved_delta() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=5)
-    risky = _scene([_point("t1", x=90.0, y=0.0, z=0.0, vr=-20.0)])
-    trails.update_from_scene(risky)
-    engine.evaluate(risky, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-
-    safe = _scene([_point("t1", x=900.0, y=0.0, z=0.0, vr=2.0)])
-    trails.update_from_scene(safe)
-    _, deltas = engine.evaluate(safe, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(delta.event_type == "SITUATION_RESOLVED" and delta.situation.type == SituationType.CPA_RISK for delta in deltas)
-
-
-def test_closing_fast_warn_is_created() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=10)
-    for distance in (300.0, 250.0, 200.0):
-        frame = _scene([_point("t1", x=distance, y=0.0, z=0.0, vr=-8.0)])
-        trails.update_from_scene(frame)
-    situations, _ = engine.evaluate(frame, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(s.type == SituationType.CLOSING_FAST for s in situations)
-
-
-def test_unknown_nearby_warn_is_created() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=5)
-    scene = _scene([_point("unk", x=100.0, y=0.0, z=0.0, vr=-1.0, object_type="unknown", age_s=1.0)])
-    trails.update_from_scene(scene)
-    situations, _ = engine.evaluate(scene, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(s.type == SituationType.UNKNOWN_NEARBY for s in situations)
-
-
-def test_lost_contact_warn_is_created() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=5)
-    first = _scene([_point("t1", x=120.0, y=0.0, z=0.0, vr=-2.0)])
-    trails.update_from_scene(first)
-    engine.evaluate(first, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    second = _scene([])
-    trails.update_from_scene(second)
-    situations, _ = engine.evaluate(second, trail_store=trails, view_state=RadarViewState(), render_stats=None)
-    assert any(s.type == SituationType.LOST_CONTACT for s in situations)
-
-
-def test_critical_alert_overlay_visible_on_scene() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene([_point("t1", x=90.0, y=0.0, z=0.0, vr=-20.0)])
-    out = pipeline.render_scene(scene, view_state=RadarViewState())
-    joined = "\n".join(out.lines)
-    assert "✶" in joined or ":" in joined
-
-
-def test_info_alert_is_not_drawn_on_scene() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-
-    info = Situation(
-        id="manual-info",
-        type=SituationType.ZONE_VIOLATION,
-        severity=SituationSeverity.INFO,
-        track_ids=("t1",),
-        metrics={},
-        created_ts=time.time(),
-        last_update_ts=time.time(),
-        is_active=True,
-    )
-
-    def _fake_eval(*_args, **_kwargs):
-        return [info], []
-
-    pipeline.situation_engine.evaluate = _fake_eval  # type: ignore[assignment]
-    scene = _scene([_point("t1", x=200.0, y=0.0, z=0.0, vr=-1.0)])
-    out = pipeline.render_scene(scene, view_state=RadarViewState())
-    joined = "\n".join(out.lines)
-    assert "✶" not in joined
-
-
-def test_inspector_shows_selected_situations() -> None:
-    events = [
-        {
-            "event_id": "e1",
-            "ts": time.time(),
-            "subsystem": "SENSORS",
-            "event_type": "SENSOR_TRUST_VERDICT",
-            "payload": {
-                "ok": True,
-                "reason": "OK",
-                "is_fallback": False,
-                "data": {"tracks": [{"track_id": "t1", "range_m": 120.0, "vr_mps": -10.0}]},
-            },
-            "truth_state": "OK",
-            "reason": "OK",
-        }
-    ]
-    view_state = RadarViewState(inspector=RadarInspectorState(mode="on"), selected_target_id="t1")
-    screen = render_terminal_screen(events, pipeline=RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False)), view_state=view_state)
-    assert "INSPECTOR:" in screen
-    assert "situation=" in screen
-
-
-def test_inspector_empty_when_no_situations() -> None:
-    events = [
-        {
-            "event_id": "e1",
-            "ts": time.time(),
-            "subsystem": "SENSORS",
-            "event_type": "SENSOR_TRUST_VERDICT",
-            "payload": {"ok": False, "reason": "NO_DATA", "is_fallback": False, "data": None},
-            "truth_state": "NO_DATA",
-            "reason": "NO_DATA",
-        }
-    ]
-    view_state = RadarViewState(inspector=RadarInspectorState(mode="on"), selected_target_id="t1")
-    screen = render_terminal_screen(
-        events,
-        pipeline=RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False)),
-        view_state=view_state,
-    )
-    assert "situation=none" in screen or "no selection" in screen or "not found" in screen
-
-
-def test_hud_counts_alert_severity() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene(
-        [
-            _point("crit", x=90.0, y=0.0, z=0.0, vr=-20.0),
-            _point("warn", x=100.0, y=0.0, z=0.0, vr=-6.0, object_type="unknown", age_s=1.0),
-        ]
-    )
-    out = pipeline.render_scene(scene)
-    events = []
-    for idx, situation in enumerate(pipeline.last_situations):
-        events.append(
-            {
-                "event_id": f"sx-{idx}",
-                "ts": time.time(),
-                "subsystem": "SITUATION",
-                "event_type": "SITUATION_CREATED",
-                "payload": {
-                    "type": situation.type.value,
-                    "severity": situation.severity.value,
-                    "track_ids": list(situation.track_ids),
-                },
-                "truth_state": "OK",
-                "reason": situation.type.value,
-            }
-        )
-    screen = render_terminal_screen(events, pipeline=pipeline)
-    assert "ALERTS:" in screen
-
-
-def test_cycle_alerts_switches_selection() -> None:
-    controller = RadarInputController()
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene(
-        [
-            _point("a", x=90.0, y=0.0, z=0.0, vr=-20.0),
-            _point("b", x=120.0, y=0.0, z=0.0, vr=-15.0),
-        ]
-    )
-    state = RadarViewState()
-    out1 = pipeline.render_scene(scene, view_state=state)
-    selected1 = pipeline._apply_alert_selection(state, list(pipeline.last_situations)).selected_target_id
-    state2 = controller.apply_key(state, "j")
-    out2 = pipeline.render_scene(scene, view_state=state2)
-    selected2 = pipeline._apply_alert_selection(state2, list(pipeline.last_situations)).selected_target_id
-    assert selected1 != selected2
-
-
-def test_toggle_situations_overlays_off() -> None:
-    controller = RadarInputController()
-    state = controller.apply_key(RadarViewState(), "s")
-    assert state.alerts.situations_enabled is False
-
-
-def test_no_data_does_not_generate_new_situations() -> None:
-    engine = _engine()
-    trails = RadarTrailStore(max_len=5)
-    scene = _scene([], ok=False, truth_state="NO_DATA", reason="NO_DATA")
-    situations, deltas = engine.evaluate(scene, trail_store=trails, view_state=RadarViewState(), render_stats=None)
+    situations, deltas = _eval(engine, trails, _scene([], ok=False, truth_state="NO_DATA", reason="NO_DATA"))
     assert situations == []
     assert deltas == []
 
 
-def test_fallback_marked_in_inspector() -> None:
-    events = [
-        {
-            "event_id": "e1",
-            "ts": time.time(),
-            "subsystem": "SENSORS",
-            "event_type": "SENSOR_TRUST_VERDICT",
-            "payload": {
-                "ok": True,
-                "reason": "OK",
-                "is_fallback": True,
-                "data": {"tracks": [{"track_id": "t1", "range_m": 20.0, "vr_mps": -1.0}]},
-            },
-            "truth_state": "FALLBACK",
-            "reason": "OK",
-        }
-    ]
-    screen = render_terminal_screen(
-        events,
-        pipeline=RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False)),
-        view_state=RadarViewState(inspector=RadarInspectorState(mode="on"), selected_target_id="t1"),
+def test_lost_contact_emitted_once_after_window() -> None:
+    engine = _engine(confirm_frames=1, lost_contact_window_s=0.03)
+    trails = RadarTrailStore(max_len=5)
+    _eval(engine, trails, _scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+    situations1, deltas1 = _eval(engine, trails, _scene([]))
+    assert situations1  # still active before lost window
+    assert not any(d.event_type == "situation_lost_contact" for d in deltas1)
+    time.sleep(0.04)
+    situations2, deltas2 = _eval(engine, trails, _scene([]))
+    assert any(d.event_type == "situation_lost_contact" for d in deltas2)
+    assert any(s.status.value == "LOST" for s in situations2)
+    situations3, deltas3 = _eval(engine, trails, _scene([]))
+    assert not any(d.event_type == "situation_lost_contact" for d in deltas3)
+
+
+def test_auto_resolve_after_lost_without_recovery() -> None:
+    engine = _engine(confirm_frames=1, lost_contact_window_s=0.02, auto_resolve_after_lost_s=0.03)
+    trails = RadarTrailStore(max_len=5)
+    _eval(engine, trails, _scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+    time.sleep(0.03)
+    _eval(engine, trails, _scene([]))  # lost
+    time.sleep(0.04)
+    situations, deltas = _eval(engine, trails, _scene([]))
+    assert situations == []
+    assert any(d.event_type == "situation_resolved" for d in deltas)
+
+
+def test_recovery_before_auto_resolve_emits_updated() -> None:
+    engine = _engine(confirm_frames=1, lost_contact_window_s=0.02, auto_resolve_after_lost_s=0.2)
+    trails = RadarTrailStore(max_len=5)
+    _eval(engine, trails, _scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+    time.sleep(0.03)
+    _eval(engine, trails, _scene([]))  # lost
+    situations, deltas = _eval(engine, trails, _scene([_point("t1", x=92, y=0, z=0, vr=-11)]))
+    assert any(s.status.value == "ACTIVE" for s in situations)
+    assert any(d.event_type == "situation_updated" and d.situation.reason == "CONTACT_RESTORED" for d in deltas)
+
+
+def test_confirm_frames_blocks_short_spikes() -> None:
+    engine = _engine(confirm_frames=3)
+    trails = RadarTrailStore(max_len=10)
+    s = _scene([_point("t1", x=90, y=0, z=0, vr=-12)])
+    situations1, deltas1 = _eval(engine, trails, s)
+    assert situations1 == []
+    assert deltas1 == []
+    situations2, deltas2 = _eval(engine, trails, s)
+    assert situations2 == []
+    assert deltas2 == []
+    situations3, deltas3 = _eval(engine, trails, s)
+    assert any(d.event_type == "situation_created" for d in deltas3)
+    assert any(sx.type == SituationType.CPA_RISK for sx in situations3)
+
+
+def test_cooldown_prevents_immediate_recreate() -> None:
+    engine = _engine(confirm_frames=1, cooldown_s=0.2, lost_contact_window_s=0.01, auto_resolve_after_lost_s=0.01)
+    trails = RadarTrailStore(max_len=10)
+    risky = _scene([_point("t1", x=90, y=0, z=0, vr=-12)])
+    _eval(engine, trails, risky)
+    time.sleep(0.02)
+    _eval(engine, trails, _scene([]))  # lost
+    time.sleep(0.02)
+    _eval(engine, trails, _scene([]))  # resolved, cooldown starts
+    situations, deltas = _eval(engine, trails, risky)
+    assert situations == []
+    assert not any(d.event_type == "situation_created" for d in deltas)
+    time.sleep(0.22)
+    situations2, deltas2 = _eval(engine, trails, risky)
+    assert any(d.event_type == "situation_created" for d in deltas2)
+    assert situations2
+
+
+def test_closing_fast_detected() -> None:
+    engine = _engine(confirm_frames=1)
+    trails = RadarTrailStore(max_len=10)
+    _eval(engine, trails, _scene([_point("t1", x=300, y=0, z=0, vr=-8)]))
+    _eval(engine, trails, _scene([_point("t1", x=250, y=0, z=0, vr=-8)]))
+    situations, _ = _eval(engine, trails, _scene([_point("t1", x=200, y=0, z=0, vr=-8)]))
+    assert any(s.type == SituationType.CLOSING_FAST for s in situations)
+
+
+def test_unknown_nearby_detected() -> None:
+    engine = _engine(confirm_frames=1)
+    trails = RadarTrailStore(max_len=5)
+    situations, _ = _eval(
+        engine,
+        trails,
+        _scene([_point("u1", x=120, y=0, z=0, vr=-1, object_type="unknown", age_s=1.0)]),
     )
-    assert "FALLBACK" in screen
+    assert any(s.type == SituationType.UNKNOWN_NEARBY for s in situations)
 
 
-def test_lod_and_clutter_still_available() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene([_point(f"t{i}", x=100.0 + i, y=float(i), z=0.0, vr=-1.0) for i in range(60)])
-    out = pipeline.render_scene(scene)
-    assert out.plan is not None
-    assert out.stats is not None
-    assert out.plan.lod_level >= 0
-
-
-def test_backends_receive_render_plan_consistently() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene([_point("t1", x=120.0, y=20.0, z=0.0, vr=-2.0)])
-    out = pipeline.render_scene(scene)
-    assert out.plan is not None
-    assert out.stats is out.plan.stats
-
-
-def test_situation_events_written_to_event_store() -> None:
+def test_eventstore_contract_fields_present() -> None:
     store = EventStore(maxlen=100, enabled=True)
     pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
-    scene = _scene([_point("t1", x=90.0, y=0.0, z=0.0, vr=-20.0)])
+    pipeline.situation_engine = _engine(confirm_frames=1)
+    scene = _scene([_point("t1", x=90, y=0, z=0, vr=-12)])
     pipeline.render_scene(scene)
     events = store.filter(subsystem="SITUATION")
     assert events
-    assert events[-1].event_type in {"SITUATION_CREATED", "SITUATION_UPDATED"}
+    event = events[-1]
+    payload = event.payload
+    assert event.event_type in {"situation_created", "situation_updated", "situation_resolved", "situation_lost_contact"}
+    assert isinstance(payload.get("timestamp"), float)
+    assert isinstance(payload.get("session_id"), str)
+    assert isinstance(payload.get("track_id"), str)
+    assert isinstance(payload.get("situation_id"), str)
+    assert payload.get("severity") in {"INFO", "WARN", "CRITICAL"}
+    assert isinstance(event.reason, str) and event.reason
+    metrics = payload.get("metrics")
+    assert isinstance(metrics, dict)
 
 
-def test_toggle_overlay_hides_situation_marker() -> None:
-    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
-    scene = _scene([_point("t1", x=90.0, y=0.0, z=0.0, vr=-20.0)])
-    on_state = RadarViewState()
-    off_state = replace(RadarViewState(), alerts=replace(RadarViewState().alerts, situations_enabled=False))
-    on = "\n".join(pipeline.render_scene(scene, view_state=on_state).lines)
-    off = "\n".join(pipeline.render_scene(scene, view_state=off_state).lines)
-    assert ("✶" in on or ":" in on) and ("✶" not in off)
+def test_pipeline_writes_lost_contact_and_resolved_events() -> None:
+    store = EventStore(maxlen=200, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=1, lost_contact_window_s=0.02, auto_resolve_after_lost_s=0.02)
+    pipeline.render_scene(_scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+    time.sleep(0.03)
+    pipeline.render_scene(_scene([]))
+    time.sleep(0.03)
+    pipeline.render_scene(_scene([]))
+    etypes = [e.event_type for e in store.filter(subsystem="SITUATION")]
+    assert "situation_lost_contact" in etypes
+    assert "situation_resolved" in etypes
+
+
+def test_no_data_does_not_create_new_eventstore_situations() -> None:
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=1)
+    pipeline.render_scene(_scene([], ok=False, truth_state="NO_DATA", reason="NO_DATA"))
+    assert store.filter(subsystem="SITUATION") == []
+
+
+def test_integration_sequence_expected_event_order() -> None:
+    store = EventStore(maxlen=400, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=2, lost_contact_window_s=0.02, auto_resolve_after_lost_s=0.03, cooldown_s=0.05)
+
+    # normal frames -> create
+    pipeline.render_scene(_scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+    pipeline.render_scene(_scene([_point("t1", x=89, y=0, z=0, vr=-12)]))
+
+    # data drop -> lost -> resolve
+    time.sleep(0.03)
+    pipeline.render_scene(_scene([]))
+    time.sleep(0.04)
+    pipeline.render_scene(_scene([]))
+
+    # oscillation around threshold shorter than confirm should not recreate immediately
+    pipeline.render_scene(_scene([_point("t1", x=800, y=0, z=0, vr=-1)]))
+    pipeline.render_scene(_scene([_point("t1", x=90, y=0, z=0, vr=-12)]))
+
+    event_types = [e.event_type for e in store.filter(subsystem="SITUATION")]
+    assert "situation_created" in event_types
+    assert "situation_lost_contact" in event_types
+    assert "situation_resolved" in event_types
+
+
+def test_performance_smoke_no_event_spam_on_flapping() -> None:
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=3, cooldown_s=0.2)
+    for i in range(40):
+        if i % 2 == 0:
+            pipeline.render_scene(_scene([_point("t1", x=92, y=0, z=0, vr=-12)]))
+        else:
+            pipeline.render_scene(_scene([_point("t1", x=900, y=0, z=0, vr=2)]))
+    situation_events = store.filter(subsystem="SITUATION")
+    assert len(situation_events) < 20

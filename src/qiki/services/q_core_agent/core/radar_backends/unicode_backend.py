@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Iterable
 
 from .base import RadarBackend, RadarScene, RenderOutput
@@ -129,10 +130,18 @@ class UnicodeRadarBackend(RadarBackend):
 
         critical_tracks: set[str] = set()
         warn_tracks: set[str] = set()
-        muted_tracks = set(view_state.alerts.muted_target_ids)
+        ack_map = dict(view_state.alerts.acked_until_by_situation)
+        now_ts = time.time()
+        muted_tracks: set[str] = set()
         for situation in situations:
+            sid = str(getattr(situation, "id", ""))
+            ack_until = float(ack_map.get(sid, 0.0))
+            is_acked = ack_until > now_ts
             track_ids = tuple(getattr(situation, "track_ids", ()) or ())
             severity = str(getattr(getattr(situation, "severity", ""), "value", getattr(situation, "severity", ""))).upper()
+            if is_acked:
+                for track_id in track_ids:
+                    muted_tracks.add(str(track_id))
             for track_id in track_ids:
                 if severity == "CRITICAL":
                     critical_tracks.add(str(track_id))

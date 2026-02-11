@@ -315,13 +315,13 @@ def _colorize_truth(text: str, truth_state: str, *, color_enabled: bool) -> str:
 
 
 def _event_severity(event: dict[str, Any]) -> str:
-    event_type = str(event.get("event_type", "")).upper()
+    event_type = str(event.get("event_type", "")).lower()
     reason = str(event.get("reason", "")).upper()
     truth_state = str(event.get("truth_state", "")).upper()
     payload = event.get("payload", {})
-    if event_type == "SAFE_MODE":
+    if event_type == "safe_mode":
         return "SAFE"
-    if event_type.startswith("SITUATION_"):
+    if event_type.startswith("situation_"):
         severity = str(payload.get("severity", "INFO")).upper() if isinstance(payload, dict) else "INFO"
         if severity == "CRITICAL":
             return "SAFE"
@@ -395,14 +395,17 @@ def _build_inspector(
             f"  range={point.metadata.get('range_m', 'N/A')} vr={point.vr_mps:.3f}",
             f"  age={point.metadata.get('age_s', view.age_s)} quality={point.metadata.get('quality', view.quality)}",
             f"  trust={view.sensor_truth_state}/{view.sensor_reason}",
-            *_inspector_situations(point_id, situations),
+            *_inspector_situations(point_id, situations, ack_map=dict(view_state.alerts.acked_until_by_situation)),
         ]
     return [f"INSPECTOR: {view_state.inspector.mode} id={selected_id} not found"]
 
 
-def _inspector_situations(point_id: str, situations: Sequence[Situation]) -> list[str]:
+def _inspector_situations(point_id: str, situations: Sequence[Situation], *, ack_map: dict[str, float]) -> list[str]:
     rows: list[str] = []
+    now_ts = time.time()
     for situation in situations:
+        ack_until = ack_map.get(situation.id, 0.0)
+        ack_left = max(0.0, ack_until - now_ts)
         if point_id not in situation.track_ids:
             continue
         metrics = []
@@ -414,7 +417,12 @@ def _inspector_situations(point_id: str, situations: Sequence[Situation]) -> lis
             metrics.append(f"V={situation.metrics['closing_speed_mps']}m/s")
         if not metrics:
             metrics.append("metrics=n/a")
-        rows.append(f"  situation={situation.type.value} severity={situation.severity.value} {' '.join(metrics)}")
+        status = str(getattr(getattr(situation, "status", ""), "value", getattr(situation, "status", "ACTIVE")))
+        ack_text = f" ack={ack_left:.1f}s" if ack_left > 0 else ""
+        rows.append(
+            f"  situation={situation.id} status={status} type={situation.type.value}"
+            f" severity={situation.severity.value} reason={situation.reason}{ack_text} {' '.join(metrics)}"
+        )
     if not rows:
         rows.append("  situation=none")
     return rows
@@ -424,18 +432,24 @@ def _top_alert_line(situations: Sequence[Situation], view_state: RadarViewState)
     if not situations:
         return "ALERTS: none"
     counts = summarize_situations(situations)
-    muted = set(view_state.alerts.muted_target_ids)
+    ack_map = dict(view_state.alerts.acked_until_by_situation)
+    now_ts = time.time()
+    acked_now = sum(1 for until in ack_map.values() if until > now_ts)
     critical = counts.get("CRITICAL", 0)
     warn = counts.get("WARN", 0)
-    top = sorted(
+    ordered = sorted(
         situations,
         key=lambda s: (0 if s.severity.value == "CRITICAL" else 1 if s.severity.value == "WARN" else 2, s.id),
-    )[0]
+    )
+    cursor = view_state.alerts.cursor % len(ordered)
+    top = ordered[cursor]
     target = top.track_ids[0] if top.track_ids else "n/a"
-    muted_mark = " [MUTED]" if target in muted else ""
+    selected = " *SELECTED*" if view_state.alerts.selected_situation_id == top.id else ""
+    ack_left = max(0.0, float(ack_map.get(top.id, 0.0)) - now_ts)
+    ack_text = f" [ACK {ack_left:.1f}s]" if ack_left > 0 else ""
     return (
         f"ALERTS: {critical} CRITICAL, {warn} WARN"
-        f" | top={top.type.value}#{target}{muted_mark}"
+        f" | top={top.type.value}#{target}{selected}{ack_text} acked={acked_now}"
     )
 
 
@@ -451,6 +465,7 @@ def render_terminal_screen(
     active_pipeline = pipeline or RadarPipeline()
     active_view_state = view_state or active_pipeline.view_state
     radar_output = active_pipeline.render_scene(scene, view_state=active_view_state)
+    active_view_state = active_pipeline.view_state
     situations = tuple(active_pipeline.last_situations)
     radar_lines = radar_output.lines
     stats = radar_output.stats
@@ -513,7 +528,7 @@ def render_terminal_screen(
         _overlay_legend(active_view_state, plan.dropped_overlays if plan else ()),
         (
             f"SITUATION OVERLAYS: {'ON' if active_view_state.alerts.situations_enabled else 'OFF'} "
-            f"cursor={active_view_state.alerts.cursor} muted={len(active_view_state.alerts.muted_target_ids)}"
+            f"cursor={active_view_state.alerts.cursor} selected={active_view_state.alerts.selected_situation_id or '-'}"
         ),
     ]
     inspector_lines = _build_inspector(scene, active_view_state, view, situations)

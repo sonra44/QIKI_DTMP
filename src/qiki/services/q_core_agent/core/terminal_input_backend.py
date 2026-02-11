@@ -149,7 +149,7 @@ class RealTerminalInputBackend:
             if char == "\x03":
                 events.append(InputEvent(kind="key", key="q"))
                 continue
-            events.append(InputEvent(kind="key", key=char.lower()))
+            events.append(InputEvent(kind="key", key=char))
         return events
 
     def _parse_special_key(self) -> InputEvent | None:
@@ -230,4 +230,3 @@ def select_input_backend(*, prefer_real: bool) -> tuple[TerminalInputBackend, st
     if os.getenv("TMUX"):
         warning += " In tmux enable mouse passthrough for wheel/click/drag."
     return LineInputBackend(), warning
-
