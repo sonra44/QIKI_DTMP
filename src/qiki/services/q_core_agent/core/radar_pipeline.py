@@ -18,7 +18,7 @@ from .radar_backends import (
 )
 from .event_store import EventStore, TruthState
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
-from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity
+from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity, SituationStatus
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
 
@@ -184,11 +184,24 @@ class RadarPipeline:
             return output
 
     def _apply_alert_selection(self, view_state: RadarViewState, situations: list[Situation]) -> RadarViewState:
-        ordered: list[Situation] = []
-        for severity in (SituationSeverity.CRITICAL, SituationSeverity.WARN, SituationSeverity.INFO):
-            for situation in situations:
-                if situation.severity == severity:
-                    ordered.append(situation)
+        def _severity_rank_local(s: Situation) -> int:
+            if s.severity == SituationSeverity.CRITICAL:
+                return 0
+            if s.severity == SituationSeverity.WARN:
+                return 1
+            return 2
+
+        def _status_rank_local(s: Situation) -> int:
+            if s.status == SituationStatus.ACTIVE:
+                return 0
+            if s.status == SituationStatus.LOST:
+                return 1
+            return 2
+
+        ordered = sorted(
+            situations,
+            key=lambda s: (_status_rank_local(s), _severity_rank_local(s), -float(s.last_update_ts), s.id),
+        )
         if not ordered:
             return view_state
         cursor = view_state.alerts.cursor % len(ordered)
@@ -221,6 +234,7 @@ class RadarPipeline:
                 subsystem="SITUATION",
                 event_type=delta.event_type,
                 payload={
+                    "schema_version": 1,
                     "timestamp": float(situation.last_update_ts),
                     "session_id": self.session_id,
                     "track_id": situation.track_ids[0] if situation.track_ids else "",
@@ -228,6 +242,7 @@ class RadarPipeline:
                     "status": situation.status.value,
                     "type": situation.type.value,
                     "severity": situation.severity.value,
+                    "reason": situation.reason,
                     "track_ids": list(situation.track_ids),
                     "metrics": dict(situation.metrics),
                     "created_ts": float(situation.created_ts),

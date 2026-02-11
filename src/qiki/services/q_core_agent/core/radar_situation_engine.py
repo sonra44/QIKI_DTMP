@@ -11,6 +11,7 @@ from typing import Iterable
 
 from .radar_backends.base import RadarPoint, RadarScene
 from .radar_render_policy import RadarRenderStats
+from .radar_situation_config import RadarSituationRuntimeConfig
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
 
@@ -71,6 +72,7 @@ class SituationConfig:
 
     @classmethod
     def from_env(cls) -> "SituationConfig":
+        runtime = RadarSituationRuntimeConfig.from_env()
         return cls(
             enabled=_env_bool("RADAR_SITUATION_ENABLE", True),
             cpa_warn_t=_env_float("RADAR_CPA_WARN_T", 20.0),
@@ -79,10 +81,10 @@ class SituationConfig:
             closing_speed_warn=_env_float("RADAR_CLOSING_SPEED_WARN", 5.0),
             near_dist=_env_float("RADAR_NEAR_DIST", 300.0),
             near_recent_s=_env_float("RADAR_NEAR_RECENT_S", 8.0),
-            confirm_frames=max(1, _env_int("SITUATION_CONFIRM_FRAMES", 3)),
-            cooldown_s=max(0.0, _env_float("SITUATION_COOLDOWN_S", 5.0)),
-            lost_contact_window_s=max(0.0, _env_float("LOST_CONTACT_WINDOW_S", 2.0)),
-            auto_resolve_after_lost_s=max(0.0, _env_float("SITUATION_AUTO_RESOLVE_AFTER_LOST_S", 2.0)),
+            confirm_frames=runtime.confirm_frames,
+            cooldown_s=runtime.cooldown_s,
+            lost_contact_window_s=runtime.lost_contact_window_s,
+            auto_resolve_after_lost_s=runtime.auto_resolve_after_lost_s,
         )
 
 
@@ -104,13 +106,6 @@ def _env_bool(name: str, default: bool) -> bool:
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, str(default)))
-    except Exception:
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
     except Exception:
         return default
 

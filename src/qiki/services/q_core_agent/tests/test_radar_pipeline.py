@@ -5,8 +5,11 @@ import time
 import pytest
 
 from qiki.services.q_core_agent.core.event_store import EventStore
-from qiki.services.q_core_agent.core.radar_backends.base import RadarScene
+from qiki.services.q_core_agent.core.radar_backends.kitty_backend import KittyRadarBackend
+from qiki.services.q_core_agent.core.radar_backends.sixel_backend import SixelRadarBackend
+from qiki.services.q_core_agent.core.radar_backends.base import RadarPoint, RadarScene
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
+from qiki.services.q_core_agent.core.radar_situation_engine import RadarSituationEngine, SituationConfig
 from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
 
 
@@ -73,6 +76,24 @@ def test_auto_without_bitmap_support_falls_back_to_unicode(monkeypatch: pytest.M
     )
     pipeline = RadarPipeline(RadarRenderConfig(renderer="auto", view="top", fps_max=10, color=True))
     assert pipeline.active_backend_name == "unicode"
+
+
+def test_bitmap_backends_blocked_in_tmux_without_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMUX", "1")
+    monkeypatch.setenv("TERM", "xterm-kitty")
+    monkeypatch.delenv("QIKI_ALLOW_TMUX_BITMAP", raising=False)
+    monkeypatch.delenv("QIKI_FORCE_KITTY_SUPPORTED", raising=False)
+    monkeypatch.delenv("QIKI_FORCE_SIXEL_SUPPORTED", raising=False)
+    assert KittyRadarBackend().is_supported() is False
+    assert SixelRadarBackend().is_supported() is False
+
+
+def test_bitmap_backends_can_be_enabled_in_tmux_with_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMUX", "1")
+    monkeypatch.setenv("TERM", "xterm-kitty")
+    monkeypatch.setenv("QIKI_ALLOW_TMUX_BITMAP", "1")
+    monkeypatch.setenv("QIKI_ALLOW_SSH_BITMAP", "1")
+    assert KittyRadarBackend().is_supported() is True
 
 
 def test_forced_kitty_backend_unsupported_fails_fast() -> None:
@@ -209,3 +230,82 @@ def test_render_tick_telemetry_can_be_disabled(monkeypatch: pytest.MonkeyPatch) 
     pipeline.render_scene(RadarScene(ok=True, reason="OK", truth_state="OK", is_fallback=False, points=[]))
     ticks = store.filter(subsystem="RADAR", event_type="RADAR_RENDER_TICK")
     assert not ticks
+
+
+def test_alert_selection_order_is_severity_then_recency_then_id() -> None:
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline.situation_engine = RadarSituationEngine(
+        SituationConfig(
+            enabled=True,
+            cpa_warn_t=20.0,
+            cpa_crit_t=8.0,
+            cpa_crit_dist=150.0,
+            closing_speed_warn=5.0,
+                near_dist=300.0,
+                near_recent_s=5.0,
+                confirm_frames=1,
+                cooldown_s=0.0,
+                lost_contact_window_s=0.02,
+                auto_resolve_after_lost_s=0.02,
+            )
+        )
+    scene = RadarScene(
+        ok=True,
+        reason="OK",
+        truth_state="OK",
+        is_fallback=False,
+            points=[
+                RadarPoint(x=80.0, y=0.0, z=0.0, vr_mps=-14.0, metadata={"target_id": "critical", "object_type": "friend"}),
+                RadarPoint(x=100.0, y=5.0, z=0.0, vr_mps=-7.0, metadata={"target_id": "warn", "object_type": "friend"}),
+            ],
+        )
+    pipeline.render_scene(scene)
+    assert pipeline.view_state.selected_target_id == "critical"
+    assert pipeline.view_state.alerts.selected_situation_id is not None
+
+
+def test_focus_moves_when_selected_situation_resolved() -> None:
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=EventStore())
+    pipeline.situation_engine = RadarSituationEngine(
+        SituationConfig(
+            enabled=True,
+            cpa_warn_t=20.0,
+            cpa_crit_t=8.0,
+            cpa_crit_dist=150.0,
+            closing_speed_warn=5.0,
+            near_dist=300.0,
+            near_recent_s=5.0,
+            confirm_frames=1,
+            cooldown_s=0.0,
+            lost_contact_window_s=0.02,
+            auto_resolve_after_lost_s=0.02,
+        )
+    )
+    critical_scene = RadarScene(
+        ok=True,
+        reason="OK",
+        truth_state="OK",
+        is_fallback=False,
+        points=[
+            RadarPoint(x=80.0, y=0.0, z=0.0, vr_mps=-14.0, metadata={"target_id": "critical", "object_type": "friend"}),
+            RadarPoint(x=100.0, y=5.0, z=0.0, vr_mps=-7.0, metadata={"target_id": "warn", "object_type": "friend"}),
+        ],
+    )
+    pipeline.render_scene(critical_scene)
+    assert pipeline.view_state.selected_target_id == "critical"
+
+    # Resolve critical by moving it far/safe; warn remains.
+    warn_only_scene = RadarScene(
+        ok=True,
+        reason="OK",
+        truth_state="OK",
+        is_fallback=False,
+        points=[
+            RadarPoint(x=900.0, y=0.0, z=0.0, vr_mps=-1.0, metadata={"target_id": "critical", "object_type": "friend"}),
+            RadarPoint(x=100.0, y=5.0, z=0.0, vr_mps=-7.0, metadata={"target_id": "warn", "object_type": "friend"}),
+        ],
+    )
+    pipeline.render_scene(warn_only_scene)
+    time.sleep(0.03)
+    pipeline.render_scene(warn_only_scene)
+    assert pipeline.view_state.selected_target_id == "warn"

@@ -107,6 +107,19 @@ def test_confirm_frames_blocks_short_spikes() -> None:
     assert any(sx.type == SituationType.CPA_RISK for sx in situations3)
 
 
+def test_threshold_oscillation_does_not_flap_created_resolved() -> None:
+    engine = _engine(confirm_frames=3, cooldown_s=0.1)
+    trails = RadarTrailStore(max_len=20)
+    risky = _scene([_point("t1", x=95, y=0, z=0, vr=-12)])  # would pass CPA
+    safe = _scene([_point("t1", x=850, y=0, z=0, vr=-1)])  # outside CPA
+    deltas_all = []
+    for frame in (risky, safe, risky, safe, risky, safe):
+        _situations, deltas = _eval(engine, trails, frame)
+        deltas_all.extend(deltas)
+    assert not any(d.event_type == "situation_created" for d in deltas_all)
+    assert not any(d.event_type == "situation_resolved" for d in deltas_all)
+
+
 def test_cooldown_prevents_immediate_recreate() -> None:
     engine = _engine(confirm_frames=1, cooldown_s=0.2, lost_contact_window_s=0.01, auto_resolve_after_lost_s=0.01)
     trails = RadarTrailStore(max_len=10)
@@ -156,11 +169,13 @@ def test_eventstore_contract_fields_present() -> None:
     event = events[-1]
     payload = event.payload
     assert event.event_type in {"situation_created", "situation_updated", "situation_resolved", "situation_lost_contact"}
+    assert payload.get("schema_version") == 1
     assert isinstance(payload.get("timestamp"), float)
     assert isinstance(payload.get("session_id"), str)
     assert isinstance(payload.get("track_id"), str)
     assert isinstance(payload.get("situation_id"), str)
     assert payload.get("severity") in {"INFO", "WARN", "CRITICAL"}
+    assert isinstance(payload.get("reason"), str) and payload.get("reason")
     assert isinstance(event.reason, str) and event.reason
     metrics = payload.get("metrics")
     assert isinstance(metrics, dict)
@@ -178,6 +193,21 @@ def test_pipeline_writes_lost_contact_and_resolved_events() -> None:
     etypes = [e.event_type for e in store.filter(subsystem="SITUATION")]
     assert "situation_lost_contact" in etypes
     assert "situation_resolved" in etypes
+
+
+def test_pipeline_deduplicates_unchanged_updated_events() -> None:
+    store = EventStore(maxlen=200, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=1)
+    scene = _scene([_point("t1", x=90, y=0, z=0, vr=-12)])
+    pipeline.render_scene(scene)
+    pipeline.render_scene(scene)
+    pipeline.render_scene(scene)
+    events = store.filter(subsystem="SITUATION")
+    created = [e for e in events if e.event_type == "situation_created" and e.payload.get("situation_id") == "cpa:t1"]
+    updated = [e for e in events if e.event_type == "situation_updated" and e.payload.get("situation_id") == "cpa:t1"]
+    assert len(created) == 1
+    assert len(updated) == 0
 
 
 def test_no_data_does_not_create_new_eventstore_situations() -> None:
@@ -224,3 +254,25 @@ def test_performance_smoke_no_event_spam_on_flapping() -> None:
             pipeline.render_scene(_scene([_point("t1", x=900, y=0, z=0, vr=2)]))
     situation_events = store.filter(subsystem="SITUATION")
     assert len(situation_events) < 20
+
+
+def test_heavy_targets_smoke_limits_event_spam() -> None:
+    store = EventStore(maxlen=10000, enabled=True)
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False), event_store=store)
+    pipeline.situation_engine = _engine(confirm_frames=2, cooldown_s=0.1)
+    start = time.monotonic()
+    for step in range(12):
+        points: list[RadarPoint] = []
+        for i in range(1000):
+            if (step + i) % 3 == 0:
+                x = 120.0 + float(i % 30)
+                vr = -10.0
+            else:
+                x = 900.0 + float(i % 30)
+                vr = -1.0
+            points.append(_point(f"t{i}", x=x, y=float(i % 50), z=0.0, vr=vr))
+        pipeline.render_scene(_scene(points))
+    elapsed = time.monotonic() - start
+    situation_events = store.filter(subsystem="SITUATION")
+    assert elapsed < 10.0
+    assert len(situation_events) < 4000

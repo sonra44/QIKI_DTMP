@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, replace
 
 from .radar_backends import RadarScene
 from .radar_backends.geometry import project_point
+from .radar_situation_config import RadarSituationRuntimeConfig
 from .radar_view_state import RadarViewState
 
 _VIEW_KEYS = {"1": "top", "2": "side", "3": "front", "4": "iso"}
@@ -43,7 +43,7 @@ class RadarMouseEvent:
 class RadarInputController:
     def __init__(self, *, ack_s: float | None = None):
         if ack_s is None:
-            ack_s = _env_float("SITUATION_ACK_S", 10.0)
+            ack_s = RadarSituationRuntimeConfig.from_env().ack_snooze_s
         self.ack_s = max(0.0, float(ack_s))
 
     def handle_key(self, key: str) -> RadarAction:
@@ -235,10 +235,3 @@ class RadarInputController:
                 best_distance = distance
                 best_id = target_id
         return best_id
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except Exception:
-        return default
