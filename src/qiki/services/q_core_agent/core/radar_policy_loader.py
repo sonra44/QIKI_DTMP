@@ -54,6 +54,15 @@ class AdaptivePolicyConfig:
     lod_detail_zoom_delta_per_level: float = 0.15
 
 
+@dataclass(frozen=True)
+class RadarPolicyLoadResult:
+    render_policy: RadarRenderPolicy
+    adaptive_policy: AdaptivePolicyConfig
+    selected_profile: str
+    policy_source: str
+    warning_reason: str = ""
+
+
 def _env_bool(env: Mapping[str, str], name: str, default: bool) -> bool:
     value = env.get(name)
     if value is None:
@@ -102,40 +111,67 @@ def _normalize_bitmap_scales(value: object) -> tuple[float, ...]:
     return tuple(parsed)
 
 
-def _policy_from_mapping(raw: Mapping[str, object]) -> RadarRenderPolicy:
-    bitmap_scales = _normalize_bitmap_scales(raw["bitmap_scales"])
+def _policy_from_mapping(raw: Mapping[str, object], *, path_prefix: str = "policy") -> RadarRenderPolicy:
+    def _float_field(name: str, minimum: float | None = None) -> float:
+        value = raw.get(name)
+        try:
+            return _to_float(value, minimum=minimum)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{path_prefix}.{name}={value!r}: {exc}") from exc
+
+    def _int_field(name: str, minimum: int | None = None) -> int:
+        value = raw.get(name)
+        try:
+            return _to_int(value, minimum=minimum)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{path_prefix}.{name}={value!r}: {exc}") from exc
+
+    def _bool_field(name: str) -> bool:
+        value = raw.get(name)
+        try:
+            return _to_bool(value)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{path_prefix}.{name}={value!r}: {exc}") from exc
+
+    try:
+        bitmap_scales = _normalize_bitmap_scales(raw["bitmap_scales"])
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"{path_prefix}.bitmap_scales={raw.get('bitmap_scales')!r}: {exc}") from exc
     return RadarRenderPolicy(
-        lod_vector_zoom=_to_float(raw["lod_vector_zoom"], minimum=0.0),
-        lod_label_zoom=_to_float(raw["lod_label_zoom"], minimum=0.0),
-        lod_detail_zoom=_to_float(raw["lod_detail_zoom"], minimum=0.0),
-        clutter_targets_max=max(1, _to_int(raw["clutter_targets_max"], minimum=1)),
-        frame_budget_ms=max(1.0, _to_float(raw["frame_budget_ms"], minimum=0.001)),
-        trail_len=max(1, _to_int(raw["trail_len"], minimum=1)),
+        lod_vector_zoom=_float_field("lod_vector_zoom", minimum=0.0),
+        lod_label_zoom=_float_field("lod_label_zoom", minimum=0.0),
+        lod_detail_zoom=_float_field("lod_detail_zoom", minimum=0.0),
+        clutter_targets_max=max(1, _int_field("clutter_targets_max", minimum=1)),
+        frame_budget_ms=max(1.0, _float_field("frame_budget_ms", minimum=0.001)),
+        trail_len=max(1, _int_field("trail_len", minimum=1)),
         bitmap_scales=bitmap_scales,
-        degrade_cooldown_ms=max(0, _to_int(raw["degrade_cooldown_ms"], minimum=0)),
-        recovery_confirm_frames=max(1, _to_int(raw["recovery_confirm_frames"], minimum=1)),
-        degrade_confirm_frames=max(1, _to_int(raw["degrade_confirm_frames"], minimum=1)),
-        manual_clutter_lock=_to_bool(raw["manual_clutter_lock"]),
+        degrade_cooldown_ms=max(0, _int_field("degrade_cooldown_ms", minimum=0)),
+        recovery_confirm_frames=max(1, _int_field("recovery_confirm_frames", minimum=1)),
+        degrade_confirm_frames=max(1, _int_field("degrade_confirm_frames", minimum=1)),
+        manual_clutter_lock=_bool_field("manual_clutter_lock"),
     )
 
 
-def _adaptive_from_mapping(raw: Mapping[str, object]) -> AdaptivePolicyConfig:
-    return AdaptivePolicyConfig(
-        enabled=_to_bool(raw.get("enabled", True)),
-        ema_alpha_frame_ms=_to_float(raw.get("ema_alpha_frame_ms", 0.35), minimum=0.0),
-        ema_alpha_targets=_to_float(raw.get("ema_alpha_targets", 0.25), minimum=0.0),
-        high_frame_ratio=_to_float(raw.get("high_frame_ratio", 1.2), minimum=0.001),
-        low_frame_ratio=_to_float(raw.get("low_frame_ratio", 0.8), minimum=0.0),
-        overload_target_ratio=_to_float(raw.get("overload_target_ratio", 1.15), minimum=0.001),
-        underload_target_ratio=_to_float(raw.get("underload_target_ratio", 0.75), minimum=0.0),
-        degrade_confirm_frames=max(1, _to_int(raw.get("degrade_confirm_frames", 3), minimum=1)),
-        recovery_confirm_frames=max(1, _to_int(raw.get("recovery_confirm_frames", 5), minimum=1)),
-        cooldown_ms=max(0, _to_int(raw.get("cooldown_ms", 1200), minimum=0)),
-        max_level=max(0, _to_int(raw.get("max_level", 2), minimum=0)),
-        clutter_reduction_per_level=_to_float(raw.get("clutter_reduction_per_level", 0.2), minimum=0.0),
-        lod_label_zoom_delta_per_level=_to_float(raw.get("lod_label_zoom_delta_per_level", 0.2), minimum=0.0),
-        lod_detail_zoom_delta_per_level=_to_float(raw.get("lod_detail_zoom_delta_per_level", 0.15), minimum=0.0),
-    )
+def _adaptive_from_mapping(raw: Mapping[str, object], *, path_prefix: str = "adaptive") -> AdaptivePolicyConfig:
+    try:
+        return AdaptivePolicyConfig(
+            enabled=_to_bool(raw.get("enabled", True)),
+            ema_alpha_frame_ms=_to_float(raw.get("ema_alpha_frame_ms", 0.35), minimum=0.0),
+            ema_alpha_targets=_to_float(raw.get("ema_alpha_targets", 0.25), minimum=0.0),
+            high_frame_ratio=_to_float(raw.get("high_frame_ratio", 1.2), minimum=0.001),
+            low_frame_ratio=_to_float(raw.get("low_frame_ratio", 0.8), minimum=0.0),
+            overload_target_ratio=_to_float(raw.get("overload_target_ratio", 1.15), minimum=0.001),
+            underload_target_ratio=_to_float(raw.get("underload_target_ratio", 0.75), minimum=0.0),
+            degrade_confirm_frames=max(1, _to_int(raw.get("degrade_confirm_frames", 3), minimum=1)),
+            recovery_confirm_frames=max(1, _to_int(raw.get("recovery_confirm_frames", 5), minimum=1)),
+            cooldown_ms=max(0, _to_int(raw.get("cooldown_ms", 1200), minimum=0)),
+            max_level=max(0, _to_int(raw.get("max_level", 2), minimum=0)),
+            clutter_reduction_per_level=_to_float(raw.get("clutter_reduction_per_level", 0.2), minimum=0.0),
+            lod_label_zoom_delta_per_level=_to_float(raw.get("lod_label_zoom_delta_per_level", 0.2), minimum=0.0),
+            lod_detail_zoom_delta_per_level=_to_float(raw.get("lod_detail_zoom_delta_per_level", 0.15), minimum=0.0),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"{path_prefix}: {exc}") from exc
 
 
 def load_policy_yaml(path: str | Path | None = None) -> dict:
@@ -170,9 +206,9 @@ def validate_policy_schema(doc: Mapping[str, object]) -> list[str]:
             errors.append(f"defaults missing required keys: {', '.join(missing)}")
         else:
             try:
-                _policy_from_mapping(defaults)
+                _policy_from_mapping(defaults, path_prefix="defaults")
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"defaults invalid: {exc}")
+                errors.append(str(exc))
 
     profiles = doc.get("profiles")
     if not isinstance(profiles, dict):
@@ -189,9 +225,9 @@ def validate_policy_schema(doc: Mapping[str, object]) -> list[str]:
             merged = dict(defaults or {})
             merged.update(profile_doc)
             try:
-                _policy_from_mapping(merged)
+                _policy_from_mapping(merged, path_prefix=f"profiles.{profile_name}")
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"profiles.{profile_name} invalid: {exc}")
+                errors.append(str(exc))
 
     adaptive = doc.get("adaptive")
     if adaptive is not None:
@@ -199,9 +235,9 @@ def validate_policy_schema(doc: Mapping[str, object]) -> list[str]:
             errors.append("adaptive must be a mapping")
         else:
             try:
-                _adaptive_from_mapping(adaptive)
+                _adaptive_from_mapping(adaptive, path_prefix="adaptive")
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"adaptive invalid: {exc}")
+                errors.append(str(exc))
     return errors
 
 
@@ -283,20 +319,30 @@ def build_effective_policy(
         merged.update(defaults)
     merged.update(profile_doc)
     merged.update(_env_policy_overrides(env))
-    render_policy = _policy_from_mapping(merged)
+    render_policy = _policy_from_mapping(merged, path_prefix=f"profiles.{profile}")
 
     adaptive_doc = yaml_doc.get("adaptive", {})
-    adaptive = _adaptive_from_mapping(adaptive_doc if isinstance(adaptive_doc, dict) else {})
+    adaptive = _adaptive_from_mapping(
+        adaptive_doc if isinstance(adaptive_doc, dict) else {},
+        path_prefix="adaptive",
+    )
     return render_policy, adaptive
 
 
-def load_effective_render_policy(
+def _fallback_policy_source(env: Mapping[str, str]) -> str:
+    for key in _ENV_TO_FIELD:
+        if key in env:
+            return "env"
+    return "default"
+
+
+def load_effective_render_policy_result(
     *,
     profile: str | None = None,
     env: Mapping[str, str] | None = None,
     yaml_path: str | Path | None = None,
     strict: bool | None = None,
-) -> tuple[RadarRenderPolicy, AdaptivePolicyConfig]:
+) -> RadarPolicyLoadResult:
     active_env = env or os.environ
     selected_profile = (profile or active_env.get("RADAR_POLICY_PROFILE", DEFAULT_PROFILE)).strip().lower() or DEFAULT_PROFILE
     strict_mode = _env_bool(active_env, "RADAR_POLICY_STRICT", False) if strict is None else strict
@@ -311,9 +357,38 @@ def load_effective_render_policy(
             raise ValueError("; ".join(errors))
         if selected_profile not in SUPPORTED_PROFILES:
             raise ValueError(f"unsupported RADAR_POLICY_PROFILE={selected_profile!r}")
-        return build_effective_policy(selected_profile, active_env, yaml_doc)
+        render_policy, adaptive = build_effective_policy(selected_profile, active_env, yaml_doc)
+        return RadarPolicyLoadResult(
+            render_policy=render_policy,
+            adaptive_policy=adaptive,
+            selected_profile=selected_profile,
+            policy_source="yaml",
+        )
     except Exception as exc:  # noqa: BLE001
         if strict_mode:
             raise RuntimeError(f"Failed to load radar policy v3: {exc}") from exc
-        LOGGER.warning("Radar policy v3 unavailable, fallback to env/default policy: %s", exc)
-        return RadarRenderPolicy.from_env(), AdaptivePolicyConfig()
+        warning = f"POLICY_FALLBACK: radar policy v3 unavailable, fallback to env/default policy: {exc}"
+        LOGGER.warning(warning)
+        return RadarPolicyLoadResult(
+            render_policy=RadarRenderPolicy.from_env(),
+            adaptive_policy=AdaptivePolicyConfig(),
+            selected_profile=selected_profile if selected_profile in SUPPORTED_PROFILES else DEFAULT_PROFILE,
+            policy_source=_fallback_policy_source(active_env),
+            warning_reason=warning,
+        )
+
+
+def load_effective_render_policy(
+    *,
+    profile: str | None = None,
+    env: Mapping[str, str] | None = None,
+    yaml_path: str | Path | None = None,
+    strict: bool | None = None,
+) -> tuple[RadarRenderPolicy, AdaptivePolicyConfig]:
+    result = load_effective_render_policy_result(
+        profile=profile,
+        env=env,
+        yaml_path=yaml_path,
+        strict=strict,
+    )
+    return result.render_policy, result.adaptive_policy

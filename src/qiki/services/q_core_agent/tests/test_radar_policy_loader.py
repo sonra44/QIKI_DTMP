@@ -8,6 +8,7 @@ from qiki.services.q_core_agent.core.radar_policy_loader import (
     AdaptivePolicyConfig,
     build_effective_policy,
     load_effective_render_policy,
+    load_effective_render_policy_result,
     validate_policy_schema,
 )
 from qiki.services.q_core_agent.core.radar_render_policy import RadarRenderPolicy
@@ -58,6 +59,27 @@ def test_validate_policy_schema_rejects_empty_bitmap_scales() -> None:
     assert any("bitmap_scales" in item for item in errors)
 
 
+def test_validate_policy_schema_reports_bad_defaults_field_path() -> None:
+    doc = _minimal_policy_doc()
+    doc["defaults"]["clutter_targets_max"] = "x"
+    errors = validate_policy_schema(doc)
+    assert any("defaults.clutter_targets_max" in item for item in errors)
+
+
+def test_validate_policy_schema_reports_bad_profile_field_path() -> None:
+    doc = _minimal_policy_doc()
+    doc["profiles"]["combat"]["frame_budget_ms"] = -1
+    errors = validate_policy_schema(doc)
+    assert any("profiles.combat.frame_budget_ms" in item for item in errors)
+
+
+def test_validate_policy_schema_reports_bad_adaptive_value() -> None:
+    doc = _minimal_policy_doc()
+    doc["adaptive"]["degrade_confirm_frames"] = 0
+    errors = validate_policy_schema(doc)
+    assert any("adaptive" in item for item in errors)
+
+
 def test_build_effective_policy_respects_defaults_profile_env_order() -> None:
     doc = _minimal_policy_doc()
     env = {
@@ -84,7 +106,19 @@ def test_load_effective_render_policy_non_strict_warns_and_falls_back(
     broken = tmp_path / "broken_policy.yaml"
     broken.write_text("schema_version: 99\n", encoding="utf-8")
     caplog.set_level("WARNING")
-    policy, adaptive = load_effective_render_policy(yaml_path=broken, strict=False, env={})
+    result = load_effective_render_policy_result(yaml_path=broken, strict=False, env={})
+    policy, adaptive = result.render_policy, result.adaptive_policy
     assert policy == RadarRenderPolicy.from_env()
     assert adaptive == AdaptivePolicyConfig()
+    assert result.policy_source in {"default", "env"}
+    assert "POLICY_FALLBACK" in result.warning_reason
     assert any("fallback to env/default policy" in rec.message for rec in caplog.records)
+
+
+def test_load_effective_render_policy_result_reports_yaml_source() -> None:
+    result = load_effective_render_policy_result(env={})
+    assert result.policy_source == "yaml"
+    assert result.selected_profile == "navigation"
+    policy, adaptive = load_effective_render_policy(env={})
+    assert isinstance(policy, RadarRenderPolicy)
+    assert isinstance(adaptive, AdaptivePolicyConfig)

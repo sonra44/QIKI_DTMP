@@ -192,3 +192,23 @@ def test_live_loop_exits_on_q() -> None:
     status = terminal.live_radar_loop(prefer_real=True, backend_override=backend)
 
     assert status == 0
+
+
+def test_policy_command_set_switches_profile(capsys) -> None:
+    terminal = _make_terminal()
+    assert terminal.radar_pipeline.policy_profile == "navigation"
+    keep_running = terminal.handle_command("policy set combat")
+    assert keep_running is True
+    assert terminal.radar_pipeline.policy_profile == "combat"
+    output = capsys.readouterr().out
+    assert "policy: profile=combat" in output
+
+
+def test_policy_command_cycle_switches_profile(capsys) -> None:
+    terminal = _make_terminal()
+    terminal.radar_pipeline.set_policy_profile("docking")
+    keep_running = terminal.handle_command("policy cycle")
+    assert keep_running is True
+    assert terminal.radar_pipeline.policy_profile == "combat"
+    output = capsys.readouterr().out
+    assert "policy: profile=combat" in output
