@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -185,20 +184,10 @@ class RadarReplayEngine:
         if step is not None:
             self._step_mode = bool(step)
 
-        prev_ts: float | None = None
-        while self.has_pending:
-            while self._state.paused:
-                time.sleep(0.01)
+        while self.has_pending and not self._state.paused:
             batch = self.next_batch()
             if not batch:
                 break
-            current_ts = float(batch[-1].get("ts", self._state.current_ts))
-            if prev_ts is not None and not self._step_mode:
-                delta = max(0.0, current_ts - prev_ts)
-                delay = delta / max(0.001, self._state.speed)
-                if delay > 0.0:
-                    time.sleep(delay)
-            prev_ts = current_ts
             for event in batch:
                 yield event
 

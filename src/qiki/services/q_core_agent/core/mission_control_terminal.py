@@ -324,6 +324,8 @@ class MissionControlTerminal:
 
         frame_interval = 1.0 / max(1, pipeline.config.fps_max)
         last_render_ts = 0.0
+        last_loop_ts = time.monotonic()
+        replay_step_accumulator = 0.0
         needs_render = True
         try:
             while True:
@@ -366,7 +368,18 @@ class MissionControlTerminal:
                     return 0
                 if needs_render and (time.monotonic() - last_render_ts) >= frame_interval:
                     if pipeline.replay_enabled:
-                        pipeline.render_observations([], view_state=view_state)
+                        loop_now = time.monotonic()
+                        elapsed = max(0.0, loop_now - last_loop_ts)
+                        last_loop_ts = loop_now
+                        state = pipeline.timeline_state
+                        replay_speed = state.speed if state is not None else 1.0
+                        if state is None or not state.paused:
+                            replay_step_accumulator += elapsed * max(0.1, replay_speed)
+                            while replay_step_accumulator >= frame_interval:
+                                pipeline.render_observations([], view_state=view_state)
+                                replay_step_accumulator -= frame_interval
+                            if replay_speed > 0 and replay_step_accumulator <= 0.0:
+                                pipeline.render_observations([], view_state=view_state)
                         timeline = pipeline.timeline_state
                         if timeline is not None:
                             active_events = events[: timeline.cursor]

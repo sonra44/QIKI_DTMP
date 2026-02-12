@@ -151,3 +151,21 @@ def test_load_trace_sorts_events_by_timestamp(tmp_path: Path) -> None:
     loaded = load_trace(str(path))
     assert [float(item["ts"]) for item in loaded] == [1.0, 2.0]
 
+
+def test_replay_engine_never_calls_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time as _time
+
+    def _boom(_seconds: float) -> None:
+        raise AssertionError("sleep must not be used in replay engine")
+
+    monkeypatch.setattr(_time, "sleep", _boom)
+    engine = RadarReplayEngine(
+        [
+            {"ts": 1.0, "event_type": "A", "payload": {}},
+            {"ts": 2.0, "event_type": "B", "payload": {}},
+        ],
+        speed=5.0,
+        step=False,
+    )
+    replayed = list(engine.replay_events())
+    assert [event["event_type"] for event in replayed] == ["A", "B"]
