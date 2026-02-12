@@ -18,6 +18,7 @@ from .radar_backends import (
     UnicodeRadarBackend,
 )
 from .event_store import EventStore, TruthState
+from .radar_ingestion import Observation, SourceTrack, ingest_observations, source_tracks_to_scene
 from .radar_policy_loader import load_effective_render_policy_result
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
 from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity, SituationStatus
@@ -113,6 +114,7 @@ class RadarPipeline:
                     "policy_source": self.policy_source,
                 },
             )
+        self._tracks_by_source: dict[str, list[SourceTrack]] = {}
 
     @property
     def active_backend_name(self) -> str:
@@ -352,6 +354,32 @@ class RadarPipeline:
             )
             self._append_render_tick_event(scene_with_trails, output)
             return output
+
+    def ingest_observations(self, observations: list[Observation]) -> dict[str, list[SourceTrack]]:
+        self._tracks_by_source = ingest_observations(
+            observations,
+            event_store=self.event_store,
+            emit_observation_rx=True,
+        )
+        return {source_id: list(tracks) for source_id, tracks in self._tracks_by_source.items()}
+
+    def render_observations(
+        self,
+        observations: list[Observation],
+        *,
+        view_state: RadarViewState | None = None,
+        truth_state: str = "OK",
+        reason: str = "OK",
+        is_fallback: bool = False,
+    ) -> RenderOutput:
+        tracks_by_source = self.ingest_observations(observations)
+        scene = source_tracks_to_scene(
+            tracks_by_source,
+            truth_state=truth_state,
+            reason=reason,
+            is_fallback=is_fallback,
+        )
+        return self.render_scene(scene, view_state=view_state)
 
     def _apply_alert_selection(self, view_state: RadarViewState, situations: list[Situation]) -> RadarViewState:
         def _severity_rank_local(s: Situation) -> int:
