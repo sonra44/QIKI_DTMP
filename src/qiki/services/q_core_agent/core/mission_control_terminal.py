@@ -35,9 +35,9 @@ from qiki.services.q_core_agent.core.radar_controls import (  # noqa: E402
     RadarMouseEvent,
 )
 from qiki.services.q_core_agent.core.radar_view_state import RadarViewState  # noqa: E402
+from qiki.services.q_core_agent.core.radar_replay import load_trace  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
     build_scene_from_events,
-    load_events_jsonl,
     render_terminal_screen,
 )
 from qiki.services.q_core_agent.core.terminal_input_backend import (  # noqa: E402
@@ -249,15 +249,21 @@ class MissionControlTerminal:
         if not path.exists():
             print(f"Replay trace not found: {path}")
             return 2
-        events = load_events_jsonl(str(path))
+        events = load_trace(str(path))
         try:
-            pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps)
+            pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps, replay_file=str(path))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
         if interactive or real_input:
             return MissionControlTerminal._replay_interactive(events, pipeline, real_input=real_input)
         try:
+            if pipeline.replay_enabled:
+                while True:
+                    state = pipeline.timeline_state
+                    if state is None or state.cursor >= state.total_events:
+                        break
+                    pipeline.render_observations([])
             print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
@@ -265,7 +271,12 @@ class MissionControlTerminal:
         return 0
 
     @staticmethod
-    def _build_pipeline(*, renderer: str | None = None, fps: int | None = None) -> RadarPipeline:
+    def _build_pipeline(
+        *,
+        renderer: str | None = None,
+        fps: int | None = None,
+        replay_file: str | None = None,
+    ) -> RadarPipeline:
         base = RadarRenderConfig.from_env()
         effective_renderer = (renderer or base.renderer).strip().lower()
         if not effective_renderer:
@@ -277,8 +288,20 @@ class MissionControlTerminal:
                 view=base.view,
                 fps_max=effective_fps,
                 color=base.color,
-            )
+            ),
+            replay_file=replay_file,
         )
+
+    @staticmethod
+    def _emit_frame(frame: str, *, real_terminal: bool) -> None:
+        """Draw a frame without adding scroll drift in raw-terminal mode."""
+        if real_terminal:
+            sys.stdout.write("\x1b[2J\x1b[H")
+            sys.stdout.write(frame)
+            sys.stdout.write("\x1b[0m")
+            sys.stdout.flush()
+            return
+        print(frame)
 
     @staticmethod
     def _replay_interactive(
@@ -293,22 +316,45 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
+            "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, "
+            "a/A/s/j/k alerts, p pause/resume, n step, q quit."
             " Mouse: wheel/click/drag in real-input mode."
         )
         print("Line mode emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
 
         frame_interval = 1.0 / max(1, pipeline.config.fps_max)
         last_render_ts = 0.0
+        last_loop_ts = time.monotonic()
+        replay_step_accumulator = 0.0
         needs_render = True
         try:
             while True:
                 now = time.monotonic()
                 timeout = max(1, int(max(0.0, frame_interval - (now - last_render_ts)) * 1000.0))
                 input_events = backend.poll_events(timeout_ms=timeout)
-                scene = build_scene_from_events(events)
+                active_events = events
+                timeline = pipeline.timeline_state
+                if timeline is not None:
+                    active_events = events[: timeline.cursor]
+                scene = build_scene_from_events(active_events)
                 should_quit = False
                 for event in input_events:
+                    if event.kind == "key":
+                        key = (event.key or event.raw or "").strip()
+                        if key.lower() == "p" and pipeline.replay_enabled:
+                            state = pipeline.timeline_state
+                            if state is not None and state.paused:
+                                pipeline.replay_resume()
+                            else:
+                                pipeline.replay_pause()
+                            needs_render = True
+                            continue
+                        if key.lower() == "n" and pipeline.replay_enabled:
+                            pipeline.replay_resume()
+                            pipeline.render_observations([], view_state=view_state)
+                            pipeline.replay_pause()
+                            needs_render = True
+                            continue
                     view_state, should_quit = MissionControlTerminal._apply_input_event(
                         controller=controller,
                         view_state=view_state,
@@ -321,9 +367,30 @@ class MissionControlTerminal:
                 if should_quit:
                     return 0
                 if needs_render and (time.monotonic() - last_render_ts) >= frame_interval:
-                    if backend.name == "real-terminal":
-                        print("\x1b[2J\x1b[H", end="")
-                    print(render_terminal_screen(events, pipeline=pipeline, view_state=view_state))
+                    if pipeline.replay_enabled:
+                        loop_now = time.monotonic()
+                        elapsed = max(0.0, loop_now - last_loop_ts)
+                        last_loop_ts = loop_now
+                        state = pipeline.timeline_state
+                        replay_speed = state.speed if state is not None else 1.0
+                        if state is None or not state.paused:
+                            replay_step_accumulator += elapsed * max(0.1, replay_speed)
+                            while replay_step_accumulator >= frame_interval:
+                                pipeline.render_observations([], view_state=view_state)
+                                replay_step_accumulator -= frame_interval
+                            if replay_speed > 0 and replay_step_accumulator <= 0.0:
+                                pipeline.render_observations([], view_state=view_state)
+                        timeline = pipeline.timeline_state
+                        if timeline is not None:
+                            active_events = events[: timeline.cursor]
+                        else:
+                            active_events = events
+                    else:
+                        active_events = events
+                    MissionControlTerminal._emit_frame(
+                        render_terminal_screen(active_events, pipeline=pipeline, view_state=view_state),
+                        real_terminal=(backend.name == "real-terminal"),
+                    )
                     last_render_ts = time.monotonic()
                     needs_render = False
         finally:
@@ -415,7 +482,8 @@ class MissionControlTerminal:
         if warning:
             print(f"[WARN] {warning}")
         print(
-            "Live controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, q quit."
+            "Live controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, "
+            "a/A/s/j/k alerts, q quit."
             " Mouse: wheel/click/drag."
         )
 
@@ -458,9 +526,10 @@ class MissionControlTerminal:
                     needs_render = True
 
                 if needs_render and (now - last_render_ts) >= frame_interval:
-                    if backend.name == "real-terminal":
-                        print("\x1b[2J\x1b[H", end="")
-                    print(render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state))
+                    self._emit_frame(
+                        render_terminal_screen(events, pipeline=self.radar_pipeline, view_state=self.view_state),
+                        real_terminal=(backend.name == "real-terminal"),
+                    )
                     stamp = time.monotonic()
                     last_render_ts = stamp
                     last_heartbeat_ts = stamp
@@ -478,7 +547,8 @@ class MissionControlTerminal:
         if not parts:
             return True
 
-        cmd = parts[0].lower()
+        cmd_raw = parts[0]
+        cmd = cmd_raw.lower()
         if cmd in {"exit", "quit"}:
             self.running = False
             print("Завершение работы терминала.")
@@ -503,9 +573,36 @@ class MissionControlTerminal:
             status = self.live_radar_loop(prefer_real=prefer_real)
             return status in {0, 3}
 
-        if cmd in {"1", "2", "3", "4", "r", "o", "g", "b", "v", "t", "l", "i", "c", "+", "-"}:
-            self.view_state = self.radar_input.apply_key(self.view_state, cmd)
+        if cmd_raw in {
+            "1",
+            "2",
+            "3",
+            "4",
+            "r",
+            "o",
+            "g",
+            "b",
+            "v",
+            "t",
+            "l",
+            "i",
+            "c",
+            "+",
+            "-",
+            "]",
+            "[",
+            "F",
+            "a",
+            "A",
+            "s",
+            "j",
+            "k",
+        }:
+            self.view_state = self.radar_input.apply_key(self.view_state, cmd_raw)
             return True
+
+        if cmd == "policy":
+            return self._handle_policy(parts[1:])
 
         if cmd == "mouse":
             return self._handle_mouse(parts[1:])
@@ -540,6 +637,12 @@ class MissionControlTerminal:
         print("  g|b|v|t|l            — toggle grid/rings/vectors/trails/labels")
         print("  i                    — inspector: off -> on -> pinned -> off")
         print("  c                    — toggle color")
+        print("  ]|a|j / [|k          — next/prev alert")
+        print("  F                    — focus selected situation target")
+        print("  A                    — acknowledge selected situation (snooze)")
+        print("  s                    — toggle situation overlays")
+        print("  policy cycle         — переключить radar policy profile")
+        print("  policy set <name>    — set profile (navigation|docking|combat)")
         print("  +|-                  — zoom in/out")
         print("  mouse wheel up|down  — zoom мышью (эмуляция)")
         print("  mouse click x y      — выбор ближайшей цели")
@@ -638,6 +741,22 @@ class MissionControlTerminal:
             self.view_state = self.radar_input.apply_action(self.view_state, action)
             return True
         print("mouse: wheel up|down | click <x> <y> | drag <dx> <dy>")
+        return True
+
+    def _handle_policy(self, args: list[str]) -> bool:
+        if not args:
+            print(f"policy: profile={self.radar_pipeline.policy_profile} source={self.radar_pipeline.policy_source}")
+            return True
+        action = args[0].lower()
+        if action == "cycle":
+            ok, message = self.radar_pipeline.cycle_policy_profile()
+            print(f"policy: {message}" if ok else f"policy error: {message}")
+            return True
+        if action in {"set", "profile"} and len(args) >= 2:
+            ok, message = self.radar_pipeline.set_policy_profile(args[1])
+            print(f"policy: {message}" if ok else f"policy error: {message}")
+            return True
+        print("policy: cycle | set <navigation|docking|combat>")
         return True
 
 

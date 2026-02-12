@@ -101,6 +101,25 @@ class EventStore:
             return []
         return list(self._events)[-limit:]
 
+    def snapshot(self) -> list[SystemEvent]:
+        """Return a stable in-memory copy for non-blocking readers."""
+        return list(self._events)
+
+    def iter_events(
+        self,
+        *,
+        from_ts: Optional[float] = None,
+        to_ts: Optional[float] = None,
+    ) -> list[SystemEvent]:
+        result: list[SystemEvent] = []
+        for event in self._events:
+            if from_ts is not None and event.ts < float(from_ts):
+                continue
+            if to_ts is not None and event.ts > float(to_ts):
+                continue
+            result.append(event)
+        return result
+
     def filter(
         self,
         *,
@@ -132,4 +151,3 @@ class EventStore:
                 handle.write("\n")
                 count += 1
         return count
-
