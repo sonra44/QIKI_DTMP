@@ -16,6 +16,11 @@ class SixelRadarBackend(RadarBackend):
     def is_supported(self) -> bool:
         if os.getenv("QIKI_FORCE_SIXEL_SUPPORTED", "").strip() == "1":
             return True
+        # Conservative guard: tmux/SSH often break or mangle SIXEL output.
+        if os.getenv("TMUX") and os.getenv("QIKI_ALLOW_TMUX_BITMAP", "").strip() != "1":
+            return False
+        if os.getenv("SSH_CONNECTION") and os.getenv("QIKI_ALLOW_SSH_BITMAP", "").strip() != "1":
+            return False
         term = os.getenv("TERM", "").lower()
         return "sixel" in term
 
@@ -36,4 +41,9 @@ class SixelRadarBackend(RadarBackend):
             sixel,
             f"backend=sixel size={image.width}x{image.height}",
         ]
-        return RenderOutput(backend=self.name, lines=lines, plan=render_plan, stats=(render_plan.stats if render_plan else None))
+        return RenderOutput(
+            backend=self.name,
+            lines=lines,
+            plan=render_plan,
+            stats=(render_plan.stats if render_plan else None),
+        )

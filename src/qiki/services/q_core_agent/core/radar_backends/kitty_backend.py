@@ -17,6 +17,12 @@ class KittyRadarBackend(RadarBackend):
     def is_supported(self) -> bool:
         if os.getenv("QIKI_FORCE_KITTY_SUPPORTED", "").strip() == "1":
             return True
+        # Conservative guard: tmux/SSH often break terminal-graphics passthrough.
+        # If capability is uncertain, auto mode must prefer Unicode baseline.
+        if os.getenv("TMUX") and os.getenv("QIKI_ALLOW_TMUX_BITMAP", "").strip() != "1":
+            return False
+        if os.getenv("SSH_CONNECTION") and os.getenv("QIKI_ALLOW_SSH_BITMAP", "").strip() != "1":
+            return False
         term = os.getenv("TERM", "").lower()
         if "kitty" in term:
             return True
@@ -43,4 +49,9 @@ class KittyRadarBackend(RadarBackend):
             escape,
             f"backend=kitty size={image.width}x{image.height}",
         ]
-        return RenderOutput(backend=self.name, lines=lines, plan=render_plan, stats=(render_plan.stats if render_plan else None))
+        return RenderOutput(
+            backend=self.name,
+            lines=lines,
+            plan=render_plan,
+            stats=(render_plan.stats if render_plan else None),
+        )
