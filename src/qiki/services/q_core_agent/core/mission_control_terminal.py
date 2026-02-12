@@ -35,9 +35,9 @@ from qiki.services.q_core_agent.core.radar_controls import (  # noqa: E402
     RadarMouseEvent,
 )
 from qiki.services.q_core_agent.core.radar_view_state import RadarViewState  # noqa: E402
+from qiki.services.q_core_agent.core.radar_replay import load_trace  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
     build_scene_from_events,
-    load_events_jsonl,
     render_terminal_screen,
 )
 from qiki.services.q_core_agent.core.terminal_input_backend import (  # noqa: E402
@@ -249,15 +249,21 @@ class MissionControlTerminal:
         if not path.exists():
             print(f"Replay trace not found: {path}")
             return 2
-        events = load_events_jsonl(str(path))
+        events = load_trace(str(path))
         try:
-            pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps)
+            pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps, replay_file=str(path))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
         if interactive or real_input:
             return MissionControlTerminal._replay_interactive(events, pipeline, real_input=real_input)
         try:
+            if pipeline.replay_enabled:
+                while True:
+                    state = pipeline.timeline_state
+                    if state is None or state.cursor >= state.total_events:
+                        break
+                    pipeline.render_observations([])
             print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
@@ -265,7 +271,12 @@ class MissionControlTerminal:
         return 0
 
     @staticmethod
-    def _build_pipeline(*, renderer: str | None = None, fps: int | None = None) -> RadarPipeline:
+    def _build_pipeline(
+        *,
+        renderer: str | None = None,
+        fps: int | None = None,
+        replay_file: str | None = None,
+    ) -> RadarPipeline:
         base = RadarRenderConfig.from_env()
         effective_renderer = (renderer or base.renderer).strip().lower()
         if not effective_renderer:
@@ -277,7 +288,8 @@ class MissionControlTerminal:
                 view=base.view,
                 fps_max=effective_fps,
                 color=base.color,
-            )
+            ),
+            replay_file=replay_file,
         )
 
     @staticmethod
@@ -305,7 +317,7 @@ class MissionControlTerminal:
             print(f"[WARN] {warning}")
         print(
             "Replay controls: 1/2/3/4 view, r reset, o overlays, g/b/v/t/l overlays, i inspector, c color, +/- zoom, "
-            "a/A/s/j/k alerts, q quit."
+            "a/A/s/j/k alerts, p pause/resume, n step, q quit."
             " Mouse: wheel/click/drag in real-input mode."
         )
         print("Line mode emulation: 'wheel up|down', 'click <x> <y>', 'drag <dx> <dy>'")
@@ -318,9 +330,29 @@ class MissionControlTerminal:
                 now = time.monotonic()
                 timeout = max(1, int(max(0.0, frame_interval - (now - last_render_ts)) * 1000.0))
                 input_events = backend.poll_events(timeout_ms=timeout)
-                scene = build_scene_from_events(events)
+                active_events = events
+                timeline = pipeline.timeline_state
+                if timeline is not None:
+                    active_events = events[: timeline.cursor]
+                scene = build_scene_from_events(active_events)
                 should_quit = False
                 for event in input_events:
+                    if event.kind == "key":
+                        key = (event.key or event.raw or "").strip()
+                        if key.lower() == "p" and pipeline.replay_enabled:
+                            state = pipeline.timeline_state
+                            if state is not None and state.paused:
+                                pipeline.replay_resume()
+                            else:
+                                pipeline.replay_pause()
+                            needs_render = True
+                            continue
+                        if key.lower() == "n" and pipeline.replay_enabled:
+                            pipeline.replay_resume()
+                            pipeline.render_observations([], view_state=view_state)
+                            pipeline.replay_pause()
+                            needs_render = True
+                            continue
                     view_state, should_quit = MissionControlTerminal._apply_input_event(
                         controller=controller,
                         view_state=view_state,
@@ -333,8 +365,17 @@ class MissionControlTerminal:
                 if should_quit:
                     return 0
                 if needs_render and (time.monotonic() - last_render_ts) >= frame_interval:
+                    if pipeline.replay_enabled:
+                        pipeline.render_observations([], view_state=view_state)
+                        timeline = pipeline.timeline_state
+                        if timeline is not None:
+                            active_events = events[: timeline.cursor]
+                        else:
+                            active_events = events
+                    else:
+                        active_events = events
                     MissionControlTerminal._emit_frame(
-                        render_terminal_screen(events, pipeline=pipeline, view_state=view_state),
+                        render_terminal_screen(active_events, pipeline=pipeline, view_state=view_state),
                         real_terminal=(backend.name == "real-terminal"),
                     )
                     last_render_ts = time.monotonic()

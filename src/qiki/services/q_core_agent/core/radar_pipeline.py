@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-import time
 from dataclasses import dataclass
 from dataclasses import replace
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import uuid4
 
 from .radar_backends import (
@@ -18,6 +18,7 @@ from .radar_backends import (
     UnicodeRadarBackend,
 )
 from .event_store import EventStore, TruthState
+from .radar_clock import Clock, ReplayClock, ensure_clock
 from .radar_fusion import (
     FusionConfig,
     FusionStateStore,
@@ -27,6 +28,7 @@ from .radar_fusion import (
     fused_tracks_to_scene,
 )
 from .radar_ingestion import Observation, SourceTrack, ingest_observations, source_tracks_to_scene
+from .radar_replay import RadarReplayEngine, TimelineState, load_trace
 from .radar_policy_loader import load_effective_render_policy_result
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
 from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity, SituationStatus
@@ -74,7 +76,8 @@ class RadarPipeline:
         config: RadarRenderConfig | None = None,
         *,
         event_store: EventStore | None = None,
-        clock: Callable[[], float] | None = None,
+        clock: Clock | Callable[[], float] | None = None,
+        replay_file: str | None = None,
     ):
         self.config = config or RadarRenderConfig.from_env()
         telemetry_raw = os.getenv("RADAR_TELEMETRY", "1").strip().lower()
@@ -82,7 +85,27 @@ class RadarPipeline:
         emit_observation_raw = os.getenv("RADAR_EMIT_OBSERVATION_RX", "0").strip().lower()
         self.emit_observation_rx = emit_observation_raw in {"1", "true", "yes", "on"}
         self.event_store = event_store
-        self._clock = clock or time.monotonic
+        self._clock = ensure_clock(clock)
+        self._replay_engine: RadarReplayEngine | None = None
+        self._replay_tracks: dict[str, dict[str, SourceTrack]] = {}
+        self._replay_strict = os.getenv("RADAR_REPLAY_STRICT_DETERMINISM", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+        replay_from_env = os.getenv("RADAR_REPLAY_FILE", "").strip()
+        self._replay_file = (replay_file if replay_file is not None else replay_from_env).strip()
+        try:
+            replay_speed = float(os.getenv("RADAR_REPLAY_SPEED", "1.0") or "1.0")
+        except Exception:
+            replay_speed = 1.0
+        self._replay_speed = max(0.1, replay_speed)
+        self._replay_step = os.getenv("RADAR_REPLAY_STEP", "0").strip().lower() in {"1", "true", "yes", "on"}
+        self._replay_init_warning = ""
+        self._replay_init_payload: dict[str, Any] | None = None
+        if self._replay_file:
+            self._init_replay(self._replay_file)
         self.fusion_config = FusionConfig.from_env()
         self.view_state = RadarViewState.from_env()
         load_result = load_effective_render_policy_result()
@@ -91,7 +114,7 @@ class RadarPipeline:
         self.policy_profile = load_result.selected_profile
         self.policy_source = load_result.policy_source
         self.trail_store = RadarTrailStore(max_len=self.render_policy.trail_len)
-        self.situation_engine = RadarSituationEngine()
+        self.situation_engine = RadarSituationEngine(clock=self._clock)
         self.last_situations: tuple[Situation, ...] = ()
         self.session_id = str(uuid4())
         self._last_frame_time_ms = 0.0
@@ -125,6 +148,18 @@ class RadarPipeline:
                     "policy_source": self.policy_source,
                 },
             )
+        if self._replay_init_warning:
+            self._append_policy_event(
+                event_type="REPLAY_DISABLED",
+                reason=self._replay_init_warning,
+                payload={"replay_file": self._replay_file},
+            )
+        if self._replay_init_payload is not None:
+            self._append_policy_event(
+                event_type="REPLAY_ENABLED",
+                reason="TRACE_SOURCE_ACTIVE",
+                payload=self._replay_init_payload,
+            )
         self._tracks_by_source: dict[str, list[SourceTrack]] = {}
         self._fusion_state = FusionStateStore()
         self._last_fused_signatures: dict[str, tuple[object, ...]] = {}
@@ -133,6 +168,61 @@ class RadarPipeline:
     @property
     def active_backend_name(self) -> str:
         return self._active_backend.name
+
+    @property
+    def replay_enabled(self) -> bool:
+        return self._replay_engine is not None
+
+    @property
+    def timeline_state(self) -> TimelineState | None:
+        if self._replay_engine is None:
+            return None
+        return self._replay_engine.timeline
+
+    def replay_pause(self) -> None:
+        if self._replay_engine is not None:
+            self._replay_engine.pause()
+
+    def replay_resume(self) -> None:
+        if self._replay_engine is not None:
+            self._replay_engine.resume()
+
+    def replay_jump_to_ts(self, ts: float) -> None:
+        if self._replay_engine is not None:
+            self._replay_engine.jump_to_ts(ts)
+
+    def replay_jump_to_event_type(self, event_type: str) -> bool:
+        if self._replay_engine is None:
+            return False
+        return self._replay_engine.jump_to_event_type(event_type)
+
+    def replay_jump_to_situation_id(self, situation_id: str) -> bool:
+        if self._replay_engine is None:
+            return False
+        return self._replay_engine.jump_to_situation_id(situation_id)
+
+    def _init_replay(self, replay_file: str) -> None:
+        try:
+            events = load_trace(replay_file)
+        except Exception as exc:  # noqa: BLE001
+            if self._replay_strict:
+                raise RuntimeError(f"Failed to load replay trace: {replay_file}: {exc}") from exc
+            self._replay_init_warning = f"TRACE_LOAD_FAILED:{exc}"
+            return
+        initial_ts = float(events[0].get("ts", 0.0)) if events else 0.0
+        replay_clock = ReplayClock(current_ts=initial_ts)
+        self._clock = replay_clock
+        self._replay_engine = RadarReplayEngine(
+            events,
+            speed=self._replay_speed,
+            step=self._replay_step,
+            clock=replay_clock,
+        )
+        self._replay_init_payload = {
+            "replay_file": replay_file,
+            "speed": self._replay_speed,
+            "step": self._replay_step,
+        }
 
     def set_policy_profile(self, profile: str) -> tuple[bool, str]:
         requested = (profile or "").strip().lower()
@@ -235,7 +325,7 @@ class RadarPipeline:
         )
         consecutive_high = (prev.consecutive_high + 1) if high else 0
         consecutive_low = (prev.consecutive_low + 1) if low else 0
-        now = self._clock()
+        now = self._clock.now()
         elapsed_ms = (
             (now - prev.last_change_ts) * 1000.0 if prev.last_change_ts > 0.0 else float(self.adaptive_policy.cooldown_ms) + 1.0
         )
@@ -276,7 +366,7 @@ class RadarPipeline:
             frame_time_ms=self._last_frame_time_ms,
             backend_name=self._active_backend.name,
             degradation_state=self._degradation_state,
-            now_ts=self._clock(),
+            now_ts=self._clock.now(),
         )
         self._degradation_state = next_state
         return plan
@@ -323,7 +413,7 @@ class RadarPipeline:
         self.view_state = active_view_state
         self.last_situations = tuple(situations)
         self._append_situation_events(scene_with_trails, deltas)
-        render_start = self._clock()
+        render_start = self._clock.now()
         try:
             if self._active_backend.name == "unicode":
                 output = self._active_backend.render(
@@ -340,7 +430,7 @@ class RadarPipeline:
                     color=(self.config.color and active_view_state.color_enabled),
                     render_plan=plan,
                 )
-            self._last_frame_time_ms = (self._clock() - render_start) * 1000.0
+            self._last_frame_time_ms = (self._clock.now() - render_start) * 1000.0
             self._update_adaptive_state(frame_time_ms=self._last_frame_time_ms, targets_count=len(scene_with_trails.points))
             self._append_render_tick_event(scene_with_trails, output)
             return output
@@ -357,7 +447,7 @@ class RadarPipeline:
                 situations=tuple(situations),
             )
             marker = f"[RADAR RUNTIME FALLBACK {previous}->unicode: {exc}]"
-            self._last_frame_time_ms = (self._clock() - render_start) * 1000.0
+            self._last_frame_time_ms = (self._clock.now() - render_start) * 1000.0
             self._update_adaptive_state(frame_time_ms=self._last_frame_time_ms, targets_count=len(scene_with_trails.points))
             output = RenderOutput(
                 backend=fallback.backend,
@@ -369,7 +459,86 @@ class RadarPipeline:
             self._append_render_tick_event(scene_with_trails, output)
             return output
 
+    def _source_track_from_replay_event(self, event: dict[str, Any]) -> SourceTrack | None:
+        if str(event.get("event_type", "")) != "SOURCE_TRACK_UPDATED":
+            return None
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            return None
+        source_id = str(payload.get("source_id", "")).strip()
+        source_track_id = str(payload.get("source_track_id", "")).strip()
+        if not source_id or not source_track_id:
+            return None
+        try:
+            pos_raw = payload.get("pos", [0.0, 0.0])
+            if not isinstance(pos_raw, (list, tuple)) or len(pos_raw) < 2:
+                return None
+            pos_xy = (float(pos_raw[0]), float(pos_raw[1]))
+            vel_xy: tuple[float, float] | None = None
+            vel_raw = payload.get("vel")
+            if isinstance(vel_raw, (list, tuple)) and len(vel_raw) >= 2:
+                vel_xy = (float(vel_raw[0]), float(vel_raw[1]))
+            updated_t = float(payload.get("t", event.get("ts", self._clock.now())))
+            quality = float(payload.get("quality", payload.get("trust", 0.5)))
+            trust = float(payload.get("trust", quality))
+        except Exception:
+            return None
+        return SourceTrack(
+            source_id=source_id,
+            source_track_id=source_track_id,
+            last_update_t=updated_t,
+            state_pos_xy=pos_xy,
+            state_vel_xy=vel_xy,
+            quality=quality,
+            trust=trust,
+            metadata={"replay": True},
+        )
+
+    def _replay_observation_ts(self, event: dict[str, Any]) -> float | None:
+        if str(event.get("event_type", "")) != "SOURCE_TRACK_UPDATED":
+            return None
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return float(payload.get("t"))
+        except Exception:
+            return None
+
+    def _ingest_replay_tracks(self) -> dict[str, list[SourceTrack]]:
+        if self._replay_engine is None:
+            return {}
+        replay_batch = self._replay_engine.next_batch()
+        if replay_batch:
+            frame_t = self._replay_observation_ts(replay_batch[0])
+            if frame_t is not None:
+                while True:
+                    next_event = self._replay_engine.peek_next()
+                    next_t = self._replay_observation_ts(next_event) if next_event is not None else None
+                    if next_t is None or abs(next_t - frame_t) > 1e-6:
+                        break
+                    replay_batch.extend(self._replay_engine.next_batch())
+        now_ts = self._clock.now()
+        for event in replay_batch:
+            track = self._source_track_from_replay_event(event)
+            if track is None:
+                continue
+            bucket = self._replay_tracks.setdefault(track.source_id, {})
+            bucket[track.source_track_id] = track
+        # Keep replay tracks fresh; stale tracks are removed to avoid immortal targets.
+        for source_id in list(self._replay_tracks.keys()):
+            source_bucket = self._replay_tracks[source_id]
+            for track_id in list(source_bucket.keys()):
+                if now_ts - float(source_bucket[track_id].last_update_t) > float(self.fusion_config.max_age_s):
+                    del source_bucket[track_id]
+            if not source_bucket:
+                del self._replay_tracks[source_id]
+        return {source_id: list(bucket.values()) for source_id, bucket in self._replay_tracks.items()}
+
     def ingest_observations(self, observations: list[Observation]) -> dict[str, list[SourceTrack]]:
+        if self._replay_engine is not None:
+            self._tracks_by_source = self._ingest_replay_tracks()
+            return {source_id: list(tracks) for source_id, tracks in self._tracks_by_source.items()}
         self._tracks_by_source = ingest_observations(
             observations,
             event_store=self.event_store,
@@ -392,7 +561,7 @@ class RadarPipeline:
                 tracks_by_source,
                 cfg=self.fusion_config,
                 prev_state=self._fusion_state,
-                now=self._clock(),
+                now=self._clock.now(),
             )
             self._append_fusion_events(
                 scene_truth_state=truth_state,
