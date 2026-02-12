@@ -9,29 +9,27 @@ from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
-from .radar_backends import (
-    KittyRadarBackend,
-    RadarBackend,
-    RadarScene,
-    RenderOutput,
-    SixelRadarBackend,
-    UnicodeRadarBackend,
-)
+from .radar_backends import RadarBackend, RadarScene, RenderOutput
 from .event_store import EventStore, TruthState
+from .plugin_manager import PluginContext, PluginManager
 from .radar_clock import Clock, ReplayClock, ensure_clock
 from .radar_fusion import (
-    FusionConfig,
-    FusionStateStore,
-    FusedTrack,
     FusionCluster,
-    fuse_tracks,
-    fused_tracks_to_scene,
+    FusionConfig,
+    FusedTrack,
 )
-from .radar_ingestion import Observation, SourceTrack, ingest_observations, source_tracks_to_scene
+from .radar_ingestion import Observation, SourceTrack
+from .radar_plugins import (
+    FusionPlugin,
+    RenderBackendPlugin,
+    RenderPolicyPlugin,
+    SensorInputPlugin,
+    SituationalAnalysisPlugin,
+    register_builtin_radar_plugins,
+)
 from .radar_replay import RadarReplayEngine, TimelineState, load_trace
-from .radar_policy_loader import load_effective_render_policy_result
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
-from .radar_situation_engine import RadarSituationEngine, Situation, SituationSeverity, SituationStatus
+from .radar_situation_engine import Situation, SituationSeverity, SituationStatus
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
 
@@ -78,6 +76,7 @@ class RadarPipeline:
         event_store: EventStore | None = None,
         clock: Clock | Callable[[], float] | None = None,
         replay_file: str | None = None,
+        register_plugins: Callable[[PluginManager], None] | None = None,
     ):
         self.config = config or RadarRenderConfig.from_env()
         telemetry_raw = os.getenv("RADAR_TELEMETRY", "1").strip().lower()
@@ -86,6 +85,37 @@ class RadarPipeline:
         self.emit_observation_rx = emit_observation_raw in {"1", "true", "yes", "on"}
         self.event_store = event_store
         self._clock = ensure_clock(clock)
+        plugin_context = PluginContext(
+            event_store=self.event_store,
+            clock=self._clock,
+            config={"renderer": self.config.renderer, "view": self.config.view},
+            capabilities={"replay": True},
+        )
+        self.plugin_manager = PluginManager(context=plugin_context, event_store=self.event_store)
+        if register_plugins is None:
+            register_builtin_radar_plugins(self.plugin_manager)
+        else:
+            register_plugins(self.plugin_manager)
+        plugin_load = self.plugin_manager.resolve_active_plugins()
+        self.plugin_profile = plugin_load.profile
+        self.plugin_source = plugin_load.source
+        self.sensor_plugin = plugin_load.instances.get("sensor_input")
+        self.fusion_plugin = plugin_load.instances.get("fusion")
+        self.policy_plugin = plugin_load.instances.get("render_policy")
+        self.backend_plugin = plugin_load.instances.get("render_backend")
+        self.situational_plugin = plugin_load.instances.get("situational_analysis")
+        if not isinstance(self.sensor_plugin, SensorInputPlugin):
+            raise RuntimeError("sensor_input plugin missing or invalid")
+        if not isinstance(self.fusion_plugin, FusionPlugin):
+            raise RuntimeError("fusion plugin missing or invalid")
+        if not isinstance(self.policy_plugin, RenderPolicyPlugin):
+            raise RuntimeError("render_policy plugin missing or invalid")
+        if not isinstance(self.backend_plugin, RenderBackendPlugin):
+            raise RuntimeError("render_backend plugin missing or invalid")
+        if self.situational_plugin is not None and not isinstance(self.situational_plugin, SituationalAnalysisPlugin):
+            raise RuntimeError("situational_analysis plugin has invalid type")
+        # Backward-compatible handle for tests and existing call sites that set `pipeline.situation_engine`.
+        self.situation_engine = getattr(self.situational_plugin, "engine", None)
         self._replay_engine: RadarReplayEngine | None = None
         self._replay_tracks: dict[str, dict[str, SourceTrack]] = {}
         self._replay_strict = os.getenv("RADAR_REPLAY_STRICT_DETERMINISM", "1").strip().lower() not in {
@@ -106,15 +136,14 @@ class RadarPipeline:
         self._replay_init_payload: dict[str, Any] | None = None
         if self._replay_file:
             self._init_replay(self._replay_file)
-        self.fusion_config = FusionConfig.from_env()
+        self.fusion_config = self.fusion_plugin.config
         self.view_state = RadarViewState.from_env()
-        load_result = load_effective_render_policy_result()
+        load_result = self.policy_plugin.load_profile()
         self.render_policy = load_result.render_policy
         self.adaptive_policy = load_result.adaptive_policy
         self.policy_profile = load_result.selected_profile
         self.policy_source = load_result.policy_source
         self.trail_store = RadarTrailStore(max_len=self.render_policy.trail_len)
-        self.situation_engine = RadarSituationEngine(clock=self._clock)
         self.last_situations: tuple[Situation, ...] = ()
         self.session_id = str(uuid4())
         self._last_frame_time_ms = 0.0
@@ -135,9 +164,7 @@ class RadarPipeline:
                 overlays=self.view_state.overlays,
                 inspector=self.view_state.inspector,
             )
-        self._unicode = UnicodeRadarBackend()
-        self._kitty = KittyRadarBackend()
-        self._sixel = SixelRadarBackend()
+        self._unicode = self.backend_plugin.unicode_backend
         self._active_backend = self.detect_best_backend()
         if load_result.warning_reason:
             self._append_policy_event(
@@ -161,7 +188,6 @@ class RadarPipeline:
                 payload=self._replay_init_payload,
             )
         self._tracks_by_source: dict[str, list[SourceTrack]] = {}
-        self._fusion_state = FusionStateStore()
         self._last_fused_signatures: dict[str, tuple[object, ...]] = {}
         self._last_cluster_signatures: set[tuple[object, ...]] = set()
 
@@ -230,7 +256,7 @@ class RadarPipeline:
             return False, f"Unsupported profile: {profile!r}"
         previous_profile = self.policy_profile
         previous_source = self.policy_source
-        result = load_effective_render_policy_result(profile=requested)
+        result = self.policy_plugin.load_profile(requested)
         self.render_policy = result.render_policy
         self.adaptive_policy = result.adaptive_policy
         self.policy_profile = result.selected_profile
@@ -285,21 +311,7 @@ class RadarPipeline:
         )
 
     def _effective_policy(self) -> RadarRenderPolicy:
-        if not self.adaptive_policy.enabled:
-            return self.render_policy
-        level = max(0, min(self._adaptive_state.level, self.adaptive_policy.max_level))
-        if level == 0:
-            return self.render_policy
-        clutter_multiplier = max(0.05, 1.0 - (self.adaptive_policy.clutter_reduction_per_level * float(level)))
-        clutter_targets = max(1, int(round(float(self.render_policy.clutter_targets_max) * clutter_multiplier)))
-        return replace(
-            self.render_policy,
-            clutter_targets_max=clutter_targets,
-            lod_label_zoom=self.render_policy.lod_label_zoom
-            + (self.adaptive_policy.lod_label_zoom_delta_per_level * float(level)),
-            lod_detail_zoom=self.render_policy.lod_detail_zoom
-            + (self.adaptive_policy.lod_detail_zoom_delta_per_level * float(level)),
-        )
+        return self.policy_plugin.effective_policy(base_policy=self.render_policy, adaptive_level=self._adaptive_state.level)
 
     def _update_adaptive_state(self, *, frame_time_ms: float, targets_count: int) -> None:
         if not self.adaptive_policy.enabled:
@@ -372,24 +384,7 @@ class RadarPipeline:
         return plan
 
     def detect_best_backend(self) -> RadarBackend:
-        requested = self.config.renderer
-        if requested == "unicode":
-            return self._unicode
-        if requested == "kitty":
-            if self._kitty.is_supported():
-                return self._kitty
-            raise RuntimeError("RADAR_RENDERER=kitty requested but Kitty backend is unsupported")
-        if requested == "sixel":
-            if self._sixel.is_supported():
-                return self._sixel
-            raise RuntimeError("RADAR_RENDERER=sixel requested but SIXEL backend is unsupported")
-
-        # auto mode: prefer bitmap upgrades only when support is clear.
-        if self._kitty.is_supported():
-            return self._kitty
-        if self._sixel.is_supported():
-            return self._sixel
-        return self._unicode
+        return self.backend_plugin.select_backend(self.config.renderer)
 
     def render_scene(self, scene: RadarScene, *, view_state: RadarViewState | None = None) -> RenderOutput:
         active_view_state = view_state or self.view_state
@@ -403,12 +398,22 @@ class RadarPipeline:
             trails={k: v for k, v in self.trail_store.get_all().items()},
         )
         plan = self.build_render_plan(scene_with_trails, view_state=active_view_state)
-        situations, deltas = self.situation_engine.evaluate(
-            scene_with_trails,
-            trail_store=self.trail_store,
-            view_state=active_view_state,
-            render_stats=plan.stats,
-        )
+        if self.situation_engine is not None:
+            situations, deltas = self.situation_engine.evaluate(
+                scene_with_trails,
+                trail_store=self.trail_store,
+                view_state=active_view_state,
+                render_stats=plan.stats,
+            )
+        elif self.situational_plugin is None:
+            situations, deltas = [], []
+        else:
+            situations, deltas = self.situational_plugin.update(
+                scene=scene_with_trails,
+                trail_store=self.trail_store,
+                view_state=active_view_state,
+                render_stats=plan.stats,
+            )
         active_view_state = self._apply_alert_selection(active_view_state, situations)
         self.view_state = active_view_state
         self.last_situations = tuple(situations)
@@ -539,9 +544,8 @@ class RadarPipeline:
         if self._replay_engine is not None:
             self._tracks_by_source = self._ingest_replay_tracks()
             return {source_id: list(tracks) for source_id, tracks in self._tracks_by_source.items()}
-        self._tracks_by_source = ingest_observations(
+        self._tracks_by_source = self.sensor_plugin.ingest(
             observations,
-            event_store=self.event_store,
             emit_observation_rx=self.emit_observation_rx,
         )
         return {source_id: list(tracks) for source_id, tracks in self._tracks_by_source.items()}
@@ -556,30 +560,18 @@ class RadarPipeline:
         is_fallback: bool = False,
     ) -> RenderOutput:
         tracks_by_source = self.ingest_observations(observations)
+        scene, fused_tracks, clusters = self.fusion_plugin.fuse(
+            tracks_by_source,
+            now=self._clock.now(),
+            truth_state=truth_state,
+            reason=reason,
+            is_fallback=is_fallback,
+        )
         if self.fusion_config.enabled:
-            fused_set, self._fusion_state = fuse_tracks(
-                tracks_by_source,
-                cfg=self.fusion_config,
-                prev_state=self._fusion_state,
-                now=self._clock.now(),
-            )
             self._append_fusion_events(
                 scene_truth_state=truth_state,
-                fused_tracks=fused_set.tracks,
-                clusters=fused_set.clusters,
-            )
-            scene = fused_tracks_to_scene(
-                fused_set,
-                truth_state=truth_state,
-                reason=reason,
-                is_fallback=is_fallback,
-            )
-        else:
-            scene = source_tracks_to_scene(
-                tracks_by_source,
-                truth_state=truth_state,
-                reason=reason,
-                is_fallback=is_fallback,
+                fused_tracks=fused_tracks,
+                clusters=clusters,
             )
         return self.render_scene(scene, view_state=view_state)
 

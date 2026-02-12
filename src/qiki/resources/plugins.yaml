@@ -1,0 +1,62 @@
+schema_version: 1
+
+profiles:
+  default:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+
+  sim:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+
+  dev:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+
+  prod:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+
+  no_situational:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      enabled: false

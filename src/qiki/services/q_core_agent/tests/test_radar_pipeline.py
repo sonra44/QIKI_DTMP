@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
 from qiki.services.q_core_agent.core.event_store import EventStore
+from qiki.services.q_core_agent.core.plugin_manager import PluginManager, PluginSpec
 from qiki.services.q_core_agent.core.radar_backends.kitty_backend import KittyRadarBackend
 from qiki.services.q_core_agent.core.radar_backends.sixel_backend import SixelRadarBackend
 from qiki.services.q_core_agent.core.radar_backends.base import RadarPoint, RadarScene
+from qiki.services.q_core_agent.core.radar_fusion import FusionCluster, FusedTrack
+from qiki.services.q_core_agent.core.radar_ingestion import SourceTrack
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
+from qiki.services.q_core_agent.core.radar_plugins import register_builtin_radar_plugins
 from qiki.services.q_core_agent.core.radar_situation_engine import RadarSituationEngine, SituationConfig
 from qiki.services.q_core_agent.core.terminal_radar_renderer import render_terminal_screen
 
@@ -122,6 +127,103 @@ def test_runtime_backend_error_switches_to_unicode(monkeypatch: pytest.MonkeyPat
     assert output.backend == "unicode"
     assert output.used_runtime_fallback is True
     assert output.lines[0].startswith("[RADAR RUNTIME FALLBACK kitty->unicode")
+
+
+def test_pipeline_boots_with_default_plugins_yaml_and_emits_lifecycle_events() -> None:
+    store = EventStore(maxlen=200, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    assert pipeline.fusion_plugin is not None
+    loaded = store.filter(subsystem="PLUGINS", event_type="PLUGIN_LOADED")
+    assert loaded
+
+
+def test_pipeline_can_swap_fusion_plugin_via_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _DummyFusionPlugin:
+        config = type("Cfg", (), {"enabled": True, "min_support": 1, "max_age_s": 2.0})()
+
+        def fuse(
+            self,
+            tracks_by_source: dict[str, list[SourceTrack]],
+            *,
+            now: float,
+            truth_state: str,
+            reason: str,
+            is_fallback: bool,
+        ) -> tuple[RadarScene, tuple[FusedTrack, ...], tuple[FusionCluster, ...]]:
+            _ = tracks_by_source, now
+            scene = RadarScene(
+                ok=True,
+                reason=reason,
+                truth_state=truth_state,
+                is_fallback=is_fallback,
+                points=[RadarPoint(x=1.0, y=2.0, z=0.0, vr_mps=0.0, metadata={"target_id": "dummy"})],
+            )
+            return scene, (), ()
+
+    def _register(manager: PluginManager) -> None:
+        register_builtin_radar_plugins(manager)
+        manager.register(
+            PluginSpec(
+                name="dummy.fusion",
+                kind="fusion",
+                version="1.0.0",
+                provides=("fusion",),
+                requires=("builtin.sensor_input",),
+                factory=lambda _ctx, _params: _DummyFusionPlugin(),
+            )
+        )
+
+    plugin_yaml = tmp_path / "plugins.yaml"
+    plugin_yaml.write_text(
+        """
+schema_version: 1
+profiles:
+  swap:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: dummy.fusion
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("QIKI_PLUGINS_STRICT", "1")
+    monkeypatch.setenv("QIKI_PLUGINS_PROFILE", "swap")
+    monkeypatch.setenv("QIKI_PLUGINS_YAML", str(plugin_yaml))
+
+    store = EventStore(maxlen=200, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+        register_plugins=_register,
+    )
+    output = pipeline.render_observations([], truth_state="OK", reason="OK")
+    assert output.backend == "unicode"
+    assert pipeline.fusion_plugin.__class__.__name__ == "_DummyFusionPlugin"
+    loaded = store.filter(subsystem="PLUGINS", event_type="PLUGIN_LOADED")
+    assert loaded
+
+
+def test_pipeline_with_disabled_situational_plugin_does_not_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_PLUGINS_PROFILE", "no_situational")
+    store = EventStore(maxlen=200, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    pipeline.render_scene(RadarScene(ok=True, reason="OK", truth_state="OK", is_fallback=False, points=[]))
+    situation_events = store.filter(subsystem="SITUATION")
+    assert not situation_events
+    fallback_events = store.filter(subsystem="PLUGINS", event_type="PLUGIN_FALLBACK_USED")
+    assert fallback_events
 
 
 def test_no_data_screen_prints_no_data_without_target_markers() -> None:
