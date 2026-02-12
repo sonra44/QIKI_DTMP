@@ -18,6 +18,14 @@ from .radar_backends import (
     UnicodeRadarBackend,
 )
 from .event_store import EventStore, TruthState
+from .radar_fusion import (
+    FusionConfig,
+    FusionStateStore,
+    FusedTrack,
+    FusionCluster,
+    fuse_tracks,
+    fused_tracks_to_scene,
+)
 from .radar_ingestion import Observation, SourceTrack, ingest_observations, source_tracks_to_scene
 from .radar_policy_loader import load_effective_render_policy_result
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
@@ -71,8 +79,11 @@ class RadarPipeline:
         self.config = config or RadarRenderConfig.from_env()
         telemetry_raw = os.getenv("RADAR_TELEMETRY", "1").strip().lower()
         self.telemetry_enabled = telemetry_raw not in {"0", "false", "no", "off"}
+        emit_observation_raw = os.getenv("RADAR_EMIT_OBSERVATION_RX", "0").strip().lower()
+        self.emit_observation_rx = emit_observation_raw in {"1", "true", "yes", "on"}
         self.event_store = event_store
         self._clock = clock or time.monotonic
+        self.fusion_config = FusionConfig.from_env()
         self.view_state = RadarViewState.from_env()
         load_result = load_effective_render_policy_result()
         self.render_policy = load_result.render_policy
@@ -115,6 +126,9 @@ class RadarPipeline:
                 },
             )
         self._tracks_by_source: dict[str, list[SourceTrack]] = {}
+        self._fusion_state = FusionStateStore()
+        self._last_fused_signatures: dict[str, tuple[object, ...]] = {}
+        self._last_cluster_signatures: set[tuple[object, ...]] = set()
 
     @property
     def active_backend_name(self) -> str:
@@ -359,7 +373,7 @@ class RadarPipeline:
         self._tracks_by_source = ingest_observations(
             observations,
             event_store=self.event_store,
-            emit_observation_rx=True,
+            emit_observation_rx=self.emit_observation_rx,
         )
         return {source_id: list(tracks) for source_id, tracks in self._tracks_by_source.items()}
 
@@ -373,13 +387,113 @@ class RadarPipeline:
         is_fallback: bool = False,
     ) -> RenderOutput:
         tracks_by_source = self.ingest_observations(observations)
-        scene = source_tracks_to_scene(
-            tracks_by_source,
-            truth_state=truth_state,
-            reason=reason,
-            is_fallback=is_fallback,
-        )
+        if self.fusion_config.enabled:
+            fused_set, self._fusion_state = fuse_tracks(
+                tracks_by_source,
+                cfg=self.fusion_config,
+                prev_state=self._fusion_state,
+                now=self._clock(),
+            )
+            self._append_fusion_events(
+                scene_truth_state=truth_state,
+                fused_tracks=fused_set.tracks,
+                clusters=fused_set.clusters,
+            )
+            scene = fused_tracks_to_scene(
+                fused_set,
+                truth_state=truth_state,
+                reason=reason,
+                is_fallback=is_fallback,
+            )
+        else:
+            scene = source_tracks_to_scene(
+                tracks_by_source,
+                truth_state=truth_state,
+                reason=reason,
+                is_fallback=is_fallback,
+            )
         return self.render_scene(scene, view_state=view_state)
+
+    def _append_fusion_events(
+        self,
+        *,
+        scene_truth_state: str,
+        fused_tracks: tuple[FusedTrack, ...],
+        clusters: tuple[FusionCluster, ...],
+    ) -> None:
+        if self.event_store is None:
+            return
+        truth_state = self._normalize_truth_state(scene_truth_state)
+        current_cluster_signatures: set[tuple[object, ...]] = set()
+        for cluster in clusters:
+            signature = (
+                tuple(f"{contributor.source_id}:{contributor.source_track_id}" for contributor in cluster.contributors),
+                int(cluster.support_ok),
+                round(float(cluster.spread_pos), 2),
+            )
+            current_cluster_signatures.add(signature)
+            if signature in self._last_cluster_signatures:
+                continue
+            self.event_store.append_new(
+                subsystem="FUSION",
+                event_type="FUSION_CLUSTER_BUILT",
+                payload={
+                    "cluster_size": len(cluster.contributors),
+                    "sources": sorted({contributor.source_id for contributor in cluster.contributors}),
+                    "spread": float(cluster.spread_pos),
+                    "support_ok": bool(cluster.support_ok),
+                },
+                truth_state=truth_state,
+                reason="CLUSTER_BUILT",
+            )
+        self._last_cluster_signatures = current_cluster_signatures
+
+        next_signatures: dict[str, tuple[object, ...]] = {}
+        for track in fused_tracks:
+            signature = (
+                round(float(track.pos_xy[0]), 2),
+                round(float(track.pos_xy[1]), 2),
+                None if track.vel_xy is None else round(float(track.vel_xy[0]), 2),
+                None if track.vel_xy is None else round(float(track.vel_xy[1]), 2),
+                round(float(track.trust), 3),
+                tuple(sorted(track.flags)),
+                tuple(
+                    sorted(f"{contributor.source_id}:{contributor.source_track_id}" for contributor in track.contributors)
+                ),
+            )
+            next_signatures[track.fused_id] = signature
+            if self._last_fused_signatures.get(track.fused_id) == signature:
+                continue
+            self.event_store.append_new(
+                subsystem="FUSION",
+                event_type="FUSED_TRACK_UPDATED",
+                payload={
+                    "fused_id": track.fused_id,
+                    "contributors": [
+                        {
+                            "source_id": contributor.source_id,
+                            "source_track_id": contributor.source_track_id,
+                            "trust": float(contributor.trust),
+                            "quality": float(contributor.quality),
+                            "dt": float(contributor.dt),
+                        }
+                        for contributor in track.contributors
+                    ],
+                    "trust": float(track.trust),
+                    "flags": sorted(track.flags),
+                    "pos": [float(track.pos_xy[0]), float(track.pos_xy[1])],
+                    "vel": (
+                        None
+                        if track.vel_xy is None
+                        else [float(track.vel_xy[0]), float(track.vel_xy[1])]
+                    ),
+                    "support_ok": len({contributor.source_id for contributor in track.contributors})
+                    >= int(self.fusion_config.min_support),
+                },
+                truth_state=truth_state,
+                reason="TRACK_FUSED",
+            )
+        self._last_fused_signatures = next_signatures
 
     def _apply_alert_selection(self, view_state: RadarViewState, situations: list[Situation]) -> RadarViewState:
         def _severity_rank_local(s: Situation) -> int:
@@ -418,14 +532,7 @@ class RadarPipeline:
     def _append_situation_events(self, scene: RadarScene, deltas: list) -> None:
         if self.event_store is None or not deltas:
             return
-        truth_state = TruthState.OK
-        normalized = str(scene.truth_state or "").upper()
-        if normalized == TruthState.NO_DATA.value:
-            truth_state = TruthState.NO_DATA
-        elif normalized == TruthState.FALLBACK.value:
-            truth_state = TruthState.FALLBACK
-        elif normalized not in {TruthState.OK.value, TruthState.NO_DATA.value, TruthState.FALLBACK.value}:
-            truth_state = TruthState.INVALID
+        truth_state = self._normalize_truth_state(scene.truth_state)
         for delta in deltas:
             situation = delta.situation
             self.event_store.append_new(
@@ -458,14 +565,7 @@ class RadarPipeline:
         plan = output.plan
         if stats is None or plan is None:
             return
-        truth_state = TruthState.OK
-        normalized = str(scene.truth_state or "").upper()
-        if normalized == TruthState.NO_DATA.value:
-            truth_state = TruthState.NO_DATA
-        elif normalized == TruthState.FALLBACK.value:
-            truth_state = TruthState.FALLBACK
-        elif normalized not in {TruthState.OK.value, TruthState.NO_DATA.value, TruthState.FALLBACK.value}:
-            truth_state = TruthState.INVALID
+        truth_state = self._normalize_truth_state(scene.truth_state)
         reasons = list(stats.clutter_reasons)
         self.event_store.append_new(
             subsystem="RADAR",
@@ -489,6 +589,16 @@ class RadarPipeline:
             truth_state=truth_state,
             reason=",".join(reasons) if reasons else "OK",
         )
+
+    def _normalize_truth_state(self, value: str) -> TruthState:
+        normalized = str(value or "").upper()
+        if normalized == TruthState.NO_DATA.value:
+            return TruthState.NO_DATA
+        if normalized == TruthState.FALLBACK.value:
+            return TruthState.FALLBACK
+        if normalized in {TruthState.OK.value, TruthState.NO_DATA.value, TruthState.FALLBACK.value}:
+            return TruthState.OK
+        return TruthState.INVALID
 
 
 def render_radar_scene(scene: RadarScene, *, pipeline: RadarPipeline | None = None) -> RenderOutput:

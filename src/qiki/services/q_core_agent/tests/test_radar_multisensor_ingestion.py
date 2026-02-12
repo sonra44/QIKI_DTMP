@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from qiki.services.q_core_agent.core.event_store import EventStore
 from qiki.services.q_core_agent.core.radar_backends.base import RadarPoint, RadarScene
 from qiki.services.q_core_agent.core.radar_ingestion import Observation
@@ -122,3 +124,54 @@ def test_source_track_updated_event_contains_contract_fields() -> None:
     assert payload["source_id"] == "radar-a"
     assert payload["source_track_id"] == "trk-42"
 
+
+def test_observation_rx_events_are_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RADAR_EMIT_OBSERVATION_RX", raising=False)
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=store,
+    )
+    pipeline.ingest_observations(
+        [
+            Observation(
+                source_id="radar-a",
+                t=200.0,
+                track_key="trk-default-off",
+                pos_xy=(3.0, 4.0),
+                vel_xy=(0.0, 0.0),
+                quality=0.9,
+            )
+        ]
+    )
+
+    rx_events = store.filter(subsystem="SENSORS", event_type="SENSOR_OBSERVATION_RX")
+    updated_events = store.filter(subsystem="SENSORS", event_type="SOURCE_TRACK_UPDATED")
+    assert rx_events == []
+    assert len(updated_events) == 1
+
+
+def test_observation_rx_events_are_emitted_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_EMIT_OBSERVATION_RX", "1")
+    store = EventStore(maxlen=50, enabled=True)
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=store,
+    )
+    pipeline.ingest_observations(
+        [
+            Observation(
+                source_id="radar-a",
+                t=201.0,
+                track_key="trk-rx-on",
+                pos_xy=(5.0, 6.0),
+                vel_xy=(0.3, -0.1),
+                quality=0.7,
+            )
+        ]
+    )
+
+    rx_events = store.filter(subsystem="SENSORS", event_type="SENSOR_OBSERVATION_RX")
+    updated_events = store.filter(subsystem="SENSORS", event_type="SOURCE_TRACK_UPDATED")
+    assert len(rx_events) == 1
+    assert len(updated_events) == 1
