@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 import time
@@ -33,12 +34,15 @@ class SessionClient:
         port: int = 8765,
         client_id: str,
         role: str = "viewer",
+        token: str = "",
         event_store: EventStore | None = None,
     ) -> None:
         self.host = host
         self.port = int(port)
         self.client_id = client_id
-        self.role = role
+        self.role = (role or "viewer").strip().lower() or "viewer"
+        env_token = str(os.getenv("QIKI_SESSION_TOKEN", "")).strip()
+        self.token = str(token).strip() or env_token
         self.event_store = event_store
 
         self._sock: socket.socket | None = None
@@ -59,6 +63,7 @@ class SessionClient:
                 "type": "HELLO",
                 "client_id": self.client_id,
                 "role": self.role,
+                "token": self.token,
             }
         )
         self._stop.clear()
@@ -178,6 +183,10 @@ class SessionClient:
                 return
             if mtype == "ERROR":
                 self._state.errors.append(dict(message))
+                code = str(message.get("code", "")).strip().lower()
+                if code in {"auth_failed", "role_forbidden", "banned"}:
+                    self._state.session_lost = True
+                    self._state.latest_snapshot = self._session_lost_snapshot()
                 return
 
     def _mark_session_lost(self) -> None:
