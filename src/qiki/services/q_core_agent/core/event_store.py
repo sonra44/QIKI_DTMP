@@ -418,6 +418,7 @@ class EventStore:
     def close(self) -> None:
         if self._sqlite_writer is not None:
             writer = self._sqlite_writer
+            self._flush_sqlite_writer()
             writer.close()
             self._sqlite_writer = None
             if writer.last_error is not None and self.strict:
