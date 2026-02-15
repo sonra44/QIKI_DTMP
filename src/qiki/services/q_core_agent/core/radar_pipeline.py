@@ -20,9 +20,11 @@ from .radar_fusion import (
 from .radar_ingestion import Observation, SourceTrack
 from .radar_plugins import (
     FusionPlugin,
+    InputRouterPlugin,
     RenderBackendPlugin,
     RenderPolicyPlugin,
     SensorInputPlugin,
+    SessionTransportPlugin,
     SituationalAnalysisPlugin,
     register_builtin_radar_plugins,
 )
@@ -126,6 +128,8 @@ class RadarPipeline:
         self.policy_plugin = plugin_load.instances.get("render_policy")
         self.backend_plugin = plugin_load.instances.get("render_backend")
         self.situational_plugin = plugin_load.instances.get("situational_analysis")
+        self.session_transport_plugin = plugin_load.instances.get("session_transport")
+        self.input_router_plugin = plugin_load.instances.get("input_router")
         if not isinstance(self.sensor_plugin, SensorInputPlugin):
             raise RuntimeError("sensor_input plugin missing or invalid")
         if not isinstance(self.fusion_plugin, FusionPlugin):
@@ -136,6 +140,12 @@ class RadarPipeline:
             raise RuntimeError("render_backend plugin missing or invalid")
         if self.situational_plugin is not None and not isinstance(self.situational_plugin, SituationalAnalysisPlugin):
             raise RuntimeError("situational_analysis plugin has invalid type")
+        if self.session_transport_plugin is not None and not isinstance(
+            self.session_transport_plugin, SessionTransportPlugin
+        ):
+            raise RuntimeError("session_transport plugin has invalid type")
+        if self.input_router_plugin is not None and not isinstance(self.input_router_plugin, InputRouterPlugin):
+            raise RuntimeError("input_router plugin has invalid type")
         # Backward-compatible handle for tests and existing call sites that set `pipeline.situation_engine`.
         self.situation_engine = getattr(self.situational_plugin, "engine", None)
         self._replay_engine: RadarReplayEngine | None = None

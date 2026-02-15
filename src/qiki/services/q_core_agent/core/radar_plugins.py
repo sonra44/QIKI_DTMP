@@ -27,6 +27,8 @@ from .radar_render_policy import RadarRenderPolicy, RadarRenderStats
 from .radar_situation_engine import RadarSituationEngine, Situation
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
+from .session_client import SessionClient
+from .session_server import SessionServer
 
 
 @runtime_checkable
@@ -117,6 +119,21 @@ class SituationalAnalysisPlugin(Protocol):
         view_state: RadarViewState,
         render_stats: RadarRenderStats,
     ) -> tuple[list[Situation], list[Any]]:
+        ...
+
+
+@runtime_checkable
+class SessionTransportPlugin(Protocol):
+    def create_server(self, *, pipeline: Any, event_store: Any, host: str, port: int) -> SessionServer:
+        ...
+
+    def create_client(self, *, host: str, port: int, client_id: str, role: str) -> SessionClient:
+        ...
+
+
+@runtime_checkable
+class InputRouterPlugin(Protocol):
+    def can_accept_input(self, *, controller_id: str, client_id: str) -> bool:
         ...
 
 
@@ -275,6 +292,21 @@ class BuiltinSituationalAnalysisPlugin:
         )
 
 
+@dataclass
+class BuiltinSessionTransportPlugin:
+    def create_server(self, *, pipeline: Any, event_store: Any, host: str, port: int) -> SessionServer:
+        return SessionServer(pipeline=pipeline, event_store=event_store, host=host, port=port)
+
+    def create_client(self, *, host: str, port: int, client_id: str, role: str) -> SessionClient:
+        return SessionClient(host=host, port=port, client_id=client_id, role=role)
+
+
+@dataclass
+class BuiltinInputRouterPlugin:
+    def can_accept_input(self, *, controller_id: str, client_id: str) -> bool:
+        return bool(controller_id) and controller_id == client_id
+
+
 def register_builtin_radar_plugins(manager: PluginManager) -> None:
     manager.register_many(
         [
@@ -328,6 +360,22 @@ def register_builtin_radar_plugins(manager: PluginManager) -> None:
                 provides=("situational_analysis",),
                 requires=(),
                 factory=lambda ctx, _params: BuiltinSituationalAnalysisPlugin(engine=RadarSituationEngine(clock=ctx.clock)),
+            ),
+            PluginSpec(
+                name="builtin.session_transport",
+                kind="session_transport",
+                version="1.0.0",
+                provides=("session_transport",),
+                requires=(),
+                factory=lambda _ctx, _params: BuiltinSessionTransportPlugin(),
+            ),
+            PluginSpec(
+                name="builtin.input_router",
+                kind="input_router",
+                version="1.0.0",
+                provides=("input_router",),
+                requires=(),
+                factory=lambda _ctx, _params: BuiltinInputRouterPlugin(),
             ),
         ]
     )

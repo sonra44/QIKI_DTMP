@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Any, Callable
@@ -181,6 +181,8 @@ class PluginManager:
             "render_policy": {"enabled": True, "name": "builtin.render_policy_v3", "params": {}},
             "render_backend": {"enabled": True, "name": "builtin.render_backends", "params": {}},
             "situational_analysis": {"enabled": True, "name": "builtin.situational_v2", "params": {}},
+            "session_transport": {"enabled": True, "name": "builtin.session_transport", "params": {}},
+            "input_router": {"enabled": True, "name": "builtin.input_router", "params": {}},
         }
 
     def _instantiate_selected(self, selection: dict[str, dict[str, Any]], *, config_hash: str) -> dict[str, Any]:
