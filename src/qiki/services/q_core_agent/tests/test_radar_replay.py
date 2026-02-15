@@ -31,7 +31,23 @@ def _extract_fusion_signature(store: EventStore) -> list[tuple[str, float]]:
 
 def _extract_situation_sequence(store: EventStore) -> list[tuple[str, str]]:
     events = store.filter(subsystem="SITUATION")
-    return [(event.event_type, event.reason) for event in events]
+    return [
+        (event.event_type, str(event.payload.get("track_id", "")))
+        for event in events
+    ]
+
+
+def _extract_render_tick_invariants(store: EventStore) -> list[tuple[int, int, int, str]]:
+    events = store.filter(subsystem="RADAR", event_type="RADAR_RENDER_TICK")
+    return [
+        (
+            int(event.payload.get("targets_count", 0)),
+            int(event.payload.get("lod_level", 0)),
+            int(event.payload.get("degradation_level", 0)),
+            str(event.truth_state.value),
+        )
+        for event in events
+    ]
 
 
 def test_replay_engine_supports_pause_resume_and_jump() -> None:
@@ -144,12 +160,41 @@ def test_replay_golden_regression_matches_fusion_and_situations(
 def test_load_trace_sorts_events_by_timestamp(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
     rows = [
-        {"ts": 2.0, "event_type": "B", "payload": {}},
-        {"ts": 1.0, "event_type": "A", "payload": {}},
+        {
+            "schema_version": 1,
+            "ts": 2.0,
+            "subsystem": "SENSORS",
+            "event_type": "B",
+            "truth_state": "OK",
+            "reason": "OK",
+            "payload": {},
+            "session_id": "",
+        },
+        {
+            "schema_version": 1,
+            "ts": 1.0,
+            "subsystem": "SENSORS",
+            "event_type": "A",
+            "truth_state": "OK",
+            "reason": "OK",
+            "payload": {},
+            "session_id": "",
+        },
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     loaded = load_trace(str(path))
     assert [float(item["ts"]) for item in loaded] == [1.0, 2.0]
+
+
+def test_load_trace_strict_schema_validation(tmp_path: Path) -> None:
+    path = tmp_path / "trace_invalid.jsonl"
+    path.write_text(
+        json.dumps({"schema_version": 2, "ts": 1.0, "subsystem": "SENSORS", "event_type": "X", "truth_state": "OK", "reason": "OK", "payload": {}, "session_id": ""}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="invalid replay envelope"):
+        load_trace(str(path), strict=True)
+    assert load_trace(str(path), strict=False) == []
 
 
 def test_replay_engine_never_calls_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,3 +214,44 @@ def test_replay_engine_never_calls_sleep(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     replayed = list(engine.replay_events())
     assert [event["event_type"] for event in replayed] == ["A", "B"]
+
+
+def test_replay_golden_regression_includes_telemetry_invariants(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("RADAR_FUSION_ENABLED", "1")
+    baseline_store = EventStore(maxlen=500, enabled=True)
+    baseline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=baseline_store,
+    )
+    base_ts = time.time()
+    frames = [
+        [_obs("radar-a", "a1", base_ts + 0.0, 10.0, 5.0)],
+        [_obs("radar-a", "a1", base_ts + 0.2, 10.1, 5.1)],
+        [_obs("radar-a", "a1", base_ts + 0.4, 10.2, 5.2)],
+    ]
+    for frame in frames:
+        baseline.render_observations(frame, truth_state="OK", reason="OK", is_fallback=False)
+    trace_path = tmp_path / "golden_trace.jsonl"
+    export_event_store_jsonl_async(
+        baseline_store,
+        str(trace_path),
+        export_filter=TraceExportFilter(types=frozenset({"SOURCE_TRACK_UPDATED"}), max_lines=100),
+    )
+
+    replay_store = EventStore(maxlen=500, enabled=True)
+    replay = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
+        event_store=replay_store,
+        replay_file=str(trace_path),
+    )
+    while True:
+        state = replay.timeline_state
+        if state is None or state.cursor >= state.total_events:
+            break
+        replay.render_observations([_obs("ignored", "ignored", base_ts, 999.0, 999.0)])
+
+    assert _extract_fusion_signature(replay_store) == _extract_fusion_signature(baseline_store)
+    assert _extract_situation_sequence(replay_store) == _extract_situation_sequence(baseline_store)
+    assert _extract_render_tick_invariants(replay_store) == _extract_render_tick_invariants(baseline_store)

@@ -49,6 +49,18 @@ profiles:
     situational_analysis:
       name: builtin.situational_v2
 
+  production:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+
   no_situational:
     sensor_input:
       name: builtin.sensor_input

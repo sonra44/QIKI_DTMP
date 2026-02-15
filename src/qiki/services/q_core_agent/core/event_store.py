@@ -15,6 +15,15 @@ from pathlib import Path
 from typing import Any, Deque, Iterable, Optional
 from uuid import uuid4
 
+from .runtime_contracts import (
+    EVENT_SCHEMA_VERSION,
+    build_export_envelope,
+    ensure_truth_reason,
+    is_enabled,
+    resolve_strict_mode,
+    validate_export_envelope,
+)
+
 
 class TruthState(str, Enum):
     OK = "OK"
@@ -62,10 +71,6 @@ def _truth_state_from_any(value: TruthState | str) -> TruthState:
         if state.value == normalized:
             return state
     return TruthState.INVALID
-
-
-def _is_enabled(raw: str) -> bool:
-    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _parse_int(raw: str, default: int, *, min_value: int) -> int:
@@ -228,7 +233,7 @@ class EventStore:
         self._last_lag_emit = 0.0
         self._last_retention_run = 0.0
 
-        self._db_schema_version = 1
+        self._db_schema_version = EVENT_SCHEMA_VERSION
         self._retention_batch_rows = 5000
         self._retention_check_period_s = 30.0
 
@@ -252,15 +257,15 @@ class EventStore:
         flush_ms = _parse_int(os.getenv("EVENTSTORE_FLUSH_MS", "50"), 50, min_value=1)
         retention_hours = _parse_float(os.getenv("EVENTSTORE_RETENTION_HOURS", "24"), 24.0, min_value=0.0)
         max_db_mb = _parse_float(os.getenv("EVENTSTORE_MAX_DB_MB", "512"), 512.0, min_value=1.0)
-        vacuum_on_start = _is_enabled(os.getenv("EVENTSTORE_VACUUM_ON_START", "0"))
-        strict = _is_enabled(os.getenv("EVENTSTORE_STRICT", "0"))
+        vacuum_on_start = is_enabled(os.getenv("EVENTSTORE_VACUUM_ON_START", "0"))
+        strict = resolve_strict_mode(dict(os.environ), legacy_keys=("EVENTSTORE_STRICT",), default=False)
         try:
             maxlen = int(maxlen_raw)
         except Exception:
             maxlen = 1000
         return cls(
             maxlen=maxlen,
-            enabled=_is_enabled(enable_raw),
+            enabled=is_enabled(enable_raw),
             backend=backend,
             db_path=db_path,
             batch_size=batch_size,
@@ -274,6 +279,8 @@ class EventStore:
 
     def append(self, event: SystemEvent) -> Optional[SystemEvent]:
         if not self.enabled:
+            return None
+        if not self._validate_event_contract(event):
             return None
         self._events.append(event)
         self._append_sqlite(event)
@@ -291,6 +298,10 @@ class EventStore:
         tick_id: Optional[str] = None,
         ts: float | None = None,
     ) -> Optional[SystemEvent]:
+        normalized_truth_state = _truth_state_from_any(truth_state)
+        resolved_reason = str(reason or "").strip()
+        if normalized_truth_state in {TruthState.NO_DATA, TruthState.FALLBACK, TruthState.INVALID} and not resolved_reason:
+            resolved_reason = normalized_truth_state.value
         event = SystemEvent(
             event_id=str(uuid4()),
             ts=float(time.time() if ts is None else ts),
@@ -298,8 +309,8 @@ class EventStore:
             event_type=str(event_type),
             payload=dict(payload),
             tick_id=tick_id,
-            truth_state=_truth_state_from_any(truth_state),
-            reason=str(reason or ""),
+            truth_state=normalized_truth_state,
+            reason=resolved_reason,
         )
         return self.append(event)
 
@@ -568,6 +579,55 @@ class EventStore:
                 int(self._db_schema_version),
             )
             _ = self._sqlite_writer.append_row(row)
+
+    def _validate_event_contract(self, event: SystemEvent) -> bool:
+        raw_errors: list[str] = []
+        if not isinstance(event.payload, dict):
+            raw_errors.append("payload must be object")
+        if not isinstance(event.subsystem, str) or not event.subsystem.strip():
+            raw_errors.append("subsystem must be non-empty string")
+        if not isinstance(event.event_type, str) or not event.event_type.strip():
+            raw_errors.append("event_type must be non-empty string")
+        if raw_errors:
+            message = "; ".join(raw_errors)
+            if self.strict:
+                raise RuntimeError(f"invalid event envelope: {message}")
+            self._emit_lifecycle_event(
+                event_type="EVENTSTORE_DROP",
+                reason="INVALID_ENVELOPE",
+                payload={"count": 1, "reason": f"INVALID_ENVELOPE:{message}"},
+                truth_state=TruthState.INVALID,
+            )
+            return False
+
+        session_id = ""
+        if isinstance(event.payload, dict):
+            maybe = event.payload.get("session_id", "")
+            if maybe is not None:
+                session_id = str(maybe)
+        envelope = build_export_envelope(
+            ts=event.ts,
+            subsystem=event.subsystem,
+            event_type=event.event_type,
+            truth_state=event.truth_state.value,
+            reason=event.reason,
+            payload=event.payload,
+            session_id=session_id,
+        )
+        ensure_truth_reason(envelope)
+        errors = validate_export_envelope(envelope)
+        if not errors:
+            return True
+        message = "; ".join(errors)
+        if self.strict:
+            raise RuntimeError(f"invalid event envelope: {message}")
+        self._emit_lifecycle_event(
+            event_type="EVENTSTORE_DROP",
+            reason="INVALID_ENVELOPE",
+            payload={"count": 1, "reason": f"INVALID_ENVELOPE:{message}"},
+            truth_state=TruthState.INVALID,
+        )
+        return False
 
     def _flush_sqlite_writer(self) -> None:
         if self._sqlite_writer is not None:

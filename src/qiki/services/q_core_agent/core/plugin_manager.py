@@ -15,6 +15,7 @@ import yaml
 
 from .event_store import EventStore, TruthState
 from .radar_clock import Clock
+from .runtime_contracts import resolve_strict_mode
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +82,11 @@ class PluginManager:
         selected_profile = (profile or active_env.get("QIKI_PLUGINS_PROFILE", DEFAULT_PLUGIN_PROFILE)).strip()
         if not selected_profile:
             selected_profile = DEFAULT_PLUGIN_PROFILE
-        strict_mode = self._as_bool(active_env.get("QIKI_PLUGINS_STRICT"), default=False) if strict is None else strict
+        strict_mode = (
+            resolve_strict_mode(active_env, legacy_keys=("QIKI_PLUGINS_STRICT",), default=False)
+            if strict is None
+            else strict
+        )
         path = (yaml_path or active_env.get("QIKI_PLUGINS_YAML", "")).strip()
 
         try:

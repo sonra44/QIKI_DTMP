@@ -118,3 +118,19 @@ profiles:
     )
     with pytest.raises(RuntimeError):
         manager.resolve_active_plugins(yaml_path=str(config), profile="p", strict=True, env={})
+
+
+def test_global_strict_mode_alias_for_plugin_loader(tmp_path: Path) -> None:
+    manager = _manager()
+    env = {"QIKI_STRICT_MODE": "1"}
+    with pytest.raises(RuntimeError, match="strict"):
+        manager.resolve_active_plugins(yaml_path=str(tmp_path / "missing.yaml"), env=env)
+
+
+def test_global_non_strict_mode_emits_plugin_fallback(tmp_path: Path) -> None:
+    store = EventStore(maxlen=200, enabled=True)
+    manager = _manager(store)
+    env = {"QIKI_STRICT_MODE": "0"}
+    result = manager.resolve_active_plugins(yaml_path=str(tmp_path / "missing.yaml"), env=env)
+    assert result.source == "fallback"
+    assert store.filter(subsystem="PLUGINS", event_type="PLUGIN_FALLBACK_USED")

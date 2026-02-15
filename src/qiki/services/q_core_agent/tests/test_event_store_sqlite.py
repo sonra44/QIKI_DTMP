@@ -4,7 +4,9 @@ import json
 import time
 from pathlib import Path
 
-from qiki.services.q_core_agent.core.event_store import EventStore, TruthState
+import pytest
+
+from qiki.services.q_core_agent.core.event_store import EventStore, SystemEvent, TruthState
 from qiki.services.q_core_agent.core.radar_ingestion import Observation
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
 from qiki.services.q_core_agent.core.trace_export import TraceExportFilter, export_event_store_jsonl_async
@@ -186,3 +188,42 @@ def test_replay_from_sqlite_db(tmp_path: Path, monkeypatch) -> None:
             saw_target = True
             break
     assert saw_target is True
+
+
+def test_eventstore_drops_invalid_envelope_in_non_strict_mode(tmp_path: Path) -> None:
+    db_path = tmp_path / "invalid.sqlite"
+    store = EventStore(backend="sqlite", db_path=str(db_path), strict=False)
+    bad_event = SystemEvent(
+        event_id="bad-1",
+        ts=time.time(),
+        subsystem="TEST",
+        event_type="BAD",
+        payload=[],  # type: ignore[arg-type]
+        tick_id=None,
+        truth_state=TruthState.OK,
+        reason="",
+    )
+    appended = store.append(bad_event)
+    assert appended is None
+    drops = store.filter(subsystem="EVENTSTORE", event_type="EVENTSTORE_DROP")
+    assert drops
+    assert "INVALID_ENVELOPE" in str(drops[-1].payload.get("reason", ""))
+    store.close()
+
+
+def test_eventstore_strict_rejects_invalid_envelope(tmp_path: Path) -> None:
+    db_path = tmp_path / "strict-invalid.sqlite"
+    store = EventStore(backend="sqlite", db_path=str(db_path), strict=True)
+    bad_event = SystemEvent(
+        event_id="bad-2",
+        ts=time.time(),
+        subsystem="TEST",
+        event_type="BAD",
+        payload=[],  # type: ignore[arg-type]
+        tick_id=None,
+        truth_state=TruthState.OK,
+        reason="",
+    )
+    with pytest.raises(RuntimeError, match="invalid event envelope"):
+        store.append(bad_event)
+    store.close()

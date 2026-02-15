@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .radar_clock import ReplayClock
+from .runtime_contracts import EVENT_SCHEMA_VERSION, validate_export_envelope
 
 
 @dataclass(frozen=True)
@@ -20,15 +21,21 @@ class TimelineState:
     total_events: int
 
 
-def load_trace(path: str) -> list[dict[str, Any]]:
+def load_trace(path: str, *, strict: bool = False) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with Path(path).open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for line_no, line in enumerate(handle, start=1):
             row = line.strip()
             if not row:
                 continue
             parsed = json.loads(row)
             if isinstance(parsed, dict):
+                errors = validate_export_envelope(parsed)
+                if errors:
+                    message = f"invalid replay envelope at line {line_no}: {'; '.join(errors)}"
+                    if strict:
+                        raise ValueError(message)
+                    continue
                 rows.append(parsed)
     rows.sort(key=lambda item: float(item.get("ts", 0.0)))
     return rows
@@ -88,7 +95,7 @@ def load_trace_from_db(
             payload_dict = {}
         events.append(
             {
-                "schema_version": 1,
+                "schema_version": EVENT_SCHEMA_VERSION,
                 "ts": float(ts),
                 "subsystem": str(subsystem),
                 "event_type": str(event_type),

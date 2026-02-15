@@ -12,6 +12,7 @@ from typing import Mapping
 import yaml
 
 from .radar_render_policy import RadarRenderPolicy
+from .runtime_contracts import resolve_strict_mode
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,13 +62,6 @@ class RadarPolicyLoadResult:
     selected_profile: str
     policy_source: str
     warning_reason: str = ""
-
-
-def _env_bool(env: Mapping[str, str], name: str, default: bool) -> bool:
-    value = env.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _to_float(value: object, *, minimum: float | None = None) -> float:
@@ -345,7 +339,11 @@ def load_effective_render_policy_result(
 ) -> RadarPolicyLoadResult:
     active_env = env or os.environ
     selected_profile = (profile or active_env.get("RADAR_POLICY_PROFILE", DEFAULT_PROFILE)).strip().lower() or DEFAULT_PROFILE
-    strict_mode = _env_bool(active_env, "RADAR_POLICY_STRICT", False) if strict is None else strict
+    strict_mode = (
+        resolve_strict_mode(active_env, legacy_keys=("RADAR_POLICY_STRICT",), default=False)
+        if strict is None
+        else strict
+    )
     resolved_path = yaml_path if yaml_path is not None else active_env.get("RADAR_POLICY_YAML")
     if resolved_path is not None and str(resolved_path).strip().lower() in {"", "0", "off", "none", "disabled"}:
         resolved_path = None

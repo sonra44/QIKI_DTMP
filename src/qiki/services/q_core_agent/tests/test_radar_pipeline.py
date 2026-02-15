@@ -226,6 +226,28 @@ def test_pipeline_with_disabled_situational_plugin_does_not_crash(monkeypatch: p
     assert fallback_events
 
 
+def test_pipeline_boots_with_production_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "eventstore.sqlite"
+    monkeypatch.setenv("QIKI_PLUGINS_PROFILE", "production")
+    monkeypatch.setenv("QIKI_STRICT_MODE", "1")
+    monkeypatch.setenv("EVENTSTORE_BACKEND", "sqlite")
+    monkeypatch.setenv("EVENTSTORE_DB_PATH", str(db_path))
+    monkeypatch.setenv("RADAR_FUSION_ENABLED", "1")
+    monkeypatch.setenv("RADAR_EMIT_OBSERVATION_RX", "0")
+
+    store = EventStore.from_env()
+    pipeline = RadarPipeline(
+        RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=True),
+        event_store=store,
+    )
+    output = pipeline.render_observations([], truth_state="NO_DATA", reason="NO_DATA")
+    assert output.backend == "unicode"
+    assert pipeline.plugin_profile == "production"
+    assert pipeline.fusion_config.enabled is True
+    assert not store.filter(subsystem="SENSORS", event_type="SENSOR_OBSERVATION_RX")
+    store.close()
+
+
 def test_no_data_screen_prints_no_data_without_target_markers() -> None:
     events = [
         _event(
@@ -472,14 +494,14 @@ def test_pipeline_non_strict_invalid_yaml_emits_policy_fallback_event(
     broken = tmp_path / "broken_policy.yaml"
     broken.write_text("schema_version: 99\n", encoding="utf-8")
     monkeypatch.setenv("RADAR_POLICY_YAML", str(broken))
-    monkeypatch.setenv("RADAR_POLICY_STRICT", "0")
+    monkeypatch.setenv("QIKI_STRICT_MODE", "0")
     store = EventStore(maxlen=50, enabled=True)
     pipeline = RadarPipeline(
         RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False),
         event_store=store,
     )
     assert pipeline.policy_source in {"default", "env"}
-    events = store.filter(subsystem="RADAR", event_type="POLICY_FALLBACK")
+    events = store.filter(subsystem="RADAR", event_type="POLICY_FALLBACK_USED")
     assert events
     assert "POLICY_FALLBACK" in events[-1].reason
 
@@ -488,7 +510,7 @@ def test_pipeline_strict_invalid_yaml_fails_fast(monkeypatch: pytest.MonkeyPatch
     broken = tmp_path / "broken_policy.yaml"
     broken.write_text("schema_version: 99\n", encoding="utf-8")
     monkeypatch.setenv("RADAR_POLICY_YAML", str(broken))
-    monkeypatch.setenv("RADAR_POLICY_STRICT", "1")
+    monkeypatch.setenv("QIKI_STRICT_MODE", "1")
     with pytest.raises(RuntimeError, match="Failed to load radar policy v3"):
         RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
 

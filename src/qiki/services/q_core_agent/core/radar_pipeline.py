@@ -32,6 +32,7 @@ from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderP
 from .radar_situation_engine import Situation, SituationSeverity, SituationStatus
 from .radar_trail_store import RadarTrailStore
 from .radar_view_state import RadarViewState
+from .runtime_contracts import EVENT_SCHEMA_VERSION, resolve_strict_mode
 
 _ALLOWED_VIEWS = {"top", "side", "front", "iso"}
 
@@ -118,12 +119,11 @@ class RadarPipeline:
         self.situation_engine = getattr(self.situational_plugin, "engine", None)
         self._replay_engine: RadarReplayEngine | None = None
         self._replay_tracks: dict[str, dict[str, SourceTrack]] = {}
-        self._replay_strict = os.getenv("RADAR_REPLAY_STRICT_DETERMINISM", "1").strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
+        self._replay_strict = resolve_strict_mode(
+            dict(os.environ),
+            legacy_keys=("RADAR_REPLAY_STRICT_DETERMINISM",),
+            default=True,
+        )
         replay_from_env = os.getenv("RADAR_REPLAY_FILE", "").strip()
         self._replay_file = (replay_file if replay_file is not None else replay_from_env).strip()
         self._replay_db = os.getenv("RADAR_REPLAY_DB", "").strip()
@@ -171,7 +171,7 @@ class RadarPipeline:
         self._active_backend = self.detect_best_backend()
         if load_result.warning_reason:
             self._append_policy_event(
-                event_type="POLICY_FALLBACK",
+                event_type="POLICY_FALLBACK_USED",
                 reason=load_result.warning_reason,
                 payload={
                     "policy_profile": self.policy_profile,
@@ -232,7 +232,7 @@ class RadarPipeline:
 
     def _init_replay(self, replay_file: str) -> None:
         try:
-            events = load_trace(replay_file)
+            events = load_trace(replay_file, strict=self._replay_strict)
         except Exception as exc:  # noqa: BLE001
             if self._replay_strict:
                 raise RuntimeError(f"Failed to load replay trace: {replay_file}: {exc}") from exc
@@ -303,7 +303,7 @@ class RadarPipeline:
         )
         if result.warning_reason:
             self._append_policy_event(
-                event_type="POLICY_FALLBACK",
+                event_type="POLICY_FALLBACK_USED",
                 reason=result.warning_reason,
                 payload={
                     "policy_profile": self.policy_profile,
@@ -726,7 +726,7 @@ class RadarPipeline:
                 subsystem="SITUATION",
                 event_type=delta.event_type,
                 payload={
-                    "schema_version": 1,
+                    "schema_version": EVENT_SCHEMA_VERSION,
                     "timestamp": float(situation.last_update_ts),
                     "session_id": self.session_id,
                     "track_id": situation.track_ids[0] if situation.track_ids else "",

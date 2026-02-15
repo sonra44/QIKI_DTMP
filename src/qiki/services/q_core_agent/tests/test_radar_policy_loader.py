@@ -122,3 +122,10 @@ def test_load_effective_render_policy_result_reports_yaml_source() -> None:
     policy, adaptive = load_effective_render_policy(env={})
     assert isinstance(policy, RadarRenderPolicy)
     assert isinstance(adaptive, AdaptivePolicyConfig)
+
+
+def test_global_strict_mode_alias_for_policy_loader(tmp_path: Path) -> None:
+    broken = tmp_path / "broken_policy.yaml"
+    broken.write_text("schema_version: 99\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Failed to load radar policy v3"):
+        load_effective_render_policy_result(yaml_path=broken, env={"QIKI_STRICT_MODE": "1"})

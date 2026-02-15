@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import time
@@ -11,8 +12,14 @@ from pathlib import Path
 from typing import Iterable
 
 from .event_store import EventStore, SystemEvent, TruthState
+from .runtime_contracts import (
+    EVENT_SCHEMA_VERSION,
+    build_export_envelope as build_runtime_export_envelope,
+    ensure_truth_reason,
+    resolve_strict_mode,
+    validate_export_envelope,
+)
 
-_EXPORT_SCHEMA_VERSION = 1
 _DEFAULT_WINDOW_SECONDS = 60.0
 _DEFAULT_MAX_LINES = 10_000
 _WRITE_BATCH_SIZE = 1_000
@@ -108,16 +115,17 @@ def build_export_envelope(event: SystemEvent) -> dict:
         maybe = event.payload.get("session_id", "")
         if maybe is not None:
             session_value = str(maybe)
-    return {
-        "schema_version": _EXPORT_SCHEMA_VERSION,
-        "ts": float(event.ts),
-        "subsystem": str(event.subsystem),
-        "event_type": str(event.event_type),
-        "truth_state": event.truth_state.value if isinstance(event.truth_state, TruthState) else str(event.truth_state),
-        "reason": str(event.reason or ""),
-        "payload": event.payload,
-        "session_id": session_value,
-    }
+    envelope = build_runtime_export_envelope(
+        ts=event.ts,
+        subsystem=event.subsystem,
+        event_type=event.event_type,
+        truth_state=event.truth_state.value if isinstance(event.truth_state, TruthState) else str(event.truth_state),
+        reason=event.reason,
+        payload=event.payload,
+        session_id=session_value,
+    )
+    ensure_truth_reason(envelope)
+    return envelope
 
 
 def _matches_filter(event: SystemEvent, export_filter: TraceExportFilter) -> bool:
@@ -211,11 +219,48 @@ def export_event_store_jsonl_async(
     )
     writer = _AsyncJsonlWriter(str(out_path))
     lines_written = 0
+    strict_mode = resolve_strict_mode(dict(os.environ), default=False)
     try:
         writer.start()
         batch: list[str] = []
         for event in _filtered_events_snapshot(snapshot, normalized_filter):
             envelope = build_export_envelope(event)
+            errors = validate_export_envelope(envelope)
+            if errors:
+                message = f"invalid trace export envelope: {'; '.join(errors)}"
+                if strict_mode:
+                    raise RuntimeError(message)
+                event_store.append_new(
+                    subsystem="TRACE",
+                    event_type="TRACE_EXPORT_FALLBACK_USED",
+                    payload={
+                        "out_path": str(out_path),
+                        "event_id": event.event_id,
+                        "error": message,
+                    },
+                    truth_state=TruthState.FALLBACK,
+                    reason="INVALID_ENVELOPE",
+                )
+                continue
+            if int(envelope.get("schema_version", 0)) != EVENT_SCHEMA_VERSION:
+                message = (
+                    f"invalid trace export schema_version={envelope.get('schema_version')!r}, "
+                    f"expected {EVENT_SCHEMA_VERSION}"
+                )
+                if strict_mode:
+                    raise RuntimeError(message)
+                event_store.append_new(
+                    subsystem="TRACE",
+                    event_type="TRACE_EXPORT_FALLBACK_USED",
+                    payload={
+                        "out_path": str(out_path),
+                        "event_id": event.event_id,
+                        "error": message,
+                    },
+                    truth_state=TruthState.FALLBACK,
+                    reason="SCHEMA_MISMATCH",
+                )
+                continue
             batch.append(f"{json.dumps(envelope, ensure_ascii=True)}\n")
             lines_written += 1
             if len(batch) >= _WRITE_BATCH_SIZE:
