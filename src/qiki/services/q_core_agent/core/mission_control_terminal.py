@@ -525,6 +525,7 @@ class MissionControlTerminal:
             port=self.session_port,
             client_id=self.session_client_id,
             role="operator",
+            event_store=self.event_store,
         )
         self.session_client.connect()
 

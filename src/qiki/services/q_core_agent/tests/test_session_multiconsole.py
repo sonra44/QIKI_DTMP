@@ -115,7 +115,7 @@ def test_session_disconnect_sets_no_data_snapshot() -> None:
     server.start()
     host, port = server.address
 
-    client = SessionClient(host=host, port=port, client_id="client-a")
+    client = SessionClient(host=host, port=port, client_id="client-a", event_store=store)
     client.connect()
     assert _wait_until(lambda: bool(client.latest_snapshot()))
 
@@ -123,9 +123,47 @@ def test_session_disconnect_sets_no_data_snapshot() -> None:
     assert _wait_until(lambda: client.session_lost)
     snapshot = client.latest_snapshot()
     assert snapshot.get("truth_state") == "NO_DATA"
+    hud = snapshot.get("hud", {})
+    assert isinstance(hud, dict)
+    assert hud.get("session") == "SESSION LOST"
+    assert any(event.event_type == "SESSION_LOST" for event in store.filter(subsystem="SESSION"))
 
     client.close()
     pipeline.close()
+
+
+def test_control_expires_without_heartbeat() -> None:
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    _seed_pipeline(pipeline)
+
+    server = SessionServer(
+        pipeline=pipeline,
+        event_store=store,
+        host="127.0.0.1",
+        port=0,
+        snapshot_hz=20.0,
+        lease_ms=300,
+        lease_check_ms=100,
+    )
+    server.start()
+    host, port = server.address
+
+    client = SessionClient(host=host, port=port, client_id="client-a")
+    client.connect()
+
+    try:
+        client.request_control()
+        assert _wait_until(lambda: any(item.get("type") == "CONTROL_GRANTED" for item in client.recent_controls()))
+        assert _wait_until(
+            lambda: any(item.get("type") == "CONTROL_EXPIRED" for item in client.recent_controls()),
+            timeout_s=1.5,
+        )
+        assert any(event.event_type == "CONTROL_EXPIRED" for event in store.filter(subsystem="SESSION"))
+    finally:
+        client.close()
+        server.stop()
+        pipeline.close()
 
 
 def test_replay_server_streams_events_to_client(tmp_path: Path) -> None:

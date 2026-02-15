@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
@@ -47,6 +48,7 @@ class SessionServer:
         port: int = 8765,
         snapshot_hz: float = 8.0,
         lease_ms: int = 5000,
+        lease_check_ms: int = 100,
     ) -> None:
         self.pipeline = pipeline
         self.event_store = event_store
@@ -54,11 +56,13 @@ class SessionServer:
         self.port = int(port)
         self.snapshot_hz = max(1.0, float(snapshot_hz))
         self.lease_ms = max(500, int(lease_ms))
+        self.lease_check_ms = max(50, int(lease_check_ms))
         self._controller = RadarInputController()
 
         self._sock: socket.socket | None = None
         self._accept_thread: threading.Thread | None = None
         self._publisher_thread: threading.Thread | None = None
+        self._lease_thread: threading.Thread | None = None
         self._running = threading.Event()
         self._stop = threading.Event()
 
@@ -91,8 +95,14 @@ class SessionServer:
             name="session-server-publisher",
             daemon=True,
         )
+        self._lease_thread = threading.Thread(
+            target=self._lease_loop,
+            name="session-server-lease",
+            daemon=True,
+        )
         self._accept_thread.start()
         self._publisher_thread.start()
+        self._lease_thread.start()
 
     def stop(self) -> None:
         if not self._running.is_set():
@@ -116,6 +126,8 @@ class SessionServer:
             self._accept_thread.join(timeout=1.0)
         if self._publisher_thread is not None:
             self._publisher_thread.join(timeout=1.0)
+        if self._lease_thread is not None:
+            self._lease_thread.join(timeout=1.0)
 
     def __enter__(self) -> "SessionServer":
         self.start()
@@ -214,7 +226,7 @@ class SessionServer:
 
     def _handle_client_message(self, client: _ClientConn, msg: dict[str, Any]) -> None:
         mtype = str(msg.get("type", "")).upper()
-        now_ts = self.pipeline.timeline_state.current_ts if self.pipeline.timeline_state is not None else self.pipeline._clock.now()  # noqa: SLF001
+        now_ts = self._now_ts()
         if mtype == "HEARTBEAT":
             with self._control_lock:
                 if client.client_id == self._controller_client_id:
@@ -303,9 +315,13 @@ class SessionServer:
     def _publisher_loop(self) -> None:
         interval = 1.0 / self.snapshot_hz
         while not self._stop.wait(timeout=interval):
-            self._expire_control_if_needed()
             self._broadcast_events()
             self._broadcast(self._build_snapshot_message())
+
+    def _lease_loop(self) -> None:
+        interval = max(0.05, float(self.lease_check_ms) / 1000.0)
+        while not self._stop.wait(timeout=interval):
+            self._expire_control_if_needed()
 
     def _broadcast_events(self) -> None:
         events = self.event_store.recent(500)
@@ -335,7 +351,7 @@ class SessionServer:
     def _build_snapshot_message(self) -> dict[str, Any]:
         events = self.event_store.recent(300)
         scene = self._scene_from_events(events)
-        now_ts = self.pipeline.timeline_state.current_ts if self.pipeline.timeline_state is not None else self.pipeline._clock.now()  # noqa: SLF001
+        now_ts = self._now_ts()
         with self._control_lock:
             owner = self._controller_client_id
             lease_left = max(0, int((self._controller_deadline - now_ts) * 1000.0)) if owner else 0
@@ -437,7 +453,7 @@ class SessionServer:
         )
 
     def _expire_control_if_needed(self) -> None:
-        now_ts = self.pipeline.timeline_state.current_ts if self.pipeline.timeline_state is not None else self.pipeline._clock.now()  # noqa: SLF001
+        now_ts = self._now_ts()
         expired_client = ""
         with self._control_lock:
             if self._controller_client_id and now_ts > self._controller_deadline:
@@ -446,7 +462,7 @@ class SessionServer:
                 self._controller_deadline = 0.0
         if expired_client:
             self._emit_control_event("CONTROL_EXPIRED", client_id=expired_client, reason="HEARTBEAT_TIMEOUT")
-            self._broadcast({"type": "CONTROL_RELEASE", "client_id": expired_client, "reason": "EXPIRED"})
+            self._broadcast({"type": "CONTROL_EXPIRED", "client_id": expired_client, "reason": "EXPIRED"})
 
     def _send_client_error(self, client_id: str, *, code: str, message: str) -> None:
         with self._clients_lock:
@@ -482,3 +498,7 @@ class SessionServer:
             truth_state=TruthState.OK,
             reason=reason,
         )
+
+    @staticmethod
+    def _now_ts() -> float:
+        return time.monotonic()

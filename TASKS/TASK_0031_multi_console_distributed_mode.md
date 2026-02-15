@@ -11,12 +11,16 @@
 - В `MissionControlTerminal` добавлены режимы:
   - `QIKI_SESSION_MODE=standalone|server|client`
   - server запускает session server и стримит shared feed
-  - client подписывается, рендерит удалённый snapshot/events, при разрыве показывает `NO_DATA / SESSION LOST`
+- client подписывается, рендерит удалённый snapshot/events, при разрыве показывает `NO_DATA / SESSION LOST`
+- D1: при disconnect клиент немедленно переводится в `truth_state=NO_DATA`, `session_lost=True`, HUD содержит `SESSION LOST`.
+- D1: клиент эмитит `SESSION_LOST` в EventStore с `{client_id, ts, reason}`.
 
 ## Lease и управление вводом
 - На сервере одновременно один controller.
 - `CONTROL_GRANTED` выдаётся с lease (`lease_ms`), heartbeat продлевает lease.
 - При просрочке heartbeat сервер эмитит `CONTROL_EXPIRED`, снимает контроль и рассылает `CONTROL_RELEASE`.
+- D2: контроль lease проверяется отдельным timer-loop (`lease_check_ms`), а не только по heartbeat.
+- D2: при истечении lease без heartbeat сервер рассылает `CONTROL_EXPIRED` и пишет `CONTROL_EXPIRED` в EventStore.
 - Команды ввода от не-controller отклоняются с `ERROR(code=not_controller)`.
 
 ## EventStore интеграция

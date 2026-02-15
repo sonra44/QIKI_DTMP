@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
+
+from .event_store import EventStore, TruthState
 
 
 @dataclass
@@ -30,17 +33,20 @@ class SessionClient:
         port: int = 8765,
         client_id: str,
         role: str = "viewer",
+        event_store: EventStore | None = None,
     ) -> None:
         self.host = host
         self.port = int(port)
         self.client_id = client_id
         self.role = role
+        self.event_store = event_store
 
         self._sock: socket.socket | None = None
         self._reader: threading.Thread | None = None
         self._stop = threading.Event()
         self._state_lock = threading.Lock()
         self._state = SessionClientState()
+        self._session_lost_emitted = False
 
     def connect(self) -> None:
         if self._sock is not None:
@@ -61,6 +67,7 @@ class SessionClient:
         with self._state_lock:
             self._state.connected = True
             self._state.session_lost = False
+            self._session_lost_emitted = False
 
     def close(self) -> None:
         self._stop.set()
@@ -78,6 +85,7 @@ class SessionClient:
             self._state.session_lost = True
             if not self._state.latest_snapshot:
                 self._state.latest_snapshot = self._session_lost_snapshot()
+        self._emit_session_lost(reason="CLIENT_CLOSED")
 
     def request_control(self) -> None:
         self._send({"type": "CONTROL_REQUEST", "client_id": self.client_id})
@@ -165,7 +173,7 @@ class SessionClient:
             if mtype == "EVENT":
                 self._state.events.append(dict(message))
                 return
-            if mtype in {"CONTROL_GRANTED", "CONTROL_RELEASE"}:
+            if mtype in {"CONTROL_GRANTED", "CONTROL_RELEASE", "CONTROL_EXPIRED"}:
                 self._state.controls.append(dict(message))
                 return
             if mtype == "ERROR":
@@ -173,10 +181,14 @@ class SessionClient:
                 return
 
     def _mark_session_lost(self) -> None:
+        already_lost = False
         with self._state_lock:
+            already_lost = bool(self._state.session_lost)
             self._state.connected = False
             self._state.session_lost = True
             self._state.latest_snapshot = self._session_lost_snapshot()
+        if not already_lost:
+            self._emit_session_lost(reason="DISCONNECTED")
 
     @staticmethod
     def _session_lost_snapshot() -> dict[str, Any]:
@@ -188,3 +200,18 @@ class SessionClient:
             "truth_state": "NO_DATA",
             "reason": "SESSION_LOST",
         }
+
+    def _emit_session_lost(self, *, reason: str) -> None:
+        if self.event_store is None:
+            return
+        with self._state_lock:
+            if self._session_lost_emitted:
+                return
+            self._session_lost_emitted = True
+        self.event_store.append_new(
+            subsystem="SESSION",
+            event_type="SESSION_LOST",
+            payload={"client_id": self.client_id, "ts": time.monotonic(), "reason": reason},
+            truth_state=TruthState.NO_DATA,
+            reason=reason,
+        )
