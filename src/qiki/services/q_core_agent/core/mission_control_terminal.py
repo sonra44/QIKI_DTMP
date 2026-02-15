@@ -66,6 +66,8 @@ class MissionControlTerminal:
         self.session_client_id = (
             os.getenv("QIKI_SESSION_CLIENT_ID", "").strip() or f"{socket.gethostname()}-{os.getpid()}"
         )
+        self.session_client_role = os.getenv("QIKI_SESSION_ROLE", "controller").strip().lower() or "controller"
+        self.session_token = os.getenv("QIKI_SESSION_TOKEN", "").strip()
 
         self.event_store = EventStore.from_env()
         self.radar_pipeline: RadarPipeline | None = None
@@ -524,7 +526,8 @@ class MissionControlTerminal:
             host=self.session_host,
             port=self.session_port,
             client_id=self.session_client_id,
-            role="operator",
+            role=self.session_client_role,
+            token=self.session_token,
             event_store=self.event_store,
         )
         self.session_client.connect()

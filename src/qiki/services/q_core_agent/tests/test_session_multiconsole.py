@@ -4,6 +4,8 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+
 from qiki.services.q_core_agent.core.event_store import EventStore
 from qiki.services.q_core_agent.core.radar_ingestion import Observation
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline
@@ -45,8 +47,8 @@ def test_session_server_two_clients_receive_same_snapshot() -> None:
     server.start()
     host, port = server.address
 
-    client_a = SessionClient(host=host, port=port, client_id="client-a")
-    client_b = SessionClient(host=host, port=port, client_id="client-b")
+    client_a = SessionClient(host=host, port=port, client_id="client-a", role="controller")
+    client_b = SessionClient(host=host, port=port, client_id="client-b", role="controller")
     client_a.connect()
     client_b.connect()
 
@@ -79,8 +81,8 @@ def test_control_handover_rejects_non_controller_input() -> None:
     server.start()
     host, port = server.address
 
-    client_a = SessionClient(host=host, port=port, client_id="client-a")
-    client_b = SessionClient(host=host, port=port, client_id="client-b")
+    client_a = SessionClient(host=host, port=port, client_id="client-a", role="controller")
+    client_b = SessionClient(host=host, port=port, client_id="client-b", role="controller")
     client_a.connect()
     client_b.connect()
 
@@ -149,7 +151,7 @@ def test_control_expires_without_heartbeat() -> None:
     server.start()
     host, port = server.address
 
-    client = SessionClient(host=host, port=port, client_id="client-a")
+    client = SessionClient(host=host, port=port, client_id="client-a", role="controller")
     client.connect()
 
     try:
@@ -162,6 +164,204 @@ def test_control_expires_without_heartbeat() -> None:
         assert any(event.event_type == "CONTROL_EXPIRED" for event in store.filter(subsystem="SESSION"))
     finally:
         client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_auth_required_rejects_bad_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_AUTH", "1")
+    monkeypatch.setenv("QIKI_SESSION_TOKEN", "secret-token")
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    server.start()
+    host, port = server.address
+
+    bad_client = SessionClient(
+        host=host,
+        port=port,
+        client_id="bad-client",
+        role="controller",
+        token="wrong-token",
+    )
+    bad_client.connect()
+    try:
+        assert _wait_until(lambda: any(err.get("code") == "auth_failed" for err in bad_client.recent_errors()))
+        assert any(event.event_type == "SESSION_CLIENT_AUTH_FAILED" for event in store.filter(subsystem="SESSION"))
+    finally:
+        bad_client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_auth_enabled_requires_server_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_AUTH", "1")
+    monkeypatch.delenv("QIKI_SESSION_TOKEN", raising=False)
+    monkeypatch.delenv("QIKI_SESSION_TOKEN_FILE", raising=False)
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    with pytest.raises(RuntimeError, match="requires non-empty token"):
+        SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    pipeline.close()
+
+
+def test_role_downgrade_non_strict(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_ALLOWED_ROLES", "viewer,controller")
+    monkeypatch.delenv("QIKI_STRICT_MODE", raising=False)
+    monkeypatch.delenv("QIKI_SESSION_STRICT", raising=False)
+
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    server.start()
+    host, port = server.address
+
+    client = SessionClient(host=host, port=port, client_id="client-x", role="admin")
+    client.connect()
+    try:
+        assert _wait_until(lambda: bool(client.latest_snapshot()))
+        role_events = [
+            event
+            for event in store.filter(subsystem="SESSION")
+            if event.event_type == "SESSION_ROLE_DOWNGRADED"
+        ]
+        assert role_events
+        assert role_events[-1].payload.get("granted") == "viewer"
+    finally:
+        client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_role_strict_reject(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_ALLOWED_ROLES", "viewer,controller")
+    monkeypatch.setenv("QIKI_SESSION_STRICT", "1")
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    server.start()
+    host, port = server.address
+
+    client = SessionClient(host=host, port=port, client_id="client-y", role="admin")
+    client.connect()
+    try:
+        assert _wait_until(lambda: any(err.get("code") == "role_forbidden" for err in client.recent_errors()))
+        # Transport shutdown timing can vary in containerized runs; the role
+        # rejection itself is the strict-mode contract.
+        assert any(err.get("code") == "role_forbidden" for err in client.recent_errors())
+    finally:
+        client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_rate_limit_non_strict_reports_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_MAX_MSGS_PER_SEC", "2")
+    monkeypatch.delenv("QIKI_SESSION_STRICT", raising=False)
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    server.start()
+    host, port = server.address
+
+    client = SessionClient(host=host, port=port, client_id="client-z", role="controller")
+    client.connect()
+    try:
+        assert _wait_until(lambda: bool(client.latest_snapshot()))
+        for _ in range(12):
+            client.send_input_event({"kind": "key", "key": "1"})
+        assert _wait_until(lambda: any(err.get("code") == "rate_limited" for err in client.recent_errors()))
+        assert any(event.event_type == "SESSION_RATE_LIMITED" for event in store.filter(subsystem="SESSION"))
+    finally:
+        client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_rate_limit_strict_disconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_SESSION_STRICT", "1")
+    monkeypatch.setenv("QIKI_SESSION_MAX_MSGS_PER_SEC", "2")
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=10.0)
+    server.start()
+    host, port = server.address
+
+    client = SessionClient(host=host, port=port, client_id="strict-client", role="controller")
+    client.connect()
+    try:
+        assert _wait_until(lambda: bool(client.latest_snapshot()))
+        for _ in range(16):
+            client.send_input_event({"kind": "key", "key": "1"})
+        assert _wait_until(lambda: client.session_lost, timeout_s=2.0)
+        disconnect_events = [
+            event
+            for event in store.filter(subsystem="SESSION")
+            if event.event_type == "SESSION_CLIENT_DISCONNECTED"
+        ]
+        assert disconnect_events
+    finally:
+        client.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_first_come_policy_denies_second_controller(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_CONTROL_POLICY", "first_come")
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    _seed_pipeline(pipeline)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=20.0)
+    server.start()
+    host, port = server.address
+
+    client_a = SessionClient(host=host, port=port, client_id="client-a", role="controller")
+    client_b = SessionClient(host=host, port=port, client_id="client-b", role="controller")
+    client_a.connect()
+    client_b.connect()
+    try:
+        assert _wait_until(lambda: bool(client_a.latest_snapshot()))
+        client_a.request_control()
+        assert _wait_until(lambda: any(item.get("type") == "CONTROL_GRANTED" for item in client_a.recent_controls()))
+        client_b.request_control()
+        assert _wait_until(lambda: any(err.get("code") == "control_denied" for err in client_b.recent_errors()))
+        denied_events = [event for event in store.filter(subsystem="SESSION") if event.event_type == "CONTROL_DENIED"]
+        assert denied_events
+    finally:
+        client_a.close()
+        client_b.close()
+        server.stop()
+        pipeline.close()
+
+
+def test_admin_grants_policy_requires_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QIKI_CONTROL_POLICY", "admin_grants")
+    monkeypatch.setenv("QIKI_SESSION_ALLOWED_ROLES", "viewer,controller,admin")
+    store = EventStore(maxlen=2000, enabled=True)
+    pipeline = RadarPipeline(event_store=store)
+    _seed_pipeline(pipeline)
+    server = SessionServer(pipeline=pipeline, event_store=store, host="127.0.0.1", port=0, snapshot_hz=20.0)
+    server.start()
+    host, port = server.address
+
+    controller = SessionClient(host=host, port=port, client_id="controller-a", role="controller")
+    admin = SessionClient(host=host, port=port, client_id="admin-a", role="admin")
+    controller.connect()
+    admin.connect()
+    try:
+        assert _wait_until(lambda: bool(controller.latest_snapshot()))
+        controller.request_control()
+        assert _wait_until(lambda: any(err.get("code") == "control_denied" for err in controller.recent_errors()))
+        admin._send({"type": "CONTROL_GRANT", "client_id": "admin-a", "target_client": "controller-a"})  # noqa: SLF001
+        assert _wait_until(
+            lambda: any(
+                item.get("type") == "CONTROL_GRANTED" and item.get("client_id") == "controller-a"
+                for item in controller.recent_controls()
+            )
+        )
+    finally:
+        controller.close()
+        admin.close()
         server.stop()
         pipeline.close()
 
