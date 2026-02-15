@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 from qiki.services.q_core_agent.core.radar_backends import RadarPoint, RadarScene
 from qiki.services.q_core_agent.core.radar_pipeline import RadarPipeline, RadarRenderConfig
@@ -330,3 +331,33 @@ def test_backend_consistency_render_plan_same_for_unicode_and_bitmap() -> None:
     assert plan_u.lod_level == plan_b.lod_level
     assert plan_u.draw_labels == plan_b.draw_labels
     assert plan_u.draw_vectors == plan_b.draw_vectors
+
+
+def test_adaptive_level_respects_cooldown_and_recovers() -> None:
+    pipeline = RadarPipeline(RadarRenderConfig(renderer="unicode", view="top", fps_max=10, color=False))
+    pipeline.adaptive_policy = pipeline.adaptive_policy.__class__(
+        enabled=True,
+        ema_alpha_frame_ms=1.0,
+        ema_alpha_targets=1.0,
+        high_frame_ratio=1.1,
+        low_frame_ratio=0.8,
+        overload_target_ratio=1.0,
+        underload_target_ratio=0.8,
+        degrade_confirm_frames=1,
+        recovery_confirm_frames=2,
+        cooldown_ms=999999,
+        max_level=2,
+        clutter_reduction_per_level=0.2,
+        lod_label_zoom_delta_per_level=0.1,
+        lod_detail_zoom_delta_per_level=0.1,
+    )
+    pipeline._update_adaptive_state(frame_time_ms=200.0, targets_count=120)
+    first_level = pipeline._adaptive_state.level
+    pipeline._update_adaptive_state(frame_time_ms=220.0, targets_count=130)
+    assert first_level == 1
+    assert pipeline._adaptive_state.level == 1
+
+    pipeline.adaptive_policy = replace(pipeline.adaptive_policy, cooldown_ms=0)
+    pipeline._update_adaptive_state(frame_time_ms=10.0, targets_count=1)
+    pipeline._update_adaptive_state(frame_time_ms=10.0, targets_count=1)
+    assert pipeline._adaptive_state.level == 0
