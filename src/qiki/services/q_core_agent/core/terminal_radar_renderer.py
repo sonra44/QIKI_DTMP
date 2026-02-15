@@ -603,6 +603,14 @@ def render_terminal_screen(
     clutter_line = "CLUTTER: OFF"
     perf_line = "PERF: n/a"
     replay_line = ""
+    health_line = "[HEALTH: N/A]"
+    health_top = ""
+    health_snapshot = active_pipeline.health_snapshot() if hasattr(active_pipeline, "health_snapshot") else None
+    if health_snapshot is not None:
+        health_line = f"[HEALTH: {health_snapshot.overall}]"
+        if health_snapshot.top_issues:
+            health_top = " | ".join(health_snapshot.top_issues[:2])
+            health_line = f"{health_line} {health_top}"
     timeline_state = active_pipeline.timeline_state if hasattr(active_pipeline, "timeline_state") else None
     if timeline_state is not None:
         status = "PAUSED" if timeline_state.paused else "PLAYING"
@@ -621,6 +629,7 @@ def render_terminal_screen(
             clutter_line = f"CLUTTER: ON reasons=[{reasons}] dropped={dropped}"
     hud = [
         f"FSM: {view.fsm_state}",
+        health_line,
         _top_alert_line(situations, active_view_state),
         f"DOCKING CONFIRM: {view.docking_hits}/{max(1, view.docking_required)}",
         (

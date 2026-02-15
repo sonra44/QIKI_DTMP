@@ -531,6 +531,19 @@ class SessionServer:
         with self._control_lock:
             owner = self._controller_client_id
             lease_left = max(0, int((self._controller_deadline - now_ts) * 1000.0)) if owner else 0
+        with self._clients_lock:
+            clients = list(self._clients.values())
+        rate_limited_count = sum(int(client.input_violations) for client in clients)
+        msgs_per_sec = float(sum(int(client.msg_count) for client in clients))
+        self.pipeline.update_session_health(
+            mode="server",
+            connected_clients=len(clients),
+            controller_id=owner,
+            rtt_ms=0.0,
+            msgs_per_sec=msgs_per_sec,
+            rate_limited_count=rate_limited_count,
+            last_snapshot_ts=now_ts,
+        )
         return {
             "type": "STATE_SNAPSHOT",
             "ts": float(now_ts),

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from .radar_backends import RadarBackend, RadarScene, RenderOutput
 from .event_store import EventStore, TruthState
+from .health import HealthMonitor, HealthRules, HealthSnapshot
 from .plugin_manager import PluginContext, PluginManager
 from .radar_clock import Clock, ReplayClock, ensure_clock
 from .radar_fusion import (
@@ -90,6 +91,14 @@ class PerformanceMetrics:
         if not self.frame_times_ms:
             return 0.0
         return float(max(self.frame_times_ms))
+
+    @property
+    def p95_frame_ms(self) -> float:
+        if not self.frame_times_ms:
+            return 0.0
+        ordered = sorted(self.frame_times_ms)
+        idx = max(0, min(len(ordered) - 1, int((len(ordered) - 1) * 0.95)))
+        return float(ordered[idx])
 
 
 class RadarPipeline:
@@ -228,6 +237,28 @@ class RadarPipeline:
         self._perf_fusion_rebuilds = 0
         self._perf_situation_events = 0
         self._perf_targets_count = 0
+        self._started_ts = float(self._clock.now())
+        self._last_clutter_reasons: tuple[str, ...] = ()
+        self._health_rules = HealthRules.from_env(strict=resolve_strict_mode(dict(os.environ), default=False))
+        self._health_monitor = HealthMonitor(event_store=self.event_store, rules=self._health_rules)
+        self._health_snapshot: HealthSnapshot | None = None
+        self._session_health: dict[str, Any] = {
+            "mode": os.getenv("QIKI_SESSION_MODE", "standalone").strip().lower() or "standalone",
+            "connected_clients": 0,
+            "controller_id": "",
+            "rtt_ms": 0.0,
+            "msgs_per_sec": 0.0,
+            "rate_limited_count": 0,
+            "last_snapshot_ts": float(self._clock.now()),
+        }
+        self._eventstore_cache_ts = 0.0
+        self._eventstore_cache: dict[str, Any] = {
+            "backend": str(getattr(self.event_store, "backend", "memory")),
+            "sqlite_queue_depth": 0,
+            "sqlite_write_lag_ms": 0.0,
+            "dropped_events": 0,
+            "db_size_mb": 0.0,
+        }
 
     def close(self) -> None:
         if self.event_store is not None:
@@ -503,6 +534,9 @@ class RadarPipeline:
             self._last_frame_time_ms = (self._clock.now() - render_start) * 1000.0
             self._update_adaptive_state(frame_time_ms=self._last_frame_time_ms, targets_count=len(scene_with_trails.points))
             self._append_render_tick_event(scene_with_trails, output)
+            if output.stats is not None:
+                self._last_clutter_reasons = tuple(output.stats.clutter_reasons)
+            self._refresh_health()
             return output
         except Exception as exc:  # noqa: BLE001
             if self._active_backend.name == "unicode":
@@ -527,6 +561,9 @@ class RadarPipeline:
                 stats=plan.stats,
             )
             self._append_render_tick_event(scene_with_trails, output)
+            if output.stats is not None:
+                self._last_clutter_reasons = tuple(output.stats.clutter_reasons)
+            self._refresh_health()
             return output
 
     def _source_track_from_replay_event(self, event: dict[str, Any]) -> SourceTrack | None:
@@ -653,6 +690,135 @@ class RadarPipeline:
             fusion_rebuilds=int(self._perf_fusion_rebuilds),
             situation_events=int(self._perf_situation_events),
             targets_count=int(self._perf_targets_count),
+        )
+
+    def update_session_health(
+        self,
+        *,
+        mode: str | None = None,
+        connected_clients: int | None = None,
+        controller_id: str | None = None,
+        rtt_ms: float | None = None,
+        msgs_per_sec: float | None = None,
+        rate_limited_count: int | None = None,
+        last_snapshot_ts: float | None = None,
+    ) -> None:
+        if mode is not None:
+            self._session_health["mode"] = str(mode).strip().lower() or "standalone"
+        if connected_clients is not None:
+            self._session_health["connected_clients"] = max(0, int(connected_clients))
+        if controller_id is not None:
+            self._session_health["controller_id"] = str(controller_id)
+        if rtt_ms is not None:
+            self._session_health["rtt_ms"] = max(0.0, float(rtt_ms))
+        if msgs_per_sec is not None:
+            self._session_health["msgs_per_sec"] = max(0.0, float(msgs_per_sec))
+        if rate_limited_count is not None:
+            self._session_health["rate_limited_count"] = max(0, int(rate_limited_count))
+        if last_snapshot_ts is not None:
+            self._session_health["last_snapshot_ts"] = float(last_snapshot_ts)
+
+    def health_snapshot(self) -> HealthSnapshot:
+        if self._health_snapshot is None:
+            self._refresh_health()
+        assert self._health_snapshot is not None
+        return self._health_snapshot
+
+    def _fusion_health_section(self) -> dict[str, Any]:
+        window_s = 5.0
+        now_ts = float(self._clock.now())
+        clusters = int(len(self._last_cluster_signatures))
+        conflict = 0
+        low_support = 0
+        total = 0
+        if self.event_store is not None:
+            for event in self.event_store.filter(subsystem="FUSION", event_type="FUSED_TRACK_UPDATED"):
+                if now_ts - float(event.ts) > window_s:
+                    continue
+                total += 1
+                flags = event.payload.get("flags", []) if isinstance(event.payload, dict) else []
+                if isinstance(flags, list):
+                    if "CONFLICT" in flags:
+                        conflict += 1
+                    if "LOW_SUPPORT" in flags:
+                        low_support += 1
+        elapsed = max(1.0, now_ts - self._started_ts)
+        return {
+            "enabled": bool(self.fusion_config.enabled),
+            "clusters": clusters,
+            "rebuilds_rate": float(self._perf_fusion_rebuilds) / elapsed,
+            "conflict_rate": (float(conflict) / float(total)) if total > 0 else 0.0,
+            "low_support_rate": (float(low_support) / float(total)) if total > 0 else 0.0,
+        }
+
+    def _eventstore_health_section(self) -> dict[str, Any]:
+        if self.event_store is None:
+            return dict(self._eventstore_cache)
+        now_ts = float(self._clock.now())
+        if now_ts - self._eventstore_cache_ts >= 1.0:
+            db_size_mb = self._eventstore_cache.get("db_size_mb", 0.0)
+            try:
+                stats = self.event_store.stats()
+                db_size_mb = float(stats.db_size_bytes) / (1024.0 * 1024.0)
+            except Exception:
+                pass
+            queue_depth = int(self.event_store.sqlite_queue_depth)
+            dropped = int(self.event_store.sqlite_dropped_events)
+            flush_ms = float(getattr(self.event_store, "flush_ms", 0.0))
+            batch_size = float(getattr(self.event_store, "batch_size", 1.0))
+            write_lag_ms = (queue_depth / max(1.0, batch_size)) * max(1.0, flush_ms)
+            self._eventstore_cache = {
+                "backend": str(getattr(self.event_store.backend, "value", self.event_store.backend)),
+                "sqlite_queue_depth": queue_depth,
+                "sqlite_write_lag_ms": float(write_lag_ms),
+                "dropped_events": dropped,
+                "db_size_mb": float(db_size_mb),
+            }
+            self._eventstore_cache_ts = now_ts
+        return dict(self._eventstore_cache)
+
+    def _refresh_health(self) -> None:
+        metrics = self.snapshot_metrics()
+        now_ts = float(self._clock.now())
+        pipeline_section = {
+            "frame_ms_avg": float(metrics.avg_frame_ms),
+            "frame_ms_p95": float(metrics.p95_frame_ms),
+            "fps_est": (1000.0 / float(metrics.avg_frame_ms)) if metrics.avg_frame_ms > 0.0 else 0.0,
+            "targets_count": int(metrics.targets_count),
+        }
+        fusion_section = self._fusion_health_section()
+        policy_section = {
+            "profile": self.policy_profile,
+            "adaptive_level": int(self._adaptive_state.level),
+            "degrade_level": int(self._degradation_state.current_level),
+            "degrade_reasons": list(self._last_clutter_reasons),
+        }
+        eventstore_section = self._eventstore_health_section()
+        session_last_ts = float(self._session_health.get("last_snapshot_ts", now_ts))
+        session_section = {
+            "mode": str(self._session_health.get("mode", "standalone")),
+            "connected_clients": int(self._session_health.get("connected_clients", 0)),
+            "controller_id": str(self._session_health.get("controller_id", "")),
+            "rtt_ms": float(self._session_health.get("rtt_ms", 0.0)),
+            "msgs_per_sec": float(self._session_health.get("msgs_per_sec", 0.0)),
+            "rate_limited_count": int(self._session_health.get("rate_limited_count", 0)),
+            "stale_ms": max(0.0, (now_ts - session_last_ts) * 1000.0),
+        }
+        timeline = self.timeline_state
+        replay_section = {
+            "enabled": bool(self.replay_enabled),
+            "speed": float(timeline.speed) if timeline is not None else 1.0,
+            "cursor_ts": float(timeline.current_ts) if timeline is not None else 0.0,
+            "lag_ms": max(0.0, (now_ts - float(timeline.current_ts)) * 1000.0) if timeline is not None else 0.0,
+        }
+        self._health_snapshot = self._health_monitor.evaluate(
+            ts=now_ts,
+            pipeline=pipeline_section,
+            fusion=fusion_section,
+            policy=policy_section,
+            eventstore=eventstore_section,
+            session=session_section,
+            replay=replay_section,
         )
 
     def _append_fusion_events(

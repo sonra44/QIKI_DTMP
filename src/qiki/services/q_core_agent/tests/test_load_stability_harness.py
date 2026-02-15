@@ -190,3 +190,22 @@ def test_load_strict_failure_still_closes_pipeline(monkeypatch: pytest.MonkeyPat
             )
         )
     assert called["count"] == 1
+
+
+@pytest.mark.load
+def test_load_strict_fails_on_health_crit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("QIKI_LOAD_STRICT", "1")
+    monkeypatch.setenv("QIKI_HEALTH_SQLITE_QUEUE_CRIT", "1")
+    monkeypatch.setattr(EventStore, "sqlite_queue_depth", property(lambda _self: 2))
+    with pytest.raises(RuntimeError, match="health_crit"):
+        run_harness(
+            _args(
+                scenario="single_target_stable",
+                duration=2.0,
+                targets=1,
+                sqlite="on",
+                db_path=str(tmp_path / "strict_health.sqlite"),
+                avg_threshold=10_000.0,
+                max_threshold=10_000.0,
+            )
+        )

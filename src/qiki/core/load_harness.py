@@ -99,6 +99,11 @@ def run_harness(args: argparse.Namespace) -> LoadSummary:
                 is_fallback=frame.is_fallback,
             )
             queue_peak = max(queue_peak, store.sqlite_queue_depth)
+            if strict_load:
+                health = pipeline.health_snapshot()
+                if health.overall == "CRIT":
+                    issues = ", ".join(health.top_issues) if health.top_issues else "HEALTH_CRIT"
+                    raise _HarnessRuntimeError(f"health_crit: {issues}")
 
         perf = pipeline.snapshot_metrics()
         stats = store.stats()
@@ -119,6 +124,10 @@ def run_harness(args: argparse.Namespace) -> LoadSummary:
         )
 
         if strict_load:
+            health = pipeline.health_snapshot()
+            if health.overall == "CRIT":
+                issues = ", ".join(health.top_issues) if health.top_issues else "HEALTH_CRIT"
+                raise _HarnessRuntimeError(f"health_crit: {issues}")
             if summary.avg_frame_ms > float(args.avg_threshold):
                 raise _HarnessRuntimeError(
                     f"avg_frame_ms exceeded threshold: {summary.avg_frame_ms:.2f} > {float(args.avg_threshold):.2f}"

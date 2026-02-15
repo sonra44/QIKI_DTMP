@@ -175,3 +175,17 @@ def test_terminal_renderer_shows_training_overlay() -> None:
     assert "TRAINING: cpa_warning status=PASS" in screen
     assert "TRAINING TIMER:" in screen
     assert "score=88" in screen
+
+
+def test_terminal_renderer_shows_health_line() -> None:
+    events = [
+        _event(
+            subsystem="SENSORS",
+            event_type="SENSOR_TRUST_VERDICT",
+            payload={"ok": False, "reason": "NO_DATA", "is_fallback": False, "data": None},
+            reason="NO_DATA",
+            truth_state="NO_DATA",
+        )
+    ]
+    screen = render_terminal_screen(events)
+    assert "[HEALTH:" in screen
