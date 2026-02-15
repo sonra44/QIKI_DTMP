@@ -137,6 +137,8 @@ def _emit_xterm_mouse_tracking(*, enabled: bool) -> None:
     try:
         import sys
 
+        if not getattr(sys.stdout, "isatty", lambda: False)():
+            return
         if enabled:
             seq = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
         else:
@@ -5410,6 +5412,8 @@ class OrionApp(App):
 
     def _on_boot_complete(self, result: bool | None) -> None:
         # Boot screen is informational; even on failure we proceed (no-mocks: values will stay N/A).
+        # Re-arm xterm mouse tracking after boot/attach to recover from terminal reset cases.
+        _emit_xterm_mouse_tracking(enabled=True)
         try:
             self.set_focus(self.query_one("#command-dock", Input))
         except Exception:
@@ -7415,6 +7419,9 @@ class OrionApp(App):
             self._console_log(f"{I18N.bidi('Unknown screen', 'Неизвестный экран')}: {screen}", level="info")
             return
         self.active_screen = screen
+        if screen == "radar":
+            # Ensure radar click/wheel events keep working after tmux/terminal resets.
+            _emit_xterm_mouse_tracking(enabled=True)
         try:
             self.query_one("#orion-sidebar", OrionSidebar).set_active(screen)
         except Exception:
