@@ -77,6 +77,11 @@ class SessionServer:
             except Exception:
                 token_value = ""
         self.session_token = token_value
+        if self.auth_enabled and not self.session_token:
+            raise RuntimeError(
+                "QIKI_SESSION_AUTH=1 requires non-empty token from "
+                "QIKI_SESSION_TOKEN or QIKI_SESSION_TOKEN_FILE"
+            )
         allowed_raw = str(env.get("QIKI_SESSION_ALLOWED_ROLES", "viewer,controller,admin")).strip()
         self.allowed_roles = {
             part.strip().lower() for part in allowed_raw.split(",") if part.strip()
