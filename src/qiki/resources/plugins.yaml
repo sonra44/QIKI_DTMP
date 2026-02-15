@@ -1,0 +1,130 @@
+schema_version: 1
+
+profiles:
+  default:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  sim:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  dev:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  prod:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  production:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  no_situational:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      enabled: false
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  multiconsole_server:
+    sensor_input:
+      name: builtin.sensor_input
+    fusion:
+      name: builtin.fusion_majority
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      name: builtin.situational_v2
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router
+
+  multiconsole_client:
+    sensor_input:
+      enabled: false
+    fusion:
+      enabled: false
+    render_policy:
+      name: builtin.render_policy_v3
+    render_backend:
+      name: builtin.render_backends
+    situational_analysis:
+      enabled: false
+    session_transport:
+      name: builtin.session_transport
+    input_router:
+      name: builtin.input_router

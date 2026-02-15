@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 import os
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
 
+from .radar_clock import Clock, ensure_clock
 from .radar_backends.base import RadarPoint, RadarScene
 from .radar_render_policy import RadarRenderStats
 from .radar_situation_config import RadarSituationRuntimeConfig
@@ -145,8 +146,14 @@ def _track_id(point: RadarPoint, idx: int) -> str:
 
 
 class RadarSituationEngine:
-    def __init__(self, config: SituationConfig | None = None):
+    def __init__(
+        self,
+        config: SituationConfig | None = None,
+        *,
+        clock: Clock | Callable[[], float] | None = None,
+    ):
         self.config = config or SituationConfig.from_env()
+        self._clock = ensure_clock(clock)
         self._active: dict[str, Situation] = {}
         self._confirm_hits: dict[str, int] = {}
         self._cooldown_until: dict[str, float] = {}
@@ -164,7 +171,7 @@ class RadarSituationEngine:
         if not self.config.enabled:
             return [], []
 
-        now_ts = time.time()
+        now_ts = self._clock.now()
         candidates = self._collect_candidates(scene, trail_store)
         candidate_ids = set(candidates.keys())
         deltas: list[SituationDelta] = []

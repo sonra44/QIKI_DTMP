@@ -503,6 +503,14 @@ def render_terminal_screen(
     trust_line = _colorize_truth(trust_line, view.sensor_truth_state, color_enabled=color_enabled)
     clutter_line = "CLUTTER: OFF"
     perf_line = "PERF: n/a"
+    replay_line = ""
+    timeline_state = active_pipeline.timeline_state if hasattr(active_pipeline, "timeline_state") else None
+    if timeline_state is not None:
+        status = "PAUSED" if timeline_state.paused else "PLAYING"
+        replay_line = (
+            f"[REPLAY x{timeline_state.speed:.2f}] ts={timeline_state.current_ts:.3f} "
+            f"status={status} cursor={timeline_state.cursor}/{timeline_state.total_events}"
+        )
     if stats is not None:
         perf_line = (
             f"PERF: {stats.frame_time_ms:.1f}ms (budget {active_pipeline.render_policy.frame_budget_ms:.0f}) "
@@ -525,6 +533,7 @@ def render_terminal_screen(
         trust_line,
         perf_line,
         clutter_line,
+        replay_line,
         _overlay_legend(active_view_state, plan.dropped_overlays if plan else ()),
         (
             f"SITUATION OVERLAYS: {'ON' if active_view_state.alerts.situations_enabled else 'OFF'} "
