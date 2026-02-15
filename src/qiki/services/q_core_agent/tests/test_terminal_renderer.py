@@ -141,3 +141,37 @@ def test_terminal_renderer_safe_mode_shows_reason_and_exit_counter() -> None:
     assert "FSM: SAFE_MODE" in screen
     assert "SAFE: ON reason=SENSORS_STALE exit=1/3" in screen
 
+
+def test_terminal_renderer_shows_training_overlay() -> None:
+    events = [
+        _event(
+            subsystem="TRAINING",
+            event_type="TRAINING_STATUS",
+            payload={
+                "scenario": "cpa_warning",
+                "title": "CPA Warning",
+                "objective": "Detect CPA risk and acknowledge alert",
+                "status": "IN_PROGRESS",
+                "duration_s": 12.0,
+                "elapsed_s": 3.0,
+            },
+            reason="IN_PROGRESS",
+            truth_state="OK",
+        ),
+        _event(
+            subsystem="TRAINING",
+            event_type="TRAINING_RESULT",
+            payload={
+                "scenario": "cpa_warning",
+                "score": 88,
+                "verdict": "PASS",
+                "metrics": {"reaction_time_s": 1.2},
+            },
+            reason="PASS",
+            truth_state="OK",
+        ),
+    ]
+    screen = render_terminal_screen(events)
+    assert "TRAINING: cpa_warning status=PASS" in screen
+    assert "TRAINING TIMER:" in screen
+    assert "score=88" in screen

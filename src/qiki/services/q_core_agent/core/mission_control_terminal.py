@@ -37,6 +37,7 @@ from qiki.services.q_core_agent.core.radar_controls import (  # noqa: E402
 )
 from qiki.services.q_core_agent.core.radar_view_state import RadarViewState  # noqa: E402
 from qiki.services.q_core_agent.core.radar_replay import load_trace  # noqa: E402
+from qiki.services.q_core_agent.core.radar_clock import ReplayClock  # noqa: E402
 from qiki.services.q_core_agent.core.session_client import SessionClient  # noqa: E402
 from qiki.services.q_core_agent.core.session_server import SessionServer  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
@@ -49,6 +50,14 @@ from qiki.services.q_core_agent.core.terminal_input_backend import (  # noqa: E4
     select_input_backend,
 )
 from qiki.services.q_core_agent.core.test_ship_fsm import ShipLogicController  # noqa: E402
+from qiki.services.q_core_agent.core.training_mode import (  # noqa: E402
+    TrainingActionRecorder,
+    TrainingSessionRunner,
+)
+from qiki.services.q_core_agent.core.training_scenarios import (  # noqa: E402
+    available_training_scenarios,
+    build_training_scenario,
+)
 
 
 class MissionControlTerminal:
@@ -57,7 +66,12 @@ class MissionControlTerminal:
     def __init__(self, variant_name: str = "Mission Control Terminal"):
         self.variant_name = variant_name
         q_core_agent_root = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-        self.session_mode = os.getenv("QIKI_SESSION_MODE", "standalone").strip().lower() or "standalone"
+        self.qiki_mode = os.getenv("QIKI_MODE", "production").strip().lower() or "production"
+        session_mode_env = os.getenv("QIKI_SESSION_MODE", "standalone").strip().lower() or "standalone"
+        if self.qiki_mode == "training" and session_mode_env == "standalone":
+            self.session_mode = "standalone"
+        else:
+            self.session_mode = session_mode_env
         self.session_host = os.getenv("QIKI_SESSION_HOST", "127.0.0.1").strip() or "127.0.0.1"
         try:
             self.session_port = int(os.getenv("QIKI_SESSION_PORT", "8765"))
@@ -68,6 +82,12 @@ class MissionControlTerminal:
         )
         self.session_client_role = os.getenv("QIKI_SESSION_ROLE", "controller").strip().lower() or "controller"
         self.session_token = os.getenv("QIKI_SESSION_TOKEN", "").strip()
+
+        if self.qiki_mode == "training":
+            os.environ.setdefault("QIKI_PLUGINS_PROFILE", "training")
+            os.environ.setdefault("EVENTSTORE_BACKEND", "sqlite")
+            os.environ.setdefault("EVENTSTORE_DB_PATH", "artifacts/training_eventstore.sqlite")
+            os.environ.setdefault("RADAR_EMIT_OBSERVATION_RX", "0")
 
         self.event_store = EventStore.from_env()
         self.radar_pipeline: RadarPipeline | None = None
@@ -85,6 +105,7 @@ class MissionControlTerminal:
         self.ship_core = ShipCore(base_path=q_core_agent_root)
         self.actuator_controller = ShipActuatorController(self.ship_core, event_store=self.event_store)
         self.logic_controller = ShipLogicController(self.ship_core, self.actuator_controller)
+        self.training_recorder = TrainingActionRecorder(event_store=self.event_store)
         self.autopilot_enabled = False
         self.running = True
         self.last_cycle: Optional[Dict[str, str]] = None
@@ -110,6 +131,8 @@ class MissionControlTerminal:
 
         try:
             print(f"{self.variant_name} готов. Команда 'help' покажет список команд.")
+            if self.qiki_mode == "training":
+                print("Training mode active: use `training <scenario>` to run operator training.")
             if self.session_mode == "client":
                 status = self.live_session_client_loop(prefer_real=real_input)
                 if status == 0:
@@ -453,21 +476,52 @@ class MissionControlTerminal:
         view_state: RadarViewState,
         event: InputEvent,
         scene,
+        action_recorder: TrainingActionRecorder | None = None,
+        scenario_name: str = "",
     ) -> tuple[RadarViewState, bool]:
         if event.kind == "key":
             if event.key in {"q", "quit", "exit"}:
                 return view_state, True
-            return controller.apply_key(view_state, event.key, scene=scene), False
+            action = controller.handle_key(event.key)
+            if action_recorder is not None and action.kind not in {"NOOP", "QUIT"}:
+                action_recorder.record(
+                    scenario=scenario_name or "live",
+                    action_type=action.kind,
+                    source="key",
+                    payload={"key": event.key},
+                )
+            return controller.apply_action(view_state, action, scene=scene), False
         if event.kind == "wheel":
             action = controller.handle_mouse(RadarMouseEvent(kind="wheel", delta=event.delta))
+            if action_recorder is not None and action.kind != "NOOP":
+                action_recorder.record(
+                    scenario=scenario_name or "live",
+                    action_type=action.kind,
+                    source="wheel",
+                    payload={"delta": event.delta},
+                )
             return controller.apply_action(view_state, action), False
         if event.kind == "click":
             action = controller.handle_mouse(RadarMouseEvent(kind="click", x=event.x, y=event.y, button="left"))
+            if action_recorder is not None and action.kind != "NOOP":
+                action_recorder.record(
+                    scenario=scenario_name or "live",
+                    action_type=action.kind,
+                    source="click",
+                    payload={"x": event.x, "y": event.y},
+                )
             return controller.apply_action(view_state, action, scene=scene), False
         if event.kind == "drag":
             action = controller.handle_mouse(
                 RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=event.dx, dy=event.dy)
             )
+            if action_recorder is not None and action.kind != "NOOP":
+                action_recorder.record(
+                    scenario=scenario_name or "live",
+                    action_type=action.kind,
+                    source="drag",
+                    payload={"dx": event.dx, "dy": event.dy},
+                )
             return controller.apply_action(view_state, action), False
         if event.kind == "line":
             raw = event.raw
@@ -477,6 +531,13 @@ class MissionControlTerminal:
                 direction = raw.split(" ", 1)[1].strip()
                 delta = 1.0 if direction == "up" else -1.0 if direction == "down" else 0.0
                 action = controller.handle_mouse(RadarMouseEvent(kind="wheel", delta=delta))
+                if action_recorder is not None and action.kind != "NOOP":
+                    action_recorder.record(
+                        scenario=scenario_name or "live",
+                        action_type=action.kind,
+                        source="line",
+                        payload={"raw": raw},
+                    )
                 return controller.apply_action(view_state, action), False
             if raw.startswith("click "):
                 parts = raw.split()
@@ -487,6 +548,13 @@ class MissionControlTerminal:
                     except ValueError:
                         return view_state, False
                     action = controller.handle_mouse(RadarMouseEvent(kind="click", x=x, y=y, button="left"))
+                    if action_recorder is not None and action.kind != "NOOP":
+                        action_recorder.record(
+                            scenario=scenario_name or "live",
+                            action_type=action.kind,
+                            source="line",
+                            payload={"raw": raw},
+                        )
                     return controller.apply_action(view_state, action, scene=scene), False
                 return view_state, False
             if raw.startswith("drag "):
@@ -500,14 +568,30 @@ class MissionControlTerminal:
                     action = controller.handle_mouse(
                         RadarMouseEvent(kind="drag", button="left", is_button_down=True, dx=dx, dy=dy)
                     )
+                    if action_recorder is not None and action.kind != "NOOP":
+                        action_recorder.record(
+                            scenario=scenario_name or "live",
+                            action_type=action.kind,
+                            source="line",
+                            payload={"raw": raw},
+                        )
                     return controller.apply_action(view_state, action), False
-            return controller.apply_key(view_state, raw, scene=scene), False
+            action = controller.handle_key(raw)
+            if action_recorder is not None and action.kind not in {"NOOP", "QUIT"}:
+                action_recorder.record(
+                    scenario=scenario_name or "live",
+                    action_type=action.kind,
+                    source="line",
+                    payload={"raw": raw},
+                )
+            return controller.apply_action(view_state, action, scene=scene), False
         return view_state, False
 
     def _ensure_session_server(self) -> None:
-        if self.session_server is not None or self.radar_pipeline is None:
+        session_server = getattr(self, "session_server", None)
+        if session_server is not None or self.radar_pipeline is None:
             return
-        if self.session_mode != "server":
+        if getattr(self, "session_mode", "standalone") != "server":
             return
         self.session_server = SessionServer(
             pipeline=self.radar_pipeline,
@@ -520,7 +604,7 @@ class MissionControlTerminal:
         print(f"[SESSION] server started at {host}:{port}")
 
     def _ensure_session_client(self) -> None:
-        if self.session_client is not None:
+        if getattr(self, "session_client", None) is not None:
             return
         self.session_client = SessionClient(
             host=self.session_host,
@@ -664,6 +748,12 @@ class MissionControlTerminal:
                         view_state=self.view_state,
                         event=event,
                         scene=scene,
+                        action_recorder=(
+                            getattr(self, "training_recorder", None)
+                            if getattr(self, "qiki_mode", "production") == "training"
+                            else None
+                        ),
+                        scenario_name="live",
                     )
                     if should_quit:
                         break
@@ -722,6 +812,9 @@ class MissionControlTerminal:
             status = self.live_radar_loop(prefer_real=prefer_real)
             return status in {0, 3}
 
+        if cmd == "training":
+            return self._handle_training(parts[1:])
+
         if cmd_raw in {
             "1",
             "2",
@@ -748,6 +841,17 @@ class MissionControlTerminal:
             "k",
         }:
             self.view_state = self.radar_input.apply_key(self.view_state, cmd_raw)
+            if getattr(self, "qiki_mode", "production") == "training":
+                action = self.radar_input.handle_key(cmd_raw).kind
+                if action not in {"NOOP", "QUIT"}:
+                    recorder = getattr(self, "training_recorder", None)
+                    if recorder is not None:
+                        recorder.record(
+                            scenario="command",
+                            action_type=action,
+                            source="command",
+                            payload={"key": cmd_raw},
+                        )
             return True
 
         if cmd == "policy":
@@ -792,6 +896,8 @@ class MissionControlTerminal:
         print("  s                    — toggle situation overlays")
         print("  policy cycle         — переключить radar policy profile")
         print("  policy set <name>    — set profile (navigation|docking|combat)")
+        print("  training list        — список учебных сценариев")
+        print("  training run <name>  — запуск deterministic training-сценария")
         print("  +|-                  — zoom in/out")
         print("  mouse wheel up|down  — zoom мышью (эмуляция)")
         print("  mouse click x y      — выбор ближайшей цели")
@@ -899,13 +1005,91 @@ class MissionControlTerminal:
         action = args[0].lower()
         if action == "cycle":
             ok, message = self.radar_pipeline.cycle_policy_profile()
+            if ok and getattr(self, "qiki_mode", "production") == "training":
+                recorder = getattr(self, "training_recorder", None)
+                if recorder is not None:
+                    recorder.record(
+                        scenario="command",
+                        action_type="POLICY_PROFILE_SWITCH",
+                        source="command",
+                        payload={"message": message},
+                    )
             print(f"policy: {message}" if ok else f"policy error: {message}")
             return True
         if action in {"set", "profile"} and len(args) >= 2:
             ok, message = self.radar_pipeline.set_policy_profile(args[1])
+            if ok and getattr(self, "qiki_mode", "production") == "training":
+                recorder = getattr(self, "training_recorder", None)
+                if recorder is not None:
+                    recorder.record(
+                        scenario="command",
+                        action_type="POLICY_PROFILE_SWITCH",
+                        source="command",
+                        payload={"profile": args[1], "message": message},
+                    )
             print(f"policy: {message}" if ok else f"policy error: {message}")
             return True
         print("policy: cycle | set <navigation|docking|combat>")
+        return True
+
+    def run_training_scenario(
+        self,
+        scenario_name: str,
+        *,
+        seed: int = 7,
+        scripted_actions: dict[str, list[str]] | None = None,
+    ) -> int:
+        if self.radar_pipeline is None:
+            print(f"Radar backend configuration error: {self.radar_pipeline_error or 'unknown'}")
+            return 2
+        scenario = build_training_scenario(scenario_name, seed=seed)
+        # Deterministic scenario clock for repeatable scoring/replay.
+        training_clock = ReplayClock(current_ts=float(scenario.frames[0].ts if scenario.frames else 0.0))
+        self.radar_pipeline._clock = training_clock  # noqa: SLF001
+        runner = TrainingSessionRunner(
+            pipeline=self.radar_pipeline,
+            event_store=self.event_store,
+            scenario=scenario,
+            clock=training_clock,
+        )
+        result = runner.run(scripted_actions=scripted_actions)
+        self.training_recorder = runner.recorder
+        print(
+            f"TRAINING RESULT: scenario={result.scenario} score={result.score} "
+            f"verdict={result.verdict} reaction={result.reaction_time_s}"
+        )
+        if result.errors:
+            print("TRAINING ERRORS: " + ", ".join(result.errors))
+        return 0 if result.verdict == "PASS" else 1
+
+    def _handle_training(self, args: list[str]) -> bool:
+        if not args:
+            print("training scenarios: " + ", ".join(available_training_scenarios()))
+            print("training run <scenario> [seed]")
+            return True
+        action = args[0].lower()
+        if action in {"list", "ls"}:
+            print("training scenarios: " + ", ".join(available_training_scenarios()))
+            return True
+        if action in {"run", "start"} and len(args) >= 2:
+            scenario_name = args[1]
+            seed = 7
+            if len(args) >= 3:
+                try:
+                    seed = int(args[2])
+                except Exception:
+                    seed = 7
+            self.run_training_scenario(scenario_name, seed=seed)
+            return True
+        # Shortcut: `training cpa_warning`
+        scenario_name = args[0]
+        seed = 7
+        if len(args) >= 2:
+            try:
+                seed = int(args[1])
+            except Exception:
+                seed = 7
+        self.run_training_scenario(scenario_name, seed=seed)
         return True
 
 
@@ -941,6 +1125,16 @@ def main() -> None:
         choices=["standalone", "server", "client"],
         help="Distributed session mode override (QIKI_SESSION_MODE).",
     )
+    parser.add_argument(
+        "--training-scenario",
+        help="Run deterministic operator training scenario and exit.",
+    )
+    parser.add_argument(
+        "--training-seed",
+        type=int,
+        default=7,
+        help="Seed for deterministic training scenario generation.",
+    )
     args = parser.parse_args()
     if args.session_mode:
         os.environ["QIKI_SESSION_MODE"] = args.session_mode
@@ -957,6 +1151,8 @@ def main() -> None:
     terminal = MissionControlTerminal()
     try:
         terminal.configure_radar_pipeline(renderer=args.renderer, fps=args.fps)
+        if args.training_scenario:
+            raise SystemExit(terminal.run_training_scenario(args.training_scenario, seed=args.training_seed))
         terminal.run(real_input=args.real_input)
     finally:
         terminal.close()

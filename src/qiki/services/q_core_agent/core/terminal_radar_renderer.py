@@ -44,6 +44,14 @@ class _ViewModel:
     age_s: float | None = None
     quality: float | None = None
     tracks: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    training_mode: bool = False
+    training_scenario: str = ""
+    training_title: str = ""
+    training_objective: str = ""
+    training_status: str = ""
+    training_elapsed_s: float = 0.0
+    training_duration_s: float = 0.0
+    training_score: int | None = None
 
 
 def _as_event_dict(event: Any) -> dict[str, Any]:
@@ -178,6 +186,14 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 age_s=view.age_s,
                 quality=view.quality,
                 tracks=view.tracks,
+                training_mode=view.training_mode,
+                training_scenario=view.training_scenario,
+                training_title=view.training_title,
+                training_objective=view.training_objective,
+                training_status=view.training_status,
+                training_elapsed_s=view.training_elapsed_s,
+                training_duration_s=view.training_duration_s,
+                training_score=view.training_score,
             )
         elif subsystem == "SAFE_MODE" and event_type == "SAFE_MODE":
             safe_reason = str(payload.get("reason", reason))
@@ -202,6 +218,14 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 age_s=view.age_s,
                 quality=view.quality,
                 tracks=view.tracks,
+                training_mode=view.training_mode,
+                training_scenario=view.training_scenario,
+                training_title=view.training_title,
+                training_objective=view.training_objective,
+                training_status=view.training_status,
+                training_elapsed_s=view.training_elapsed_s,
+                training_duration_s=view.training_duration_s,
+                training_score=view.training_score,
             )
         elif subsystem == "ACTUATORS" and event_type == "ACTUATION_RECEIPT":
             view = _ViewModel(
@@ -225,6 +249,14 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
                 age_s=view.age_s,
                 quality=view.quality,
                 tracks=view.tracks,
+                training_mode=view.training_mode,
+                training_scenario=view.training_scenario,
+                training_title=view.training_title,
+                training_objective=view.training_objective,
+                training_status=view.training_status,
+                training_elapsed_s=view.training_elapsed_s,
+                training_duration_s=view.training_duration_s,
+                training_score=view.training_score,
             )
         elif subsystem == "SENSORS" and event_type == "SENSOR_TRUST_VERDICT":
             sensor_data = payload.get("data", {})
@@ -254,6 +286,73 @@ def _build_view(events: Sequence[Any]) -> _ViewModel:
             )
             view = _ViewModel(
                 **{**candidate.__dict__, "tracks": _extract_tracks(sensor_data, candidate)},
+            )
+        elif subsystem == "TRAINING" and event_type == "TRAINING_STATUS":
+            view = _ViewModel(
+                fsm_state=view.fsm_state,
+                safe_mode_reason=view.safe_mode_reason,
+                safe_exit_hits=view.safe_exit_hits,
+                safe_exit_required=view.safe_exit_required,
+                docking_hits=view.docking_hits,
+                docking_required=view.docking_required,
+                last_actuation_action=view.last_actuation_action,
+                last_actuation_status=view.last_actuation_status,
+                last_actuation_reason=view.last_actuation_reason,
+                sensor_ok=view.sensor_ok,
+                sensor_reason=view.sensor_reason,
+                sensor_truth_state=view.sensor_truth_state,
+                sensor_is_fallback=view.sensor_is_fallback,
+                range_m=view.range_m,
+                vr_mps=view.vr_mps,
+                azimuth_deg=view.azimuth_deg,
+                elevation_deg=view.elevation_deg,
+                age_s=view.age_s,
+                quality=view.quality,
+                tracks=view.tracks,
+                training_mode=True,
+                training_scenario=str(payload.get("scenario", view.training_scenario)),
+                training_title=str(payload.get("title", view.training_title)),
+                training_objective=str(payload.get("objective", view.training_objective)),
+                training_status=str(payload.get("status", view.training_status)).upper(),
+                training_elapsed_s=_parse_float(payload.get("elapsed_s")) or view.training_elapsed_s,
+                training_duration_s=_parse_float(payload.get("duration_s")) or view.training_duration_s,
+                training_score=_parse_int(payload.get("score"), view.training_score or 0)
+                if payload.get("score") is not None
+                else view.training_score,
+            )
+        elif subsystem == "TRAINING" and event_type == "TRAINING_RESULT":
+            metrics = payload.get("metrics", {})
+            if not isinstance(metrics, dict):
+                metrics = {}
+            view = _ViewModel(
+                fsm_state=view.fsm_state,
+                safe_mode_reason=view.safe_mode_reason,
+                safe_exit_hits=view.safe_exit_hits,
+                safe_exit_required=view.safe_exit_required,
+                docking_hits=view.docking_hits,
+                docking_required=view.docking_required,
+                last_actuation_action=view.last_actuation_action,
+                last_actuation_status=view.last_actuation_status,
+                last_actuation_reason=view.last_actuation_reason,
+                sensor_ok=view.sensor_ok,
+                sensor_reason=view.sensor_reason,
+                sensor_truth_state=view.sensor_truth_state,
+                sensor_is_fallback=view.sensor_is_fallback,
+                range_m=view.range_m,
+                vr_mps=view.vr_mps,
+                azimuth_deg=view.azimuth_deg,
+                elevation_deg=view.elevation_deg,
+                age_s=view.age_s,
+                quality=view.quality,
+                tracks=view.tracks,
+                training_mode=True,
+                training_scenario=str(payload.get("scenario", view.training_scenario)),
+                training_title=view.training_title,
+                training_objective=view.training_objective,
+                training_status=str(payload.get("verdict", view.training_status)).upper(),
+                training_elapsed_s=view.training_elapsed_s,
+                training_duration_s=view.training_duration_s,
+                training_score=_parse_int(payload.get("score"), _parse_int(metrics.get("score"), view.training_score or 0)),
             )
     return view
 
@@ -540,6 +639,21 @@ def render_terminal_screen(
             f"cursor={active_view_state.alerts.cursor} selected={active_view_state.alerts.selected_situation_id or '-'}"
         ),
     ]
+    if view.training_mode:
+        score_text = "-" if view.training_score is None else str(view.training_score)
+        hud.extend(
+            [
+                (
+                    f"TRAINING: {view.training_scenario or 'N/A'} "
+                    f"status={view.training_status or 'IN_PROGRESS'}"
+                ),
+                (
+                    f"TRAINING TIMER: {view.training_elapsed_s:.1f}/{max(0.0, view.training_duration_s):.1f}s "
+                    f"score={score_text}"
+                ),
+                f"TRAINING GOAL: {view.training_objective or 'N/A'}",
+            ]
+        )
     inspector_lines = _build_inspector(scene, active_view_state, view, situations)
     radar_title = ["", "[ RADAR ]"]
     log_title = ["", "[ INSPECTOR ]", *inspector_lines, "", "[ EVENT LOG ]"]
