@@ -27,7 +27,7 @@ from .radar_plugins import (
     SituationalAnalysisPlugin,
     register_builtin_radar_plugins,
 )
-from .radar_replay import RadarReplayEngine, TimelineState, load_trace
+from .radar_replay import RadarReplayEngine, TimelineState, load_trace, load_trace_from_db
 from .radar_render_policy import DegradationState, RadarRenderPlan, RadarRenderPolicy
 from .radar_situation_engine import Situation, SituationSeverity, SituationStatus
 from .radar_trail_store import RadarTrailStore
@@ -126,6 +126,7 @@ class RadarPipeline:
         }
         replay_from_env = os.getenv("RADAR_REPLAY_FILE", "").strip()
         self._replay_file = (replay_file if replay_file is not None else replay_from_env).strip()
+        self._replay_db = os.getenv("RADAR_REPLAY_DB", "").strip()
         try:
             replay_speed = float(os.getenv("RADAR_REPLAY_SPEED", "1.0") or "1.0")
         except Exception:
@@ -136,6 +137,8 @@ class RadarPipeline:
         self._replay_init_payload: dict[str, Any] | None = None
         if self._replay_file:
             self._init_replay(self._replay_file)
+        elif self._replay_db:
+            self._init_replay_db(self._replay_db)
         self.fusion_config = self.fusion_plugin.config
         self.view_state = RadarViewState.from_env()
         load_result = self.policy_plugin.load_profile()
@@ -246,6 +249,29 @@ class RadarPipeline:
         )
         self._replay_init_payload = {
             "replay_file": replay_file,
+            "speed": self._replay_speed,
+            "step": self._replay_step,
+        }
+
+    def _init_replay_db(self, replay_db: str) -> None:
+        try:
+            events = load_trace_from_db(str(replay_db))
+        except Exception as exc:  # noqa: BLE001
+            if self._replay_strict:
+                raise RuntimeError(f"Failed to load replay DB: {replay_db}: {exc}") from exc
+            self._replay_init_warning = f"DB_LOAD_FAILED:{exc}"
+            return
+        initial_ts = float(events[0].get("ts", 0.0)) if events else 0.0
+        replay_clock = ReplayClock(current_ts=initial_ts)
+        self._clock = replay_clock
+        self._replay_engine = RadarReplayEngine(
+            events,
+            speed=self._replay_speed,
+            step=self._replay_step,
+            clock=replay_clock,
+        )
+        self._replay_init_payload = {
+            "replay_db": replay_db,
             "speed": self._replay_speed,
             "step": self._replay_step,
         }

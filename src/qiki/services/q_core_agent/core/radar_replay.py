@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -31,6 +32,73 @@ def load_trace(path: str) -> list[dict[str, Any]]:
                 rows.append(parsed)
     rows.sort(key=lambda item: float(item.get("ts", 0.0)))
     return rows
+
+
+def load_trace_from_db(
+    db_path: str,
+    *,
+    from_ts: float | None = None,
+    to_ts: float | None = None,
+    types: set[str] | None = None,
+    subsystems: set[str] | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    connection = sqlite3.connect(str(db_path), timeout=30.0)
+    try:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if from_ts is not None:
+            clauses.append("ts >= ?")
+            params.append(float(from_ts))
+        if to_ts is not None:
+            clauses.append("ts <= ?")
+            params.append(float(to_ts))
+        if types:
+            placeholders = ",".join("?" for _ in types)
+            clauses.append(f"event_type IN ({placeholders})")
+            params.extend(sorted(types))
+        if subsystems:
+            placeholders = ",".join("?" for _ in subsystems)
+            clauses.append(f"subsystem IN ({placeholders})")
+            params.extend(sorted(subsystems))
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        limit_sql = ""
+        if limit is not None:
+            limit_sql = " LIMIT ?"
+            params.append(max(1, int(limit)))
+        rows = connection.execute(
+            f"""
+            SELECT ts, subsystem, event_type, truth_state, payload_json
+            FROM events
+            {where_sql}
+            ORDER BY ts ASC, id ASC
+            {limit_sql}
+            """,
+            params,
+        ).fetchall()
+    finally:
+        connection.close()
+
+    events: list[dict[str, Any]] = []
+    for ts, subsystem, event_type, truth_state, payload_json in rows:
+        try:
+            payload = json.loads(str(payload_json))
+            payload_dict = payload if isinstance(payload, dict) else {}
+        except Exception:
+            payload_dict = {}
+        events.append(
+            {
+                "schema_version": 1,
+                "ts": float(ts),
+                "subsystem": str(subsystem),
+                "event_type": str(event_type),
+                "truth_state": str(truth_state or ""),
+                "reason": str(payload_dict.get("reason", "")),
+                "payload": payload_dict,
+                "session_id": str(payload_dict.get("session_id", "")),
+            }
+        )
+    return events
 
 
 class RadarReplayEngine:

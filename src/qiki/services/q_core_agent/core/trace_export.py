@@ -200,7 +200,15 @@ def export_event_store_jsonl_async(
         truth_state=TruthState.OK,
         reason="TRACE_EXPORT_STARTED",
     )
-    snapshot = event_store.snapshot()
+    snapshot = event_store.query(
+        from_ts=normalized_filter.from_ts,
+        to_ts=normalized_filter.to_ts,
+        types=set(normalized_filter.types),
+        subsystems=set(normalized_filter.subsystems),
+        truth_states=set(normalized_filter.truth_states),
+        limit=normalized_filter.max_lines,
+        order="asc",
+    )
     writer = _AsyncJsonlWriter(str(out_path))
     lines_written = 0
     try:
