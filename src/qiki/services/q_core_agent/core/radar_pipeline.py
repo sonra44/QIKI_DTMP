@@ -219,6 +219,10 @@ class RadarPipeline:
         self._perf_situation_events = 0
         self._perf_targets_count = 0
 
+    def close(self) -> None:
+        if self.event_store is not None:
+            self.event_store.close()
+
     @property
     def active_backend_name(self) -> str:
         return self._active_backend.name

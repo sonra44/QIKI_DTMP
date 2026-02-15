@@ -132,7 +132,7 @@ def run_harness(args: argparse.Namespace) -> LoadSummary:
 
         return summary
     finally:
-        store.close()
+        pipeline.close()
 
 
 def main(argv: list[str] | None = None) -> int:

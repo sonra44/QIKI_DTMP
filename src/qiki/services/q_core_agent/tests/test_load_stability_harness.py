@@ -163,3 +163,30 @@ def test_load_replay_stress_long_trace_deterministic(tmp_path: Path) -> None:
         assert replay_fused == baseline_fused
     finally:
         replay_store.close()
+
+
+@pytest.mark.load
+def test_load_strict_failure_still_closes_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("QIKI_LOAD_STRICT", "1")
+    called = {"count": 0}
+    original_close = RadarPipeline.close
+
+    def _spy_close(self: RadarPipeline) -> None:
+        called["count"] += 1
+        original_close(self)
+
+    monkeypatch.setattr(RadarPipeline, "close", _spy_close)
+
+    with pytest.raises(RuntimeError, match="avg_frame_ms exceeded threshold"):
+        run_harness(
+            _args(
+                scenario="single_target_stable",
+                duration=2.0,
+                targets=1,
+                sqlite="on",
+                db_path=str(tmp_path / "strict_close.sqlite"),
+                avg_threshold=0.0,
+                max_threshold=999.0,
+            )
+        )
+    assert called["count"] == 1
