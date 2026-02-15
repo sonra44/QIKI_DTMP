@@ -438,6 +438,16 @@ class EventStore:
             self._sqlite_conn.close()
             self._sqlite_conn = None
 
+    @property
+    def sqlite_queue_depth(self) -> int:
+        if self._sqlite_writer is None:
+            return 0
+        return int(self._sqlite_writer.queue_depth)
+
+    @property
+    def sqlite_dropped_events(self) -> int:
+        return int(self._sqlite_dropped)
+
     def export_jsonl(self, path: str) -> int:
         out_path = Path(path)
         out_path.parent.mkdir(parents=True, exist_ok=True)

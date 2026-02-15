@@ -15,7 +15,6 @@ from .plugin_manager import PluginContext, PluginManager
 from .radar_clock import Clock, ReplayClock, ensure_clock
 from .radar_fusion import (
     FusionCluster,
-    FusionConfig,
     FusedTrack,
 )
 from .radar_ingestion import Observation, SourceTrack
@@ -67,6 +66,28 @@ class AdaptivePolicyState:
     consecutive_high: int = 0
     consecutive_low: int = 0
     last_change_ts: float = 0.0
+
+
+@dataclass(frozen=True)
+class PerformanceMetrics:
+    frame_times_ms: tuple[float, ...]
+    queue_depth: int
+    dropped_events: int
+    fusion_rebuilds: int
+    situation_events: int
+    targets_count: int
+
+    @property
+    def avg_frame_ms(self) -> float:
+        if not self.frame_times_ms:
+            return 0.0
+        return float(sum(self.frame_times_ms) / len(self.frame_times_ms))
+
+    @property
+    def max_frame_ms(self) -> float:
+        if not self.frame_times_ms:
+            return 0.0
+        return float(max(self.frame_times_ms))
 
 
 class RadarPipeline:
@@ -193,6 +214,10 @@ class RadarPipeline:
         self._tracks_by_source: dict[str, list[SourceTrack]] = {}
         self._last_fused_signatures: dict[str, tuple[object, ...]] = {}
         self._last_cluster_signatures: set[tuple[object, ...]] = set()
+        self._perf_frame_times_ms: list[float] = []
+        self._perf_fusion_rebuilds = 0
+        self._perf_situation_events = 0
+        self._perf_targets_count = 0
 
     @property
     def active_backend_name(self) -> str:
@@ -601,6 +626,21 @@ class RadarPipeline:
             )
         return self.render_scene(scene, view_state=view_state)
 
+    def snapshot_metrics(self) -> PerformanceMetrics:
+        queue_depth = 0
+        dropped_events = 0
+        if self.event_store is not None:
+            queue_depth = int(self.event_store.sqlite_queue_depth)
+            dropped_events = int(self.event_store.sqlite_dropped_events)
+        return PerformanceMetrics(
+            frame_times_ms=tuple(self._perf_frame_times_ms),
+            queue_depth=queue_depth,
+            dropped_events=dropped_events,
+            fusion_rebuilds=int(self._perf_fusion_rebuilds),
+            situation_events=int(self._perf_situation_events),
+            targets_count=int(self._perf_targets_count),
+        )
+
     def _append_fusion_events(
         self,
         *,
@@ -651,6 +691,7 @@ class RadarPipeline:
             next_signatures[track.fused_id] = signature
             if self._last_fused_signatures.get(track.fused_id) == signature:
                 continue
+            self._perf_fusion_rebuilds += 1
             self.event_store.append_new(
                 subsystem="FUSION",
                 event_type="FUSED_TRACK_UPDATED",
@@ -719,6 +760,7 @@ class RadarPipeline:
     def _append_situation_events(self, scene: RadarScene, deltas: list) -> None:
         if self.event_store is None or not deltas:
             return
+        self._perf_situation_events += int(len(deltas))
         truth_state = self._normalize_truth_state(scene.truth_state)
         for delta in deltas:
             situation = delta.situation
@@ -776,6 +818,8 @@ class RadarPipeline:
             truth_state=truth_state,
             reason=",".join(reasons) if reasons else "OK",
         )
+        self._perf_frame_times_ms.append(float(stats.frame_time_ms))
+        self._perf_targets_count = int(stats.targets_count)
 
     def _normalize_truth_state(self, value: str) -> TruthState:
         normalized = str(value or "").upper()
