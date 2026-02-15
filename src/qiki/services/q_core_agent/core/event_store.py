@@ -115,7 +115,7 @@ class _SQLiteEventWriter:
         except queue.Full:
             # force wait only during shutdown path
             self._queue.put(self._sentinel)
-        self._thread.join(timeout=5.0)
+        self._thread.join()
 
     def append_row(self, row: tuple) -> bool:
         try:
@@ -417,8 +417,11 @@ class EventStore:
 
     def close(self) -> None:
         if self._sqlite_writer is not None:
-            self._sqlite_writer.close()
+            writer = self._sqlite_writer
+            writer.close()
             self._sqlite_writer = None
+            if writer.last_error is not None and self.strict:
+                raise RuntimeError(f"eventstore sqlite writer failed during close: {writer.last_error}")
         if self._sqlite_conn is not None:
             self._sqlite_conn.close()
             self._sqlite_conn = None

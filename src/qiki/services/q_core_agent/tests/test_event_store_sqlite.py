@@ -88,6 +88,36 @@ def test_sqlite_retention_deletes_old_events(tmp_path: Path) -> None:
     store.close()
 
 
+def test_sqlite_close_flushes_all_queued_events(tmp_path: Path) -> None:
+    db_path = tmp_path / "flush.sqlite"
+    store = EventStore(
+        backend="sqlite",
+        db_path=str(db_path),
+        flush_ms=200,
+        batch_size=1000,
+        queue_max=10_000,
+    )
+    total = 500
+    for idx in range(total):
+        store.append_new(
+            subsystem="FLUSH",
+            event_type="ITEM",
+            payload={"idx": idx},
+            ts=time.time(),
+        )
+    store.close()
+    reopened = EventStore(
+        backend="sqlite",
+        db_path=str(db_path),
+        flush_ms=5,
+        batch_size=100,
+        queue_max=1000,
+    )
+    rows = reopened.query(from_ts=0.0, to_ts=time.time() + 5.0, types={"ITEM"}, subsystems={"FLUSH"}, order="asc")
+    assert len(rows) == total
+    reopened.close()
+
+
 def test_pipeline_writes_events_into_sqlite(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("RADAR_FUSION_ENABLED", "1")
     db_path = tmp_path / "pipeline.sqlite"

@@ -199,66 +199,69 @@ def main():
 
     orchestrator = TickOrchestrator(agent, config, state_store=state_store)
 
-    if args.mock:
-        logger.info("Running in MOCK mode.")
-        data_provider = _MOCK_DATA_PROVIDER
+    try:
+        if args.mock:
+            logger.info("Running in MOCK mode.")
+            data_provider = _MOCK_DATA_PROVIDER
 
-        if use_statestore:
-            # Async режим с StateStore
-            asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
-        else:
-            # Legacy sync режим
-            try:
-                while True:
-                    orchestrator.run_tick(data_provider)
-                    logger.info("--- Input Messages (Mock) ---")
-                    logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
-                    logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
-                    logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
-                    logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
-                    time.sleep(config.tick_interval)
-            except KeyboardInterrupt:
-                logger.info("Mock run stopped by user.")
-    elif args.grpc:
-        logger.info("Running in GRPC mode (connecting to Q-Sim Service via gRPC).")
-        data_provider = GrpcDataProvider(config.grpc_server_address)
+            if use_statestore:
+                # Async режим с StateStore
+                asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
+            else:
+                # Legacy sync режим
+                try:
+                    while True:
+                        orchestrator.run_tick(data_provider)
+                        logger.info("--- Input Messages (Mock) ---")
+                        logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
+                        logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
+                        logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
+                        logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
+                        time.sleep(config.tick_interval)
+                except KeyboardInterrupt:
+                    logger.info("Mock run stopped by user.")
+        elif args.grpc:
+            logger.info("Running in GRPC mode (connecting to Q-Sim Service via gRPC).")
+            data_provider = GrpcDataProvider(config.grpc_server_address)
 
-        if use_statestore:
-            # Async режим с StateStore
-            asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
+            if use_statestore:
+                # Async режим с StateStore
+                asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
+            else:
+                # Legacy sync режим
+                try:
+                    while True:
+                        orchestrator.run_tick(data_provider)
+                        logger.info("--- Input Messages (gRPC) ---")
+                        logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
+                        logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
+                        logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
+                        logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
+                        time.sleep(config.tick_interval)
+                except KeyboardInterrupt:
+                    logger.info("gRPC run stopped by user.")
         else:
-            # Legacy sync режим
-            try:
-                while True:
-                    orchestrator.run_tick(data_provider)
-                    logger.info("--- Input Messages (gRPC) ---")
-                    logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
-                    logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
-                    logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
-                    logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
-                    time.sleep(config.tick_interval)
-            except KeyboardInterrupt:
-                logger.info("gRPC run stopped by user.")
-    else:
-        logger.info("Running in GRPC mode (default, no direct Q-Sim import).")
-        data_provider = GrpcDataProvider(config.grpc_server_address)
+            logger.info("Running in GRPC mode (default, no direct Q-Sim import).")
+            data_provider = GrpcDataProvider(config.grpc_server_address)
 
-        if use_statestore:
-            # Async режим с StateStore
-            asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
-        else:
-            # Legacy sync режим
-            try:
-                while True:
-                    orchestrator.run_tick(data_provider)
-                    logger.info("--- Input Messages (gRPC default) ---")
-                    logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
-                    logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
-                    logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
-                    logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
-                    time.sleep(config.tick_interval)
-            except KeyboardInterrupt:
-                logger.info("gRPC default run stopped by user.")
+            if use_statestore:
+                # Async режим с StateStore
+                asyncio.run(run_with_statestore(agent, orchestrator, data_provider, config))
+            else:
+                # Legacy sync режим
+                try:
+                    while True:
+                        orchestrator.run_tick(data_provider)
+                        logger.info("--- Input Messages (gRPC default) ---")
+                        logger.info(f"BIOS: {_safe_model_dump_json(data_provider.get_bios_status())}")
+                        logger.info(f"FSM: {_safe_model_dump_json(agent.context.fsm_state)}")
+                        logger.info(f"Proposals: {[_safe_model_dump_json(p) for p in data_provider.get_proposals()]}")
+                        logger.info(f"Sensor: {_safe_model_dump_json(data_provider.get_sensor_data())}")
+                        time.sleep(config.tick_interval)
+                except KeyboardInterrupt:
+                    logger.info("gRPC default run stopped by user.")
+    finally:
+        agent.context.event_store.close()
 
 
 if __name__ == "__main__":

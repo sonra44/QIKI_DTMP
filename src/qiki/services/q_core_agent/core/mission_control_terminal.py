@@ -70,16 +70,26 @@ class MissionControlTerminal:
         self.autopilot_enabled = False
         self.running = True
         self.last_cycle: Optional[Dict[str, str]] = None
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        pipeline_store = getattr(self.radar_pipeline, "event_store", None)
+        if pipeline_store is not None and pipeline_store is not self.event_store:
+            pipeline_store.close()
+        self.event_store.close()
 
     def run(self, *, real_input: bool = False) -> None:
         """Запускает основной цикл терминала."""
 
-        print(f"{self.variant_name} готов. Команда 'help' покажет список команд.")
-        if real_input:
-            status = self.live_radar_loop(prefer_real=True)
-            if status == 0:
-                return
         try:
+            print(f"{self.variant_name} готов. Команда 'help' покажет список команд.")
+            if real_input:
+                status = self.live_radar_loop(prefer_real=True)
+                if status == 0:
+                    return
             while self.running:
                 if self.autopilot_enabled:
                     self.last_cycle = self.logic_controller.process_logic_cycle()
@@ -92,6 +102,8 @@ class MissionControlTerminal:
                     break
         except KeyboardInterrupt:
             print("\nСессия прервана пользователем.")
+        finally:
+            self.close()
 
     def configure_radar_pipeline(self, *, renderer: str | None = None, fps: int | None = None) -> None:
         """Apply renderer/fps overrides for live/replay loops."""
@@ -250,25 +262,31 @@ class MissionControlTerminal:
             print(f"Replay trace not found: {path}")
             return 2
         events = load_trace(str(path))
+        pipeline: RadarPipeline | None = None
         try:
             pipeline = MissionControlTerminal._build_pipeline(renderer=renderer, fps=fps, replay_file=str(path))
         except RuntimeError as exc:
             print(f"Radar backend configuration error: {exc}")
             return 2
-        if interactive or real_input:
-            return MissionControlTerminal._replay_interactive(events, pipeline, real_input=real_input)
         try:
-            if pipeline.replay_enabled:
-                while True:
-                    state = pipeline.timeline_state
-                    if state is None or state.cursor >= state.total_events:
-                        break
-                    pipeline.render_observations([])
-            print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
-        except RuntimeError as exc:
-            print(f"Radar backend configuration error: {exc}")
-            return 2
-        return 0
+            if interactive or real_input:
+                return MissionControlTerminal._replay_interactive(events, pipeline, real_input=real_input)
+            try:
+                if pipeline.replay_enabled:
+                    while True:
+                        state = pipeline.timeline_state
+                        if state is None or state.cursor >= state.total_events:
+                            break
+                        pipeline.render_observations([])
+                print(render_terminal_screen(events, pipeline=pipeline, view_state=pipeline.view_state))
+            except RuntimeError as exc:
+                print(f"Radar backend configuration error: {exc}")
+                return 2
+            return 0
+        finally:
+            pipeline_store = getattr(pipeline, "event_store", None)
+            if pipeline_store is not None:
+                pipeline_store.close()
 
     @staticmethod
     def _build_pipeline(
@@ -799,8 +817,11 @@ def main() -> None:
             )
         )
     terminal = MissionControlTerminal()
-    terminal.configure_radar_pipeline(renderer=args.renderer, fps=args.fps)
-    terminal.run(real_input=args.real_input)
+    try:
+        terminal.configure_radar_pipeline(renderer=args.renderer, fps=args.fps)
+        terminal.run(real_input=args.real_input)
+    finally:
+        terminal.close()
 
 
 if __name__ == "__main__":
