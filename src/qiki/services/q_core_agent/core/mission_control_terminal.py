@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import socket
 import sys
 import time
 from pathlib import Path
@@ -40,6 +39,7 @@ from qiki.services.q_core_agent.core.radar_replay import load_trace  # noqa: E40
 from qiki.services.q_core_agent.core.radar_clock import ReplayClock  # noqa: E402
 from qiki.services.q_core_agent.core.session_client import SessionClient  # noqa: E402
 from qiki.services.q_core_agent.core.session_server import SessionServer  # noqa: E402
+from qiki.services.q_core_agent.core.orion_shell_runtime import OrionShellRuntimeConfig  # noqa: E402
 from qiki.services.q_core_agent.core.terminal_radar_renderer import (  # noqa: E402
     build_scene_from_events,
     render_terminal_screen,
@@ -66,28 +66,14 @@ class MissionControlTerminal:
     def __init__(self, variant_name: str = "Mission Control Terminal"):
         self.variant_name = variant_name
         q_core_agent_root = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-        self.qiki_mode = os.getenv("QIKI_MODE", "production").strip().lower() or "production"
-        session_mode_env = os.getenv("QIKI_SESSION_MODE", "standalone").strip().lower() or "standalone"
-        if self.qiki_mode == "training" and session_mode_env == "standalone":
-            self.session_mode = "standalone"
-        else:
-            self.session_mode = session_mode_env
-        self.session_host = os.getenv("QIKI_SESSION_HOST", "127.0.0.1").strip() or "127.0.0.1"
-        try:
-            self.session_port = int(os.getenv("QIKI_SESSION_PORT", "8765"))
-        except Exception:
-            self.session_port = 8765
-        self.session_client_id = (
-            os.getenv("QIKI_SESSION_CLIENT_ID", "").strip() or f"{socket.gethostname()}-{os.getpid()}"
-        )
-        self.session_client_role = os.getenv("QIKI_SESSION_ROLE", "controller").strip().lower() or "controller"
-        self.session_token = os.getenv("QIKI_SESSION_TOKEN", "").strip()
-
-        if self.qiki_mode == "training":
-            os.environ.setdefault("QIKI_PLUGINS_PROFILE", "training")
-            os.environ.setdefault("EVENTSTORE_BACKEND", "sqlite")
-            os.environ.setdefault("EVENTSTORE_DB_PATH", "artifacts/training_eventstore.sqlite")
-            os.environ.setdefault("RADAR_EMIT_OBSERVATION_RX", "0")
+        self.runtime_config = OrionShellRuntimeConfig.from_env()
+        self.qiki_mode = self.runtime_config.qiki_mode
+        self.session_mode = self.runtime_config.session_mode
+        self.session_host = self.runtime_config.session_host
+        self.session_port = self.runtime_config.session_port
+        self.session_client_id = self.runtime_config.session_client_id
+        self.session_client_role = self.runtime_config.session_client_role
+        self.session_token = self.runtime_config.session_token
 
         self.event_store = EventStore.from_env()
         self.radar_pipeline: RadarPipeline | None = None
