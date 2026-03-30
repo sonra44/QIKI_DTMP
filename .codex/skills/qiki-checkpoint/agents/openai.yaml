@@ -1,0 +1,4 @@
+interface:
+  display_name: "QIKI Checkpoint"
+  short_description: "Closes QIKI loops with proof."
+  default_prompt: "Use $qiki-checkpoint to close this QIKI_DTMP loop with STATUS, TODO_NEXT, DECISIONS, and recall-proof IDs."

@@ -1,0 +1,5 @@
+services:
+  operator-console:
+    # Transitional override kept for compatibility.
+    # Canonical supported overlay is docker-compose.operator.yml, which already launches main_orion_v.py.
+    command: python -m qiki.services.operator_console.main_orion_v

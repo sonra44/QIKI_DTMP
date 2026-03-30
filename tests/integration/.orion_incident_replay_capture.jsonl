@@ -1,0 +1,1 @@
+{"schema_version": 1, "type": "event", "ts_epoch": 1772725000.0, "subject": "qiki.events.v1.audit", "data": {"incident_id": "TEMP_CORE_TRIP|sensor|thermal|core", "rule_id": "TEMP_CORE_TRIP", "severity": "C", "description": "core thermal trip replay proof", "ts_unix_ms": 1772725000000}}

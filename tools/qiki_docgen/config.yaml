@@ -1,0 +1,63 @@
+# qiki-docgen Configuration
+# Настройки для инструмента автоматизации документации
+
+# Пути к основным директориям проекта
+paths:
+  # Протоколы и схемы
+  protos_dir: "protos"
+  generated_dir: "generated"
+  
+  # Документация
+  docs_dir: "docs"
+  design_dir: "docs/design"
+  templates_dir: "tools/qiki_docgen/templates"
+  
+  # Дополнительные include пути для protoc (зависят от системы)
+  protoc_includes:
+    - "/usr/include"                               # Linux/MacOS
+    - "/data/data/com.termux/files/usr/include"   # Termux Android
+    - "/opt/homebrew/include"                     # MacOS Homebrew
+    - "C:/vcpkg/installed/x64-windows/include"    # Windows vcpkg
+
+# Настройки компиляции protobuf
+protoc:
+  # Флаги для генерации Python кода
+  python_flags:
+    - "--python_out"
+  
+  # Дополнительные опции
+  options:
+    generate_pyi: false      # Генерировать .pyi файлы для типизации
+    package_relative: true   # Относительные импорты в пакете
+
+# Настройки генерации документов
+generation:
+  # Шаблоны по умолчанию
+  default_template: "default"
+  
+  # Поддерживаемые шаблоны
+  available_templates:
+    - "default"
+    - "minimal"
+    - "advanced"
+  
+  # Настройки README генерации
+  readme:
+    include_proto_stats: true
+    include_component_metadata: true
+    max_overview_length: 500
+
+# Настройки логирования
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+# Проверки совместимости
+compatibility:
+  min_python_version: "3.8"
+  required_commands:
+    - "protoc"
+  
+  # Проверка версий
+  check_protoc_version: true
+  min_protoc_version: "3.12.0"

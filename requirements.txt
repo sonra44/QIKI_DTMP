@@ -1,0 +1,20 @@
+# QIKI_DTMP Project Dependencies
+
+# Core dependencies
+PyYAML>=6.0
+protobuf>=4.21.0
+
+# Data Validation & Modeling (Core)
+pydantic>=2.0.0
+pydantic[email]>=2.0.0
+
+# gRPC dependencies for IPC between services
+# NOTE: 1.78.1 is yanked upstream, but generated stubs currently require 1.78.1.
+# Use exact pins for deterministic installs (range selectors may skip yanked builds).
+grpcio==1.78.1
+grpcio-tools==1.78.1
+
+# Logging and utilities
+colorlog
+setuptools
+psutil>=7.0.0

@@ -1,0 +1,74 @@
+{
+  "_notice": "REFERENCE / INSTALL INVENTORY ONLY. Repo-local skill inventory for QIKI_DTMP/.codex/skills; not an active Codex runtime authority, not a memory owner, and not a canon/status source. Active execution uses ~/.codex with selected project skills linked there.",
+  "generated": "2026-03-29",
+  "host_root": "/home/sonra44",
+  "project": "QIKI_DTMP",
+  "global_count": 26,
+  "project_count": 14,
+  "duplicate_count": 6,
+  "disabled_count": 2,
+  "disabled_skills": [
+    {
+      "scope": "global",
+      "name": "onecontext",
+      "disabled_path": "/home/sonra44/.codex/skills_disabled/onecontext"
+    },
+    {
+      "scope": "project",
+      "name": "qiki-onecontext-tmux",
+      "disabled_path": "/home/sonra44/QIKI_DTMP/.codex/skills_disabled/qiki-onecontext-tmux"
+    }
+  ],
+  "duplicates": [
+    "context-persistence-health",
+    "orion-operator-smoke",
+    "qiki-bootstrap",
+    "qiki-checkpoint",
+    "qiki-drift-audit",
+    "sovmem-health"
+  ],
+  "global_skills": [
+    "commit-work",
+    "context-persistence-health",
+    "futura-design-system",
+    "futura-vpn-portal",
+    "gh-address-comments",
+    "gh-fix-ci",
+    "notion-knowledge-capture",
+    "notion-meeting-intelligence",
+    "notion-research-documentation",
+    "notion-spec-to-implementation",
+    "orion-operator-smoke",
+    "qiki-bootstrap",
+    "qiki-canon-passport",
+    "qiki-checkpoint",
+    "qiki-command-policy-map",
+    "qiki-drift-audit",
+    "qiki-legacy-split-audit",
+    "qiki-provenance-map",
+    "reducing-entropy",
+    "security-best-practices",
+    "security-ownership-map",
+    "security-threat-model",
+    "session-handoff",
+    "sovmem-health",
+    "space-sim-builder",
+    "writing-clearly-and-concisely"
+  ],
+  "project_skills": [
+    "context-persistence-health",
+    "orion-operator-smoke",
+    "orion-v-task-image-audit",
+    "orion-v-top-zone-redesign",
+    "orion-v-ui-redesign",
+    "qiki-bootstrap",
+    "qiki-checkpoint",
+    "qiki-doc-principles",
+    "qiki-drift-audit",
+    "qiki-intent-ownership-guardian",
+    "qiki-record-replay-analyst",
+    "qiki-runtime-contour-verifier",
+    "qiki-sensor-plane-auditor",
+    "sovmem-health"
+  ]
+}

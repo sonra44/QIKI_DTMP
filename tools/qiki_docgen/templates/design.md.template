@@ -1,0 +1,49 @@
+---
+component_name: {{ component_name }}
+version: 0.1.0
+author: Your Name/Team
+created_at: {{ "now" | date("%Y-%m-%d") }}
+template: default
+---
+
+# Дизайн: {{ component_name }}
+
+## 0. Мета-информация
+- **Версия:** {{ version }}
+- **Автор:** {{ author }}
+- **Дата создания:** {{ created_at }}
+
+## 1. Обзор
+
+*Назначение и краткое описание компонента {{ component_name }}.*
+
+## 2. Архитектура и Дизайн
+
+*Описание архитектуры, ключевых решений и диаграмма (Mermaid).*
+
+```mermaid
+graph TD
+    A[Start] --> B(Process)
+    B --> C{Decision}
+    C -->|Yes| D[End]
+    C -->|No| B
+```
+
+## 3. API Контракты
+
+*   **Protobuf:** `protos/{{ component_name | lower }}.proto`
+*   *Добавьте ссылки на сгенерированные схемы или документацию API здесь.*
+
+## 4. Анти-паттерны
+
+*Что следует избегать при работе с этим компонентом.*
+
+## 5. Открытые Вопросы
+
+*Список нерешенных вопросов.*
+
+## 6. Тест-кейсы и CI
+
+*   **Unit-тесты:** `services/q_core_agent/tests/test_{{ component_name | lower }}.py` (пример)
+*   **Интеграционные тесты:** Описание сценариев интеграционных тестов.
+*   **CI/CD:** Указать, как этот компонент тестируется в CI (например, ссылка на GitHub Actions workflow).

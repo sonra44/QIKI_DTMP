@@ -1,0 +1,56 @@
+#
+# Operator Console overlay for Phase1 stack.
+#
+# Usage:
+#   docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up -d operator-console
+#
+
+services:
+  operator-console:
+    build:
+      context: ./src/qiki/services/operator_console
+      dockerfile: Dockerfile
+    container_name: qiki-operator-console
+    environment:
+      - QIKI_REPO_ROOT=/workspace
+      - PYTHONPATH=/workspace/src:/workspace/generated:/app
+      - NATS_URL=nats://nats:4222
+      - GRPC_HOST=q-sim-service
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - TERM=${TERM:-xterm-256color}
+      - RADAR_RENDERER=${RADAR_RENDERER:-unicode}
+      - RADAR_VIEW=${RADAR_VIEW:-top}
+      - OPERATOR_CONSOLE_COMMAND_MAX_CHARS=1024
+      # BootScreen tuning (no-mocks): visual delay only (no fake OK/%).
+      # Set higher (e.g. 10–20s) when you want the boot sequence to be observable in tmux.
+      # Set lower (e.g. 2s) for faster dev iterations.
+      - ORION_BOOT_COSMETIC_SEC=10
+    volumes:
+      - ./src:/workspace/src:ro
+      - ./generated:/workspace/generated:ro
+      - ./docs:/workspace/docs:ro
+      - ./scripts:/workspace/scripts:ro
+      - ./tools:/workspace/tools:ro
+      # Allow editing incident rules from ORION without making the whole repo writable.
+      - ./config:/workspace/config
+      # Монтируем код для разработки (hot reload)
+      - ./src/qiki/services/operator_console:/app
+      # Монтируем proto файлы
+      - ./proto:/app/proto:ro
+      # Монтируем shared модули QIKI если нужно
+      - ./src/qiki/core:/app/qiki/core:ro
+      - ./src/qiki/models:/app/qiki/models:ro
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      - nats
+      - q-sim-service
+      - q-bios-service
+    stdin_open: true  # Для интерактивного TUI
+    tty: true         # Для работы с терминалом
+    command: python main_orion_v.py
+
+networks:
+  qiki-network-phase1:

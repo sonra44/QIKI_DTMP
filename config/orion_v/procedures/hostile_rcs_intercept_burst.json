@@ -1,0 +1,16 @@
+{
+  "name": "hostile_rcs_intercept_burst",
+  "steps": [
+    {
+      "command": "sim.rcs.fire",
+      "expected_ack": "sim.rcs.fire",
+      "timeout": 2.0,
+      "parameters": {
+        "axis": "forward",
+        "pct": 35.0,
+        "duration_s": 2.0
+      },
+      "on_fail": "abort"
+    }
+  ]
+}

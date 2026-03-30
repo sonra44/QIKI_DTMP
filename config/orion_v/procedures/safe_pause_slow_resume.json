@@ -1,0 +1,21 @@
+{
+  "name": "safe_pause_slow_resume",
+  "steps": [
+    {
+      "command": "sim.pause",
+      "expected_ack": "sim.pause",
+      "timeout": 5,
+      "parameters": {},
+      "on_fail": "abort"
+    },
+    {
+      "command": "sim.start",
+      "expected_ack": "sim.start",
+      "timeout": 5,
+      "parameters": {
+        "speed": 0.25
+      },
+      "on_fail": "abort"
+    }
+  ]
+}

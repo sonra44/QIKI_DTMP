@@ -1,0 +1,8 @@
+[Unit]
+Description=QIKI context backup (sovereign-memory DB + MEMORI)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/QIKI_DTMP
+ExecStart=%h/QIKI_DTMP/scripts/backup_context.sh
+

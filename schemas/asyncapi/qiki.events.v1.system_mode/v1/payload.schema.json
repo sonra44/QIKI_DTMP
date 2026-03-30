@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qiki.events.v1.system_mode/v1/payload.schema.json",
+  "title": "qiki.events.v1.system_mode payload (v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["event_schema_version", "source", "subject", "timestamp", "mode"],
+  "properties": {
+    "event_schema_version": { "type": "integer", "const": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "const": "qiki.events.v1.system_mode" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "mode": { "type": "string", "enum": ["FACTORY", "MISSION"] }
+  }
+}
+

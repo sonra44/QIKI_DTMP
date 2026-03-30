@@ -1,0 +1,241 @@
+# Docker Compose Phase 1: Базовая среда для разработки
+# Устанавливает NATS и окружение для разработки/тестирования
+# Версия: 1.0, Дата: 2025-09-02 (воссоздание)
+
+version: '3.8'
+
+services:
+  # NATS Message Broker - ядро для FastStream
+  nats:
+    build:
+      context: .
+      dockerfile: Dockerfile.nats
+    container_name: qiki-nats-phase1
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command:
+      - "--jetstream"
+      - "--http_port"
+      - "8222"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - nats-data-phase1:/data
+    networks:
+      - qiki-network-phase1
+    tty: true
+
+  # Окружение для разработки
+  qiki-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-dev-phase1
+    volumes:
+      - ./src:/workspace/src
+      - ./generated:/workspace/generated
+      - ./config:/workspace/config
+      - ./tests:/workspace/tests
+      - ./scripts:/workspace/scripts
+      - ./tools:/workspace/tools
+      - ./proto:/workspace/proto
+      - ./protos:/workspace/protos
+      - ./proto_extensions:/workspace/proto_extensions
+      - ./pytest.ini:/workspace/pytest.ini:ro
+      - ./ruff.toml:/workspace/ruff.toml:ro
+      - ./mypy.ini:/workspace/mypy.ini:ro
+      - ./requirements.txt:/workspace/requirements.txt:ro
+      - ./requirements-dev.txt:/workspace/requirements-dev.txt:ro
+      - ./requirements-faststream.txt:/workspace/requirements-faststream.txt:ro
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+      nats-js-init:
+        condition: service_completed_successfully
+      q-sim-service:
+        condition: service_healthy
+      faststream-bridge:
+        condition: service_started
+    tty: true
+    stdin_open: true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - QIKI_USE_STATESTORE=true
+    command: bash -lc "bash tools/ensure_generated.sh && python -m qiki.services.q_core_agent.main --grpc"
+    restart: on-failure
+
+  q-sim-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-sim-phase1
+    volumes:
+      - ./src:/workspace/src
+      - ./generated:/workspace/generated
+      - ./config:/workspace/config
+      - ./tests:/workspace/tests
+      - ./scripts:/workspace/scripts
+      - ./tools:/workspace/tools
+      - ./proto:/workspace/proto
+      - ./protos:/workspace/protos
+      - ./proto_extensions:/workspace/proto_extensions
+      - ./pytest.ini:/workspace/pytest.ini:ro
+      - ./ruff.toml:/workspace/ruff.toml:ro
+      - ./mypy.ini:/workspace/mypy.ini:ro
+      - ./requirements.txt:/workspace/requirements.txt:ro
+      - ./requirements-dev.txt:/workspace/requirements-dev.txt:ro
+      - ./requirements-faststream.txt:/workspace/requirements-faststream.txt:ro
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc,sys; from generated.q_sim_api_pb2_grpc import QSimAPIServiceStub; from generated.q_sim_api_pb2 import HealthCheckRequest; ch=grpc.insecure_channel('localhost:50051'); stub=QSimAPIServiceStub(ch); stub.HealthCheck(HealthCheckRequest(), timeout=2.0)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - qiki-network-phase1
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - RADAR_ENABLED=1
+      - RADAR_NATS_ENABLED=1
+      - NATS_URL=nats://qiki-nats-phase1:4222
+    command: bash -lc "bash tools/ensure_generated.sh && python -m qiki.services.q_sim_service.grpc_server"
+    tty: true
+    stdin_open: true
+    depends_on:
+      nats:
+        condition: service_healthy
+
+  faststream-bridge:
+    build:
+      context: .
+      dockerfile: src/qiki/services/faststream_bridge/Dockerfile
+    container_name: qiki-faststream-bridge-phase1
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: on-failure
+
+  # Registrar service for event auditing
+  registrar:
+    build:
+      context: .
+      dockerfile: src/qiki/services/registrar/Dockerfile
+    container_name: qiki-registrar-phase1
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - registrar-data-phase1:/var/log/qiki
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app/src
+      - NATS_URL=nats://qiki-nats-phase1:4222
+    restart: on-failure
+
+  # Operator Console - TUI для мониторинга и управления
+  operator-console:
+    build:
+      context: ./src/qiki/services/operator_console
+      dockerfile: Dockerfile
+    container_name: qiki-operator-console
+    networks:
+      - qiki-network-phase1
+    environment:
+      - QIKI_REPO_ROOT=/workspace
+      - PYTHONPATH=/workspace/src:/workspace/generated:/app
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - GRPC_HOST=q-sim-service
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+    volumes:
+      - ./src:/workspace/src:ro
+      - ./generated:/workspace/generated:ro
+      - ./docs:/workspace/docs:ro
+      - ./scripts:/workspace/scripts:ro
+      - ./tools:/workspace/tools:ro
+      - ./config:/workspace/config
+      # Монтируем код для разработки (hot reload)
+      - ./src/qiki/services/operator_console:/app
+      # Монтируем proto файлы
+      - ./proto:/app/proto:ro
+      # Монтируем shared модули QIKI если нужно
+      - ./src/qiki/core:/app/qiki/core:ro
+      - ./src/qiki/models:/app/qiki/models:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+      q-sim-service:
+        condition: service_healthy
+    stdin_open: true  # Для интерактивного TUI
+    tty: true         # Для работы с терминалом
+    command: python main_orion_v.py
+
+  # Инициализация JetStream Stream для радарных топиков
+  nats-js-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-nats-js-init
+    networks:
+      - qiki-network-phase1
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/workspace/src:/workspace
+      - NATS_URL=nats://qiki-nats-phase1:4222
+      - RADAR_STREAM=QIKI_RADAR_V1
+      - RADAR_SUBJECTS=qiki.radar.v1.*
+      - RADAR_DUPLICATE_WINDOW_SEC=120
+      - RADAR_MAX_BYTES=10485760
+      - RADAR_MAX_AGE_SEC=3600
+      - RADAR_CONSUMER_ACK_WAIT_SEC=45
+      - RADAR_CONSUMER_MAX_DELIVER=7
+      - RADAR_CONSUMER_MAX_ACK_PENDING=512
+      - RADAR_FRAMES_DURABLE=radar_frames_pull
+      - RADAR_TRACKS_DURABLE=radar_tracks_pull
+      - EVENTS_ENABLED=1
+      - EVENTS_STREAM=QIKI_EVENTS_V1
+      - EVENTS_SUBJECTS=qiki.events.v1.>
+      - EVENTS_DUPLICATE_WINDOW_SEC=120
+      - EVENTS_MAX_BYTES=10485760
+      - EVENTS_MAX_AGE_SEC=3600
+      - EVENTS_CONSUMER_ACK_WAIT_SEC=45
+      - EVENTS_CONSUMER_MAX_DELIVER=7
+      - EVENTS_CONSUMER_MAX_ACK_PENDING=512
+      - EVENTS_AUDIT_SUBJECT=qiki.events.v1.audit
+      - EVENTS_AUDIT_DURABLE=events_audit_pull
+    command: python tools/js_init.py
+    restart: "no"
+
+
+
+
+networks:
+  qiki-network-phase1:
+    driver: bridge
+
+volumes:
+  nats-data-phase1:
+  pip-cache-phase1:
+  registrar-data-phase1:

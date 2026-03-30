@@ -1,0 +1,270 @@
+# QIKI_DTMP - Детализированное Описание Задач
+
+> HISTORICAL/REFERENCE ONLY (NOT CANON) / ИСТОРИЯ/СПРАВКА (НЕ КАНОН)  
+> Канон приоритетов (что сейчас важно) живёт только в `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.  
+> Этот файл не является «Now/Next/Backlog» и не должен использоваться как источник текущих приоритетов.  
+> Marked: 2026-01-22
+
+**Связанный документ (исторический):** `TASK_LIST.md`  
+**Назначение:** Историческое техническое описание задач (reference, не канон)  
+**Обновлено:** 2025-10-07 07:03
+
+---
+
+## 🔥 **КРИТИЧЕСКИЙ ПРИОРИТЕТ**
+
+### **P1-001: Исправить оставшиеся 7 тестов**
+**Статус:** TODO | **Время:** 2-3ч | **Компонент:** Testing
+
+**Описание:**
+Довести test success rate с текущих 68% (15 passed, 7 failed) до 80%+
+
+**Конкретные failing тесты:**
+1. `test_qcoreagent_run_tick_updates_context` - контекстные assertions
+2. `test_fsm_handler_booting_to_error_on_bios_fail` - FSM состояния
+3. `test_fsm_handler_idle_to_active_on_proposals` - FSM переходы
+4. `test_fsm_handler_active_to_idle_on_no_proposals` - FSM переходы
+5. `test_fsm_handler_error_to_idle_on_recovery` - FSM восстановление
+6. `test_proposal_evaluator_priority_selection` - ProposalEvaluator логика
+7. `test_rule_engine_generates_safe_mode_proposal_on_bios_error` - RuleEngine
+
+**Definition of Done:**
+- [ ] Все 7 тестов проходят успешно
+- [ ] Test success rate ≥ 80%
+- [ ] Проблемы в schema/DeviceStatus исправлены
+- [ ] Нет регрессий в existing тестах
+
+**Команды для проверки:**
+```bash
+python -m pytest services/q_core_agent/tests/ --tb=no -q
+```
+
+---
+
+### **P1-002: Обновить документацию по протоколу**
+**Статус:** TODO | **Время:** 1ч | **Компонент:** Documentation
+
+**Описание:**
+Синхронизировать документацию согласно DOCUMENTATION_UPDATE_PROTOCOL.md
+
+**Файлы для обновления:**
+- `CLAUDE_MEMORY.md` - новые показатели готовности (88-93%)
+- `CONTEXT/CURRENT_STATE.md` - статус тестирования (68% → 80%+ success rate) **[архив, см. CURRENT_STATE.md]**
+- `IMPLEMENTATION_ROADMAP.md` - актуализация Phase статусов
+- `PROJECT_MAP.md` - отражение текущих изменений
+
+**Definition of Done:**
+- [ ] Все ключевые документы обновлены
+- [ ] Метрики готовности актуализированы
+- [ ] Cross-references между документами проверены
+- [ ] Changelog добавлен в каждый обновленный файл
+
+---
+
+## 🚨 **ВЫСОКИЙ ПРИОРИТЕТ**
+
+### **P2-001: Q-Operator Console MVP**
+**Статус:** TODO | **Время:** 1-2 недели | **Компонент:** UX/UI
+
+**Описание:**
+Создание основного интерфейса для операторов системы
+
+**Компоненты MVP:**
+1. **CLI Dashboard** - интерактивная командная строка для операторов
+2. **TUI Monitor** - real-time мониторинг системы (htop-style)
+3. **Web Interface** - базовый веб-интерфейс для удаленного управления
+
+**Технический стек:**
+- CLI: Python Click + Rich
+- TUI: Python Rich/Textual
+- Web: FastAPI + простой HTML/CSS
+
+**Definition of Done:**
+- [ ] CLI команды для основных операций (status, logs, commands)
+- [ ] TUI с real-time метриками (CPU, память, task status)
+- [ ] Web интерфейс с базовой функциональностью
+- [ ] Документация пользователя
+- [ ] Unit тесты для CLI команд
+
+---
+
+### **P2-002: Event Store Implementation**
+**Статус:** TODO | **Время:** 1 неделя | **Компонент:** Backend
+
+**Описание:**
+Реализация персистентного хранилища событий для production-ready надежности
+
+**Компоненты:**
+1. **SQLite хранилище** - простое, но надежное решение
+2. **Event Sourcing** - воспроизводимость всех операций
+3. **State Recovery** - восстановление после сбоев
+4. **Audit Trail** - полная трассировка действий
+
+**Техническая реализация:**
+- SQLite database с таблицами events, snapshots, metadata
+- Event serialization через Protobuf/JSON
+- Recovery механизм через replay events
+- Integration с AsyncStateStore
+
+**Definition of Done:**
+- [ ] SQLite schema создана и мигрирует
+- [ ] Event store API реализован
+- [ ] State recovery работает
+- [ ] Performance тесты (>1000 events/sec)
+- [ ] Integration с существующим StateStore
+
+---
+
+### **P2-003: STEP-A Аллокатор тяги**
+**Статус:** IN_PROGRESS | **Время:** 1 неделя | **Компонент:** Propulsion
+
+**Описание:**
+Реализация системы распределения тяги для 16 RCS двигателей с учетом энергетических ограничений
+
+**Техническая реализация:**
+- **QP/NNLS алгоритм** для оптимального распределения тяги
+- **PWPF (Pulse Width Pulse Frequency)** для управления импульсами
+- **HESS ограничения** - учет P_peak (45кВт), SoC battery/supercap
+- **4×4 кластера** RCS с разными F_max (260N/220N)
+
+**Компоненты:**
+- `src/qiki/services/q_core_agent/control/allocation.py` - основной аллокатор
+- Матрица аллокации 6x16 (6 DOF, 16 двигателей) - полный ранг
+- Режимы: ZTT (Zero-Through-Thrust), FTG (Force-To-Go), ADAPTIVE
+- Energy budget integration с `EnergyStatus` publication
+
+**Definition of Done:**
+- [ ] QP/NNLS аллокатор реализован
+- [ ] Матрица аллокации имеет полный ранг (6)
+- [ ] HESS ограничения соблюдаются
+- [ ] Unit тесты: ранк матрицы, отказ 1 RCS → решаемая задача
+- [ ] Integration тест: Mode=IDS + Motion → ненулевые импульсы без превышения P_peak
+
+---
+
+### **P2-004: STEP-A Стыковка и XPDR**
+**Статус:** TODO | **Время:** 1 неделя | **Компонент:** Hardware
+
+**Описание:**
+Реализация систем стыковки и транспондера
+
+**Стыковка (2 байонетных порта):**
+- Состояния: `align → soft → hard → bridge`
+- Bridge профили: `power`, `data`, `full`
+- Hard capture force: 12kN
+
+**Транспондер (XPDR):**
+- Режимы: `ON`, `OFF`, `SILENT`, `SPOOF`
+- Интеграция с RadarTrackModel
+- WorldModel updates для статусов
+
+**Definition of Done:**
+- [ ] Docking state machine реализован
+- [ ] XPDR режимы интегрированы
+- [ ] WorldModel получает updates
+- [ ] Event publication для state changes
+- [ ] Unit тесты для всех переходов состояний
+
+---
+
+## 🛠️ **СРЕДНИЙ ПРИОРИТЕТ**
+
+### **P3-001: Radar Track Store Core**
+**Статус:** IN_PROGRESS | **Время:** 1 неделя | **Компонент:** Radar
+
+**Описание:**
+Замена примитивной функции frame_to_track на полноценный stateful трекинг
+
+**Техническая реализация:**
+- **Alpha-Beta фильтр** для сглаживания траекторий
+- **Data association** - связывание детекций с треками
+- **Track lifecycle** - создание, обновление, удаление треков
+- **Quality assessment** - оценка надежности треков
+
+**Расширение моделей:**
+```python
+RadarTrackModel:
+  position: Optional[Vector3Model]
+  velocity: Optional[Vector3Model]
+  position_covariance: Optional[List[float]]
+  velocity_covariance: Optional[List[float]]
+  status: RadarTrackStatusEnum = NEW
+  quality: float = 0.5
+```
+
+**Definition of Done:**
+- [ ] TrackStore класс реализован
+- [ ] Alpha-Beta фильтр работает корректно
+- [ ] Ассоциация детекций функционирует
+- [ ] Расширенные модели интегрированы
+- [ ] Unit тесты покрывают все сценарии
+- [ ] Integration тесты с FastStream обновлены
+
+---
+
+### **P3-002: Radar Guard Rules интеграция**
+**Статус:** TODO | **Время:** 3-5 дней | **Компонент:** Safety
+
+**Описание:**
+Интеграция guard rules из `guard_rules.yaml` в FSM и WorldModel
+
+**Guard Rules:**
+1. **UNKNOWN_CONTACT_CLOSE** - неопознанный объект <70м → критический алерт
+2. **FOE_TRANSPONDER_OFF_APPROACH** - враждебный без транспондера <150м
+3. **SPOOFING_DETECTED** - режим SPOOF транспондера
+
+**Definition of Done:**
+- [ ] Guard rules parser реализован
+- [ ] FSM события RADAR_ALERT_* обрабатываются
+- [ ] WorldModel интегрирован с guard system
+- [ ] Unit тесты для каждого правила
+- [ ] Integration тест: Spoof detection → FSM transition
+
+---
+
+## 📈 **НИЗКИЙ ПРИОРИТЕТ**
+
+### **P4-001: Neural Engine Integration**
+**Статус:** PLANNED | **Время:** 2-3 недели | **Компонент:** AI/ML
+
+**Описание:**
+Интеграция ML pipeline для принятия решений
+
+**Компоненты:**
+- TensorFlow/PyTorch integration
+- Training data pipeline
+- Model deployment с hot-swap
+- Real ML models вместо заглушек в NeuralEngine
+
+**Definition of Done:**
+- [ ] ML framework интегрирован
+- [ ] Базовая модель обучена
+- [ ] Hot-swap моделей работает
+- [ ] Training pipeline автоматизирован
+
+---
+
+## 🔗 **ЗАВИСИМОСТИ МЕЖДУ ЗАДАЧАМИ**
+
+```
+P1-001 (Тесты) → P1-002 (Документация)
+    ↓
+P2-001 (Console) + P2-002 (Event Store) + P2-003 (Аллокатор)
+    ↓
+P3-001 (Radar Store) → P3-002 (Guard Rules)
+    ↓
+P4-001 (Neural Engine) → P4-003 (Fleet Management)
+```
+
+---
+
+## ⚠️ **БЛОКЕРЫ И РИСКИ**
+
+- **P2-003**: Требует математическую валидацию QP/NNLS решения
+- **P3-001**: Performance при высокой частоте кадров не тестирован
+- **P2-001**: UI/UX требования могут измениться
+- **Общий**: Regression testing при изменении архитектуры
+
+---
+
+*Исторический reference; синхронизация не ведется. Канон приоритетов — `~/MEMORI/ACTIVE_TASKS_QIKI_DTMP.md`.*

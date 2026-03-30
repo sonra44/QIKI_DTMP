@@ -1,0 +1,6 @@
+services:
+  operator-console:
+    command: python -m qiki.services.operator_console.legacy.main_orion
+    environment:
+      - LEGACY_MODE=1
+    profiles: ["legacy"]

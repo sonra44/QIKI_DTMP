@@ -1,0 +1,60 @@
+# GEMINI: Критическая FSM валидация (ИСПРАВЛЕННАЯ ЗАДАЧА)
+
+## ⚡ ВАЖНО: Ограничения времени выполнения!
+
+**Все команды запуска ОБЯЗАТЕЛЬНО с timeout:**
+```bash
+timeout 10s ./scripts/run_qiki_demo.sh  # НЕ БОЛЕЕ 10 СЕКУНД!
+timeout 5s python3 services/q_core_agent/main.py --mock
+```
+
+## 🎯 КРАТКАЯ ЗАДАЧА (выполнить за 5 минут макс):
+
+### 1. **Быстрая проверка основного режима**
+```bash
+timeout 10s ./scripts/run_qiki_demo.sh
+tail -10 .agent/logs/2025-08-14/q_core_agent.log | grep "currentState"
+```
+**Вопрос:** FSM действительно показывает IDLE?
+
+### 2. **Mock режим тест** 
+```bash  
+timeout 5s python3 services/q_core_agent/main.py --mock
+```
+**Вопрос:** Mock режим тоже показывает правильное FSM состояние?
+
+### 3. **Код-анализ основной проблемы**
+Посмотри на исправление в `main.py`:
+```python
+# БЫЛО:
+logger.info(f"FSM: {MessageToDict(data_provider.get_fsm_state())}")
+# СТАЛО:  
+logger.info(f"FSM: {MessageToDict(agent.context.fsm_state)}")
+```
+
+**Вопрос:** Это исправляет логи, но исправляет ли КОРНЕВУЮ проблему с DataProvider?
+
+### 4. **Edge case: сломанный BIOS**
+Теоретически: если BIOS fails → FSM должен перейти в ERROR_STATE
+**Вопрос:** Как это можно протестировать? Есть ли способ сломать BIOS?
+
+---
+
+## 📝 СОЗДАЙ КРАТКИЙ ОТЧЕТ: GEMINI_FSM_VALIDATION_RESULT.md
+
+```markdown
+# FSM ВАЛИДАЦИЯ РЕЗУЛЬТАТ
+
+## ✅ ПОДТВЕРЖДЕНО:
+- [что работает]
+
+## ❌ НАЙДЕННЫЕ ПРОБЛЕМЫ:
+- [что сломано]
+
+## 💭 ПОДОЗРЕНИЯ:  
+- [что может быть проблемой]
+
+## 🎯 ОЦЕНКА: FSM работает на [X]% из 100%
+```
+
+**ЛИМИТ ВРЕМЕНИ: 5 МИНУТ!**

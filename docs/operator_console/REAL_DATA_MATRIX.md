@@ -1,0 +1,89 @@
+# QIKI Operator Console — матрица реальных данных (no-mocks policy)
+
+Цель: зафиксировать **что именно** Operator Console показывает, **откуда** это берётся, и **как выглядит пустое состояние**, чтобы на экранах не появлялись “демо‑нули”/фейковые значения.
+
+## Примечание про радарную визуализацию (важно)
+
+Этот документ фиксирует **политику реальных данных** и текущее состояние UI.
+Каноническая стратегия развития “не-ASCII” визуализации радара (multi-backend, мышь, цвет, 3D truth → 2D виды)
+описана отдельно:
+
+- RFC: `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+- ADR: `docs/design/canon/ADR/ADR_2026-02-04_radar_visualization_strategy.md`
+
+Правило: в “плохой среде” (SSH+tmux) радар **всё равно обязан быть видимым** (Unicode baseline). ASCII PPI — допустимый
+минимум как fallback, но не конечная цель продукта.
+
+## Политика (коротко)
+
+- **Никаких заглушек/моков в UI**: в виджетах не рисуем “пример трека”, “0.0 м/с” и т.п.
+- Допустимы только:
+  - **реальные данные** (NATS/JetStream/gRPC/файлы на диске),
+  - **честные статусы** (`not connected`, `no messages yet`, `file not found`),
+  - **семантические runtime-состояния** (`healthy|degraded|failed|off` + reason),
+  - **Disabled/Отключено** (а не `N/A/—`) для телеметрийных подсистем, которые явно выключены в payload (например `sensor_plane.star_tracker.enabled=false` + `status=na`),
+  - **none/нет** (а не `N/A/—`) для ожидаемо-пустых значений при “неактивном” состоянии (например `propulsion.rcs.active=false` ⇒ `Axis/Ось = none/нет`),
+  - **N/A/— только как dev/contract error** (не штатный игровой статус).
+
+## Целевой список экранов/панелей (по практике ground systems)
+
+Основание: Open MCT, COSMOS, Yamcs (типовые роли: телеметрия, тренды, алерты, командование, события, replay).
+
+| Экран/панель | Что отображаем | Нужный источник | Статус сейчас |
+|---|---|---|---|
+| Header / Status | ONLINE (свежесть), батарея, корпус, радиация, t_ext/t_core, возраст телеметрии | `qiki.telemetry` | есть |
+| System / Telemetry | позиция/скорость/курс + базовые сенсоры | `qiki.telemetry` | есть |
+| Trends / Graphs | тренды ключевых метрик (battery/temps/rad/velocity) | хранилище истории / replay (JetStream/TSDB) | нет |
+| Limits / Alerts | out-of-limits, критические состояния, квитирование | события/лимит‑монитор (будущий) | нет |
+| Events / Audit | поток событий и системных сообщений | `qiki.events.v1.>` | есть (подписка) |
+| Safety / Safe Mode | authoritative safe-mode state + reason | события Q-Core (`qiki.events.v1.*`, SAFE_MODE/FSM transition) | частично (ORION V F1/F2/F3) |
+| Commands / Procedures | отправка команд + статус выполнения | `qiki.commands.*` / gRPC | частично (sim команды) |
+| Navigation / ADCS | ориентация (roll/pitch/yaw), IMU, режимы | телеметрия (`attitude.*`, `sensor_plane.imu.*`) | частично (attitude + IMU rates) |
+| Sensors | внутренние сенсоры (IMU/radiation/proximity/solar/star tracker/magnetometer) | телеметрия (`sensor_plane.*`) | частично (IMU+radiation) |
+| Power / EPS | SoC, power-in/out, PDU статусы, supercap, dock, NBL | `qiki.telemetry` | есть |
+| Thermal | узлы температур + аварии перегрева | `qiki.telemetry` | есть |
+| Propulsion / RCS | команда РДС, сопла (duty/valve), пропеллант, RCS power | `qiki.telemetry` (`propulsion.rcs.*`) + `qiki.commands.control` (`sim.rcs.*`) | есть (RCS) |
+| Comms / Link | XPDR/transponder режим, разрешение по питанию, активность | телеметрия (`comms.xpdr.*` + power gating) + `qiki.commands.control` (`sim.xpdr.mode`) | частично (XPDR в Diagnostics) |
+| Radar / Perception | треки/кадры/угрозы | `qiki.radar.v1.*` | частично (tracks) |
+| Docking / Bridge | статусы байонета, питание, мост | телеметрия (power.* + docking.*) + команды `power.dock.*`/`sim.dock.*` | частично |
+| Replay / History | история телеметрии/событий | JetStream / TSDB | нет |
+
+## MVP Phase 1 (только то, что реально доступно)
+
+Фиксируем минимальный набор экранов/панелей, который разрешён к показу **сейчас**:
+
+- Header / Status (ONLINE + свежесть, батарея, корпус, радиация, t_ext/t_core)
+- System / Telemetry (позиция X/Y/Z, скорость, курс, ориентация roll/pitch/yaw, батарея, корпус, радиация, температуры, thermal nodes)
+- Radar / Perception (tracks)
+- Events / Logs (поток событий)
+- Safety / Safe Mode (authoritative по событиям Q-Core)
+- Command Dock (sim команды и ответы)
+- Power / EPS (шина, SoC, PDU, supercap, dock, NBL)
+- Thermal (узлы температур, перегревы)
+- Propulsion / RCS (только если телеметрия содержит `propulsion.rcs.*`)
+
+Никакие другие панели не считаются активными, пока не появятся реальные источники.
+
+## Матрица источников
+
+| Экран/панель | Что показываем | Источник | Контракт/формат | Пустое состояние (честно) |
+|---|---|---|---|---|
+| Telemetry | позиция/скорость/курс/ориентация/батарея/корпус/радиация/температуры + Thermal nodes + Power Plane (soc, power in/out, шина, split battery voltages, PDU/shed/faults, supercap, dock, NBL) + **MCQPU CPU/RAM (виртуальные, simulation-truth)** + orbit estimate + comms link-budget + propulsion envelope + `propulsion.rcs.*` + (опц.) `sensor_plane.*` + (опц.) `docking.*` | NATS subject `qiki.telemetry` (`SYSTEM_TELEMETRY`) | JSON dict (TelemetrySnapshot v1; ключи: `schema_version=1`, `source`, `timestamp`, `ts_unix_ms`, `position.{x,y,z}`, `velocity` (legacy alias), `speed_m_s`, `velocity_xyz_m_s.{x,y,z}`, `heading` (deg), `attitude.roll_rad`, `attitude.pitch_rad`, `attitude.yaw_rad` (rad), `orbit.{state,reason,confidence,apoapsis_km,periapsis_km,inclination_deg,eccentricity,period_min}`, `battery`, `cpu_usage`, `memory_usage`, `hull.integrity`, `thermal.nodes[].{id,temp_c,tripped,warned,warn_c,trip_c,hys_c}`, `power.*`, `propulsion.{propellant_tank_pressure_pa,oxidizer_mass_kg,rcs.*}`, `comms.{link,latency_ms,packet_loss_pct,rssi_dbm,snr_db,tx_power_w,data_rate_kbps,antenna_status,xpdr.*}`, `radiation_usvh`, `temp_external_c`, `temp_core_c`; доп. ключи допустимы) | Таблица со строками‑метриками и semantic state/reason; `N/A` только при contract/dev error; статус канала: `waiting for telemetry` |
+| Radar Tracks | треки (id, range_m, bearing_deg, vr_mps, object_type/iff/quality/status если есть) | JetStream subject `qiki.radar.v1.tracks` (`RADAR_TRACKS`) | JSON → `qiki.shared.models.radar.RadarTrackModel` | Если треков нет: (1) при `sim_state=STOPPED` → Status=`Stopped/Остановлено`, Info=`Симуляция остановлена…`; (2) при `sim_state=RUNNING` → Status=`No tracks/Треков нет`, Info=`no tracks yet`. |
+| Radar PPI (ASCII) | простая “ППИ”‑картинка по трекам (range/bearing) | те же `qiki.radar.v1.tracks` (UI строит PPI из треков) | ASCII рендер (без доп. контрактов) | Рисуется “круговая” сетка + центр, даже если треков нет; треки добавляются точками. |
+| Mission / Task | миссия/задачи | **Phase1: не цель** (нет simulation-truth источника) | — | `Нет данных миссии/задач` |
+| Radar Frames (опц.) | кадры радара (кол-во детекций, sensor_id, timestamp) | NATS/JetStream subject `qiki.radar.v1.frames` (`RADAR_FRAMES`) и/или `qiki.radar.v1.frames.lr` (`RADAR_FRAMES_LR`) | JSON → `qiki.shared.models.radar.RadarFrameModel` | `no frames yet` |
+| Events / Audit (опц.) | guard/fsm/audit события | NATS subject `qiki.events.v1.>` (`EVENTS_V1_WILDCARD`), audit `qiki.events.v1.audit` | JSON (CloudEvents headers могут присутствовать) | `no events yet` |
+| Safety / Safe Mode | статус SAFE_MODE + причина + authority | NATS события (`qiki.events.v1.*`, payload `subsystem=SAFE_MODE` и/или FSM `to_state=SAFE_MODE`) | JSON event payload (без отдельного v2 subject) | `SAFE MODE: нет данных` до первого релевантного события |
+| Quick Commands | старт/пауза/стоп/ресет (и др. команды) | gRPC в Q‑Sim Service (host/port из env) | пока “soft” client без сгенерённых stub’ов; health по состоянию канала | Кнопки доступны, но при `not connected` → лог + уведомление |
+| Agent Chat | обмен сообщениями с Q‑Core Agent | gRPC в Q‑Core Agent (host/port из env) | зависит от будущих stub’ов; сейчас best‑effort client | `agent not connected` |
+| Profile | BotSpec + hardware profile + “source of truth” документ | Файлы репо: `shared/specs/BotSpec.yaml`, `config/propulsion/thrusters.json`, `src/qiki/services/q_core_agent/config/bot_config.json`, `docs/design/hardware_and_physics/bot_source_of_truth.md` | чтение с диска (read-only) | `repo root not found` / `file not found` / `unavailable` |
+
+## ENV-переменные, которые UI использует
+
+- `NATS_URL` (пример: `nats://qiki-nats-phase1:4222`)
+- `RADAR_TRACKS_SUBJECT` (опц., дефолт `qiki.radar.v1.tracks`)
+- `RADAR_LR_SUBJECT` / `RADAR_SR_SUBJECT` (опц.)
+- `GRPC_HOST` / `GRPC_PORT` (Q‑Sim)
+- `AGENT_GRPC_HOST` / `AGENT_GRPC_PORT` (Q‑Core Agent, если отдельный endpoint)
+- `QIKI_REPO_ROOT` (для Profile панели; в docker overlay это `/workspace`)

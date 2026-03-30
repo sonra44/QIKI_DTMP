@@ -1,0 +1,16 @@
+{
+  "p_avail_kw": 22.5,
+  "p_peak_kw": 45.0,
+  "soc_battery": {
+    "min": 0.25,
+    "max": 0.95,
+    "initial": 0.80
+  },
+  "soc_supercap": {
+    "min": 0.15,
+    "max": 1.00,
+    "initial": 0.60
+  },
+  "pulse_window_s": 0.5,
+  "recharge_window_s": 4.0
+}

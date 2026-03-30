@@ -1,0 +1,15 @@
+version: v1beta1
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - DIRECTORY_SAME_PACKAGE
+    - PACKAGE_VERSION_SUFFIX
+    - ENUM_VALUE_PREFIX
+build:
+  roots:
+    - protos

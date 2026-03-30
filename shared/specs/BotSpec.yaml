@@ -1,0 +1,156 @@
+version: 1
+kind: BotSpec
+metadata:
+  id: QIKI-DODECA-01
+components:
+  hull:
+    type: structure
+    provides:
+      - collision_mesh
+      - hardpoints
+  power:
+    type: dc_bus
+    provides:
+      - dc_out
+      - energy_status
+    consumes:
+      - power_budget
+  mainboard:
+    type: mainboard
+    provides:
+      - bus_control
+      - power_distribution
+      - slot_map
+  mcqpu:
+    type: mcqpu
+    provides:
+      - decision_core
+      - sensor_processing
+      - reactive_control
+    consumes:
+      - power_budget
+  power_supervisor:
+    type: power_supervisor
+    provides:
+      - power_supervision
+    consumes:
+      - power_budget
+  pdu:
+    type: power_distribution_unit
+    provides:
+      - power_distribution
+    consumes:
+      - power_budget
+  dock_power_bridge:
+    type: dock_power_bridge
+    provides:
+      - dock_power_bridge
+    consumes:
+      - power_budget
+  nbl_power_budgeter:
+    type: nbl_power_budgeter
+    provides:
+      - nbl_power_budget
+    consumes:
+      - power_budget
+  rlsm:
+    type: rlsm_perception
+    provides:
+      - perception_fusion
+  propulsion:
+    type: propulsors
+    provides:
+      - motion_command
+      - thruster_allocation
+    consumes:
+      - thruster_schedule
+  docking:
+    type: docking_system
+    provides:
+      - docking_ports
+      - bridge_profiles
+  antenna_xpdr:
+    type: datalink
+    provides:
+      - antenna_status
+      - xpdr_status
+  sensors:
+    type: sensing_suite
+    provides:
+      - sensor_frame
+      - los_masks
+  sensor_imu:
+    type: imu
+    provides:
+      - sensor_element
+  sensor_thermal:
+    type: thermal_sensors
+    provides:
+      - sensor_element
+  sensor_radiation:
+    type: radiation_sensors
+    provides:
+      - sensor_element
+  sensor_docking:
+    type: docking_sensors
+    provides:
+      - sensor_element
+  sensor_proximity:
+    type: proximity_sensors
+    provides:
+      - sensor_element
+  sensor_solar:
+    type: solar_sensor
+    provides:
+      - sensor_element
+  sensor_star_tracker:
+    type: star_tracker
+    provides:
+      - sensor_element
+  radar_360:
+    type: radar
+    provides:
+      - sensor_element
+  lidar:
+    type: lidar
+    provides:
+      - sensor_element
+  spectrometer:
+    type: spectrometer
+    provides:
+      - sensor_element
+  magnetometer:
+    type: magnetometer
+    provides:
+      - sensor_element
+  comms:
+    type: datalink
+    provides:
+      - uplink
+      - downlink
+  shields:
+    type: defensive
+    provides:
+      - shield_status
+  navigation:
+    type: nav_stack
+    provides:
+      - nav_state
+  sensor_mounts:
+    type: platform_fixtures
+    provides:
+      - mount_points
+      - orientation_frames
+  protocols:
+    type: executor
+event_bus:
+  channels:
+    - SensorFrame
+    - TrackSet
+    - ThrusterCmd
+    - ModeCmd
+    - ProtocolCmd
+    - EnergyStatus
+    - ShieldStatus
+    - NavState
+    - RegistrarEvent

@@ -1,0 +1,481 @@
+"""Stateful radar track store with simple alpha-beta filtering."""
+
+from __future__ import annotations
+
+import math
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Dict, List, Optional, Tuple
+from uuid import UUID, uuid4
+
+from qiki.shared.radar_coords import polar_to_xyz_m, xyz_to_bearing_deg
+from qiki.shared.models.radar import (
+    RadarDetectionModel,
+    RadarFrameModel,
+    RadarTrackModel,
+    RadarTrackStatusEnum,
+    FriendFoeEnum,
+    ObjectTypeEnum,
+    RangeBand,
+    TransponderModeEnum,
+    Vector3Model,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _Vec3:
+    x: float
+    y: float
+    z: float
+
+    def add(self, other: "_Vec3") -> "_Vec3":
+        return _Vec3(self.x + other.x, self.y + other.y, self.z + other.z)
+
+    def scale(self, factor: float) -> "_Vec3":
+        return _Vec3(self.x * factor, self.y * factor, self.z * factor)
+
+    def to_model(self) -> Vector3Model:
+        return Vector3Model(x=self.x, y=self.y, z=self.z)
+
+
+@dataclass
+class _TrackState:
+    track_id: UUID
+    position: _Vec3
+    velocity: _Vec3
+    created_at: datetime
+    last_update: datetime
+    snr_db: float
+    rcs_dbsm: float
+    transponder_on: bool
+    range_band: RangeBand = RangeBand.RR_UNSPECIFIED
+    id_present: Optional[bool] = None
+    transponder_mode: TransponderModeEnum = TransponderModeEnum.OFF
+    transponder_id: Optional[str] = None
+    hits: int = 0
+    miss_count: int = 0
+
+    def age_seconds(self, now: datetime) -> float:
+        return max((now - self.created_at).total_seconds(), 0.0)
+
+
+class RadarTrackStore:
+    """Maintains radar tracks using a basic alpha-beta filter."""
+
+    def __init__(
+        self,
+        *,
+        alpha: float = 0.6,
+        beta: float = 0.1,
+        max_association_distance_m: float = 12.0,
+        max_radial_velocity_delta: float = 15.0,
+        max_handoff_bearing_delta_deg: float = 0.5,
+        max_handoff_elevation_delta_deg: float = 0.5,
+        max_misses: int = 3,
+        min_hits_to_confirm: int = 2,
+        reference_snr: float = 20.0,
+    ) -> None:
+        self._alpha = alpha
+        self._beta = beta
+        self._max_association_distance = max_association_distance_m
+        self._max_radial_velocity_delta = max_radial_velocity_delta
+        self._max_handoff_bearing_delta_deg = max(max_handoff_bearing_delta_deg, 0.0)
+        self._max_handoff_elevation_delta_deg = max(max_handoff_elevation_delta_deg, 0.0)
+        self._max_misses = max(max_misses, 1)
+        self._min_hits_to_confirm = max(min_hits_to_confirm, 1)
+        self._reference_snr = max(reference_snr, 1.0)
+        self._tracks: Dict[UUID, _TrackState] = {}
+
+    def process_frame(self, frame: RadarFrameModel) -> List[RadarTrackModel]:
+        """Process frame and return current set of tracks."""
+
+        ingest_ts = datetime.now(UTC)
+        frame_ts = getattr(frame, "ts_event", None) or frame.timestamp or datetime.now(UTC)
+        detections = self._fuse_lr_sr_detections(frame.detections)
+        associations = self._associate(detections, frame_ts)
+        self._update_associated_tracks(associations, frame_ts)
+        updated_ids = {state.track_id for _, state in associations if state}
+        self._update_missed_tracks(updated_ids)
+        self._spawn_new_tracks(detections, associations, frame_ts)
+        self._prune_lost_tracks()
+        return self._serialize_tracks(frame_ts, ingest_ts)
+
+    def _fuse_lr_sr_detections(self, detections: List[RadarDetectionModel]) -> List[RadarDetectionModel]:
+        sr_indices = [idx for idx, det in enumerate(detections) if det.range_band == RangeBand.RR_SR]
+        lr_indices = [idx for idx, det in enumerate(detections) if det.range_band == RangeBand.RR_LR]
+        if not sr_indices or not lr_indices:
+            return detections
+
+        def bearing_delta_deg(a: float, b: float) -> float:
+            d = abs(a - b) % 360.0
+            return min(d, 360.0 - d)
+
+        bearing_tol_deg = 0.5
+        elev_tol_deg = 0.5
+        vr_tol_mps = 1.0
+
+        consumed_lr: set[int] = set()
+        for sr_idx in sr_indices:
+            sr = detections[sr_idx]
+            best_lr_idx: Optional[int] = None
+            best_score: tuple[float, float, int] = (float("inf"), float("inf"), 0)
+            for lr_idx in lr_indices:
+                if lr_idx in consumed_lr:
+                    continue
+                lr = detections[lr_idx]
+                bd = bearing_delta_deg(sr.bearing_deg, lr.bearing_deg)
+                if bd > bearing_tol_deg:
+                    continue
+                ed = abs(sr.elev_deg - lr.elev_deg)
+                if ed > elev_tol_deg:
+                    continue
+                vd = abs(sr.vr_mps - lr.vr_mps)
+                if vd > vr_tol_mps:
+                    continue
+                score = (bd + ed, vd, lr_idx)
+                if score < best_score:
+                    best_score = score
+                    best_lr_idx = lr_idx
+            if best_lr_idx is not None:
+                consumed_lr.add(best_lr_idx)
+
+        if not consumed_lr:
+            return detections
+
+        fused: List[RadarDetectionModel] = []
+        for idx, det in enumerate(detections):
+            if idx in consumed_lr:
+                continue
+            fused.append(det)
+        return fused
+
+    def _associate(
+        self, detections: List[RadarDetectionModel], frame_ts: datetime
+    ) -> List[Tuple[RadarDetectionModel, Optional[_TrackState]]]:
+        results: List[Tuple[RadarDetectionModel, Optional[_TrackState]]] = []
+        available_tracks = list(self._tracks.values())
+        for detection in detections:
+            matched_state = self._find_best_match(detection, available_tracks, frame_ts)
+            if matched_state is not None:
+                available_tracks.remove(matched_state)
+            results.append((detection, matched_state))
+        return results
+
+    def _find_best_match(
+        self,
+        detection: RadarDetectionModel,
+        candidates: List[_TrackState],
+        frame_ts: datetime,
+    ) -> Optional[_TrackState]:
+        if not candidates:
+            return None
+        det_position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
+        best_track: Optional[_TrackState] = None
+        best_distance = self._max_association_distance
+
+        for state in candidates:
+            dt = max((frame_ts - state.last_update).total_seconds(), 0.05)
+            predicted_position = state.position.add(state.velocity.scale(dt))
+            distance = _euclidean_distance(predicted_position, det_position)
+            if distance > best_distance:
+                continue
+            radial_delta = abs(detection.vr_mps - _project_velocity_to_radial(state.velocity, det_position))
+            if radial_delta > self._max_radial_velocity_delta:
+                continue
+            best_distance = distance
+            best_track = state
+        if best_track is not None:
+            return best_track
+
+        return self._find_handoff_match(detection, candidates)
+
+    def _find_handoff_match(
+        self,
+        detection: RadarDetectionModel,
+        candidates: List[_TrackState],
+    ) -> Optional[_TrackState]:
+        if detection.range_band != RangeBand.RR_LR:
+            return None
+
+        best_track: Optional[_TrackState] = None
+        best_score: tuple[float, float] | None = None
+        for state in candidates:
+            if not _track_has_identity(state):
+                continue
+            bearing_delta = _bearing_delta_deg(
+                detection.bearing_deg,
+                _cartesian_to_bearing(state.position),
+            )
+            if bearing_delta > self._max_handoff_bearing_delta_deg:
+                continue
+            elevation_delta = abs(detection.elev_deg - _cartesian_to_elevation(state.position))
+            if elevation_delta > self._max_handoff_elevation_delta_deg:
+                continue
+            radial_delta = abs(detection.vr_mps - _project_velocity_to_radial(state.velocity, state.position))
+            if radial_delta > self._max_radial_velocity_delta:
+                continue
+            score = (bearing_delta + elevation_delta, radial_delta)
+            if best_score is None or score < best_score:
+                best_score = score
+                best_track = state
+        return best_track
+
+    def _update_associated_tracks(
+        self,
+        associations: List[Tuple[RadarDetectionModel, Optional[_TrackState]]],
+        frame_ts: datetime,
+    ) -> None:
+        for detection, state in associations:
+            if state is None:
+                continue
+            dt = max((frame_ts - state.last_update).total_seconds(), 0.05)
+            measured_position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
+            predicted_position = state.position.add(state.velocity.scale(dt))
+            residual = _Vec3(
+                measured_position.x - predicted_position.x,
+                measured_position.y - predicted_position.y,
+                measured_position.z - predicted_position.z,
+            )
+
+            state.position = predicted_position.add(residual.scale(self._alpha))
+            unit_vector = _unit_vector(measured_position)
+            measured_velocity = unit_vector.scale(detection.vr_mps)
+            state.velocity = _blend_velocity(state.velocity, measured_velocity, self._beta)
+            state.snr_db = (state.snr_db + detection.snr_db) / 2.0
+            state.rcs_dbsm = detection.rcs_dbsm
+            state.range_band = detection.range_band
+            previous_transponder_on = state.transponder_on
+            previous_transponder_mode = state.transponder_mode
+            previous_transponder_id = state.transponder_id
+            previous_id_present = state.id_present
+            if detection.range_band == RangeBand.RR_SR:
+                state.transponder_on = detection.transponder_on
+                state.transponder_mode = detection.transponder_mode
+                state.transponder_id = detection.transponder_id
+                if detection.id_present is not None:
+                    state.id_present = bool(detection.id_present)
+                else:
+                    state.id_present = bool(detection.transponder_id)
+            state.last_update = frame_ts
+            state.hits += 1
+            state.miss_count = 0
+            logger.info(
+                "bridge_track_update track_id=%s range_band=%s detection_band=%s transponder_id=%s "
+                "transponder_mode=%s id_present=%s hits=%d miss_count=%d",
+                state.track_id,
+                state.range_band.name,
+                detection.range_band.name,
+                state.transponder_id,
+                state.transponder_mode.name,
+                state.id_present,
+                state.hits,
+                state.miss_count,
+            )
+            if (
+                previous_transponder_on != state.transponder_on
+                or previous_transponder_mode != state.transponder_mode
+                or previous_transponder_id != state.transponder_id
+                or previous_id_present != state.id_present
+            ):
+                logger.info(
+                    "bridge_track_identity_mutation track_id=%s transponder_on=%s->%s "
+                    "transponder_mode=%s->%s transponder_id=%s->%s id_present=%s->%s",
+                    state.track_id,
+                    previous_transponder_on,
+                    state.transponder_on,
+                    previous_transponder_mode.name,
+                    state.transponder_mode.name,
+                    previous_transponder_id,
+                    state.transponder_id,
+                    previous_id_present,
+                    state.id_present,
+                )
+
+    def _update_missed_tracks(self, updated_ids: set[UUID]) -> None:
+        for track_id, state in list(self._tracks.items()):
+            if track_id in updated_ids:
+                continue
+            state.miss_count += 1
+
+    def _spawn_new_tracks(
+        self,
+        detections: List[RadarDetectionModel],
+        associations: List[Tuple[RadarDetectionModel, Optional[_TrackState]]],
+        frame_ts: datetime,
+    ) -> None:
+        for detection, state in associations:
+            if state is not None:
+                continue
+            position = _polar_to_cartesian(detection.range_m, detection.bearing_deg, detection.elev_deg)
+            velocity = _unit_vector(position).scale(detection.vr_mps)
+            track_id = uuid4()
+            id_present: Optional[bool] = None
+            transponder_on = False
+            transponder_mode = TransponderModeEnum.OFF
+            transponder_id = None
+            if detection.range_band == RangeBand.RR_SR:
+                transponder_on = detection.transponder_on
+                transponder_mode = detection.transponder_mode
+                transponder_id = detection.transponder_id
+                id_present = (
+                    bool(detection.id_present) if detection.id_present is not None else bool(detection.transponder_id)
+                )
+            elif detection.range_band == RangeBand.RR_LR:
+                id_present = False
+            self._tracks[track_id] = _TrackState(
+                track_id=track_id,
+                position=position,
+                velocity=velocity,
+                created_at=frame_ts,
+                last_update=frame_ts,
+                snr_db=detection.snr_db,
+                rcs_dbsm=detection.rcs_dbsm,
+                range_band=detection.range_band,
+                id_present=id_present,
+                transponder_on=transponder_on,
+                transponder_mode=transponder_mode,
+                transponder_id=transponder_id,
+                hits=1,
+                miss_count=0,
+            )
+            logger.info(
+                "bridge_track_spawn track_id=%s range_band=%s transponder_id=%s transponder_mode=%s "
+                "id_present=%s bearing_deg=%.3f elev_deg=%.3f range_m=%.3f vr_mps=%.3f",
+                track_id,
+                detection.range_band.name,
+                transponder_id,
+                transponder_mode.name,
+                id_present,
+                detection.bearing_deg,
+                detection.elev_deg,
+                detection.range_m,
+                detection.vr_mps,
+            )
+
+    def _prune_lost_tracks(self) -> None:
+        to_delete = [track_id for track_id, state in self._tracks.items() if state.miss_count > self._max_misses]
+        for track_id in to_delete:
+            del self._tracks[track_id]
+
+    def _serialize_tracks(self, frame_ts: datetime, ingest_ts: datetime) -> List[RadarTrackModel]:
+        tracks: List[RadarTrackModel] = []
+        for state in self._tracks.values():
+            confirmed = state.hits >= self._min_hits_to_confirm
+            if not confirmed:
+                status = RadarTrackStatusEnum.NEW if state.miss_count == 0 else RadarTrackStatusEnum.LOST
+            else:
+                if state.miss_count == 0:
+                    status = RadarTrackStatusEnum.TRACKED
+                elif state.miss_count <= self._max_misses:
+                    status = RadarTrackStatusEnum.COASTING
+                else:
+                    status = RadarTrackStatusEnum.LOST
+
+            age = state.age_seconds(frame_ts)
+            quality = self._compute_quality(state)
+            range_band = state.range_band
+            id_present = state.id_present
+            if range_band == RangeBand.RR_LR and (
+                state.transponder_id or (id_present is True) or state.transponder_mode != TransponderModeEnum.OFF
+            ):
+                range_band = RangeBand.RR_UNSPECIFIED
+            tracks.append(
+                RadarTrackModel(
+                    track_id=state.track_id,
+                    object_type=ObjectTypeEnum.OBJECT_TYPE_UNSPECIFIED,
+                    iff=FriendFoeEnum.UNKNOWN,
+                    transponder_on=getattr(state, "transponder_on", False),
+                    transponder_mode=getattr(
+                        state,
+                        "transponder_mode",
+                        TransponderModeEnum.OFF,
+                    ),
+                    transponder_id=getattr(state, "transponder_id", None),
+                    range_m=_cartesian_to_range(state.position),
+                    bearing_deg=_cartesian_to_bearing(state.position),
+                    elev_deg=_cartesian_to_elevation(state.position),
+                    vr_mps=_project_velocity_to_radial(state.velocity, state.position),
+                    snr_db=max(state.snr_db, 0.0),
+                    rcs_dbsm=getattr(state, "rcs_dbsm", 0.0),
+                    quality=quality,
+                    status=status,
+                    position=state.position.to_model(),
+                    velocity=state.velocity.to_model(),
+                    position_covariance=None,
+                    velocity_covariance=None,
+                    age_s=age,
+                    miss_count=state.miss_count,
+                    timestamp=frame_ts,
+                    ts_event=frame_ts,
+                    ts_ingest=ingest_ts,
+                    range_band=range_band,
+                    id_present=id_present,
+                )
+            )
+        return tracks
+
+    def _compute_quality(self, state: _TrackState) -> float:
+        miss_factor = max(self._max_misses - state.miss_count, 0) / self._max_misses
+        snr_factor = min(state.snr_db / self._reference_snr, 1.0)
+        quality = max(min(miss_factor * snr_factor, 1.0), 0.0)
+        return quality
+
+
+def _polar_to_cartesian(range_m: float, bearing_deg: float, elev_deg: float) -> _Vec3:
+    xyz = polar_to_xyz_m(
+        range_m=float(range_m),
+        bearing_deg=float(bearing_deg),
+        elev_deg=float(elev_deg),
+    )
+    return _Vec3(float(xyz.x_m), float(xyz.y_m), float(xyz.z_m))
+
+
+def _cartesian_to_range(vec: _Vec3) -> float:
+    return math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
+
+
+def _cartesian_to_bearing(vec: _Vec3) -> float:
+    return xyz_to_bearing_deg(x_m=float(vec.x), y_m=float(vec.y))
+
+
+def _cartesian_to_elevation(vec: _Vec3) -> float:
+    hyp = math.sqrt(vec.x**2 + vec.y**2)
+    return math.degrees(math.atan2(vec.z, hyp))
+
+
+def _euclidean_distance(a: _Vec3, b: _Vec3) -> float:
+    return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+
+
+def _unit_vector(vec: _Vec3) -> _Vec3:
+    norm = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
+    if norm == 0:
+        return _Vec3(0.0, 0.0, 0.0)
+    return _Vec3(vec.x / norm, vec.y / norm, vec.z / norm)
+
+
+def _project_velocity_to_radial(velocity: _Vec3, position: _Vec3) -> float:
+    unit = _unit_vector(position)
+    return velocity.x * unit.x + velocity.y * unit.y + velocity.z * unit.z
+
+
+def _bearing_delta_deg(a: float, b: float) -> float:
+    delta = abs(a - b) % 360.0
+    return min(delta, 360.0 - delta)
+
+
+def _track_has_identity(state: _TrackState) -> bool:
+    return bool(state.transponder_id) or (state.id_present is True) or state.transponder_mode != TransponderModeEnum.OFF
+
+
+def _blend_velocity(current: _Vec3, measured: _Vec3, beta: float) -> _Vec3:
+    beta = max(min(beta, 1.0), 0.0)
+    inv_beta = 1.0 - beta
+    return _Vec3(
+        current.x * inv_beta + measured.x * beta,
+        current.y * inv_beta + measured.y * beta,
+        current.z * inv_beta + measured.z * beta,
+    )

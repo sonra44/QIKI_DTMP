@@ -1,0 +1,10 @@
+[Unit]
+Description=Run QIKI context backup daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

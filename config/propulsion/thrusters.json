@@ -1,0 +1,114 @@
+[
+  {
+    "index": 0,
+    "cluster_id": "A",
+    "position_m": [0.85, 0.85, 0.40],
+    "direction": [-0.7071, 0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 1,
+    "cluster_id": "A",
+    "position_m": [0.85, -0.85, 0.40],
+    "direction": [-0.7071, -0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 2,
+    "cluster_id": "A",
+    "position_m": [0.85, 0.85, -0.40],
+    "direction": [-0.7071, 0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 3,
+    "cluster_id": "A",
+    "position_m": [0.85, -0.85, -0.40],
+    "direction": [-0.7071, -0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 4,
+    "cluster_id": "B",
+    "position_m": [-0.85, 0.85, 0.40],
+    "direction": [0.7071, 0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 5,
+    "cluster_id": "B",
+    "position_m": [-0.85, -0.85, 0.40],
+    "direction": [0.7071, -0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 6,
+    "cluster_id": "B",
+    "position_m": [-0.85, 0.85, -0.40],
+    "direction": [0.7071, 0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 7,
+    "cluster_id": "B",
+    "position_m": [-0.85, -0.85, -0.40],
+    "direction": [0.7071, -0.7071, 0.0],
+    "f_max_newton": 260.0
+  },
+  {
+    "index": 8,
+    "cluster_id": "C",
+    "position_m": [0.40, 0.85, 0.85],
+    "direction": [0.0, -0.7071, -0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 9,
+    "cluster_id": "C",
+    "position_m": [-0.40, 0.85, 0.85],
+    "direction": [0.0, -0.7071, -0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 10,
+    "cluster_id": "C",
+    "position_m": [0.40, -0.85, 0.85],
+    "direction": [0.0, 0.7071, -0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 11,
+    "cluster_id": "C",
+    "position_m": [-0.40, -0.85, 0.85],
+    "direction": [0.0, 0.7071, -0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 12,
+    "cluster_id": "D",
+    "position_m": [0.40, 0.85, -0.85],
+    "direction": [0.0, -0.7071, 0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 13,
+    "cluster_id": "D",
+    "position_m": [-0.40, 0.85, -0.85],
+    "direction": [0.0, -0.7071, 0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 14,
+    "cluster_id": "D",
+    "position_m": [0.40, -0.85, -0.85],
+    "direction": [0.0, 0.7071, 0.7071],
+    "f_max_newton": 220.0
+  },
+  {
+    "index": 15,
+    "cluster_id": "D",
+    "position_m": [-0.40, -0.85, -0.85],
+    "direction": [0.0, 0.7071, 0.7071],
+    "f_max_newton": 220.0
+  }
+]

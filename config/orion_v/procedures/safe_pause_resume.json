@@ -1,0 +1,17 @@
+{
+  "name": "safe_pause_resume",
+  "steps": [
+    {
+      "command": "sim.pause",
+      "expected_ack": "sim.pause",
+      "timeout": 5,
+      "on_fail": "abort"
+    },
+    {
+      "command": "sim.start",
+      "expected_ack": "sim.start",
+      "timeout": 5,
+      "on_fail": "abort"
+    }
+  ]
+}

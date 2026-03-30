@@ -1,0 +1,54 @@
+# Центральная конфигурация логирования для проекта QIKI_DTMP
+version: 1
+disable_existing_loggers: false
+
+# ------------------ ФОРМАТЕРЫ ------------------
+# Определяют, как будет выглядеть строка лога
+formatters:
+  # Цветной форматер для вывода в консоль
+  color:
+    '()': 'colorlog.ColoredFormatter'
+    # Формат: [ВРЕМЯ] [УРОВЕНЬ] [ИМЯ_СЕРВИСА] --- СООБЩЕНИЕ
+    format: '%(log_color)s[%(asctime)s] [%(levelname)-8s] [%(name)-20s]%(reset)s --- %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+# ------------------ ОБРАБОТЧИКИ ------------------
+# Определяют, куда будут отправляться логи (в консоль, в файл и т.д.)
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: color  # Используем наш цветной форматер
+    stream: ext://sys.stdout
+
+# ------------------ ЛОГГЕРЫ ------------------
+# Настройка для конкретных сервисов и библиотек
+loggers:
+  # Логгер нашего основного агента
+  q_core_agent:
+    level: INFO
+    handlers: [console]
+    propagate: false # Не передавать сообщения в root логгер, чтобы избежать дублирования
+
+  # Логгер симулятора
+  q_sim_service:
+    level: INFO
+    handlers: [console]
+    propagate: false
+
+  # Логгер FastStream моста
+  faststream_bridge:
+    level: INFO
+    handlers: [console]
+    propagate: false
+
+  # Логгер самого фреймворка FastStream (делаем его менее шумным)
+  faststream:
+    level: WARNING
+    handlers: [console]
+    propagate: false
+
+# ------------------ КОРНЕВОЙ ЛОГГЕР ------------------
+# Настройка для всех остальных логгеров, которые не настроены индивидуально
+root:
+  level: INFO
+  handlers: [console]
