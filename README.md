@@ -81,6 +81,7 @@ Use this order when checking a claim:
 
 Start here:
 
+- GitHub research guide: `GITHUB_RESEARCH_GUIDE.md`
 - Documentation index: `docs/INDEX.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Canon index: `docs/design/canon/INDEX.md`
@@ -92,7 +93,8 @@ Start here:
 The public repository intentionally excludes local agent state, virtual environments, archives, generated reports, exported zip bundles, and scratch workspaces. Examples:
 
 - `.venv/`, `.serena/`, `.qwen/`, `.codex/`, `.claude/`
-- `_archive/`, `TASK_OUT/`, `tmp/`, `introspector/`
+- `_archive/`, `TASK_OUT/`, `tmp/`
+- `introspector/tmp/`, `introspector/analyzer/data/`, and local introspector runtime state
 - generated analysis directories and one-off report dumps
 - local package exports such as `*.zip`
 

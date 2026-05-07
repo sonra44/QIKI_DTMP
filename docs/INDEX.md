@@ -7,10 +7,11 @@ part of this published documentation set.
 ## Read First
 
 1. `README.md` - product frame, runtime path, quick start, and source-of-truth rules.
-2. `docs/ARCHITECTURE.md` - services, dataflow, health, and operational topology.
-3. `docs/design/canon/INDEX.md` - active design canon entrypoint.
-4. `docs/CONTRACT_POLICY.md` - contract evolution rules for proto, NATS, and API surfaces.
-5. `docs/operator_console/REAL_DATA_MATRIX.md` - what ORION displays and where values come from.
+2. `GITHUB_RESEARCH_GUIDE.md` - public orientation guide for external researchers.
+3. `docs/ARCHITECTURE.md` - services, dataflow, health, and operational topology.
+4. `docs/design/canon/INDEX.md` - active design canon entrypoint.
+5. `docs/CONTRACT_POLICY.md` - contract evolution rules for proto, NATS, and API surfaces.
+6. `docs/operator_console/REAL_DATA_MATRIX.md` - what ORION displays and where values come from.
 
 ## Product And Canon
 
