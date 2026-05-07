@@ -1,0 +1,21 @@
+[gate] compileall
+[gate] pytest
+........................................................................ [ 56%]
+......................................................ss                 [100%]
+126 passed, 3 skipped in 16.91s
+[gate] direct offline run
+start run_id=20260503T103154Z_INTROSPECTOR_DEMO
+exec /opt/pyvenv/bin/python /mnt/data/correct_assembly_work/introspector/scripts/scan_project.py --project-name INTROSPECTOR_DEMO --source-root src --output-dir /mnt/data/correct_assembly_work/introspector/tmp/release_gate_runs/20260503T103154Z_INTROSPECTOR_DEMO --snapshot-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_runs/20260503T103154Z_INTROSPECTOR_DEMO/static_snapshot.json --summary-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_runs/20260503T103154Z_INTROSPECTOR_DEMO/summary.json --schema-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_runs/20260503T103154Z_INTROSPECTOR_DEMO/schema.json --offline
+run_result written status=completed_with_limits
+Run directory: /mnt/data/correct_assembly_work/introspector/tmp/release_gate_runs/20260503T103154Z_INTROSPECTOR_DEMO
+[gate] direct validate
+OK: run_result.json matches run contract
+[gate] cli offline run
+start run_id=20260503T103235Z_INTROSPECTOR_DEMO
+exec /opt/pyvenv/bin/python /mnt/data/correct_assembly_work/introspector/scripts/scan_project.py --project-name INTROSPECTOR_DEMO --source-root src --output-dir /mnt/data/correct_assembly_work/introspector/tmp/release_gate_cli_runs/20260503T103235Z_INTROSPECTOR_DEMO --snapshot-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_cli_runs/20260503T103235Z_INTROSPECTOR_DEMO/static_snapshot.json --summary-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_cli_runs/20260503T103235Z_INTROSPECTOR_DEMO/summary.json --schema-out /mnt/data/correct_assembly_work/introspector/tmp/release_gate_cli_runs/20260503T103235Z_INTROSPECTOR_DEMO/schema.json --offline
+run_result written status=completed_with_limits
+Run directory: /mnt/data/correct_assembly_work/introspector/tmp/release_gate_cli_runs/20260503T103235Z_INTROSPECTOR_DEMO
+[gate] cli validate
+OK: run_result.json matches run contract
+[gate] tmux smoke skipped: tmux not installed
+RELEASE_TEST_GATE_OK

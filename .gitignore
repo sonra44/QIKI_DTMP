@@ -88,10 +88,20 @@ tmp/
 TASK_OUT/
 _archive/
 archive/
-introspector/
 DENDER NOT TO TRY TO READ/
 test_output.txt
 .qiki_bot.id
+
+# Introspector is published as source, but local/runtime data is not.
+introspector/.env
+introspector/.env.*
+introspector/.venv/
+introspector/.serena/
+introspector/tmp/
+introspector/analyzer/data/
+introspector/ПАТЧ/
+introspector/**/*.log
+introspector/**/*.sqlite3*
 
 # Temporary files
 *.tmp

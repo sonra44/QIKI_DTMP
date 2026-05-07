@@ -1,0 +1,291 @@
+{
+  "acceptance": {
+    "final_cli_run_with_run_id": "completed; produced run_result.json/schema/static_snapshot/summary",
+    "final_cli_validate": "OK: run_result.json matches run contract",
+    "final_compileall": "OK for src analyzer scripts tests",
+    "final_direct_offline_run": "run_result written status=completed_with_limits",
+    "final_targeted_regression": "11 passed in 1.50s",
+    "logs": [
+      {
+        "exists": true,
+        "path": "/mnt/data/introspector_unified_release_SEED_full_pytest.log",
+        "sha256": "61ca10fd4cf70d598f29c5c15de1d07c8d33457e7b99c86ede9b1db63561e69d",
+        "size_bytes": 7699
+      },
+      {
+        "exists": true,
+        "path": "/mnt/data/introspector_unified_release_FINAL_targeted_pytest.log",
+        "sha256": "317bcea011f29d6b63a59e38cd0c64c7ec3761308fd492caf34180c412028d55",
+        "size_bytes": 99
+      },
+      {
+        "exists": true,
+        "path": "/mnt/data/introspector_unified_release_FINAL_cli_run.log",
+        "sha256": "0dba08122eb29de6cca2c6f16ef1185912173bfc4958ffc5966d4eabb579e075",
+        "size_bytes": 701
+      },
+      {
+        "exists": true,
+        "path": "/mnt/data/introspector_unified_release_FINAL_cli_validate.log",
+        "sha256": "9e7b7ed34a8f3fd9bad55c6c2765e8ce46e8535117ec4233ca2c0c95e1002370",
+        "size_bytes": 41
+      },
+      {
+        "exists": true,
+        "path": "/mnt/data/introspector_unified_release_FINAL_offline_progress.log",
+        "sha256": "3abced45ec7dd2e06d23f930b05cc9419b201b0f289c9a1d68dca1a4a1752709",
+        "size_bytes": 1837
+      }
+    ],
+    "seed_full_pytest": "65 passed, 3 skipped; see /mnt/data/introspector_unified_release_SEED_full_pytest.log"
+  },
+  "base_archive": "introspector_clean_source_20260502.zip",
+  "created_at_utc": "2026-05-02T18:52:04Z",
+  "input_artifacts": [
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_clean_source_20260502.zip",
+      "sha256": "b8da8143d8f0117ddcc153a205ada284c4d12bd0e63785d95ff9e7ac41526731",
+      "size_bytes": 173379
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_implemented_plan_20260502.zip",
+      "sha256": "9744005af603f1e0c450b20b0527d3873806c24439e9d4f4cf3b4de25e31c9ab",
+      "size_bytes": 196685
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_continue_tasks_20260502.zip",
+      "sha256": "fa2ff883553be116ecc5f7cc8250a0baac368341fdad8f21dde1ca114dd6c1eb",
+      "size_bytes": 195701
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_factual_scanner_expansion_20260502.zip",
+      "sha256": "9a96773c886e31eb9449c0dcf8ec444a3968a0bf11fd4350189adbdd167506de",
+      "size_bytes": 181368
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_tui_refactor_20260502.zip",
+      "sha256": "57021bc71f542122be89cd74233bed2da50069b286829505cc88096ac2ff368e",
+      "size_bytes": 174974
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_consolidated_20260502.zip",
+      "sha256": "7565f57a06f296ee76bb1e91335d52a0e5e34742e140f733073c32c4d73ad9fd",
+      "size_bytes": 199983
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_unified_release_20260502.zip",
+      "sha256": "b6e92ee9890fd3de7ca0714d49d8bc4d21e02fe455410b6e07232d66000a00f7",
+      "size_bytes": 207307
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_implemented_plan.patch",
+      "sha256": "0d5ac58cd527bab40aba6a81f43daeae1177a83b4b07ed23f4a5eb869c2058c7",
+      "size_bytes": 97531
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_continue_tasks_20260502.patch",
+      "sha256": "613f7bc8af82827ea01136617230fc3464cb66f5bb8fce12f1cb58e01dbc76f2",
+      "size_bytes": 107727
+    },
+    {
+      "exists": true,
+      "path": "/mnt/data/introspector_factual_scanner_expansion_20260502.patch",
+      "sha256": "f96be39bff656990891515dd41e374fa342e9cf67f9c2ce737a23639b8b3d191",
+      "size_bytes": 44687
+    }
+  ],
+  "integration_notes": [
+    "Used existing unified release as semantic seed because it already joined consolidated build and safe TUI/operator refactor.",
+    "Applied final CLI parity fix: project-introspector run now forwards run_full_local_analysis options --module, --max-modules, --run-id, --keep-going, and --timeout.",
+    "Added a targeted regression test for CLI run options.",
+    "Excluded tmp/, qa_logs/, .pytest_cache, and __pycache__ from the final archive.",
+    "External live provider calls and analyzer-backed long-running service checks remain integration-environment tasks."
+  ],
+  "integration_seed": "introspector_unified_release_20260502.zip",
+  "key_files": [
+    {
+      "exists": true,
+      "path": "CONSOLIDATION_REPORT.md",
+      "sha256": "30a2600d3732105423ee3c22c12b9c9dd212d94d9167f10aafb9e677fe93e44d",
+      "size_bytes": 7102
+    },
+    {
+      "exists": true,
+      "path": "CONSOLIDATION_MANIFEST.json",
+      "sha256": null,
+      "size_bytes": 9820
+    },
+    {
+      "exists": true,
+      "path": "docs/RUN_CONTRACT.md",
+      "sha256": "4b9efa8f680f1aabb1a319b75ef771d5242b094d544a5154e8c3f8c0421a7726",
+      "size_bytes": 1565
+    },
+    {
+      "exists": true,
+      "path": "docs/PROVIDER_HARDENING.md",
+      "sha256": "6a47d9ead4e182bd7d1806371a1baaf623a9fd9331a3eb8837e7e37f758bdb85",
+      "size_bytes": 556
+    },
+    {
+      "exists": true,
+      "path": "docs/FACTUAL_SCANNER_EXPANSION.md",
+      "sha256": "0a07c485f68012513a631e555ed034718499b59bab669ac7005cc3c1d528c9b5",
+      "size_bytes": 431
+    },
+    {
+      "exists": true,
+      "path": "scripts/export_report.py",
+      "sha256": "07491ede17e4591831d6a5921a9b711952c9c49bdf41c30b1adaefbbfb9676a0",
+      "size_bytes": 2998
+    },
+    {
+      "exists": true,
+      "path": "scripts/run_full_local_analysis.py",
+      "sha256": "d24de965cf6d2619132e35476674b7144f8b1841db8a635b98cd2287c3eb30cc",
+      "size_bytes": 12744
+    },
+    {
+      "exists": true,
+      "path": "scripts/validate_run_result.py",
+      "sha256": "eaf21bc4a1d314f8f4cae56c0f225d99bb79727bd130b4761b4af0cc3e580c9c",
+      "size_bytes": 824
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/cli.py",
+      "sha256": "828bb3cbe6035ccb5483ab0faaae7ba390b564fdfacfdb3b7c71a7740de54852",
+      "size_bytes": 4600
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/run_contract.py",
+      "sha256": "f15a6b987883109b3d4f5a9999eee1acd11336d3a1e9d0e105959339163c58c3",
+      "size_bytes": 4010
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/run_validator.py",
+      "sha256": "1a598b89da5ddf21a0afd384780dac0d753fd339f0bc91be2c8649315d09351a",
+      "size_bytes": 7311
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/project_analysis_policy.py",
+      "sha256": "305169bfaf5f7435597970febc06f991eff8c112b309276e51b10c4441d17920",
+      "size_bytes": 6167
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/provider_errors.py",
+      "sha256": "0111c59de0b13863fbcd7ec3f8e2f09ce5c39b3220829c3588c865162696f934",
+      "size_bytes": 2063
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/import_normalization.py",
+      "sha256": "e86ff4639012ccf4d6bc053f34e4d6e953a8fa61304b12f93827b77de0f2a526",
+      "size_bytes": 1589
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/operator_next.py",
+      "sha256": "fb7a2846a3211d9b63b1b99b164b1289d27a0aef4b799863a80da017fd36743d",
+      "size_bytes": 1572
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/scanner.py",
+      "sha256": "26b4ca60d37270286d3b598750e87df070367a80af0637b60d682604c8df5113",
+      "size_bytes": 20627
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/schema_builder.py",
+      "sha256": "61742ad911b8c5d1681202245088d36b8633bcc037c3435d344b44401af69275",
+      "size_bytes": 3760
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/llm_payloads.py",
+      "sha256": "17bd1624dc0d710d62dc21edcd531fcaf8f6ccd7093acd08e2f97db75d60a0be",
+      "size_bytes": 11810
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/llm_enrichment.py",
+      "sha256": "4fe6b2db32395e28a9769978da963ec9741f587ff1e30c5174ffd5193a98f40e",
+      "size_bytes": 10526
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/provider_openai_compat.py",
+      "sha256": "801660ecb29aa810e3bd20603a5c38145975ab0122a75aee4aabbba1e0334e73",
+      "size_bytes": 13055
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/module_analysis_policy.py",
+      "sha256": "2b17a8f6b35ba1ba37dbcfbf9e5c5f801c4e29fd3b4aaaa11b8b1008a35bab11",
+      "size_bytes": 13140
+    },
+    {
+      "exists": true,
+      "path": "src/project_introspector/report_quality.py",
+      "sha256": "e80fc85e15c87f9db71dee895ebfb05ae8defec065e33b37fbab7c362d4b2bb2",
+      "size_bytes": 10568
+    },
+    {
+      "exists": true,
+      "path": "analyzer/app.py",
+      "sha256": "b94bcffd7762c65e7e7c4275c3c84d82e43e2ef8d556d0d2e9f67fe013b6142f",
+      "size_bytes": 10516
+    },
+    {
+      "exists": true,
+      "path": "pyproject.toml",
+      "sha256": "1356c529dfb1386ba35d39e21caa2bb5b81b095e5c9f5d7fe0f8e2e32be7a553",
+      "size_bytes": 1234
+    },
+    {
+      "exists": true,
+      "path": "tests/test_cli_entrypoint.py",
+      "sha256": "709e429753e7ff214285b6a1380ce5bdbd876c8eed633c0b2d74bb40409c2c8f",
+      "size_bytes": 1264
+    },
+    {
+      "exists": true,
+      "path": "tests/test_operator_next.py",
+      "sha256": "473d88be3689f0a9f1c7c70900df3c3cf6b0664f5804b4bcea0caca5ed409dbb",
+      "size_bytes": 2072
+    },
+    {
+      "exists": true,
+      "path": "tests/test_factual_scanner_expansion.py",
+      "sha256": "7643b065c9ee333a5e0a8eec79a8dd0986ee45c50340d83b42ae70b88bb5e1ac",
+      "size_bytes": 1931
+    },
+    {
+      "exists": true,
+      "path": "tests/test_project_analysis_policy.py",
+      "sha256": "4a3b97dc9bef94c9612ef63ea8ed2e34d3705fb3cdedb52a245e57a104d27e3a",
+      "size_bytes": 1290
+    },
+    {
+      "exists": true,
+      "path": "tests/test_run_contract_validator.py",
+      "sha256": "ec11027a5a0f86d5779f493e2cc539f2dcf746b5475a62364b2fcde9c490c3a9",
+      "size_bytes": 2770
+    }
+  ],
+  "release_name": "introspector_unified_release_20260502_FINAL"
+}

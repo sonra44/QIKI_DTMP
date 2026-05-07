@@ -1,0 +1,14 @@
+.venv/
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+tmp/*.json
+tmp/live_module_pass/*.json
+analyzer/data/*.json
+analyzer/data/static/*.json
+analyzer/data/runtime/*.json
+analyzer/data/derived/*.json
