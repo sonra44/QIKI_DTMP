@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -9,67 +9,105 @@ from textual.containers import Container
 from textual.css.query import NoMatches
 from textual.widgets import Button, Static
 
-from qiki.services.operator_console.orion_v.i18n_ru import tr
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
     from qiki.services.operator_console.orion_v.operator_state import OperatorShellState
 
 
+@dataclass(slots=True)
+class OperatorUsefulFact:
+    title_ru: str
+    value_ru: str
+    severity: str = "ok"
+    source_path: str = "unknown"
+    freshness: str = "unknown"
+    trust: str = "unknown"
+    reason_code: str = ""
+    operator_meaning_ru: str = ""
+    next_step_ru: str = ""
+
+
 class OrionVCockpitScreen(Static):
-    """Operator cockpit (F1): status-first layout for 3-5s situation awareness."""
+    """F1: Russian MFD cockpit for operator-useful telemetry, not raw data dumps."""
 
     DEFAULT_CSS = """
     OrionVCockpitScreen {
         layout: vertical;
     }
 
-    #orionv-cockpit-layout {
+    #orionv-mfd-root {
         height: 1fr;
-        layout: horizontal;
+        layout: vertical;
     }
 
-    #orionv-cockpit-body {
-        width: 2fr;
-        height: 1fr;
-        margin: 0 1 0 0;
+    #orionv-mfd-status {
+        height: auto;
+        border: round $surface-lighten-1 15%;
+        background: $panel-darken-1 5%;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+
+    #orionv-mfd-main {
+        height: 2fr;
+        layout: horizontal;
+        margin: 0 0 1 0;
+    }
+
+    #orionv-mfd-left-buttons,
+    #orionv-mfd-right-buttons {
+        width: 12;
+        layout: vertical;
+        border: round $surface-lighten-1 15%;
+        padding: 0 1;
+    }
+
+    #orionv-cockpit-body,
+    #orionv-mfd-right-screen {
+        width: 1fr;
         border: round $surface-lighten-1 15%;
         background: $panel-darken-1 4%;
         padding: 0 1;
-    }
-
-    #orionv-cockpit-right {
-        width: 1fr;
-        height: 1fr;
-        layout: vertical;
-    }
-
-    #orionv-cockpit-actions {
-        height: auto;
-        layout: vertical;
-        margin: 0 0 1 0;
-        border: round $surface-lighten-1 20%;
-        background: $panel 4%;
-        padding: 0 1;
-    }
-
-    OrionVCockpitScreen .orionv-cockpit-action-row {
-        height: auto;
-        layout: horizontal;
-    }
-
-    OrionVCockpitScreen Button {
-        min-width: 12;
-        margin: 0 1 0 0;
+        margin: 0 1;
     }
 
     #orionv-cockpit-intervention {
         height: 1fr;
+        min-height: 10;
         border: round $surface-lighten-1 15%;
         background: $panel-darken-1 4%;
         padding: 0 1;
     }
+
+    #orionv-cockpit-actions {
+        display: none;
+    }
+
+    OrionVCockpitScreen Button {
+        width: 100%;
+        margin: 0 0 1 0;
+    }
     """
+
+    LEFT_PAGES = (
+        ("radar", "РАДАР"),
+        ("nav", "НАВ"),
+        ("target", "ЦЕЛЬ"),
+        ("sector", "СЕКТОР"),
+        ("mission", "МИССИЯ"),
+    )
+    RIGHT_PAGES = (
+        ("systems", "СИСТ"),
+        ("sensors", "СЕНС"),
+        ("power", "ПИТ"),
+        ("thermal", "ТЕПЛО"),
+        ("comms", "СВЯЗЬ"),
+        ("propulsion", "ДВИГ"),
+        ("docking", "СТЫК"),
+        ("journal", "ЖУРН"),
+        ("procedures", "ПРОЦ"),
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -84,52 +122,52 @@ class OrionVCockpitScreen(Static):
         self._qiki_pending_action_title: str | None = None
         self._qiki_plan_preview_lines: list[str] = []
         self._qiki_procedure_status: str | None = None
-        self._prev_core_temp_c: float | None = None
         self._operator_shell_state: Any | None = None
-        self._fallback_body_text = ""
-        self._fallback_intervention_text = ""
+        self._left_page = "radar"
+        self._right_page = "systems"
+        self._fallback_render = ""
 
     def compose(self) -> ComposeResult:
-        with Container(id="orionv-cockpit-layout"):
-            yield Static("", id="orionv-cockpit-body")
-            with Container(id="orionv-cockpit-right"):
-                with Container(id="orionv-cockpit-actions"):
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-navigation")
-                        yield Button("", id="orionv-cockpit-jump-docking")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-power")
-                        yield Button("", id="orionv-cockpit-jump-comms")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-thermal")
-                        yield Button("", id="orionv-cockpit-jump-incidents")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-procedures")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-qiki-confirm", variant="primary")
-                        yield Button("", id="orionv-cockpit-qiki-cancel")
-                yield Static("", id="orionv-cockpit-intervention")
+        with Container(id="orionv-mfd-root"):
+            yield Static("", id="orionv-mfd-status")
+            with Container(id="orionv-mfd-main"):
+                with Container(id="orionv-mfd-left-buttons"):
+                    for page, label in self.LEFT_PAGES:
+                        yield Button(label, id=f"orionv-mfd-left-{page}")
+                yield Static("", id="orionv-cockpit-body")
+                yield Static("", id="orionv-mfd-right-screen")
+                with Container(id="orionv-mfd-right-buttons"):
+                    for page, label in self.RIGHT_PAGES:
+                        yield Button(label, id=f"orionv-mfd-right-{page}")
+            yield Static("", id="orionv-cockpit-intervention")
+            with Container(id="orionv-cockpit-actions"):
+                yield Button("Маршрут", id="orionv-cockpit-jump-navigation")
+                yield Button("Стыковка", id="orionv-cockpit-jump-docking")
+                yield Button("Питание", id="orionv-cockpit-jump-power")
+                yield Button("Связь", id="orionv-cockpit-jump-comms")
+                yield Button("Тепло", id="orionv-cockpit-jump-thermal")
+                yield Button("Инциденты", id="orionv-cockpit-jump-incidents")
+                yield Button("Процедуры", id="orionv-cockpit-jump-procedures")
+                yield Button("Подтвердить QIKI", id="orionv-cockpit-qiki-confirm", variant="primary")
+                yield Button("Отменить QIKI", id="orionv-cockpit-qiki-cancel")
 
     def on_mount(self) -> None:
-        try:
-            actions = self.query_one("#orionv-cockpit-actions", Container)
-            actions.border_title = "ПЕРЕХОДЫ"
-            actions.border_subtitle = "F2 | F3 | F6"
-        except NoMatches:
-            pass
-        try:
-            body = self.query_one("#orionv-cockpit-body", Static)
-            body.border_title = "F1 КОКПИТ"
-            body.border_subtitle = "3-секундная картина"
-        except NoMatches:
-            pass
-        try:
-            intervention = self.query_one("#orionv-cockpit-intervention", Static)
-            intervention.border_title = "QIKI / ОПЕРАТОР"
-            intervention.border_subtitle = "решение | действие | процесс"
-        except NoMatches:
-            pass
+        self._set_border("#orionv-mfd-status", "ОРИОН / СТАТУС", "операторская пригодность состояния")
+        self._set_border("#orionv-mfd-left-buttons", "ЛКН", "левый MFD")
+        self._set_border("#orionv-mfd-right-buttons", "ПКН", "правый MFD")
+        self._set_border("#orionv-cockpit-body", "ЛЕВЫЙ MFD", "внешний мир")
+        self._set_border("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "тело QIKI")
+        self._set_border("#orionv-cockpit-intervention", "QIKI / ОПЕРАТОР", "решение | доверие | последствие")
         self._refresh_text()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id.startswith("orionv-mfd-left-"):
+            self._left_page = button_id.removeprefix("orionv-mfd-left-")
+            self._refresh_text()
+        elif button_id.startswith("orionv-mfd-right-"):
+            self._right_page = button_id.removeprefix("orionv-mfd-right-")
+            self._refresh_text()
 
     def set_state(
         self,
@@ -147,10 +185,9 @@ class OrionVCockpitScreen(Static):
         qiki_procedure_status: str | None = None,
         operator_shell_state: "OperatorShellState | None" = None,
     ) -> None:
-        self._prev_core_temp_c = self._pick_core_temp_c(self._telemetry)
-        self._telemetry = telemetry
-        self._nats_connected = nats_connected
-        self._active_incidents = active_incidents
+        self._telemetry = telemetry or {}
+        self._nats_connected = bool(nats_connected)
+        self._active_incidents = int(active_incidents or 0)
         self._incidents = incidents or []
         self._safe_mode = safe_mode or {}
         self._observation_objective = dict(observation_objective or {}) or None
@@ -163,1917 +200,470 @@ class OrionVCockpitScreen(Static):
         self._refresh_text()
 
     def _refresh_text(self) -> None:
-        tel = self._telemetry
-        shell_state = self._operator_shell_state
-        always_on = getattr(shell_state, "always_on", None)
-        derived_state = getattr(shell_state, "derived", None)
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        energy_sev, energy_lines = self._energy_block(tel)
-        motion_sev, motion_lines = self._motion_block(tel)
-        comms_sev, comms_lines = self._comms_block(tel)
-        thermal_sev, thermal_lines = self._thermal_block(tel)
-        safety_sev, safety_lines = self._safety_block()
-        objective_sev, objective_lines = self._objective_block()
-        objective_facts_sev, objective_facts_lines = self._objective_facts_block()
-        incidents_sev, incidents_lines = self._incidents_block()
-        procedure_sev, procedure_lines = self._procedure_block(tel)
-        qiki_sev, qiki_lines = self._qiki_block()
-        docking_quick_sev = self._docking_quick_severity(tel)
-
-        global_sev, global_reason = self._global_status(
-            energy_sev=energy_sev,
-            motion_sev=motion_sev,
-            comms_sev=comms_sev,
-            thermal_sev=thermal_sev,
-            safety_sev=safety_sev,
-            incidents_sev=incidents_sev,
-            procedure_sev=procedure_sev,
-            qiki_sev=qiki_sev,
-        )
-        scene_profile = self._resolve_scene_profile(tel)
-        mode_sev, mode_lines = self._mode_context_block(
-            scene_profile=scene_profile,
-            global_sev=global_sev,
-            global_reason=global_reason,
-            objective_sev=objective_sev,
-        )
-        actions_sev, action_lines = self._available_actions_block(
-            scene_profile=scene_profile,
-            telemetry=tel,
-            objective_severity=objective_sev,
-            qiki_severity=qiki_sev,
-            procedure_severity=procedure_sev,
-            incidents_severity=incidents_sev,
-        )
-        process_sev, process_lines = self._current_process_block(
-            procedure_severity=procedure_sev,
-            objective_severity=objective_sev,
-            objective_facts_severity=objective_facts_sev,
-            procedure_lines=procedure_lines,
-            objective_lines=objective_lines,
-            objective_facts_lines=objective_facts_lines,
-        )
-        spatial_sev, spatial_lines = self._spatial_telemetry_block(
-            telemetry=tel,
-            motion_severity=motion_sev,
-            motion_lines=motion_lines,
-        )
-        route_sev, route_lines = self._route_intent_block(
-            scene_profile=scene_profile,
-            objective_severity=objective_sev,
-            objective_lines=objective_lines,
-            objective_facts_lines=objective_facts_lines,
-        )
-        qiki_interp_sev, qiki_interp_lines = self._qiki_interpretation_block(
-            qiki_severity=qiki_sev,
-            qiki_lines=qiki_lines,
-        )
-        mission_sev, mission_lines = self._mission_context_block(
-            scene_profile=scene_profile,
-            global_sev=global_sev,
-            global_reason=global_reason,
-            objective_sev=objective_sev,
-            objective_lines=objective_lines,
-        )
-        guidance_sev, guidance_lines = self._guidance_context_block(
-            telemetry=tel,
-            motion_severity=motion_sev,
-            motion_lines=motion_lines,
-        )
-        incident_focus_sev, incident_focus_lines = self._mission_incident_block()
-        support_sev, support_lines = self._mission_support_block(
-            energy_severity=energy_sev,
-            energy_lines=energy_lines,
-            motion_severity=motion_sev,
-            motion_lines=motion_lines,
-            comms_severity=comms_sev,
-            comms_lines=comms_lines,
-            thermal_severity=thermal_sev,
-            thermal_lines=thermal_lines,
-            safety_severity=safety_sev,
-            safety_lines=safety_lines,
-            objective_facts_severity=objective_facts_sev,
-            objective_facts_lines=objective_facts_lines,
-        )
-        qiki_reco_sev, qiki_reco_lines = self._qiki_recommendation_block(
-            qiki_severity=qiki_sev,
-            qiki_lines=qiki_lines,
-            qiki_interpretation_lines=qiki_interp_lines,
-        )
-        intervention_sev, intervention_lines = self._operator_intervention_block(
-            action_lines=action_lines,
-            process_lines=process_lines,
-            procedure_lines=procedure_lines,
-            qiki_lines=qiki_lines,
-            incidents_lines=incidents_lines,
-        )
-
-        body_text = "\n".join(
-            [
-                self._overview_line(global_sev, global_reason),
-                self._section_divider(),
-                *self._panel_block(
-                    "Общий статус",
-                    self._global_state_rows(
-                        scene_profile=scene_profile,
-                        global_severity=global_sev,
-                        objective=objective,
-                    ),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Контекст миссии",
-                    self._mission_context_rows(
-                        always_on=always_on,
-                        objective=objective,
-                        scene_profile=scene_profile,
-                    ),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Наведение",
-                    self._guidance_rows(
-                        telemetry=tel,
-                        guidance_severity=guidance_sev,
-                        derived_state=derived_state,
-                    ),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Инциденты",
-                    self._incident_rows(incident_focus_severity=incident_focus_sev),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Маршрут и цель",
-                    self._route_rows(
-                        objective=objective,
-                        route_severity=route_sev,
-                        scene_profile=scene_profile,
-                    ),
-                ),
-                self._section_divider(),
-                *self._dim_block(
-                    self._section_title(
-                        "Краткие факты",
-                        _merge_severity(objective_sev, support_sev),
-                    ),
-                    [
-                        *objective_lines[:2],
-                        *objective_facts_lines[:1],
-                        self._quick_fact_row(
-                            "SAFETY",
-                            safety_sev,
-                            self._compact_fact_detail(safety_lines[0], "Статус: "),
-                            self._compact_fact_detail(safety_lines[1], "Причина: "),
-                        ),
-                        self._quick_fact_row(
-                            "ENERGY",
-                            energy_sev,
-                            self._compact_fact_detail(energy_lines[0], "Заряд/SOC: "),
-                            self._compact_fact_detail(energy_lines[1], "Шина/Bus: "),
-                        ),
-                        self._quick_fact_row(
-                            "THERMAL",
-                            thermal_sev,
-                            self._compact_fact_detail(thermal_lines[0], "Core: "),
-                            self._compact_fact_detail(thermal_lines[1], "Radiator/Sink: "),
-                        ),
-                    ],
-                ),
-            ]
-        )
-        fallback_body_text = "\n".join(
-            [
-                body_text,
-                self._section_divider(),
-                *self._dim_block(
-                    self._section_title(
-                        "Краткие факты",
-                        _merge_severity(objective_sev, support_sev),
-                    ),
-                    [
-                        "Цель наблюдения:",
-                        *objective_lines,
-                        "Связанные факты:",
-                        *objective_facts_lines,
-                        *spatial_lines,
-                        *support_lines,
-                        *safety_lines,
-                        *mode_lines,
-                        *route_lines,
-                        *mission_lines,
-                        *guidance_lines,
-                        *incident_focus_lines,
-                    ],
-                ),
-            ]
-        )
-        intervention_text = "\n".join(
-            [
-                *self._panel_block(
-                    "QIKI / Решение",
-                    self._qiki_recommendation_rows(
-                        qiki_severity=qiki_reco_sev,
-                        qiki_lines=qiki_reco_lines,
-                    ),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Оператор / Действие",
-                    self._operator_intervention_rows(intervention_lines=intervention_lines),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Процесс / Контур",
-                    self._process_state_rows(
-                        process_severity=process_sev,
-                        procedure_status=self._qiki_procedure_status,
-                        scene_profile=scene_profile,
-                    ),
-                    extras=None,
-                ),
-            ]
-        )
-        fallback_intervention_text = "\n".join(
-            [
-                "QIKI, действие, контур.",
-                self._section_divider(),
-                intervention_text,
-                self._section_divider(),
-                *self._dim_block(
-                    self._section_title(
-                        "Контекст решения",
-                        _merge_severity(process_sev, qiki_interp_sev),
-                    ),
-                    [
-                        *process_lines,
-                        "Процедура:",
-                        *qiki_interp_lines,
-                        *procedure_lines,
-                        *intervention_lines,
-                        *qiki_reco_lines,
-                        *action_lines,
-                    ],
-                ),
-            ]
-        )
-        self._set_panel_texts(
-            body_text=body_text,
-            intervention_text=intervention_text,
-            fallback_body_text=fallback_body_text,
-            fallback_intervention_text=fallback_intervention_text,
-        )
-        self._refresh_actions(
-            energy_sev=energy_sev,
-            motion_sev=motion_sev,
-            docking_sev=docking_quick_sev,
-            comms_sev=comms_sev,
-            thermal_sev=thermal_sev,
-            incidents_sev=incidents_sev,
-            procedure_sev=procedure_sev,
-            qiki_sev=qiki_sev,
-        )
-
-    def _set_panel_texts(
-        self,
-        *,
-        body_text: str,
-        intervention_text: str,
-        fallback_body_text: str | None = None,
-        fallback_intervention_text: str | None = None,
-    ) -> None:
-        self._fallback_body_text = fallback_body_text or body_text
-        self._fallback_intervention_text = fallback_intervention_text or intervention_text
-        self._set_body_text(body_text)
+        status_text = self._status_strip()
+        left_text = self._render_left_mfd()
+        right_text = self._render_right_mfd()
+        chat_text = self._render_qiki_chat()
+        self._fallback_render = "\n\n".join([status_text, left_text, right_text, chat_text])
+        self._update_static("#orionv-mfd-status", status_text)
+        self._update_static("#orionv-cockpit-body", left_text)
+        self._update_static("#orionv-mfd-right-screen", right_text)
+        self._update_static("#orionv-cockpit-intervention", chat_text)
         try:
-            self.query_one("#orionv-cockpit-intervention", Static).update(intervention_text)
+            confirm = self.query_one("#orionv-cockpit-qiki-confirm", Button)
+            cancel = self.query_one("#orionv-cockpit-qiki-cancel", Button)
+            visible = self._qiki_pending_action_title is not None
+            confirm.display = visible
+            cancel.display = visible
+            confirm.disabled = not visible
+            cancel.disabled = not visible
+        except NoMatches:
+            self.update(self._fallback_render)
+
+    def _status_strip(self) -> str:
+        facts = [
+            self._telemetry_status_fact(),
+            self._sim_status_fact(),
+            self._safe_mode_fact(),
+            self._power_fact(),
+            self._thermal_fact(),
+            self._sensor_summary_fact(),
+            self._qiki_status_fact(),
+            self._incident_fact(),
+        ]
+        return " | ".join(f"{fact.title_ru}: {fact.value_ru}" for fact in facts)
+
+    def _render_left_mfd(self) -> str:
+        title = self._page_label(self.LEFT_PAGES, self._left_page)
+        if self._left_page == "radar":
+            lines = self._radar_lines()
+        elif self._left_page == "nav":
+            lines = self._navigation_lines()
+        elif self._left_page == "target":
+            lines = self._target_lines()
+        elif self._left_page == "sector":
+            lines = self._sector_lines()
+        else:
+            lines = self._mission_lines()
+        return self._mfd_text(title, lines)
+
+    def _render_right_mfd(self) -> str:
+        title = self._page_label(self.RIGHT_PAGES, self._right_page)
+        if self._right_page == "sensors":
+            lines = self._sensor_lines()
+        elif self._right_page == "power":
+            lines = self._power_lines()
+        elif self._right_page == "thermal":
+            lines = self._thermal_lines()
+        elif self._right_page == "comms":
+            lines = self._comms_lines()
+        elif self._right_page == "propulsion":
+            lines = self._propulsion_lines()
+        elif self._right_page == "docking":
+            lines = self._docking_lines()
+        elif self._right_page == "journal":
+            lines = self._journal_lines()
+        elif self._right_page == "procedures":
+            lines = self._procedure_lines()
+        else:
+            lines = self._systems_lines()
+        return self._mfd_text(title, lines)
+
+    def _render_qiki_chat(self) -> str:
+        lines = ["КАНАЛ QIKI / ОПЕРАТОР", "Операторский ввод: q: <команда>"]
+        if self._qiki_pending_action_title:
+            lines.append(f"Ожидает подтверждения: {self._qiki_pending_action_title}")
+        if self._qiki_procedure_status:
+            lines.append(f"Процедура: {self._qiki_procedure_status}")
+        if self._qiki_plan_preview_lines:
+            lines.append("План:")
+            lines.extend(f"  {line}" for line in self._qiki_plan_preview_lines[:4])
+        response = self._qiki_response
+        if response is None:
+            lines.extend([
+                "QIKI: готова к запросу.",
+                "Смысл: нижний канал предназначен для команды, объяснения и подтверждения последствия.",
+                "Следующий шаг: q: проверь текущую пригодность сенсоров",
+            ])
+            return "\n".join(lines)
+        if response.reply is not None:
+            lines.append(f"Ответ: {response.reply.title.ru}")
+            lines.append(response.reply.body.ru)
+        if response.legality is not None:
+            legality = response.legality
+            lines.append(f"Решение: {legality.status} | домен={legality.domain} | причина={legality.reason_code}")
+            lines.append(f"Почему: {legality.reason.ru}")
+            if legality.allowed_when is not None:
+                lines.append(f"Когда можно: {legality.allowed_when.ru}")
+        if response.trust_signals:
+            lines.append("Доверие:")
+            for signal in response.trust_signals[:4]:
+                lines.append(
+                    f"  {signal.label.ru}: {signal.state} | источник={signal.source} | "
+                    f"conf={signal.confidence:.2f} | {signal.reason_code}"
+                )
+        if response.consequence is not None:
+            consequence = response.consequence
+            lines.append(f"Последствие: {consequence.status} | {consequence.summary.ru}")
+            if consequence.telemetry_confirmation is not None:
+                lines.append(f"Подтверждение: {consequence.telemetry_confirmation.ru}")
+        if response.warnings:
+            lines.append("Предупреждения:")
+            lines.extend(f"  {warning.ru}" for warning in response.warnings[:3])
+        if response.error is not None:
+            lines.append(f"Ошибка: {response.error.code} | {response.error.message.ru}")
+        return "\n".join(lines)
+
+    def _systems_lines(self) -> list[str]:
+        return [
+            self._format_fact(self._power_fact()),
+            self._format_fact(self._thermal_fact()),
+            self._format_fact(self._comms_fact()),
+            self._format_fact(self._sensor_summary_fact()),
+            self._format_fact(self._incident_fact()),
+            "Смысл: правый MFD показывает тело QIKI, а не внешний мир.",
+        ]
+
+    def _radar_lines(self) -> list[str]:
+        radar = self._pick_dict("radar") or {}
+        tracks = self._pick_any("radar_tracks", "tracks")
+        track_count = len(tracks) if isinstance(tracks, (list, tuple, dict)) else self._pick_num("radar", "track_count")
+        track_text = self._fmt_num(track_count, "целей", "Нет данных")
+        state = self._pick_text("radar", "state") or self._pick_text("radar", "status") or self._sensor_status("radar_360")
+        quality = self._pick_any("radar", "quality") or self._pick_any("radar", "confidence")
+        return [
+            f"Радар: {state or 'Нет данных'}",
+            f"Треки: {track_text}",
+            f"Качество: {self._fmt_optional(quality)}",
+            "Влияние: используется для внешней картины, цели и безопасного наблюдения.",
+            "Следующий шаг: q: оцени качество радарной картины",
+            "Источник: qiki.radar.v1.tracks / qiki.telemetry.radar",
+        ]
+
+    def _navigation_lines(self) -> list[str]:
+        speed = self._pick_any("speed_m_s") or self._pick_any("nav", "speed_m_s")
+        heading = self._pick_any("heading_deg") or self._pick_any("nav", "heading_deg")
+        orbit = self._pick_dict("orbit") or {}
+        return [
+            f"Скорость: {self._fmt_num(speed, 'м/с')}",
+            f"Курс: {self._fmt_num(heading, '°')}",
+            f"Орбита: {orbit.get('state', 'Нет данных')} | conf={self._fmt_optional(orbit.get('confidence'))}",
+            "Влияние: определяет допустимость манёвра и стабилизации.",
+            "Следующий шаг: q: предложи безопасную стабилизацию",
+            "Источник: qiki.telemetry.nav / orbit / velocity",
+        ]
+
+    def _target_lines(self) -> list[str]:
+        objective = self._observation_objective or {}
+        target = objective.get("target_designator") or objective.get("track_label") or objective.get("public_track_label")
+        status = objective.get("status") or objective.get("observation_result_status")
+        return [
+            f"Цель: {target or 'Нет данных'}",
+            f"Статус: {status or 'Нет данных'}",
+            f"Стиль наблюдения: {objective.get('observation_style', 'Нет данных')}",
+            "Влияние: без цели нельзя честно разрешать route/observation action.",
+            "Следующий шаг: q: уточни активную цель наблюдения",
+            "Источник: active observation objective / qiki.events",
+        ]
+
+    def _sector_lines(self) -> list[str]:
+        sector = self._pick_dict("sector") or {}
+        radiation = self._pick_any("radiation", "level") or self._pick_any("radiation_level")
+        return [
+            f"Сектор: {sector.get('name', 'Сектор Терта')}",
+            f"Радиация: {self._fmt_optional(radiation)}",
+            f"Зона: {sector.get('zone_state', sector.get('state', 'Нет данных'))}",
+            "Влияние: зона может ограничивать QIKI по domain=zone/trust.",
+            "Следующий шаг: q: проверь ограничения зоны",
+            "Источник: qiki.telemetry.sector / qiki.events",
+        ]
+
+    def _mission_lines(self) -> list[str]:
+        objective = self._observation_objective or {}
+        return [
+            f"Миссия: {objective.get('summary_ru') or objective.get('title_ru') or 'Нет данных'}",
+            f"Маршрут: {objective.get('route_role', 'Нет данных')}",
+            f"Процедура: {objective.get('procedure_name', self._qiki_procedure_status or 'Нет данных')}",
+            "Влияние: миссия задаёт контекст полезности всех остальных экранов.",
+            "Следующий шаг: q: сформулируй ближайшую безопасную цель",
+            "Источник: active objective / QIKI response / procedure state",
+        ]
+
+    def _sensor_lines(self) -> list[str]:
+        sensors = [
+            ("radar_360", "Радар 360", "радар и треки", "qiki.radar.v1.tracks"),
+            ("lidar_front", "Лидар фронт", "сближение и препятствия", "sensor_plane.lidar_front"),
+            ("lidar", "Лидар", "локальная геометрия", "sensor_plane.lidar"),
+            ("imu_main", "ИМУ", "ориентация и стабилизация", "sensor_plane.imu_main"),
+            ("sensor_thermal", "Тепловой сенсор", "перегрев и ограничения нагрузки", "qiki.telemetry.thermal"),
+            ("sensor_radiation", "Радиация", "доверие к сенсорам", "qiki.telemetry.radiation"),
+            ("sensor_proximity", "Сближение", "стыковка и collision risk", "qiki.telemetry.docking"),
+            ("sensor_solar", "Солнечный сенсор", "энергия и ориентация", "qiki.telemetry.power"),
+            ("sensor_star_tracker", "Звёздный трекер", "навигационная привязка", "sensor_plane.sensor_star_tracker"),
+            ("spectrometer", "Спектрометр", "состав цели; runtime source не подтверждён", "sensor_plane.spectrometer"),
+            ("magnetometer", "Магнитометр", "аномалии и ориентация", "sensor_plane.magnetometer"),
+        ]
+        lines = ["Сенсоры показываются как пригодность восприятия QIKI, не как список железа."]
+        for key, label, meaning, source in sensors:
+            status = self._sensor_status(key)
+            conf = self._sensor_value(key, "confidence")
+            age = self._sensor_value(key, "age_s")
+            lines.append(
+                f"{label}: {status} | доверие={self._fmt_optional(conf)} | age={self._fmt_num(age, 'с')} | смысл={meaning} | источник={source}"
+            )
+        return lines
+
+    def _power_lines(self) -> list[str]:
+        power = self._pick_dict("power") or {}
+        return [
+            f"SOC: {self._fmt_num(power.get('soc_pct'), '%')}",
+            f"Шина: {self._fmt_num(power.get('bus_v'), 'В')} | {self._fmt_num(power.get('bus_a'), 'А')}",
+            f"Load shedding: {'ВКЛ' if power.get('load_shedding') else 'выкл'}",
+            f"Причины сброса: {', '.join(power.get('shed_reasons') or []) or 'Нет данных'}",
+            "Влияние: питание ограничивает длительные процедуры, связь и тягу.",
+            "Следующий шаг: q: оцени допустимые действия по энергии",
+            "Источник: qiki.telemetry.power",
+        ]
+
+    def _thermal_lines(self) -> list[str]:
+        thermal = self._pick_dict("thermal") or {}
+        nodes = thermal.get("nodes") if isinstance(thermal.get("nodes"), list) else []
+        lines = [
+            f"Core: {self._fmt_num(self._core_temp(), '°C')}",
+            f"External: {self._fmt_num(self._pick_any('temp_external_c'), '°C')}",
+        ]
+        for node in nodes[:5]:
+            if isinstance(node, dict):
+                state = "TRIP" if node.get("tripped") else "WARN" if node.get("warned") else "OK"
+                lines.append(f"{node.get('id', 'node')}: {self._fmt_num(node.get('temp_c'), '°C')} | {state}")
+        lines.extend([
+            "Влияние: тепло ограничивает манёвр, вычисления, связь и длительные действия.",
+            "Следующий шаг: q: предложи снижение тепловой нагрузки",
+            "Источник: qiki.telemetry.thermal / temp_core_c",
+        ])
+        return lines
+
+    def _comms_lines(self) -> list[str]:
+        comms = self._pick_dict("comms") or {}
+        return [
+            f"Канал: {comms.get('link') or comms.get('link_state') or 'Нет данных'}",
+            f"Latency: {self._fmt_num(comms.get('latency_ms'), 'мс')}",
+            f"Packet loss: {self._fmt_num(comms.get('packet_loss_pct'), '%')}",
+            f"SNR: {self._fmt_num(comms.get('snr_db'), 'dB')}",
+            f"Antenna: {comms.get('antenna_status', 'Нет данных')}",
+            "Влияние: связь определяет доступность удалённых процедур и station contact.",
+            "Следующий шаг: q: проверь пригодность связи для команды",
+            "Источник: qiki.telemetry.comms",
+        ]
+
+    def _propulsion_lines(self) -> list[str]:
+        propulsion = self._pick_dict("propulsion") or {}
+        return [
+            f"Статус: {propulsion.get('status', propulsion.get('state', 'Нет данных'))}",
+            f"RCS: {propulsion.get('rcs_state', 'Нет данных')}",
+            f"Тяга: {self._fmt_num(propulsion.get('thrust_n'), 'Н')}",
+            "Влияние: двигатель определяет манёвр, отстыковку и combat-entry.",
+            "Следующий шаг: q: оцени допустимый импульс",
+            "Источник: qiki.telemetry.propulsion",
+        ]
+
+    def _docking_lines(self) -> list[str]:
+        docking = self._pick_dict("docking") or {}
+        return [
+            f"Состояние: {docking.get('state', 'Нет данных')}",
+            f"Дистанция: {self._fmt_num(docking.get('distance_m'), 'м')}",
+            f"Скорость сближения: {self._fmt_num(docking.get('approach_mps') or docking.get('rel_speed_mps'), 'м/с')}",
+            f"Замки: {docking.get('locks', 'Нет данных')}",
+            "Влияние: стыковка требует свежих proximity/docking данных.",
+            "Следующий шаг: q: проверь безопасность стыковки",
+            "Источник: qiki.telemetry.docking",
+        ]
+
+    def _journal_lines(self) -> list[str]:
+        lines = ["Последние операторские события:"]
+        for incident in self._incidents[:6]:
+            lines.append(f"{incident.get('severity', '?')}: {incident.get('id', 'нет id')} | {incident.get('description', 'Нет данных')}")
+        if not self._incidents:
+            lines.append("Нет активных инцидентов.")
+        lines.append("Источник: qiki.events.v1 / локальный incidents store")
+        return lines
+
+    def _procedure_lines(self) -> list[str]:
+        return [
+            f"QIKI procedure: {self._qiki_procedure_status or 'Нет данных'}",
+            f"Pending action: {self._qiki_pending_action_title or 'Нет данных'}",
+            "Влияние: pending требует ручного подтверждения; автодействий нет.",
+            "Следующий шаг: подтвердить/отменить или спросить QIKI о риске.",
+            "Источник: qiki.responses.qiki / qiki.responses.control",
+        ]
+
+    def _telemetry_status_fact(self) -> OperatorUsefulFact:
+        return OperatorUsefulFact("ТЕЛЕМЕТРИЯ", "fresh" if self._nats_connected else "Нет данных", source_path="qiki.telemetry")
+
+    def _sim_status_fact(self) -> OperatorUsefulFact:
+        sim = self._pick_dict("sim_state") or {}
+        state = sim.get("fsm_state") or ("PAUSED" if sim.get("paused") else "RUNNING" if sim else "Нет данных")
+        return OperatorUsefulFact("СИМ", str(state), source_path="qiki.telemetry.sim_state")
+
+    def _safe_mode_fact(self) -> OperatorUsefulFact:
+        active = self._safe_mode.get("active")
+        if active is True:
+            value = f"ВКЛ | {self._safe_mode.get('reason') or 'без причины'}"
+            severity = "crit"
+        elif active is False or active is None:
+            value = f"выкл | {self._safe_mode.get('reason') or 'signal clear'}"
+            severity = "ok"
+        else:
+            value = "Нет данных"
+            severity = "warn"
+        return OperatorUsefulFact("SAFE", value, severity, "qiki.events.safe_mode")
+
+    def _power_fact(self) -> OperatorUsefulFact:
+        soc = self._pick_any("power", "soc_pct")
+        if isinstance(soc, (int, float)):
+            severity = "crit" if soc < 15 else "warn" if soc < 25 else "ok"
+            value = f"{soc:.1f}%"
+        else:
+            severity = "warn"
+            value = "Нет данных"
+        return OperatorUsefulFact("ЭНЕРГИЯ", value, severity, "qiki.telemetry.power", operator_meaning_ru="ресурсный лимит")
+
+    def _thermal_fact(self) -> OperatorUsefulFact:
+        core = self._core_temp()
+        if isinstance(core, (int, float)):
+            severity = "crit" if core >= 90 else "warn" if core >= 80 else "ok"
+            value = f"{core:.1f}°C"
+        else:
+            severity = "warn"
+            value = "Нет данных"
+        return OperatorUsefulFact("ТЕПЛО", value, severity, "qiki.telemetry.thermal", operator_meaning_ru="ограничение нагрузки")
+
+    def _comms_fact(self) -> OperatorUsefulFact:
+        link = self._pick_any("comms", "link") or self._pick_any("comms", "link_state")
+        return OperatorUsefulFact("СВЯЗЬ", str(link or "Нет данных"), "ok" if link == "online" else "warn", "qiki.telemetry.comms")
+
+    def _sensor_summary_fact(self) -> OperatorUsefulFact:
+        statuses = [self._sensor_status(key) for key in ("radar_360", "imu_main", "lidar_front", "sensor_thermal")]
+        if any(status in {"failed", "off"} for status in statuses):
+            severity = "crit"
+            value = "отказ"
+        elif any(status in {"degraded", "Нет данных"} for status in statuses):
+            severity = "warn"
+            value = "деградация"
+        else:
+            severity = "ok"
+            value = "норма"
+        return OperatorUsefulFact("СЕНСОРЫ", value, severity, "sensor_plane / telemetry")
+
+    def _qiki_status_fact(self) -> OperatorUsefulFact:
+        if self._qiki_pending_action_title:
+            value = "ждёт подтверждения"
+            severity = "warn"
+        elif self._qiki_response and not self._qiki_response.ok:
+            value = "ошибка"
+            severity = "crit"
+        elif self._qiki_response:
+            value = self._qiki_response.mode.value
+            severity = "ok"
+        else:
+            value = "готова"
+            severity = "ok"
+        return OperatorUsefulFact("QIKI", value, severity, "qiki.responses.qiki")
+
+    def _incident_fact(self) -> OperatorUsefulFact:
+        if self._active_incidents:
+            return OperatorUsefulFact("ИНЦ", str(self._active_incidents), "crit", "qiki.events.v1")
+        return OperatorUsefulFact("ИНЦ", "0", "ok", "qiki.events.v1")
+
+    def _mfd_text(self, title: str, lines: list[str]) -> str:
+        return "\n".join([f"[{title}]", *lines])
+
+    def _format_fact(self, fact: OperatorUsefulFact) -> str:
+        parts = [f"{fact.title_ru}: {fact.value_ru}"]
+        if fact.operator_meaning_ru:
+            parts.append(f"смысл={fact.operator_meaning_ru}")
+        parts.append(f"источник={fact.source_path}")
+        return " | ".join(parts)
+
+    def _page_label(self, pages: tuple[tuple[str, str], ...], page: str) -> str:
+        return next((label for key, label in pages if key == page), page.upper())
+
+    def _set_border(self, selector: str, title: str, subtitle: str = "") -> None:
+        try:
+            widget = self.query_one(selector)
+            widget.border_title = title
+            if subtitle:
+                widget.border_subtitle = subtitle
         except NoMatches:
             pass
 
-    def _set_body_text(self, text: str) -> None:
+    def _update_static(self, selector: str, text: str) -> None:
         try:
-            self.query_one("#orionv-cockpit-body", Static).update(text)
+            self.query_one(selector, Static).update(text)
         except NoMatches:
-            combined = "\n\n".join(
-                part for part in [self._fallback_body_text or text, self._fallback_intervention_text] if part
-            )
-            self.update(combined)
-
-    def _refresh_actions(
-        self,
-        *,
-        energy_sev: str,
-        motion_sev: str,
-        docking_sev: str,
-        comms_sev: str,
-        thermal_sev: str,
-        incidents_sev: str,
-        procedure_sev: str,
-        qiki_sev: str,
-    ) -> None:
-        button_specs = (
-            ("#orionv-cockpit-jump-navigation", "Маршрут", motion_sev, "F2"),
-            ("#orionv-cockpit-jump-docking", "Стыковка", docking_sev, "F2"),
-            ("#orionv-cockpit-jump-power", "Питание", energy_sev, "F2"),
-            ("#orionv-cockpit-jump-comms", "Связь", comms_sev, "F2"),
-            ("#orionv-cockpit-jump-thermal", "Тепло", thermal_sev, "F2"),
-            ("#orionv-cockpit-jump-incidents", "Инциденты", incidents_sev, "F3"),
-            ("#orionv-cockpit-jump-procedures", "Процедуры", procedure_sev, "F6"),
-        )
-        for selector, title, severity, target in button_specs:
-            try:
-                button = self.query_one(selector, Button)
-            except NoMatches:
-                continue
-            button.label = f"{title} {self._button_state_label(severity)} · {target}"
-            button.variant = self._button_variant(severity)
-            button.disabled = False
-
-        confirm_enabled = self._qiki_pending_action_title is not None
-        for selector, enabled_label, disabled_label in (
-            (
-                "#orionv-cockpit-qiki-confirm",
-                "Подтвердить QIKI",
-                "Подтвердить QIKI",
-            ),
-            (
-                "#orionv-cockpit-qiki-cancel",
-                "Отменить QIKI",
-                "Отменить QIKI",
-            ),
-        ):
-            try:
-                button = self.query_one(selector, Button)
-            except NoMatches:
-                continue
-            button.display = confirm_enabled
-            button.disabled = not confirm_enabled
-            button.variant = self._button_variant(qiki_sev) if confirm_enabled else "default"
-            button.label = enabled_label if confirm_enabled else disabled_label
-
-    def _mission_context_block(
-        self,
-        *,
-        scene_profile: str,
-        global_sev: str,
-        global_reason: str,
-        objective_sev: str,
-        objective_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        state = self._operator_shell_state
-        always_on = getattr(state, "always_on", None)
-        derived = getattr(state, "derived", None)
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        target = (
-            str(
-                objective.get("public_track_label")
-                or objective.get("track_label")
-                or objective.get("target_designator")
-                or ""
-            ).strip()
-            or "нет активной цели"
-        )
-        objective_title = (
-            str(objective.get("title_ru") or objective.get("summary_ru") or "").strip()
-            or "mission intent не объявлен"
-        )
-        route_role = str(objective.get("route_role") or "").strip().lower() or "none"
-        follow_up = str(objective.get("follow_up_status") or "").strip().lower() or "none"
-        result_status = str(objective.get("observation_result_status") or "").strip().lower() or "none"
-        lines = [
-            (
-                "Mission phase: "
-                f"{getattr(always_on, 'mission_phase', None) or 'partial: runtime-derived'} "
-                f"| scene={scene_profile}"
-            ),
-            f"Objective / intent: {objective_title}",
-            f"Target / route context: {target} | route_role={route_role} | follow_up={follow_up}",
-            (
-                "Mission risk / authority: "
-                f"{getattr(derived, 'mission_risk_state', None) or 'partial'} | "
-                f"{getattr(always_on, 'control_authority', None) or 'нет'}"
-            ),
-            f"Mission flow: {global_reason}",
-        ]
-        if result_status != "none":
-            lines.append(f"Observation result: {result_status}")
-        if objective_lines:
-            meaning = next((line for line in objective_lines if line.startswith("Смысл/Meaning: ")), None)
-            if meaning is not None:
-                lines.append(meaning)
-        lines.append(
-            "Truth note: dedicated mission-phase/guidance contract is still partial; "
-            "F1 uses the current shell contract and objective truth only."
-        )
-        return _merge_severity(global_sev, objective_sev), lines
-
-    def _guidance_context_block(
-        self,
-        *,
-        telemetry: dict[str, Any],
-        motion_severity: str,
-        motion_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        state = self._operator_shell_state
-        always_on = getattr(state, "always_on", None)
-        derived = getattr(state, "derived", None)
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        track_distance = objective.get("track_range_m")
-        if not isinstance(track_distance, (int, float)):
-            track_distance = _pick_num(telemetry, ["docking", "distance_m"])
-        closing_rate = _pick_num(telemetry, ["docking", "approach_mps"])
-        if closing_rate is None:
-            closing_rate = _pick_num(telemetry, ["docking", "rel_speed_mps"])
-        guidance_state = (
-            getattr(always_on, "autopilot_mode", None)
-            or getattr(always_on, "autopilot_status", None)
-            or _pick_text(telemetry, ["guidance", "state"])
-            or _pick_text(telemetry, ["docking", "state"])
-            or getattr(always_on, "vehicle_mode", None)
-            or "partial: no dedicated guidance state"
-        )
-        target_distance_text = (
-            _fmt_unit(float(track_distance), "м", ".1f")
-            if isinstance(track_distance, (int, float))
-            else "partial: no target distance"
-        )
-        lines = [
-            f"Target distance: {target_distance_text}",
-            (
-                "ETA / closing rate: "
-                f"{getattr(derived, 'eta_to_target', None) or 'partial: no ETA'} | "
-                f"{_fmt_unit(closing_rate, 'м/с', '.2f')}"
-            ),
-            f"Guidance state: {guidance_state}",
-            (
-                "Attitude / maneuver: "
-                f"{getattr(derived, 'attitude_stability', None) or 'partial'} | "
-                f"maneuver={getattr(derived, 'maneuver_feasibility', None) or 'partial'}"
-            ),
-            (
-                "Route deviation / commandability: "
-                f"{getattr(derived, 'trajectory_deviation', None) or 'partial'} | "
-                f"{getattr(derived, 'commandability_state', None) or 'partial'}"
-            ),
-        ]
-        if getattr(always_on, "unavailable_fields", ()) or getattr(derived, "unavailable_fields", ()):
-            missing = sorted(
-                {
-                    field
-                    for field in (
-                        *getattr(always_on, "unavailable_fields", ()),
-                        *getattr(derived, "unavailable_fields", ()),
-                    )
-                    if field in {"autopilot_status", "autopilot_mode", "collision_imminent", "fuel_margin_to_plan"}
-                }
-            )
-            if missing:
-                lines.append(f"Known guidance gaps: {', '.join(missing)}")
-        lines.extend(motion_lines[:3])
-        return motion_severity, lines
-
-    def _mission_incident_block(self) -> tuple[str, list[str]]:
-        state = self._operator_shell_state
-        alert_summary = getattr(getattr(state, "always_on", None), "alert_summary", None)
-        focus_alert = getattr(alert_summary, "selected_critical_alert", None) or getattr(
-            alert_summary, "focus_alert", None
-        )
-        if focus_alert is not None:
-            lines = [
-                f"Focused alert: {focus_alert.title} | sev={focus_alert.severity}",
-                f"Mission effect: {focus_alert.operator_effect}",
-                f"Next hint: {focus_alert.next_action_hint or 'monitor and keep command path clear'}",
-            ]
-            if focus_alert.incident_id:
-                lines.append(f"Linked incident: {focus_alert.incident_id}")
-            return {
-                "critical": "crit",
-                "warning": "warn",
-                "attention": "degraded",
-            }.get(focus_alert.severity, "ok"), lines
-        severity, incident_lines = self._incidents_block()
-        return severity, [
-            "No selected mission-blocking alert inside the shell summary.",
-            *incident_lines,
-        ]
-
-    def _mission_support_block(
-        self,
-        *,
-        energy_severity: str,
-        energy_lines: list[str],
-        motion_severity: str,
-        motion_lines: list[str],
-        comms_severity: str,
-        comms_lines: list[str],
-        thermal_severity: str,
-        thermal_lines: list[str],
-        safety_severity: str,
-        safety_lines: list[str],
-        objective_facts_severity: str,
-        objective_facts_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        severity = _merge_severity(energy_severity, comms_severity)
-        severity = _merge_severity(severity, motion_severity)
-        severity = _merge_severity(severity, thermal_severity)
-        severity = _merge_severity(severity, safety_severity)
-        severity = _merge_severity(severity, objective_facts_severity)
-        return severity, [
-            "Энергия:",
-            *energy_lines,
-            "Движение и навигация:",
-            *motion_lines,
-            "Связь:",
-            *comms_lines,
-            "Температура:",
-            *thermal_lines,
-            f"Безопасность: {self._severity_markup(safety_severity)}",
-            *safety_lines,
-            "Связанные факты:",
-            *objective_facts_lines,
-        ]
-
-    def _qiki_recommendation_block(
-        self,
-        *,
-        qiki_severity: str,
-        qiki_lines: list[str],
-        qiki_interpretation_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        if self._qiki_response is None and not self._qiki_pending_action_title and not self._qiki_plan_preview_lines:
-            return qiki_severity, [
-                "QIKI:",
-                "Статус/Status: idle",
-                "Следующий шаг/Next: q: <команда>",
-            ]
-        state = self._operator_shell_state
-        always_on = getattr(state, "always_on", None)
-        derived = getattr(state, "derived", None)
-        lines = [
-            "QIKI:",
-            (
-                "Autonomy confidence: "
-                f"{getattr(derived, 'autonomy_confidence', None) or 'partial'} | "
-                f"qiki_assist={getattr(always_on, 'qiki_assist_status', None) or 'partial'}"
-            ),
-            (
-                "Human acknowledgement required: "
-                f"{'yes' if getattr(always_on, 'human_ack_required', False) else 'no'} | "
-                f"intervention_required={'yes' if getattr(derived, 'intervention_required', False) else 'no'}"
-            ),
-        ]
-        lines.extend(qiki_lines)
-        if qiki_interpretation_lines:
-            lines.append("Interpretation:")
-            lines.extend(qiki_interpretation_lines)
-        return qiki_severity, lines
-
-    def _operator_intervention_block(
-        self,
-        *,
-        action_lines: list[str],
-        process_lines: list[str],
-        procedure_lines: list[str],
-        qiki_lines: list[str],
-        incidents_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        state = self._operator_shell_state
-        loop = getattr(state, "operator_loop", None)
-        next_step = self._pick_next_step(qiki_lines, procedure_lines, process_lines)
-        lines = [
-            (
-                "Контур команды: "
-                f"{getattr(loop, 'last_command_status', 'idle')} | "
-                f"pending={getattr(loop, 'pending_command_count', 0)} | "
-                f"mode={getattr(loop, 'command_mode_state', 'standby')}"
-            ),
-            f"Последняя команда: {getattr(loop, 'last_command_summary', 'Команда ещё не подавалась')}",
-            f"Требуется действие: {'да' if getattr(loop, 'operator_action_required', False) else 'нет'}",
-            f"Контекст команд: {getattr(loop, 'status_text', 'Команды: help')}",
-            f"Горячие клавиши: {getattr(loop, 'hotkey_context', 'F1/F2/F3/F4/F6/F7 переключают уровни')}",
-            f"Следующий шаг: {next_step}",
-        ]
-        if getattr(loop, "selected_incident_id", None):
-            lines.append(f"Выбранный инцидент: {getattr(loop, 'selected_incident_id')}")
-        if getattr(loop, "selected_subsystem", None):
-            lines.append(f"Выбранная подсистема: {getattr(loop, 'selected_subsystem')}")
-        if incidents_lines:
-            lines.append(incidents_lines[-1])
-        return (
-            "crit" if getattr(loop, "operator_action_required", False) else "ok",
-            lines,
-        )
-
-    def _pick_next_step(self, *blocks: list[str]) -> str:
-        for block in blocks:
-            for line in block:
-                if line.startswith("Следующий шаг/Next:"):
-                    return line.removeprefix("Следующий шаг/Next:").strip()
-                if line.startswith("Следующий шаг:"):
-                    return line.removeprefix("Следующий шаг:").strip()
-        return "держите контур под контролем и готовьте следующую команду"
-
-    @staticmethod
-    def _button_variant(severity: str) -> str:
-        return {
-            "crit": "error",
-            "warn": "warning",
-            "degraded": "warning",
-            "ok": "success",
-        }.get(severity, "default")
-
-    @staticmethod
-    def _button_state_label(severity: str) -> str:
-        return {
-            "crit": "КРИТ",
-            "warn": "ВНИМ",
-            "degraded": "ПАУЗА",
-            "ok": "OK",
-        }.get(severity, "INFO")
-
-    def _resolve_scene_profile(self, tel: dict[str, Any]) -> str:
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        route_role = str(objective.get("route_role") or "").strip().lower()
-        objective_status = str(objective.get("status") or "").strip().lower()
-        procedure_name = str(objective.get("procedure_name") or "").strip().lower()
-        docking_state = _pick_text(tel, ["docking", "state"]).strip().lower()
-        docking_connected = _pick_bool(tel, ["docking", "connected"]) is True
-        orbit_state = _pick_text(tel, ["orbit", "state"]).strip().lower()
-
-        if route_role in {"official", "deviation"} or procedure_name in {
-            "safe_pause_resume",
-            "safe_pause_slow_resume",
-            "hostile_rcs_intercept_burst",
-        }:
-            return "route_transit"
-        if docking_connected or docking_state in {"docked", "capture", "approach", "charging", "undocking"}:
-            return "docked"
-        if orbit_state in {"hold", "orbital_hold", "orbit_hold", "stable_orbit"}:
-            return "orbital_hold"
-        if objective_status in {"prepared", "confirmed"} and procedure_name:
-            return "route_transit"
-        return "free_flight"
-
-    def _mode_context_block(
-        self,
-        *,
-        scene_profile: str,
-        global_sev: str,
-        global_reason: str,
-        objective_sev: str,
-    ) -> tuple[str, list[str]]:
-        profile_titles = {
-            "docked": "Docked / Station",
-            "free_flight": "Free Flight",
-            "orbital_hold": "Orbital Hold / Maneuver",
-            "route_transit": "Route Transit",
-        }
-        mode_title = profile_titles.get(scene_profile, "Free Flight")
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        objective_status = str(objective.get("status") or "none").strip().lower() or "none"
-        follow_up_status = str(objective.get("follow_up_status") or "none").strip().lower() or "none"
-        lines = [
-            f"Профиль сцены/Scene profile: {scene_profile} ({mode_title})",
-            "Режимы каркаса/F1 profiles: docked | free_flight | orbital_hold | route_transit",
-            f"Контекст системы/System context: {global_reason}",
-            f"Цель/Objective context: status={objective_status} | follow_up={follow_up_status}",
-        ]
-        return _merge_severity(global_sev, objective_sev), lines
-
-    def _available_actions_block(
-        self,
-        *,
-        scene_profile: str,
-        telemetry: dict[str, Any],
-        objective_severity: str,
-        qiki_severity: str,
-        procedure_severity: str,
-        incidents_severity: str,
-    ) -> tuple[str, list[str]]:
-        docking_state = _pick_text(telemetry, ["docking", "state"]).strip().lower()
-        link_state = _pick_text(telemetry, ["comms", "link"]).strip().lower()
-        orbit_state = _pick_text(telemetry, ["orbit", "state"]).strip().lower()
-        pending_title = (self._qiki_pending_action_title or "").strip()
-        profile_defaults: dict[str, list[tuple[str, bool, str, str, str]]] = {
-            "docked": [
-                (
-                    "Запросить отстыковку/Request undock",
-                    docking_state in {"docked", "capture", "charging"},
-                    f"docking.state={docking_state or 'unknown'}",
-                    "medium",
-                    "Переход в free_flight при подтверждении",
-                ),
-                (
-                    "Диагностика/Diagnostics",
-                    True,
-                    "Доступно всегда",
-                    "low",
-                    "Переход в F2 системные детали",
-                ),
-                (
-                    "Завершить зарядку/Finish charging",
-                    docking_state in {"docked", "charging"},
-                    f"docking.state={docking_state or 'unknown'}",
-                    "low",
-                    "Снятие station power limits",
-                ),
-                (
-                    "Открыть канал/Hail station",
-                    link_state in {"online", "up"},
-                    f"comms.link={link_state or 'unknown'}",
-                    "low",
-                    "Подтверждение station protocol",
-                ),
-            ],
-            "free_flight": [
-                (
-                    "Стабилизация/Attitude hold",
-                    True,
-                    "IMU/trust проверяются QIKI в рантайме",
-                    "low",
-                    "Удержание ориентации для безопасного манёвра",
-                ),
-                (
-                    "Запуск маршрута/Start route transit",
-                    True,
-                    "Требуется цель и QIKI intent",
-                    "medium",
-                    "Переход в route_transit контур",
-                ),
-            ],
-            "orbital_hold": [
-                (
-                    "Коррекция орбиты/Orbit correction",
-                    orbit_state not in {"", "off", "failed"},
-                    f"orbit.state={orbit_state or 'unknown'}",
-                    "medium",
-                    "Стабилизация orbital hold параметров",
-                ),
-                (
-                    "Удержание орбиты/Hold orbit",
-                    True,
-                    "Базовый режим orbital safety",
-                    "low",
-                    "Снижение drift и расхода",
-                ),
-            ],
-            "route_transit": [
-                (
-                    "Продолжить маршрут/Continue route",
-                    True,
-                    "Контур активен",
-                    "medium",
-                    "Движение к destination по текущему профилю",
-                ),
-                (
-                    "Режим hold/Hold for review",
-                    True,
-                    "Доступен через follow-up path",
-                    "medium",
-                    "Пауза контекста для проверки риска",
-                ),
-                (
-                    "Возобновить/Resume",
-                    True,
-                    "Доступен после hold/review",
-                    "medium",
-                    "Возврат в route_transit/safe observation",
-                ),
-            ],
-        }
-        cards = list(profile_defaults.get(scene_profile, profile_defaults["free_flight"]))
-        qiki_allowed = bool(pending_title)
-        cards.insert(
-            0,
-            (
-                f"QIKI confirm ({pending_title or 'нет action'})",
-                qiki_allowed,
-                "Есть pending action от QIKI" if qiki_allowed else "Нет pending action",
-                "high" if qiki_allowed else "low",
-                "Подтверждённое исполнение QIKI plan" if qiki_allowed else "Ожидание новой QIKI команды",
-            ),
-        )
-        cards.insert(
-            1,
-            (
-                "QIKI cancel",
-                qiki_allowed,
-                "Можно снять pending action" if qiki_allowed else "Нет action для отмены",
-                "low",
-                "Снятие подготовленного действия",
-            ),
-        )
-        lines = [
-            (
-                f"• card: label={label} | {'allowed' if allowed else 'blocked'} | "
-                f"reason={reason} | risk={risk} | expected={expected}"
-            )
-            for label, allowed, reason, risk, expected in cards[:5]
-        ]
-        severity = _merge_severity(objective_severity, qiki_severity)
-        severity = _merge_severity(severity, procedure_severity)
-        severity = _merge_severity(severity, incidents_severity)
-        return severity, lines
-
-    def _current_process_block(
-        self,
-        *,
-        procedure_severity: str,
-        objective_severity: str,
-        objective_facts_severity: str,
-        procedure_lines: list[str],
-        objective_lines: list[str],
-        objective_facts_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        lines: list[str] = []
-        lines.extend(procedure_lines[:4])
-        if procedure_lines:
-            lines.extend(objective_lines[:3])
-        if objective_facts_lines:
-            lines.append("Linked facts:")
-            lines.extend(f"  {line}" for line in objective_facts_lines[:2])
-        if not lines:
-            lines = ["Статус/Status: процесс не активен", "Следующий шаг/Next: задайте QIKI intent"]
-        severity = _merge_severity(procedure_severity, objective_severity)
-        severity = _merge_severity(severity, objective_facts_severity)
-        return severity, lines
-
-    def _spatial_telemetry_block(
-        self,
-        *,
-        telemetry: dict[str, Any],
-        motion_severity: str,
-        motion_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        lines: list[str] = []
-        pos_x = _pick_num(telemetry, ["position", "x"])
-        pos_y = _pick_num(telemetry, ["position", "y"])
-        pos_z = _pick_num(telemetry, ["position", "z"])
-        speed = _pick_num(telemetry, ["speed_m_s"])
-        if speed is None:
-            speed = _pick_num(telemetry, ["velocity"])
-        target_distance = _pick_num(telemetry, ["docking", "distance_m"])
-        target_name = _pick_text(telemetry, ["docking", "target_id"]) or "Нет данных"
-        lines.append(
-            "Позиция/Sector: "
-            f"x={_fmt_unit(pos_x, 'м', '.1f')} | y={_fmt_unit(pos_y, 'м', '.1f')} | z={_fmt_unit(pos_z, 'м', '.1f')}"
-        )
-        lines.append(f"Скорость/Speed: {_fmt_unit(speed, 'м/с', '.2f')}")
-        lines.append(
-            "Дистанция до цели/Target distance: "
-            f"{_fmt_unit(target_distance, 'м', '.1f')} | target={target_name}"
-        )
-        lines.extend(motion_lines[:3])
-        return motion_severity, lines
-
-    def _route_intent_block(
-        self,
-        *,
-        scene_profile: str,
-        objective_severity: str,
-        objective_lines: list[str],
-        objective_facts_lines: list[str],
-    ) -> tuple[str, list[str]]:
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        route_style = str(objective.get("observation_style") or "safe").strip().lower() or "safe"
-        route_role = str(objective.get("route_role") or "none").strip().lower() or "none"
-        destination = str(objective.get("target_designator") or "не задана").strip() or "не задана"
-        procedure_name = str(objective.get("procedure_name") or "—").strip() or "—"
-        summary = str(objective.get("summary_ru") or "").strip() or "контур не описан"
-        lines = [
-            f"Destination: {destination}",
-            "ETA: truth source не вычисляет единый ETA в F1 (используйте F2/F6 при необходимости)",
-            f"Route mode: {route_style} | role={route_role} | scene={scene_profile}",
-            f"Threat/Risk: {_severity_label(objective_severity).lower()}",
-            f"Why this route: {summary}",
-            f"Procedure contour: {procedure_name}",
-        ]
-        if objective_lines:
-            lines.append(f"Route detail: {objective_lines[0]}")
-        if objective_facts_lines:
-            lines.append(f"Latest fact: {objective_facts_lines[0]}")
-        return objective_severity, lines
-
-    def _qiki_interpretation_block(self, *, qiki_severity: str, qiki_lines: list[str]) -> tuple[str, list[str]]:
-        if not qiki_lines:
-            return qiki_severity, ["Статус/Status: QIKI interpretation не получен"]
-        if self._qiki_response is None and not self._qiki_pending_action_title:
-            return qiki_severity, qiki_lines[:2]
-        return qiki_severity, qiki_lines[:10]
-
-    def _qiki_block(self) -> tuple[str, list[str]]:
-        resp = self._qiki_response
-        if resp is None:
-            return "ok", ["Статус/Status: нет активной команды QIKI", "Следующий шаг/Next: введите q: <команда>"]
-
-        lines: list[str] = []
-        severity = "ok"
-
-        if resp.legality is None:
-            lines.append("Статус/Status: нет данных о допуске")
-        else:
-            legality = resp.legality
-            lines.append(
-                "Статус/Status: "
-                f"{legality.status} [{legality.domain}] {legality.reason_code}"
-            )
-            lines.append(f"Причина/Reason: {legality.reason.ru}")
-            if legality.status in {"blocked", "unsafe"}:
-                severity = "warn"
-            elif legality.status == "deferred":
-                severity = "degraded"
-
-        if resp.trust_signals:
-            for signal in resp.trust_signals[:2]:
-                lines.append(
-                    "Доверие/Trust: "
-                    f"{signal.state} | {signal.label.ru}/{signal.label.en} | "
-                    f"conf={signal.confidence:.2f} | src={signal.source}"
-                )
-        else:
-            lines.append("Доверие/Trust: явных сигналов нет")
-
-        if resp.consequence is None:
-            lines.append("Последствие/Consequence: нет данных")
-        else:
-            consequence = resp.consequence
-            lines.append(
-                "Последствие/Consequence: "
-                f"{consequence.status} | {consequence.summary.ru}"
-            )
-            if consequence.telemetry_confirmation is not None:
-                lines.append(
-                    "Подтверждение/Confirmation: "
-                    f"{consequence.telemetry_confirmation.ru}"
-                )
-
-        if resp.reply is not None:
-            lines.append(f"Ответ/Reply: {resp.reply.body.ru}")
-
-        pending_title = self._qiki_pending_action_title
-        if pending_title is None:
-            for proposal in resp.proposals[:1]:
-                pending_title = proposal.title.ru or proposal.title.en
-                if pending_title:
-                    break
-
-        if pending_title is not None:
-            lines.append(f"Подготовлено/Prepared: {pending_title}")
-            lines.append("Следующий шаг/Next: подтвердить действие кнопкой или командой q confirm")
-        elif resp.legality is not None and resp.legality.allowed_when is not None:
-            lines.append(f"Следующий шаг/Next: {resp.legality.allowed_when.ru}")
-        elif resp.reply is not None:
-            lines.append("Следующий шаг/Next: уточните команду или проверьте контекст выполнения")
-        if self._qiki_plan_preview_lines:
-            lines.append("План/Plan:")
-            lines.extend(f"  {item}" for item in self._qiki_plan_preview_lines)
-        if self._qiki_procedure_status is not None:
-            lines.append(f"Исполнение/Execution: {self._qiki_procedure_status}")
-
-        for proposal in resp.proposals[:1]:
-            for action in proposal.proposed_actions[:1]:
-                action_target = action.name
-                if action.kind == "ORION_PROCEDURE":
-                    action_target = f"proc run {action.name}"
-                lines.append(
-                    "Действие/Action: "
-                    f"{proposal.title.ru}/{proposal.title.en} -> {action_target}"
-                )
-
-        return severity, lines
-
-    def _procedure_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
-        lines: list[str] = []
-        severity = "ok"
-
-        pending_title = (self._qiki_pending_action_title or "").strip()
-        if pending_title:
-            severity = "warn"
-            lines.append(f"Подготовлено/Prepared: {pending_title}")
-            lines.append("Следующий шаг/Next: click QIKI подтвердить/Confirm or use q confirm.")
-        else:
-            lines.append("Подготовлено/Prepared: нет ожидающей процедуры")
-
-        if self._qiki_plan_preview_lines:
-            lines.append("План/Plan:")
-            lines.extend(f"  {item}" for item in self._qiki_plan_preview_lines)
-
-        if self._qiki_procedure_status is not None:
-            lines.append(f"Исполнение/Execution: {self._qiki_procedure_status}")
-            status_text = self._qiki_procedure_status.lower()
-            if "ошибка" in status_text or "failed" in status_text:
-                severity = "crit"
-            elif "выполняется" in status_text or "running" in status_text:
-                severity = _merge_severity(severity, "warn")
-
-        sim_state = tel.get("sim_state")
-        if isinstance(sim_state, dict):
-            fsm_state = str(sim_state.get("fsm_state") or "UNKNOWN").strip().upper() or "UNKNOWN"
-            paused = bool(sim_state.get("paused"))
-            speed = sim_state.get("speed")
-            speed_text = f"{float(speed):.2f}x" if isinstance(speed, (int, float)) else "—"
-            lines.append(
-                f"Время/Time: sim_state={fsm_state} | paused={'ДА' if paused else 'НЕТ'} | speed={speed_text}"
-            )
-        else:
-            lines.append("Время/Time: sim_state отсутствует")
-
-        lines.append("Журнал/Journal: click Процедуры/Procedures -> F6 for procedure audit trail.")
-        return severity, lines
-
-    def _objective_block(self) -> tuple[str, list[str]]:
-        objective = self._observation_objective
-        if not isinstance(objective, dict):
-            return "ok", [
-                "OBJECTIVE    | NONE       | standby",
-                "NEXT         | SAFE OBS   | q: safe observation <target>",
-            ]
-
-        status = str(objective.get("status") or "prepared").strip().lower() or "prepared"
-        style = str(objective.get("observation_style") or "safe").strip().lower() or "safe"
-        procedure_name = str(objective.get("procedure_name") or "—").strip() or "—"
-        target_designator = str(objective.get("target_designator") or "").strip()
-        track_visible = bool(objective.get("track_visible"))
-        track_label = str(objective.get("track_label") or target_designator or "").strip()
-        track_id = str(objective.get("track_id") or "").strip()
-        track_range_m = objective.get("track_range_m")
-        track_quality = objective.get("track_quality")
-        summary_ru = str(objective.get("summary_ru") or "").strip()
-        title_ru = str(objective.get("title_ru") or "").strip()
-        objective_id = str(objective.get("objective_id") or "—").strip() or "—"
-        proposal_id = str(objective.get("proposal_id") or "").strip()
-        request_id = str(objective.get("request_id") or "").strip()
-        route_role = str(objective.get("route_role") or "").strip().lower()
-        follow_up_status = str(objective.get("follow_up_status") or "").strip().lower()
-        follow_up_reason_code = str(objective.get("follow_up_reason_code") or "").strip()
-        follow_up_event_type = str(objective.get("follow_up_event_type") or "").strip()
-        follow_up_summary_ru = str(objective.get("follow_up_summary_ru") or "").strip()
-        observation_result_status = str(objective.get("observation_result_status") or "").strip().lower()
-        observation_result_reason_code = str(objective.get("observation_result_reason_code") or "").strip()
-        observation_result_summary_ru = str(objective.get("observation_result_summary_ru") or "").strip()
-        objective_kind = (
-            str(objective.get("kind") or "observation_objective_seed").strip() or "observation_objective_seed"
-        )
-
-        severity = {
-            "prepared": "warn",
-            "confirmed": "ok",
-            "cancelled": "degraded",
-            "failed": "crit",
-        }.get(status, "ok")
-        style_ru = "медленный" if style == "slow" else "безопасный"
-        style_en = "slow" if style == "slow" else "safe"
-        target_text = target_designator if target_designator else "без явной цели"
-        lines = [
-            f"Статус/Status: {status} | profile={style_ru}",
-            f"Цель/Target: {target_text}",
-            f"Контур/Loop: {title_ru or 'Observation objective'}",
-            f"Маршрут/Route: {style_ru} ({style_en})",
-            f"Процедура/Procedure: {procedure_name}",
-            f"Route contour: style={style_en} | procedure={procedure_name}",
-            f"Идентификатор/Objective ID: {objective_id}",
-        ]
-        if route_role in {"official", "deviation"}:
-            lines.append(f"Route role: {route_role}")
-        if proposal_id:
-            lines.append(f"Proposal ID: {proposal_id}")
-        if request_id:
-            lines.append(f"Request ID: {request_id}")
-        lines.append(f"Контракт/Contract: kind={objective_kind}")
-        if follow_up_status in {"review_required", "review_completed", "hold_for_recheck", "resume_observation"}:
-            if follow_up_status != "resume_observation":
-                severity = _merge_severity(severity, "warn")
-            constraint_parts = [f"status={follow_up_status}"]
-            if follow_up_event_type:
-                constraint_parts.append(f"source={follow_up_event_type}")
-            if follow_up_reason_code:
-                constraint_parts.append(f"reason={follow_up_reason_code}")
-            lines.append(f"Ограничение/Constraint: {' | '.join(constraint_parts)}")
-            if follow_up_summary_ru:
-                lines.append(f"Follow-up: {follow_up_summary_ru}")
-        if track_visible:
-            range_text = f"{float(track_range_m):.0f} м" if isinstance(track_range_m, (int, float)) else "—"
-            quality_text = f"{float(track_quality):.2f}" if isinstance(track_quality, (int, float)) else "—"
-            lines.append(
-                f"Радар/Track: visible | {track_label or 'target'} | range={range_text} | quality={quality_text}"
-            )
-            if track_id:
-                lines.append(f"Track ID: {track_id}")
-        elif target_designator:
-            lines.append(f"Радар/Track: target {target_designator} not visible yet")
-        if observation_result_status:
-            result_parts = [f"status={observation_result_status}"]
-            if observation_result_reason_code:
-                result_parts.append(f"reason={observation_result_reason_code}")
-            lines.append(f"Результат/Outcome: {' | '.join(result_parts)}")
-            if observation_result_summary_ru:
-                lines.append(f"Outcome: {observation_result_summary_ru}")
-        if summary_ru:
-            lines.append(f"Смысл/Meaning: {summary_ru}")
-        if status == "prepared":
-            lines.append("Следующий шаг/Next: подтвердите QIKI action, затем следите за процедурой и телеметрией.")
-        elif status == "confirmed":
-            if follow_up_status == "review_required":
-                lines.append(
-                    "Следующий шаг/Next: сначала проверьте linked hidden fact и "
-                    "подтвердите review командой review confirm, "
-                    "затем переходите к следующей observation-цели."
-                )
-            elif follow_up_status == "review_completed":
-                lines.append(
-                    "Следующий шаг/Next: review closure подтверждён; выберите "
-                    "post-review follow-up командой follow-up hold."
-                )
-            elif follow_up_status == "hold_for_recheck":
-                lines.append(
-                    "Следующий шаг/Next: post-review hold выбран; выполните осторожный safe recheck для той же цели "
-                    "перед следующей observation-целью."
-                )
-            elif follow_up_status == "resume_observation":
-                lines.append(
-                    "Следующий шаг/Next: resume observation подтверждён; задайте один cautious safe observation "
-                    "для той же цели, чтобы продолжить contour."
-                )
-            elif observation_result_status == "reconfirmed":
-                lines.append(
-                    "Следующий шаг/Next: continuation-result зафиксирован; та же цель reconfirmed, можно "
-                    "переходить к следующей observation-цели."
-                )
-            elif observation_result_status == "signature_changed":
-                lines.append(
-                    "Следующий шаг/Next: continuation-result зафиксирован; тот же contact сохранился, но его "
-                    "signature изменилась, поэтому дальше используйте обновлённую identity."
-                )
-            else:
-                lines.append("Следующий шаг/Next: objective closure подтверждён, можно переходить к следующей цели.")
-        elif status == "cancelled":
-            lines.append("Следующий шаг/Next: objective снят; задайте новую observation-цель при необходимости.")
-        elif status == "failed":
-            lines.append("Следующий шаг/Next: objective не закрыт; проверьте procedure/audit/telemetry path.")
-        else:
-            lines.append("Следующий шаг/Next: следите за objective lifecycle и процедурой.")
-        return severity, lines
-
-    def _objective_facts_block(self) -> tuple[str, list[str]]:
-        if not self._objective_event_lines:
-            return "ok", ["FACTS        | IDLE       | linked events idle"]
-        lines = ["Таймлайн/Timeline:"]
-        lines.extend(f"  {line}" for line in self._objective_event_lines[:4])
-        return "warn", lines
-
-    def _docking_quick_severity(self, tel: dict[str, Any]) -> str:
-        docking_state = _pick_text(tel, ["docking", "state"]).lower()
-        align_err = _pick_num(tel, ["docking", "alignment_error_deg"])
-        if docking_state in {"approach", "capture", "docked"}:
-            if align_err is not None and align_err >= 15.0:
-                return "crit"
-            if align_err is not None and align_err >= 8.0:
-                return "warn"
-            return "ok"
-        if align_err is not None and align_err >= 15.0:
-            return "crit"
-        if align_err is not None and align_err >= 8.0:
-            return "warn"
-        return "ok"
-
-    def _energy_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
-        soc = _pick_num(tel, ["power", "soc_pct"])
-        if soc is None:
-            soc = _pick_num(tel, ["battery", "soc_pct"])
-        if soc is None:
-            soc = _pick_num(tel, ["battery"])
-        bus_v = _pick_num(tel, ["power", "bus_v"])
-        bus_a = _pick_num(tel, ["power", "bus_a"])
-        limit_mode = _pick_text(tel, ["power", "limit_mode"])
-        load_shedding = _pick_bool(tel, ["power", "load_shedding"])
-        shed_reasons = _pick_str_list(tel, ["power", "shed_reasons"])
-
-        severity = "ok"
-        if soc is not None and soc < 15.0:
-            severity = "crit"
-        elif soc is not None and soc < 20.0:
-            severity = "warn"
-        if load_shedding is True:
-            severity = _merge_severity(severity, "warn")
-
-        eta = _pick_num(tel, ["power", "eta_discharge_s"])
-        if eta is None:
-            eta = _pick_num(tel, ["power", "time_to_empty_s"])
-        if eta is None:
-            eta_min = _pick_num(tel, ["power", "time_to_empty_min"])
-            if eta_min is not None:
-                eta = eta_min * 60.0
-        if eta is None:
-            capacity_wh = _pick_num(tel, ["power", "battery_capacity_wh"])
-            discharge_w = _pick_num(tel, ["power", "battery_discharge_w"])
-            if (
-                soc is not None
-                and capacity_wh is not None
-                and capacity_wh > 0.0
-                and discharge_w is not None
-                and discharge_w > 0.0
-            ):
-                eta = (soc / 100.0) * capacity_wh / discharge_w * 3600.0
-
-        lines = [
-            f"• Заряд/SOC: {_fmt_pct(soc)} | crit < 15%",
-            f"• Шина/Bus: {_fmt_unit(bus_v, 'В', '.2f')} | {_fmt_unit(bus_a, 'А', '.2f')}",
-            f"• Лимит/Limit: {limit_mode or 'Нет данных'}",
-            f"• Аварийное отключение нагрузки: {_bool_on_off_text(load_shedding)}",
-            f"• Причины сброса: {_shed_reasons_text(load_shedding, shed_reasons)}",
-            f"• ETA разрядки/Drain: {_fmt_duration(eta)}",
-        ]
-        return severity, lines
-
-    def _motion_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
-        velocity = _pick_num(tel, ["speed_m_s"])
-        if velocity is None:
-            velocity = _pick_num(tel, ["velocity"])
-        heading = _pick_num(tel, ["heading"])
-        orbit_apo = _pick_num(tel, ["orbit", "apoapsis_km"])
-        orbit_peri = _pick_num(tel, ["orbit", "periapsis_km"])
-        orbit_conf = _pick_num(tel, ["orbit", "confidence"])
-        orbit_state = _pick_text(tel, ["orbit", "state"])
-        orbit_reason = _pick_text(tel, ["orbit", "reason"])
-
-        pitch = _pick_angle_deg(tel, ["attitude", "pitch_deg"], ["attitude", "pitch_rad"], ["pitch"])
-        yaw = _pick_angle_deg(tel, ["attitude", "yaw_deg"], ["attitude", "yaw_rad"], ["yaw"])
-        roll = _pick_angle_deg(tel, ["attitude", "roll_deg"], ["attitude", "roll_rad"], ["roll"])
-
-        docking_state = _pick_text(tel, ["docking", "state"]).lower()
-        docking_target = _pick_text(tel, ["docking", "target_id"])
-        docking_distance = _pick_num(tel, ["docking", "distance_m"])
-        rel_speed = _pick_num(tel, ["docking", "rel_speed_mps"])
-        align_err = _pick_num(tel, ["docking", "alignment_error_deg"])
-
-        severity = "ok"
-        if align_err is not None and align_err >= 15.0:
-            severity = "crit"
-        elif align_err is not None and align_err >= 8.0:
-            severity = "warn"
-
-        lines = [
-            (
-                "Навигация/Nav: "
-                f"speed {_fmt_unit(velocity, 'м/с', '.2f')} | "
-                f"heading {_fmt_unit(heading, '°', '.1f')}"
-            ),
-            (
-                "Ориентация/Attitude: "
-                f"P {_fmt_unit(pitch, '°', '.1f')} | "
-                f"Y {_fmt_unit(yaw, '°', '.1f')} | "
-                f"R {_fmt_unit(roll, '°', '.1f')}"
-            ),
-            (
-                "Орбита/Orbit: "
-                f"{orbit_state or 'Нет данных'} | conf={_fmt_unit(orbit_conf, '', '.2f')} | "
-                f"Apo {_fmt_unit(orbit_apo, 'км', '.2f')} | Peri {_fmt_unit(orbit_peri, 'км', '.2f')}"
-            ),
-        ]
-
-        if orbit_reason:
-            lines.append(f"Причина/Reason: {orbit_reason}")
-
-        if docking_state not in {"", "none", "undocked"}:
-            lines.extend(
-                [
-                    (
-                        "Сближение/Approach: "
-                        f"{docking_state or 'Нет данных'} | target {docking_target or 'Нет данных'} | "
-                        f"dist {_fmt_unit(docking_distance, 'м', '.2f')}"
-                    ),
-                ]
-            )
-            if severity == "crit":
-                lines.append(
-                    "Следующий шаг/Next: "
-                    f"исправьте выравнивание ({_fmt_unit(align_err, '°', '.2f')}) перед продолжением стыковки"
-                )
-            elif severity == "warn":
-                lines.append(
-                    "Следующий шаг/Next: "
-                    f"сократите ошибку выравнивания ({_fmt_unit(align_err, '°', '.2f')}) и подтвердите курс"
-                )
-            elif rel_speed is not None:
-                lines.append(
-                    "Следующий шаг/Next: "
-                    "держите сближение под контролем, "
-                    f"текущая относительная скорость {_fmt_unit(rel_speed, 'м/с', '.3f')}"
-                )
-        else:
-            lines.append("Следующий шаг/Next: откройте F2 для навигации или стыковки, если нужен детальный разбор")
-        return severity, lines
-
-    def _comms_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
-        link = _pick_text(tel, ["comms", "link"]).lower()
-        if not link:
-            link = _pick_text(tel, ["comms", "link_state"]).lower()
-        latency = _pick_num(tel, ["comms", "latency_ms"])
-        packet_loss = _pick_num(tel, ["comms", "packet_loss_pct"])
-        rssi = _pick_num(tel, ["comms", "rssi_dbm"])
-        snr = _pick_num(tel, ["comms", "snr_db"])
-        tx_power = _pick_num(tel, ["comms", "tx_power_w"])
-        data_rate = _pick_num(tel, ["comms", "data_rate_kbps"])
-        antenna_status = _pick_text(tel, ["comms", "antenna_status"])
-
-        if not self._nats_connected or link in {"down", "offline", "lost"}:
-            severity = "crit"
-        elif (latency is not None and latency > 500.0) or (
-            packet_loss is not None and packet_loss > 5.0
-        ):
-            severity = "warn"
-        else:
-            severity = "ok"
-
-        if not self._nats_connected:
-            link_text = tr("offline")
-        elif link in {"up", "online"}:
-            link_text = tr("online")
-        elif link in {"reconnect", "reconnecting"}:
-            link_text = tr("reconnecting")
-        elif link in {"down", "offline", "lost"}:
-            link_text = tr("offline")
-        else:
-            link_text = "Нет данных"
-
-        lines = [
-            f"• Канал/Link: {link_text}",
-            f"• Задержка/Latency: {_fmt_unit(latency, 'мс', '.0f')} | norm <= 500",
-            f"• Потери/Loss: {_fmt_unit(packet_loss, '%', '.2f')} | norm <= 5%",
-            f"• {tr('rssi')}: {_fmt_unit(rssi, 'dBm', '.1f')}",
-            f"• SNR: {_fmt_unit(snr, 'dB', '.1f')}",
-            f"• TX Power: {_fmt_unit(tx_power, 'Вт', '.1f')}",
-            f"• Data Rate: {_fmt_unit(data_rate, 'kbps', '.1f')}",
-            f"• Antenna: {antenna_status or 'Нет данных'}",
-        ]
-        return severity, lines
-
-    def _thermal_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
-        thermal = tel.get("thermal")
-        thermal_nodes = thermal.get("nodes") if isinstance(thermal, dict) else None
-        if isinstance(thermal_nodes, list):
-            nodes: list[dict[str, Any]] = [item for item in thermal_nodes if isinstance(item, dict)]
-        else:
-            nodes = []
-        core_node = next((node for node in nodes if str(node.get("id") or "").strip().lower() == "core"), None)
-
-        core = self._pick_core_temp_c(tel)
-        if core is None and isinstance(core_node, dict):
-            core = _pick_num(core_node, ["temp_c"])
-        radiator = _pick_num(tel, ["thermal", "radiator_c"])
-        if radiator is None:
-            radiator = _pick_num(tel, ["temp_external_c"])
-        sink = _pick_num(tel, ["thermal", "sink_c"])
-        thermal_warning = _pick_text(tel, ["thermal", "warning"]).lower()
-
-        warn_nodes: list[str] = []
-        trip_nodes: list[str] = []
-        for node in nodes:
-            node_id = str(node.get("id") or "").strip()
-            if not node_id:
-                continue
-            if bool(node.get("tripped")):
-                trip_nodes.append(node_id)
-            elif bool(node.get("warned")):
-                warn_nodes.append(node_id)
-        warn_nodes = list(dict.fromkeys(warn_nodes))
-        trip_nodes = list(dict.fromkeys(trip_nodes))
-
-        if isinstance(core_node, dict) and "warned" in core_node:
-            core_warned = bool(core_node.get("warned"))
-        else:
-            core_warned = None
-        if isinstance(core_node, dict) and "tripped" in core_node:
-            core_tripped = bool(core_node.get("tripped"))
-        else:
-            core_tripped = None
-        core_warn_c = _pick_num(core_node, ["warn_c"]) if isinstance(core_node, dict) else None
-        core_trip_c = _pick_num(core_node, ["trip_c"]) if isinstance(core_node, dict) else None
-        core_hys_c = _pick_num(core_node, ["hys_c"]) if isinstance(core_node, dict) else None
-
-        severity = "ok"
-        if (
-            core_tripped is True
-            or bool(trip_nodes)
-            or (core is not None and core >= 90.0)
-            or ("crit" in thermal_warning)
-            or ("trip" in thermal_warning)
-        ):
-            severity = "crit"
-        elif (
-            core_warned is True
-            or bool(warn_nodes)
-            or (core is not None and core >= 80.0)
-            or ("warn" in thermal_warning)
-            or ("alarm" in thermal_warning)
-        ):
-            severity = "warn"
-
-        trend = "стабильно"
-        if core is not None and self._prev_core_temp_c is not None:
-            delta = core - self._prev_core_temp_c
-            if delta > 0.5:
-                trend = "растет"
-            elif delta < -0.5:
-                trend = "падает"
-
-        recommendation = "Рекомендация: охлаждение в норме."
-        if severity == "crit":
-            recommendation = "Рекомендация: снизить нагрузку и проверить контур охлаждения."
-        elif severity == "warn":
-            recommendation = "Рекомендация: наблюдать терморежим и подготовить снижение нагрузки."
-
-        if core_tripped is True:
-            core_state = "TRIP"
-        elif core_warned is True:
-            core_state = "WARN"
-        elif core_warned is False and core_tripped is False and core is not None:
-            core_state = "OK"
-        else:
-            core_state = "Нет данных"
-
-        if nodes:
-            warn_nodes_text = ", ".join(warn_nodes) if warn_nodes else "—"
-            trip_nodes_text = ", ".join(trip_nodes) if trip_nodes else "—"
-        else:
-            warn_nodes_text = "Нет данных"
-            trip_nodes_text = "Нет данных"
-
-        lines = [
-            f"• Core: {_fmt_unit(core, '°C', '.1f')} | limit 90°C | state={core_state}",
-            f"• Radiator/Sink: {_fmt_unit(radiator, '°C', '.1f')} | {_fmt_unit(sink, '°C', '.1f')}",
-            f"• WARN nodes: {warn_nodes_text}",
-            f"• TRIP nodes: {trip_nodes_text}",
-            (
-                "• Core limits: "
-                f"warn {_fmt_unit(core_warn_c, '°C', '.1f')} | "
-                f"trip {_fmt_unit(core_trip_c, '°C', '.1f')} | "
-                f"hys {_fmt_unit(core_hys_c, '°C', '.1f')}"
-            ),
-            f"• Тренд: {trend}",
-            f"• Advice: {recommendation}",
-        ]
-        return severity, lines
-
-    def _incidents_block(self) -> tuple[str, list[str]]:
-        total = self._active_incidents
-        crit_items = [inc for inc in self._incidents if str(inc.get("severity", "")).upper().startswith("C")]
-        crit_count = len(crit_items)
-
-        if crit_count > 0:
-            severity = "crit"
-        elif total > 0:
-            severity = "warn"
-        else:
-            severity = "ok"
-
-        latest_crit = crit_items[0] if crit_items else None
-        latest_crit_text = "Нет данных"
-        if latest_crit:
-            incident_id = str(latest_crit.get("id") or "incident")
-            description = str(latest_crit.get("description") or "Без описания")
-            latest_crit_text = f"{incident_id}: {description}"
-
-        lines = [
-            f"• Активные инциденты: {total}",
-            f"• Критические инциденты: {crit_count}",
-            f"• Последний критический/Last critical: {latest_crit_text}",
-        ]
-        return severity, lines
-
-    def _safety_block(self) -> tuple[str, list[str]]:
-        active = self._safe_mode.get("active")
-        reason = str(self._safe_mode.get("reason") or "").strip()
-        authority = str(self._safe_mode.get("authority") or "q-core-agent(events)")
-        updated_ts = self._safe_mode.get("updated_ts")
-        always_on = getattr(self._operator_shell_state, "always_on", None)
-        safe_envelope_state = getattr(always_on, "safe_envelope_state", None)
-
-        if active is True:
-            severity = "crit"
-            state_text = "SAFE MODE: ВКЛЮЧЕН"
-        elif active is False:
-            severity = "ok"
-            state_text = "SAFE MODE: OFF"
-        elif safe_envelope_state == "nominal" and self._nats_connected:
-            severity = "ok"
-            state_text = "SAFE MODE: OFF"
-            if not reason:
-                reason = "signal clear"
-        else:
-            severity = "warn"
-            state_text = "SAFE MODE: нет данных"
-
-        updated_text = "Нет данных"
-        if isinstance(updated_ts, (int, float)) and not isinstance(updated_ts, bool):
-            updated_text = datetime.fromtimestamp(float(updated_ts), tz=timezone.utc).strftime("%H:%M:%S UTC")
-
-        lines = [
-            f"• Статус: {state_text}",
-            f"• Причина: {reason or 'Нет данных'}",
-            f"• Authority: {authority}",
-            f"• Обновлено: {updated_text}",
-        ]
-        return severity, lines
-
-    def _global_status(
-        self,
-        *,
-        energy_sev: str,
-        motion_sev: str,
-        comms_sev: str,
-        thermal_sev: str,
-        safety_sev: str,
-        incidents_sev: str,
-        procedure_sev: str,
-        qiki_sev: str,
-    ) -> tuple[str, str]:
-        status = "ok"
-        status = _merge_severity(status, energy_sev)
-        status = _merge_severity(status, motion_sev)
-        status = _merge_severity(status, comms_sev)
-        status = _merge_severity(status, thermal_sev)
-        status = _merge_severity(status, safety_sev)
-        status = _merge_severity(status, incidents_sev)
-        status = _merge_severity(status, procedure_sev)
-        status = _merge_severity(status, qiki_sev)
-
-        if safety_sev == "crit":
-            return status, "SAFE MODE активирован authoritative сигналом Q-Core."
-        if incidents_sev == "crit":
-            return status, "Есть критические инциденты, требуется немедленное подтверждение."
-        if thermal_sev == "crit":
-            return status, "Обнаружен перегрев подсистемы Thermal."
-        if comms_sev == "crit":
-            return status, "Потеряна связь с контуром управления."
-        if energy_sev == "crit":
-            return status, "Критически низкий заряд или ограничение питания."
-        if procedure_sev == "crit":
-            return status, "Процедура ORION завершилась с ошибкой и требует разбора."
-        if procedure_sev == "warn":
-            return status, "Процедура ORION подготовлена или выполняется; нужен операторский контроль."
-        if qiki_sev == "warn":
-            return status, "Контур QIKI заблокирован политикой или требует подтверждаемого исполнения."
-        if status == "warn":
-            return status, "Есть предупреждения, требуется наблюдение."
-        return status, "Активных критических инцидентов нет."
-
-    def _pick_core_temp_c(self, tel: dict[str, Any]) -> float | None:
-        core = _pick_num(tel, ["thermal", "core_c"])
-        if core is None:
-            core = _pick_num(tel, ["temp_core_c"])
-        return core
-
-    def _overview_line(self, severity: str, reason: str) -> str:
-        return f"СИСТЕМА: {self._severity_markup(severity)} | Контекст: {reason}"
-
-    def _panel_block(
-        self,
-        title: str,
-        rows: list[tuple[str, str, str]],
-        *,
-        extras: list[str] | None = None,
-    ) -> list[str]:
-        lines = [f"> {title}"]
-        for label, state, detail in rows:
-            lines.append(self._panel_row(label, state, detail))
-        if extras:
-            lines.extend(f"[dim]{line}[/dim]" for line in extras if line)
-        return lines
-
-    @staticmethod
-    def _panel_row(label: str, state: str, detail: str) -> str:
-        left = f"{label:<12}"
-        mid = f"{state:<11}"
-        right = detail or "—"
-        return f"{left} | {mid} | {right}"
-
-    @staticmethod
-    def _compact_fact_detail(line: str, prefix: str = "") -> str:
-        text = line.strip()
-        if text.startswith("• "):
-            text = text[2:]
-        if prefix and text.startswith(prefix):
-            text = text[len(prefix) :]
-        return text.strip() or "—"
-
-    def _quick_fact_row(self, label: str, severity: str, *details: str) -> str:
-        detail = " | ".join(part for part in details if part and part != "—") or "—"
-        return self._panel_row(label, self._compact_severity(severity), detail)
-
-    @staticmethod
-    def _dim_block(title: str, lines: list[str]) -> list[str]:
-        return [f"[dim]{title}[/dim]", *[f"[dim]{line}[/dim]" for line in lines if line]]
-
-    @staticmethod
-    def _extra_lines(lines: list[str], limit: int) -> list[str]:
-        return [line for line in lines if line][:limit]
-
-    def _global_state_rows(
-        self,
-        *,
-        scene_profile: str,
-        global_severity: str,
-        objective: dict[str, Any],
-    ) -> list[tuple[str, str, str]]:
-        objective_state = str(objective.get("status") or "none").strip().upper() or "NONE"
-        target = (
-            str(objective.get("target_designator") or objective.get("track_label") or "").strip() or "undefined"
-        )
-        return [
-            ("CONTEXT", self._compact_severity(global_severity), scene_profile),
-            ("OBJECTIVE", objective_state, target),
-        ]
-
-    def _mission_context_rows(
-        self,
-        *,
-        always_on: Any,
-        objective: dict[str, Any],
-        scene_profile: str,
-    ) -> list[tuple[str, str, str]]:
-        phase = str(getattr(always_on, "mission_phase", None) or "UNKNOWN").strip()
-        intent = str(objective.get("follow_up_status") or objective.get("status") or "none").strip().upper() or "NONE"
-        docking_state = _pick_text(self._telemetry, ["docking", "state"]).strip().upper() or scene_profile.upper()
-        return [
-            ("PHASE", phase, f"scene={scene_profile}"),
-            ("INTENT", intent, f"scene={scene_profile}"),
-            ("DOCKING", docking_state, scene_profile),
-        ]
-
-    def _guidance_rows(
-        self,
-        *,
-        telemetry: dict[str, Any],
-        guidance_severity: str,
-        derived_state: Any,
-    ) -> list[tuple[str, str, str]]:
-        guidance_state = (
-            _pick_text(telemetry, ["guidance", "state"])
-            or _pick_text(telemetry, ["docking", "state"])
-            or "holding"
-        )
-        route_dev = str(getattr(derived_state, "trajectory_deviation", None) or "none").strip()
-        maneuver = str(getattr(derived_state, "maneuver_feasibility", None) or "available").strip()
-        return [
-            ("GUIDANCE", self._compact_severity(guidance_severity), guidance_state),
-            ("DEV", route_dev.upper(), str(getattr(derived_state, "commandability_state", None) or "commandable")),
-            ("MANEUVER", maneuver.upper(), str(getattr(derived_state, "attitude_stability", None) or "partial")),
-        ]
-
-    def _incident_rows(self, *, incident_focus_severity: str) -> list[tuple[str, str, str]]:
-        total = self._active_incidents
-        crit_count = len([inc for inc in self._incidents if str(inc.get("severity", "")).upper().startswith("C")])
-        latest = "clean"
-        if crit_count:
-            latest_inc = next(
-                (
-                    inc
-                    for inc in self._incidents
-                    if str(inc.get("severity", "")).upper().startswith("C")
-                ),
-                None,
-            )
-            if latest_inc is not None:
-                latest = str(latest_inc.get("id") or "critical").strip()
-        return [
-            ("CRITICAL", str(crit_count), self._compact_severity(incident_focus_severity)),
-            ("ALERT", str(total), "clean" if total == 0 else "active"),
-            ("LAST CRIT", latest.upper() if latest != "clean" else "NONE", "clean" if total == 0 else latest),
-        ]
-
-    def _route_rows(
-        self,
-        *,
-        objective: dict[str, Any],
-        route_severity: str,
-        scene_profile: str,
-    ) -> list[tuple[str, str, str]]:
-        route_role = str(objective.get("route_role") or "unset").strip().upper() or "UNSET"
-        target = str(objective.get("target_designator") or "unset").strip().upper() or "UNSET"
-        return [
-            ("ROUTE", route_role, scene_profile),
-            ("TARGET", target, str(objective.get("track_label") or "undefined").strip() or "undefined"),
-        ]
-
-    def _qiki_recommendation_rows(
-        self,
-        *,
-        qiki_severity: str,
-        qiki_lines: list[str],
-    ) -> list[tuple[str, str, str]]:
-        state = self._operator_shell_state
-        always_on = getattr(state, "always_on", None)
-        if self._qiki_pending_action_title:
-            qiki_state = "HOLD"
-            detail = "confirm required"
-        elif self._qiki_response is None:
-            qiki_state = "READY"
-            detail = "q: <команда>"
-        else:
-            legality = getattr(self._qiki_response, "legality", None)
-            qiki_state = str(getattr(legality, "status", None) or "READY").strip().upper()
-            detail = str(getattr(legality, "reason_code", None) or "review").strip().lower() or "review"
-        trust = "PARTIAL"
-        for line in qiki_lines:
-            if line.startswith("Доверие/Trust: "):
-                trust = line.removeprefix("Доверие/Trust: ").split("|", 1)[0].strip().upper()
-                break
-        ack_state = "OPEN" if getattr(always_on, "human_ack_required", False) else "CLEAR"
-        rows = [("QIKI", qiki_state, detail)]
-        if self._qiki_response is not None or self._qiki_pending_action_title:
-            rows.append(("TRUST", trust, f"assist={getattr(always_on, 'qiki_assist_status', None) or 'partial'}"))
-            rows.append(("ACK", ack_state, "human acknowledgement"))
-        return rows
-
-    def _operator_intervention_rows(self, *, intervention_lines: list[str]) -> list[tuple[str, str, str]]:
-        loop_state = "IDLE"
-        mode = "standby"
-        next_step = "immediate required"
-        last_summary = "No command issued yet"
-        pending_count = "0"
-        for line in intervention_lines:
-            if line.startswith("Контур команды: "):
-                payload = line.removeprefix("Контур команды: ")
-                loop_state = payload.split("|", 1)[0].strip().upper()
-                if "pending=" in payload:
-                    pending_count = payload.split("pending=", 1)[1].split("|", 1)[0].strip()
-                if "mode=" in payload:
-                    mode = payload.split("mode=", 1)[1].strip().upper()
-            if line.startswith("Последняя команда: "):
-                last_summary = line.removeprefix("Последняя команда: ").strip()
-            if line.startswith("Следующий шаг: "):
-                next_step = line.removeprefix("Следующий шаг: ").strip()
-        return [
-            ("ACTION", "HOLD" if self._qiki_pending_action_title else loop_state, next_step),
-            ("INPUT", mode, f"pending={pending_count}"),
-            ("LAST", "IDLE" if last_summary == "No command issued yet" else "SET", last_summary),
-        ]
-
-    def _process_state_rows(
-        self,
-        *,
-        process_severity: str,
-        procedure_status: str | None,
-        scene_profile: str,
-    ) -> list[tuple[str, str, str]]:
-        objective = self._observation_objective if isinstance(self._observation_objective, dict) else {}
-        proc_state = "ACTIVE" if procedure_status else "IDLE"
-        detail = procedure_status or scene_profile.replace("_", " ").title()
-        focus_state = str(objective.get("status") or "none").strip().upper() if objective else "NONE"
-        focus_detail = (
-            str(objective.get("target_designator") or objective.get("track_label") or "no active contour").strip()
-            or "no active contour"
-        )
-        return [
-            ("PROCESS", proc_state, detail),
-            ("FOCUS", focus_state, focus_detail),
-        ]
-
-    @staticmethod
-    def _compact_severity(severity: str) -> str:
-        return {"ok": "NOMINAL", "warn": "WARN", "crit": "CRITICAL", "degraded": "HOLD"}.get(severity, "PARTIAL")
-
-    def _section_title(self, title: str, severity: str) -> str:
-        return f"{title}: {self._severity_markup(severity)}"
-
-    @staticmethod
-    def _section_divider() -> str:
-        return "[dim]·[/dim] [dim]·[/dim] [dim]·[/dim]"
-
-    def _severity_markup(self, severity: str) -> str:
-        label = _severity_label(severity)
-        color = {"ok": "#7fb26f", "warn": "#d6a65b", "crit": "#d06b4d"}.get(severity, "#d7ddd7")
-        return f"[bold {color}]{label}[/]"
-
-def _severity_label(severity: str) -> str:
-    if severity == "crit":
-        return "КРИТИЧНО"
-    if severity == "warn":
-        return "ПРЕДУПРЕЖДЕНИЕ"
-    return "НОРМА"
-
-
-def _merge_severity(left: str, right: str) -> str:
-    rank = {"ok": 0, "warn": 1, "crit": 2}
-    return right if rank.get(right, 0) > rank.get(left, 0) else left
-
-
-def _pick_num(payload: dict[str, Any], path: list[str]) -> float | None:
-    value: Any = payload
-    for key in path:
-        if not isinstance(value, dict) or key not in value:
-            return None
-        value = value[key]
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if math.isfinite(float(value)):
+            self.update(self._fallback_render or text)
+
+    def _pick_dict(self, *path: str) -> dict[str, Any] | None:
+        value = self._pick_any(*path)
+        return value if isinstance(value, dict) else None
+
+    def _pick_any(self, *path: str) -> Any:
+        current: Any = self._telemetry
+        for part in path:
+            if not isinstance(current, dict) or part not in current:
+                return None
+            current = current[part]
+        return current
+
+    def _pick_text(self, *path: str) -> str | None:
+        value = self._pick_any(*path)
+        return str(value) if value is not None else None
+
+    def _pick_num(self, *path: str) -> float | None:
+        value = self._pick_any(*path)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    def _core_temp(self) -> float | None:
+        value = self._pick_any("temp_core_c")
+        if isinstance(value, (int, float)):
             return float(value)
-    return None
+        thermal = self._pick_dict("thermal") or {}
+        for node in thermal.get("nodes") or []:
+            if isinstance(node, dict) and node.get("id") == "core" and isinstance(node.get("temp_c"), (int, float)):
+                return float(node["temp_c"])
+        return None
 
-
-def _pick_text(payload: dict[str, Any], path: list[str]) -> str:
-    value: Any = payload
-    for key in path:
-        if not isinstance(value, dict) or key not in value:
-            return ""
-        value = value[key]
-    if isinstance(value, str):
-        return value.strip()
-    return ""
-
-
-def _pick_bool(payload: dict[str, Any], path: list[str]) -> bool | None:
-    value: Any = payload
-    for key in path:
-        if not isinstance(value, dict) or key not in value:
-            return None
-        value = value[key]
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value != 0
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "on", "yes", "active", "enabled"}:
-            return True
-        if normalized in {"0", "false", "off", "no", "inactive", "disabled"}:
-            return False
-    return None
-
-
-def _pick_str_list(payload: dict[str, Any], path: list[str]) -> list[str]:
-    value: Any = payload
-    for key in path:
-        if not isinstance(value, dict) or key not in value:
-            return []
-        value = value[key]
-    if not isinstance(value, list):
-        return []
-    items = [str(item).strip() for item in value if str(item).strip()]
-    return list(dict.fromkeys(items))
-
-
-def _pick_angle_deg(payload: dict[str, Any], *paths: list[str]) -> float | None:
-    for path in paths:
-        value = _pick_num(payload, path)
-        if value is None:
-            continue
-        if path[-1].endswith("_rad"):
-            return math.degrees(value)
-        return value
-    return None
-
-
-def _fmt_unit(value: float | None, unit: str, precision: str) -> str:
-    if value is None:
+    def _sensor_status(self, key: str) -> str:
+        value = self._sensor_value(key, "status")
+        if value is not None:
+            return str(value)
+        if key == "radar_360" and (self._pick_any("radar") or self._pick_any("radar_tracks")):
+            return "healthy"
+        if key == "imu_main" and (self._pick_any("imu") or self._pick_any("attitude")):
+            return "healthy"
+        if key == "sensor_thermal" and (self._pick_any("thermal") or self._pick_any("temp_core_c")):
+            return "healthy"
+        if key == "sensor_proximity" and self._pick_any("docking"):
+            return "healthy"
+        if key == "sensor_solar" and self._pick_any("power"):
+            return "healthy"
         return "Нет данных"
-    return f"{value:{precision}} {unit}".strip()
 
+    def _sensor_value(self, key: str, field: str) -> Any:
+        return (
+            self._pick_any("sensor_plane", key, field)
+            or self._pick_any("sensors", key, field)
+            or self._pick_any(key, field)
+        )
 
-def _fmt_pct(value: float | None) -> str:
-    if value is None:
-        return "Нет данных"
-    return f"{value:.1f}%"
+    def _fmt_num(self, value: Any, unit: str, missing: str = "Нет данных") -> str:
+        if isinstance(value, (int, float)):
+            return f"{float(value):.2f} {unit}"
+        return missing
 
-
-def _bool_on_off_text(value: bool | None) -> str:
-    if value is None:
-        return "Нет данных"
-    return "ВКЛ" if value else "ВЫКЛ"
-
-
-def _shed_reasons_text(load_shedding: bool | None, reasons: list[str]) -> str:
-    if reasons:
-        return ", ".join(reasons)
-    if load_shedding is True:
-        return "degraded: нет данных"
-    if load_shedding is False:
-        return "—"
-    return "Нет данных"
-
-
-def _fmt_duration(seconds: float | None) -> str:
-    if seconds is None or seconds <= 0.0:
-        return "Нет данных"
-    total = int(seconds)
-    hours = total // 3600
-    minutes = (total % 3600) // 60
-    if hours > 0:
-        return f"{hours}ч {minutes}м"
-    return f"{minutes}м"
-
-
-def _telemetry_age_seconds(payload: dict[str, Any]) -> float | None:
-    unix_ms = payload.get("ts_unix_ms")
-    if isinstance(unix_ms, (int, float)):
-        return max(0.0, (datetime.now(tz=timezone.utc).timestamp() * 1000.0 - float(unix_ms)) / 1000.0)
-
-    stamp = payload.get("timestamp")
-    if isinstance(stamp, str) and stamp:
-        try:
-            ts = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-            return max(0.0, datetime.now(tz=timezone.utc).timestamp() - ts.timestamp())
-        except ValueError:
-            return None
-    return None
+    def _fmt_optional(self, value: Any) -> str:
+        if isinstance(value, float):
+            return f"{value:.2f}"
+        if isinstance(value, int):
+            return str(value)
+        return str(value) if value not in (None, "") else "Нет данных"
