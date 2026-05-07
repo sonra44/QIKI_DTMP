@@ -1,4 +1,0 @@
-interface:
-  display_name: "QIKI Bootstrap"
-  short_description: "Bootstraps QIKI session context."
-  default_prompt: "Use $qiki-bootstrap to restore QIKI_DTMP context, load memory, and re-anchor on the active canon and next step."

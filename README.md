@@ -1,50 +1,52 @@
 # QIKI_DTMP
 
-Digital-twin simulation platform with an operator TUI (ORION) and simulation-truth telemetry pipeline.  
-Платформа цифрового двойника с операторским TUI (ORION) и конвейером телеметрии от симуляции.
+QIKI_DTMP is a space-simulation game project built around operator telemetry, radar, sensor trust, and an autonomous QIKI entity. It is not a generic dashboard or a marketing "digital twin" demo. The player does not look at an external 3D scene; the player reads the world through ORION, telemetry, radar, sensor state, command proposals, and QIKI's responses.
 
-## What This Is / Что Это
+The hard rule is truth first. Runtime state must come from simulation, NATS/JetStream messages, service contracts, or explicit operator policy. UI text may summarize that truth, but it must not invent it.
 
-EN:
-- `q-sim-service` generates world state and publishes telemetry/radar truth.
-- ORION (`operator-console`) renders operational state for humans.
-- No-mocks policy: if data is missing, UI must show honest `N/A/—`.
+## Product Frame
 
-RU:
-- `q-sim-service` генерирует состояние мира и публикует телеметрию/радар.
-- ORION (`operator-console`) показывает операторское состояние в реальном времени.
-- Политика no-mocks: если данных нет, UI обязан показать честное `N/A/—`.
+- `q-sim-service` owns simulation truth: world state, telemetry, radar contacts, sensor effects, subsystem state, and command consequences.
+- QIKI is an autonomous in-world system, not a decorative chatbot. Operator access depends on protocol, legality, trust, and game-state permissions.
+- ORION is the primary operator surface. It displays telemetry, radar, system status, command affordances, and consequences.
+- Sensors do not collapse to fake numbers. Healthy sensors show exact data; degraded sensors show uncertainty; failed or disabled sensors state why data is absent.
+- Pause and slowdown are game mechanics. Human time and machine/QIKI decision time may diverge.
 
-## Architecture at a Glance / Архитектура Кратко
+## Runtime Path
 
-Core components:
-- `qiki-nats-phase1` (NATS + JetStream)
-- `q-sim-service` (simulation truth)
-- `qiki-faststream-bridge-phase1` (routing/normalization)
-- `qiki-operator-console` (ORION TUI)
-- `qiki-dev-phase1` (tests, tooling, development)
+Core services:
 
-Key path:
-1. Sim publishes truth -> NATS/JetStream.
-2. Bridge normalizes and routes messages.
-3. ORION renders semantic operator view.
-4. Operator commands return to simulation loop.
+- `qiki-nats-phase1`: NATS and JetStream transport.
+- `q-sim-service`: simulation truth and event source.
+- `qiki-faststream-bridge-phase1`: message routing and normalization.
+- `qiki-operator-console`: ORION operator console.
+- `qiki-dev-phase1`: test and tooling container.
 
-## Quick Start (Docker-first) / Быстрый Старт (Docker-first)
+Main loop:
+
+1. Simulation publishes truth.
+2. Bridge routes and normalizes messages.
+3. ORION renders an operator view.
+4. Operator/QIKI commands go back through legality, execution, ack, and audit paths.
+
+## Quick Start
+
+Use Docker first.
 
 ```bash
-# 1) Start Phase1
 docker compose -f docker-compose.phase1.yml up -d --build
 docker compose -f docker-compose.phase1.yml ps
+```
 
-# 2) Start ORION console
+Start ORION:
+
+```bash
 docker compose -f docker-compose.phase1.yml -f docker-compose.operator.yml up operator-console
 ```
 
-Health checks:
+Run the main quality gate:
 
 ```bash
-curl -sf http://localhost:8222/healthz
 bash scripts/quality_gate_docker.sh
 ```
 
@@ -54,32 +56,52 @@ If protobuf stubs are missing:
 docker compose -f docker-compose.phase1.yml run --rm qiki-dev bash -lc "bash tools/gen_protos.sh"
 ```
 
-## Current Workflow Contract / Контракт Рабочего Процесса
+## Repository Map
 
-- One task = one branch = one PR.
-- Branch format: `task-<4+digits>-<slug>`.
-- Merge to `main` only after:
-  - required checks are green: `load`, `Sourcery review`, `CodeRabbit`
-  - review feedback is addressed
-  - PR conversation is resolved
-  - `@codex review` is requested and processed
-- Direct push to `main` is not part of normal flow.
+- `src/qiki/`: runtime services, shared models, ORION code, simulation logic, and tools.
+- `tests/`: unit and integration tests.
+- `docs/`: public architecture, operations, canon, and runbooks.
+- `docs/design/canon/`: active design canon entrypoint and product-critical execution canons.
+- `docs/design/operator_console/`: ORION operator-surface design and contracts.
+- `docs/design/game/`: game/lore layer that belongs to the active product frame.
+- `docs/design/hardware_and_physics/`: hardware, sensor, power, thermal, and physical-system design notes.
+- `TASKS/`: task dossiers used to ground implementation work.
+- `schemas/`, `protos/`, `proto_extensions/`: contracts and schemas.
+- `scripts/`, `tools/`: repeatable project operations and smoke checks.
 
-Details: `CONTRIBUTING.md`, `docs/operations/GIT_BRANCH_POLICY.md`.
+## Source Of Truth
 
-## Source of Truth Links / Где Истина
+Use this order when checking a claim:
 
-- Docs index: `docs/INDEX.md`
-- Design canon entrypoint: `docs/design/canon/INDEX.md`
+1. Runtime code, tests, and live service evidence.
+2. Current task dossier in `TASKS/`.
+3. Active canon under `docs/design/canon/`.
+4. Public docs and runbooks.
+5. Historical notes only when explicitly marked as reference.
+
+Start here:
+
+- Documentation index: `docs/INDEX.md`
 - Architecture: `docs/ARCHITECTURE.md`
-- Task dossiers: `TASKS/00_INDEX.md`
-- Operator semantics: `docs/design/operator_console/SIMULATION_CONTROL_CONTRACT.md`
+- Canon index: `docs/design/canon/INDEX.md`
+- Git policy: `docs/operations/GIT_BRANCH_POLICY.md`
+- Documentation update protocol: `DOCUMENTATION_UPDATE_PROTOCOL.md`
 
-## For Reviewers and LLMs / Для Ревьюеров и LLM
+## What Is Not Published
 
-Minimal verification path:
-1. Read this README and `CONTRIBUTING.md`.
-2. Run Phase1 and ORION using commands above.
-3. Run `bash scripts/quality_gate_docker.sh`.
-4. Run `bash scripts/qiki_drift_audit.sh --strict` if the slice touched board, dossier, canon, or reference/status docs.
-4. Validate claims in relevant `TASKS/TASK_*.md` dossier.
+The public repository intentionally excludes local agent state, virtual environments, archives, generated reports, exported zip bundles, and scratch workspaces. Examples:
+
+- `.venv/`, `.serena/`, `.qwen/`, `.codex/`, `.claude/`
+- `_archive/`, `TASK_OUT/`, `tmp/`, `introspector/`
+- generated analysis directories and one-off report dumps
+- local package exports such as `*.zip`
+
+These files may exist on a developer machine, but they are not part of the project source tree.
+
+## Workflow
+
+- One task should have one branch and one PR.
+- `main` is protected.
+- Use Docker-first verification before review.
+- Keep code, docs, canon, and task dossiers synchronized when behavior changes.
+- Do not commit secrets, local credentials, shell history, provider keys, or agent memory.

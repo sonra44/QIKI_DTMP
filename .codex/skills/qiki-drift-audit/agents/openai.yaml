@@ -1,4 +1,0 @@
-interface:
-  display_name: "QIKI Drift Audit"
-  short_description: "Finds QIKI canon drift fast."
-  default_prompt: "Use $qiki-drift-audit to compare QIKI_DTMP board, canon, and docs and surface current drift that should not be coded around."

@@ -73,8 +73,7 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Docker
-.dockerignore
+# Docker metadata is part of the published repo.
 
 # Logs
 *.log
@@ -86,6 +85,11 @@ config/*.history.jsonl
 HISTORY_COPY/
 journal/
 tmp/
+TASK_OUT/
+_archive/
+archive/
+introspector/
+DENDER NOT TO TRY TO READ/
 test_output.txt
 .qiki_bot.id
 
@@ -95,8 +99,8 @@ test_output.txt
 .tmp/
 .temp/
 
-# Config files (keep templates)
-config.yaml
+# Config files (keep templates; service config.yaml files are tracked)
+/config.yaml
 *.env
 .env.*
 
@@ -115,6 +119,13 @@ docs/_build/
 .mypy_cache/
 .ruff_cache/
 .serena/
+.qwen/
+.codex/
+.claude/
+.openclaw/
+.onecontext/
+.opencode/
+.pi/
 
 # Local operator black-box log (never commit)
 docs/operator_console/ЧЕРНЫЙ ЯЩИК.MD
@@ -129,3 +140,52 @@ IDENTITY.md
 SOUL.md
 TOOLS.md
 USER.md
+
+# Local packages, exports, and generated review bundles
+*.zip
+*.pdf
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Generated analysis and historical scratch reports
+docs/analysis/
+Cabinet/
+analysis/
+workspace/
+/workspace
+generated/
+roadmap/
+CONTEXT/
+run_console.*
+run_gemini_auto.sh
+RUNNING
+F6
+gemini_auto_answers.txt
+
+# Legacy root-level reports stay local; public docs live under docs/.
+/*.md
+!/AGENTS.md
+!/CONTRIBUTING.md
+!/DOCUMENTATION_UPDATE_PROTOCOL.md
+!/LOG.MD
+!/README.md
+
+# Historical doc workspaces outside the current public canon.
+docs/*.md
+!docs/ARCHITECTURE.md
+!docs/CONTRACT_POLICY.md
+!docs/INDEX.md
+!docs/NEW_QIKI_PLATFORM_DESIGN.md
+!docs/ORION_V_HARDWARE_VIEW_MODEL.md
+!docs/ORION_V_QUICKSTART.md
+!docs/ORION_V_RUNBOOK.md
+!docs/QIKI_DTMP_METHODOLOGICAL_PRINCIPLES_V1.md
+!docs/RELEASE_NOTES_ORIONV_1.0.0.md
+docs/agents/
+docs/task_plans/
+docs/design/*.jpg
+docs/design/*.MD
+docs/*.txt
+docs/*.pdf
