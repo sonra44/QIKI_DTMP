@@ -35,3 +35,7 @@ Implementation-slice должен проверяться через:
 ```bash
 python -m pytest tests/unit/test_orion_v_cockpit.py
 ```
+
+## Статус
+
+Загружено через GitHub connector.
