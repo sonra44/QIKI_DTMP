@@ -1,5 +1,13 @@
 # Thermal Plane — Warn/Trip policy + Ambient floor (P0 canon)
 
+> Related target canon:
+>
+> QIKI Body v0.2.2 defines target body-level power / thermal / evidence constraints:
+>
+> `docs/design/hardware_and_physics/qiki_body_v0_2_2/`
+>
+> This document remains the subsystem-specific design reference unless updated by a separate implementation task.
+
 Цель: сделать тепловую плоскость **оператор‑объяснимой** и **не‑дребезжащей** без моков.
 
 Инварианты:

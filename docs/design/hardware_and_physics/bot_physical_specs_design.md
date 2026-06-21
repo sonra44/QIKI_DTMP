@@ -2,6 +2,16 @@
 > ⚠️ **Источник правды:** `docs/design/hardware_and_physics/bot_source_of_truth.md`.
 > Этот файл описывает формат hardware‑контрактов и пайплайн генерации, но не является единственным источником всех физических параметров.
 
+> QIKI Body v0.2.2 alignment:
+>
+> This file may contain earlier physical specification notes.
+>
+> For current target body canon, calculation-required tables, status model and module/passport rules, use:
+>
+> `docs/design/hardware_and_physics/qiki_body_v0_2_2/`
+>
+> Existing numeric values in this file must not be replaced by target values unless separate calculation or runtime evidence exists.
+
 # Спецификация Физического Устройства Бота (Hardware Contract)
 
 ## 1. Обзор
