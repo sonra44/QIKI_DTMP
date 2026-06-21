@@ -339,6 +339,15 @@ class OrionVCockpitScreen(Static):
                             self._compact_fact_detail(thermal_lines[0], "Core: "),
                             self._compact_fact_detail(thermal_lines[1], "Radiator/Sink: "),
                         ),
+                        self._compact_fact_detail(
+                            next((ln for ln in thermal_lines if ln.startswith("• Core:")), "")
+                        ),
+                        self._compact_fact_detail(
+                            next((ln for ln in thermal_lines if ln.startswith("• TRIP nodes:")), "")
+                        ),
+                        self._compact_fact_detail(
+                            next((ln for ln in energy_lines if ln.startswith("• Причины сброса:")), "")
+                        ),
                     ],
                 ),
             ]
