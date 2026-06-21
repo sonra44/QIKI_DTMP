@@ -164,7 +164,7 @@ class EventStoreRejectionSink:
         self._store = event_store
 
     def append_rejection(self, event: "RejectionAuditEvent") -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=event.source_owner,
             event_type="module_attach_rejected",
             payload={
@@ -200,7 +200,7 @@ def attach_module(
             source_owner=SOURCE_OWNER,
             timestamp=time.time(),
         )
-        audit_sink.append_rejection(event)
+        audit_event_id = audit_sink.append_rejection(event)
         return AttachResult(
             rejected=True,
             reason_code=MODULE_PASSPORT_MISSING,
@@ -250,6 +250,8 @@ class RegistrationResult:
     passport_module_id: str = ""
     # Slice 0007 mount-existence context (False only when the mount was unknown).
     known_mount: bool = True
+    # Remediation H3: id of the audit event this decision recorded (causal identity).
+    audit_event_id: str = ""
 
 
 class RegistrationAuditSink(Protocol):
@@ -262,7 +264,7 @@ class RegistrationAuditSink(Protocol):
         capability_status: str,
         runtime_ready: bool,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
     def append_occupied_rejection(
         self,
@@ -272,7 +274,7 @@ class RegistrationAuditSink(Protocol):
         existing_module_id: str,
         mount_point: str,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
     def append_class_forbidden_rejection(
         self,
@@ -282,7 +284,7 @@ class RegistrationAuditSink(Protocol):
         module_class: str,
         mount_point: str,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
     def append_invalid_passport_rejection(
         self,
@@ -293,7 +295,7 @@ class RegistrationAuditSink(Protocol):
         mount_point: str,
         validation_error: str,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
     def append_unknown_mount_rejection(
         self,
@@ -302,7 +304,7 @@ class RegistrationAuditSink(Protocol):
         module_id: str,
         mount_point: str,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
     def append_missing_passport_rejection(
         self,
@@ -311,7 +313,7 @@ class RegistrationAuditSink(Protocol):
         module_id: str,
         mount_point: str,
         timestamp: float,
-    ) -> None: ...
+    ) -> str: ...
 
 
 class EventStoreRegistrationSink:
@@ -332,7 +334,7 @@ class EventStoreRegistrationSink:
         runtime_ready: bool,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=SOURCE_OWNER,
             event_type="module_attach_registered",
             payload={
@@ -346,7 +348,7 @@ class EventStoreRegistrationSink:
             },
             reason="",
             ts=timestamp,
-        )
+        ).event_id
 
     def append_occupied_rejection(
         self,
@@ -357,7 +359,7 @@ class EventStoreRegistrationSink:
         mount_point: str,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=SOURCE_OWNER,
             event_type="module_attach_rejected",
             payload={
@@ -376,7 +378,7 @@ class EventStoreRegistrationSink:
             },
             reason=MOUNT_POINT_OCCUPIED,
             ts=timestamp,
-        )
+        ).event_id
 
     def append_class_forbidden_rejection(
         self,
@@ -387,7 +389,7 @@ class EventStoreRegistrationSink:
         mount_point: str,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=SOURCE_OWNER,
             event_type="module_attach_rejected",
             payload={
@@ -404,7 +406,7 @@ class EventStoreRegistrationSink:
             },
             reason=MODULE_MOUNT_CLASS_FORBIDDEN,
             ts=timestamp,
-        )
+        ).event_id
 
     def append_invalid_passport_rejection(
         self,
@@ -416,7 +418,7 @@ class EventStoreRegistrationSink:
         validation_error: str,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=PASSPORT_VALIDATOR_OWNER,
             event_type="module_attach_rejected",
             payload={
@@ -434,7 +436,7 @@ class EventStoreRegistrationSink:
             },
             reason=MODULE_PASSPORT_INVALID,
             ts=timestamp,
-        )
+        ).event_id
 
     def append_unknown_mount_rejection(
         self,
@@ -444,7 +446,7 @@ class EventStoreRegistrationSink:
         mount_point: str,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=SOURCE_OWNER,
             event_type="module_attach_rejected",
             payload={
@@ -461,7 +463,7 @@ class EventStoreRegistrationSink:
             },
             reason=MOUNT_POINT_UNKNOWN,
             ts=timestamp,
-        )
+        ).event_id
 
     def append_missing_passport_rejection(
         self,
@@ -471,7 +473,7 @@ class EventStoreRegistrationSink:
         mount_point: str,
         timestamp: float,
     ) -> None:
-        self._store.append_new(
+        return self._store.append_new(
             subsystem=SOURCE_OWNER,
             event_type="module_attach_rejected",
             payload={
@@ -485,7 +487,7 @@ class EventStoreRegistrationSink:
             },
             reason=MODULE_PASSPORT_MISSING,
             ts=timestamp,
-        )
+        ).event_id
 
 
 def register_module(
@@ -502,7 +504,7 @@ def register_module(
     runtime-ready. An invalid/missing passport is not registered (no body change).
     """
     if not _passport_has_required_shape(request.passport):
-        audit_sink.append_missing_passport_rejection(
+        audit_event_id = audit_sink.append_missing_passport_rejection(
             request_id=request.request_id,
             module_id=request.module_id,
             mount_point=request.mount_point,
@@ -511,6 +513,7 @@ def register_module(
         return (
             RegistrationResult(
                 status="rejected",
+                audit_event_id=audit_event_id,
                 module_id=request.module_id,
                 mount_point=request.mount_point,
                 passport_status="missing",
@@ -522,12 +525,21 @@ def register_module(
             body,
         )
 
-    # Passport integrity guard (slice 0006): a present, well-shaped passport must still
-    # be consistent with the attach request. A module_id mismatch is rejected BEFORE any
-    # mount validation (occupancy / class), so an invalid passport never reaches the body.
-    if request.passport is not None and request.passport.module_id.strip() != request.module_id.strip():
-        validation_error = "module_id_mismatch"
-        audit_sink.append_invalid_passport_rejection(
+    # Passport integrity guard (slice 0006 + remediation C1): a present, well-shaped
+    # passport must be consistent with the attach request — BOTH module_id AND mount_point
+    # must match. Any mismatch is rejected BEFORE mount validation, so an invalid passport
+    # never reaches the body. (module_id mismatch takes precedence over mount_point.)
+    if request.passport is not None:
+        if request.passport.module_id.strip() != request.module_id.strip():
+            validation_error = "module_id_mismatch"
+        elif request.passport.mount_point.strip() != request.mount_point.strip():
+            validation_error = "mount_point_mismatch"
+        else:
+            validation_error = ""
+    else:
+        validation_error = ""
+    if request.passport is not None and validation_error:
+        audit_event_id = audit_sink.append_invalid_passport_rejection(
             request_id=request.request_id,
             module_id=request.module_id,
             passport_module_id=request.passport.module_id,
@@ -538,6 +550,7 @@ def register_module(
         return (
             RegistrationResult(
                 status="rejected",
+                audit_event_id=audit_event_id,
                 module_id=request.module_id,
                 mount_point=request.mount_point,
                 passport_status="invalid",
@@ -556,7 +569,7 @@ def register_module(
     # the body does not know. Rejected before occupancy/class; the unknown mount is never
     # auto-created.
     if request.mount_point not in body.face_occupancy:
-        audit_sink.append_unknown_mount_rejection(
+        audit_event_id = audit_sink.append_unknown_mount_rejection(
             request_id=request.request_id,
             module_id=request.module_id,
             mount_point=request.mount_point,
@@ -565,6 +578,7 @@ def register_module(
         return (
             RegistrationResult(
                 status="rejected",
+                audit_event_id=audit_event_id,
                 module_id=request.module_id,
                 mount_point=request.mount_point,
                 passport_status=PASSPORT_STATUS_VALIDATED,
@@ -583,7 +597,7 @@ def register_module(
     # so the existing module is never silently overwritten.
     occupant = body.face_occupancy.get(request.mount_point, "free")
     if occupant not in ("", "free"):
-        audit_sink.append_occupied_rejection(
+        audit_event_id = audit_sink.append_occupied_rejection(
             request_id=request.request_id,
             requested_module_id=request.module_id,
             existing_module_id=occupant,
@@ -593,6 +607,7 @@ def register_module(
         return (
             RegistrationResult(
                 status="rejected",
+                audit_event_id=audit_event_id,
                 module_id=request.module_id,
                 mount_point=request.mount_point,
                 passport_status=PASSPORT_STATUS_VALIDATED,  # the passport itself was valid
@@ -610,11 +625,11 @@ def register_module(
     # module whose class is forbidden for that face by the Face Map rules. Checked after
     # occupancy (occupied mount keeps priority), before any body_config mutation.
     rules = body.face_mount_classes.get(request.mount_point, {})
-    module_class = request.passport.module_class if request.passport else ""
+    module_class = (request.passport.module_class if request.passport else "").strip()
     forbidden_classes = tuple(rules.get("forbidden", ()))
     allowed_classes = tuple(rules.get("allowed", ()))
     if module_class in forbidden_classes or (allowed_classes and module_class not in allowed_classes):
-        audit_sink.append_class_forbidden_rejection(
+        audit_event_id = audit_sink.append_class_forbidden_rejection(
             request_id=request.request_id,
             module_id=request.module_id,
             module_class=module_class,
@@ -624,6 +639,7 @@ def register_module(
         return (
             RegistrationResult(
                 status="rejected",
+                audit_event_id=audit_event_id,
                 module_id=request.module_id,
                 mount_point=request.mount_point,
                 passport_status=PASSPORT_STATUS_VALIDATED,
@@ -648,15 +664,19 @@ def register_module(
     }
     new_occupancy = dict(body.face_occupancy)
     new_occupancy[request.mount_point] = request.module_id
+    # Build a fully de-aliased snapshot (remediation C2): a frozen dataclass does not
+    # prevent in-place mutation of nested mutable contents, so every nested structure is
+    # copied — pre-existing module entry dicts, the new entry, and each face's mount-class
+    # rule dict — so parent and child snapshots never share mutable state.
     updated = BodyConfigSnapshot(
         face_ids=body.face_ids,
         face_map_status=body.face_map_status,
         bayonet_states=dict(body.bayonet_states),
         face_occupancy=new_occupancy,
-        modules=body.modules + (entry,),
-        face_mount_classes=body.face_mount_classes,
+        modules=tuple(dict(m) for m in body.modules) + (dict(entry),),
+        face_mount_classes={k: dict(v) for k, v in body.face_mount_classes.items()},
     )
-    audit_sink.append_registration(
+    audit_event_id = audit_sink.append_registration(
         module_id=request.module_id,
         mount_point=request.mount_point,
         passport_status=passport_status,
@@ -667,6 +687,7 @@ def register_module(
     return (
         RegistrationResult(
             status=MODULE_STATUS_ATTACHED,
+            audit_event_id=audit_event_id,
             module_id=request.module_id,
             mount_point=request.mount_point,
             passport_status=passport_status,
@@ -728,8 +749,9 @@ def run_attach_pipeline(
     result, updated = register_module(body, request, audit_sink=sink)
 
     stage = "registration" if result.reason_code is None else _STAGE_BY_REASON[result.reason_code]
-    audit_event = store.recent(1)[0]
-    audit_event_id = str(getattr(audit_event, "event_id", ""))
+    # Remediation H3: causal identity comes from the event id the audit write RETURNED
+    # (threaded through RegistrationResult), never from positional store.recent(1).
+    audit_event_id = result.audit_event_id
     status = MODULE_STATUS_ATTACHED if result.status == MODULE_STATUS_ATTACHED else "rejected"
 
     return (

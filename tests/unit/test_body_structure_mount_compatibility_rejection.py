@@ -104,3 +104,20 @@ def test_free_mount_is_not_sufficient_when_module_class_is_forbidden() -> None:
     # body_config completely unchanged.
     assert body_after.modules == ()
     assert body_after.face_occupancy["F06"] == "free"
+
+
+def test_module_class_is_normalized_before_mount_class_check() -> None:
+    """REMEDIATION H6: module_class is compared normalized (stripped), so a trailing-space
+    class that is actually allowed is NOT falsely rejected as MODULE_MOUNT_CLASS_FORBIDDEN."""
+    body = BodyConfigSnapshot.skeleton()
+    store = EventStore(backend="memory")
+    # "sensor " (trailing space) is the allowed class "sensor".
+    passport = ModulePassport("mod-x", "sensor ", "F06")
+    request = ModuleAttachRequest("r", "mod-x", "F06", passport=passport)
+    result, body_after = register_module(
+        body, request, audit_sink=EventStoreRegistrationSink(store)
+    )
+
+    assert result.reason_code != MODULE_MOUNT_CLASS_FORBIDDEN
+    assert result.status == "attached"
+    assert body_after.face_occupancy["F06"] == "mod-x"
