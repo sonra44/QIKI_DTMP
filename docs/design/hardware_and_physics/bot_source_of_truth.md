@@ -1,5 +1,11 @@
 # Bot Source of Truth (QIKI_DTMP)
 
+> **Alignment note — QIKI Body v0.2.2**
+>
+> For body hardware / physics / machine-body constraints, the current target documentation canon is QIKI Body v0.2.2 (`docs/design/hardware_and_physics/qiki_body_v0_2_2/`); status: target canon / documentation-only, runtime conformance not claimed.
+> This document remains the working body source-of-truth, but hardware, power, thermal, RCS, bayonet, NBL, protection, modularity, command gating and evidence claims should be checked against that package.
+> Older conflicting statements are treated as **superseded** by QIKI Body v0.2.2 unless explicitly re-accepted by a later ADR.
+
 ## 0) Назначение и статус
 Этот документ — **единый источник правды** по *структуре* бота (геометрия/стыковка), *двигательной подсистеме* (RCS и принципы управления) и *формату hardware‑контрактов/сборки профиля*.
 

@@ -3,6 +3,13 @@
 > ⚠️ **Источник правды:** `docs/design/hardware_and_physics/bot_source_of_truth.md`.
 > Этот файл — GDD (концепция/механики) и не должен быть единственным источником аппаратных чисел.
 
+> **Alignment note — QIKI Body v0.2.2**
+>
+> QIKI Body v0.2.2 is the current target documentation canon for body hardware / physics / machine-body constraints (`docs/design/hardware_and_physics/qiki_body_v0_2_2/`); status: target canon / documentation-only, runtime conformance not claimed.
+> This older GDD file remains available as game-design and historical context.
+> Hardware, body, power, thermal, RCS, bayonet, NBL, protection, modularity, command gating and evidence claims should be checked against that package.
+> Older conflicting statements (magnetic lock as primary bayonet, RTG as ordinary battery, reactor as face module, NBL as wideband, shield as absolute, field drive as baseline, uniform RCS without Thrust/Torque Map, module without passport, command as instant effect, ACK as effect confirmation, ORION as decorative HUD) are treated as **superseded** by QIKI Body v0.2.2 unless explicitly re-accepted by a later ADR.
+
 Версия: 0.1.3 (боевой черновик). Фокус: только гейм‑дизайн поведения и механик бота без кода.
 
 ## 1. Вид и геометрия
