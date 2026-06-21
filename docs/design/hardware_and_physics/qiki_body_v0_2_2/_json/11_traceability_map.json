@@ -1,0 +1,137 @@
+{
+  "description": "High-level traceability between sources, requirements, viewpoints, calculations and interfaces.",
+  "links": [
+    {
+      "topic": "runtime_truth",
+      "source_files": [
+        "01_BODY_CANON.md",
+        "02_REQUIREMENTS.md",
+        "03_ARCHITECTURE_VIEWPOINTS.md",
+        "06_INTERFACE_CONTROL.md",
+        "09_ACCEPTANCE_CHECKS.md"
+      ],
+      "requirements": [
+        "REQ-BODY",
+        "REQ-ORION",
+        "REQ-AUDIT"
+      ],
+      "viewpoints": [
+        "VP-01",
+        "VP-10"
+      ],
+      "interfaces": [
+        "IF-ORION-EVIDENCE-001",
+        "IF-AUDIT-001",
+        "IF-BLACKBOX-001"
+      ],
+      "adr": [
+        "ADR-0001",
+        "ADR-0014",
+        "ADR-0015"
+      ]
+    },
+    {
+      "topic": "battery_supercap_split",
+      "source_files": [
+        "01_BODY_CANON.md",
+        "04_CALCULATION_FRAME.md",
+        "05_ENGINEERING_RATIONALE.md",
+        "06_INTERFACE_CONTROL.md"
+      ],
+      "requirements": [
+        "REQ-POWER",
+        "REQ-THERMAL",
+        "REQ-CMD"
+      ],
+      "viewpoints": [
+        "VP-05",
+        "VP-09"
+      ],
+      "interfaces": [
+        "IF-PDU-POWER-001",
+        "IF-POWER-TELEM-001",
+        "IF-THERMAL-TELEM-001"
+      ],
+      "adr": [
+        "ADR-0003"
+      ]
+    },
+    {
+      "topic": "bayonet_bridge",
+      "source_files": [
+        "01_BODY_CANON.md",
+        "04_CALCULATION_FRAME.md",
+        "06_INTERFACE_CONTROL.md",
+        "07_ADR/"
+      ],
+      "requirements": [
+        "REQ-BAYONET",
+        "REQ-MODULE",
+        "REQ-CMD"
+      ],
+      "viewpoints": [
+        "VP-03",
+        "VP-08",
+        "VP-09"
+      ],
+      "interfaces": [
+        "IF-BAYONET-MECH-001",
+        "IF-BAYONET-BRIDGE-001",
+        "IF-MODULE-PASSPORT-001"
+      ],
+      "adr": [
+        "ADR-0009"
+      ]
+    },
+    {
+      "topic": "rcs_maps",
+      "source_files": [
+        "01_BODY_CANON.md",
+        "04_CALCULATION_FRAME.md",
+        "05_ENGINEERING_RATIONALE.md",
+        "06_INTERFACE_CONTROL.md"
+      ],
+      "requirements": [
+        "REQ-RCS",
+        "REQ-MASS",
+        "REQ-CMD"
+      ],
+      "viewpoints": [
+        "VP-06",
+        "VP-04"
+      ],
+      "interfaces": [
+        "IF-RCS-CMD-001"
+      ],
+      "adr": [
+        "ADR-0010"
+      ]
+    },
+    {
+      "topic": "module_passport",
+      "source_files": [
+        "01_BODY_CANON.md",
+        "04_CALCULATION_FRAME.md",
+        "06_INTERFACE_CONTROL.md",
+        "07_ADR/"
+      ],
+      "requirements": [
+        "REQ-MODULE",
+        "REQ-GEOM",
+        "REQ-MASS",
+        "REQ-POWER",
+        "REQ-THERMAL"
+      ],
+      "viewpoints": [
+        "VP-08",
+        "VP-03"
+      ],
+      "interfaces": [
+        "IF-MODULE-PASSPORT-001"
+      ],
+      "adr": [
+        "ADR-0011"
+      ]
+    }
+  ]
+}

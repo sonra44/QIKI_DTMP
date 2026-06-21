@@ -1,0 +1,15 @@
+{
+  "description": "Acceptance summary for the markdown package generated in this chat.",
+  "status": "PASS",
+  "checks_passed": 34,
+  "checks_failed": 0,
+  "markdown_files": 25,
+  "does_not_claim": [
+    "runtime implementation",
+    "runtime conformance",
+    "telemetry support",
+    "ORION UI support",
+    "proto/NATS/gRPC support",
+    "verified physics values"
+  ]
+}

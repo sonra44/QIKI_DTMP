@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-06-21T04:25:01+00:00",
+  "name": "QIKI Body v0.2.2 Repo Patch Checklist",
+  "commands": [
+    "unzip qiki_body_v0_2_2_FULL_REPO_OVERLAY_WITH_JSON.zip",
+    "find docs/design/hardware_and_physics/qiki_body_v0_2_2 -type f | sort",
+    "git status --short"
+  ],
+  "must_have_files": [
+    "00_INDEX.md",
+    "01_BODY_CANON.md",
+    "02_REQUIREMENTS.md",
+    "03_ARCHITECTURE_VIEWPOINTS.md",
+    "04_CALCULATION_FRAME.md",
+    "05_ENGINEERING_RATIONALE.md",
+    "06_INTERFACE_CONTROL.md",
+    "07_ADR/",
+    "08_IMPLEMENTATION_BRIDGE.md",
+    "09_ACCEPTANCE_CHECKS.md",
+    "10_READER_MANUAL.md"
+  ],
+  "allowed_modified_paths": [
+    "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+    "docs/INDEX.md",
+    "docs/design/game/bot_gdd.md"
+  ],
+  "forbidden_path_patterns": [
+    "q_sim_service/",
+    "orion/",
+    "proto/",
+    "generated/",
+    "telemetry/",
+    "docker-compose.yml",
+    "*.py",
+    "*.proto"
+  ],
+  "commit_message": "docs: add QIKI Body v0.2.2 documentation and JSON companion"
+}

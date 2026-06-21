@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-06-21T04:25:01+00:00",
+  "package": "QIKI Body v0.2.2",
+  "description": "Map of old risky GDD statements to QIKI Body v0.2.2 replacements.",
+  "items": [
+    {
+      "old_claim": "magnetic lock as structural bayonet lock",
+      "new_status": "superseded",
+      "replacement": "magnetic pre-align only; mechanical hard lock required",
+      "adr": "ADR-0009",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "RTG as normal battery / boost source",
+      "new_status": "superseded",
+      "replacement": "RTG-class heavy / trickle source, not boost-source",
+      "adr": "ADR-0004",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "reactor as normal face module",
+      "new_status": "superseded",
+      "replacement": "reactor-class source is external / station / sled / heavy infrastructure",
+      "adr": "ADR-0005",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "NBL as broadband / normal telemetry",
+      "new_status": "superseded",
+      "replacement": "baseline NBL is emergency low-rate only",
+      "adr": "ADR-0006",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "absolute shield",
+      "new_status": "superseded",
+      "replacement": "constrained protection / deployable deflector, not absolute shield",
+      "adr": "ADR-0007",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "field drive as baseline",
+      "new_status": "superseded",
+      "replacement": "field drive is not baseline; if used, it is Terta-exotic with explicit cost",
+      "adr": "ADR-0008",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "balanced RCS without maps",
+      "new_status": "superseded",
+      "replacement": "RCS requires Thrust Map and Torque Map before balanced thrust can be claimed",
+      "adr": "ADR-0010",
+      "source_doc": "05_ENGINEERING_RATIONALE.md"
+    },
+    {
+      "old_claim": "module runtime-ready without passport",
+      "new_status": "superseded",
+      "replacement": "module passport is mandatory for runtime-ready status",
+      "adr": "ADR-0011",
+      "source_doc": "01_BODY_CANON.md"
+    },
+    {
+      "old_claim": "ACK as command completion",
+      "new_status": "superseded",
+      "replacement": "ACK is not effect confirmation",
+      "adr": "ADR-0015",
+      "source_doc": "06_INTERFACE_CONTROL.md"
+    },
+    {
+      "old_claim": "ORION as decorative HUD / visual truth",
+      "new_status": "superseded",
+      "replacement": "ORION is evidence station with source / freshness / trust / reason_codes",
+      "adr": "ADR-0014",
+      "source_doc": "01_BODY_CANON.md"
+    }
+  ]
+}

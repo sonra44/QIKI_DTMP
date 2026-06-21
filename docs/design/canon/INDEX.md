@@ -13,6 +13,20 @@ This file exists as a stable **design canon entrypoint** referenced by session b
 - Q-Core Agent: `docs/design/q-core-agent/`
 - Game layer (lore/intent): `docs/design/game/`
 
+## Hardware / Physics canon
+
+QIKI Body v0.2.2 defines the current target documentation canon for QIKI body hardware / physics / machine-body constraints.
+
+See:
+
+`../hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md`
+
+Scope:
+
+body geometry, mass, CoM, inertia, power, thermal, RCS, bayonet, NBL, protection, modularity, command gating, ORION Evidence, audit and blackbox.
+
+Runtime conformance is not claimed by this documentation package.
+
 ## Canon decisions (ADR)
 
 - ADR directory: `docs/design/canon/ADR/`
@@ -35,6 +49,7 @@ This file exists as a stable **design canon entrypoint** referenced by session b
 ## Canon spotlights (selected)
 
 - Radar visualization strategy/spec: `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+- QIKI Body v0.2.2 (machine body — hardware/physics): **target canon, documentation-only, runtime conformance NOT claimed** — `docs/design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md`
 - ORION V clickable UX acceptance: `docs/design/operator_console/ORION_V_CLICKABLE_ACCEPTANCE_CHECKLIST.md`
 - Terminal game narrative canon: `docs/design/game/SECTOR_TERTA_CANON.md`
 

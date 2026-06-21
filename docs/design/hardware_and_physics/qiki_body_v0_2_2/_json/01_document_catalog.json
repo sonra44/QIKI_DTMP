@@ -1,0 +1,70 @@
+{
+  "documents": [
+    {
+      "file": "00_INDEX.md",
+      "json_role": "navigation_and_trust_entrypoint",
+      "description": "Индекс пакета: статус, карта файлов, source priority, легенда статусов, documentation-only boundary.",
+      "what_it_is_for": "Начинать чтение и проверять, что пакет не заявляет runtime implementation."
+    },
+    {
+      "file": "01_BODY_CANON.md",
+      "json_role": "primary_body_canon",
+      "description": "Главный канон тела QIKI: machine body, runtime truth, геометрия, масса, байонеты, RCS, питание, тепло, сенсоры, связь, NBL, защита, модульность, команды, SAFE, ORION, audit, blackbox.",
+      "what_it_is_for": "Главный смысловой источник для body hardware / physics."
+    },
+    {
+      "file": "02_REQUIREMENTS.md",
+      "json_role": "requirements_register",
+      "description": "Реестр требований REQ-* со статусами, rationale, verification method и evidence status.",
+      "what_it_is_for": "Перевести канон в проверяемые требования."
+    },
+    {
+      "file": "03_ARCHITECTURE_VIEWPOINTS.md",
+      "json_role": "architecture_viewpoints",
+      "description": "Stakeholders, concerns, viewpoints, models и traceability.",
+      "what_it_is_for": "Проверять QIKI с разных архитектурных сторон, а не только как линейный текст."
+    },
+    {
+      "file": "04_CALCULATION_FRAME.md",
+      "json_role": "calculation_templates",
+      "description": "Face Map, Mass/CoM/Inertia, Power Budget, Thermal Budget, Thrust Map, Torque Map, Bayonet Bridge, Module Passport, NBL Rules, Command Matrix, ORION Checklist.",
+      "what_it_is_for": "Держать расчётные поля и TBD-зоны без выдуманных чисел."
+    },
+    {
+      "file": "05_ENGINEERING_RATIONALE.md",
+      "json_role": "engineering_rationale",
+      "description": "Почему RTG не boost-source, reactor external, NBL emergency low-rate, protection not absolute shield, field drive not baseline, bayonet hard lock, RCS needs maps, module passport mandatory.",
+      "what_it_is_for": "Защитить канон от обратного размягчения."
+    },
+    {
+      "file": "06_INTERFACE_CONTROL.md",
+      "json_role": "interface_control",
+      "description": "Target interface records между подсистемами: bayonet, PDU, power, thermal, RCS, sensors, comms, NBL, command bus, ORION, audit, blackbox, SAFE.",
+      "what_it_is_for": "Описать границы и reason_codes без заявления runtime protocol."
+    },
+    {
+      "file": "07_ADR/",
+      "json_role": "architecture_decision_records",
+      "description": "15 ADR-файлов с принятыми архитектурными решениями.",
+      "what_it_is_for": "Зафиксировать решения, которые нельзя молча откатывать."
+    },
+    {
+      "file": "08_IMPLEMENTATION_BRIDGE.md",
+      "json_role": "repository_insertion_bridge",
+      "description": "Порядок внесения пакета в репозиторий как documentation-only patch.",
+      "what_it_is_for": "Не смешать документацию и runtime-реализацию."
+    },
+    {
+      "file": "09_ACCEPTANCE_CHECKS.md",
+      "json_role": "acceptance_checklist",
+      "description": "Чеклист приёмки пакета.",
+      "what_it_is_for": "Проверять структуру, статусы, отсутствие runtime claims и no-runtime-diff."
+    },
+    {
+      "file": "10_READER_MANUAL.md",
+      "json_role": "derived_reader_manual",
+      "description": "Читательская сборка пакета.",
+      "what_it_is_for": "Читать цельную версию человеком. Не является главным source of truth."
+    }
+  ]
+}

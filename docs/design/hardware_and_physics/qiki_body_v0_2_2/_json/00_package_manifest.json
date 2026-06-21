@@ -1,0 +1,43 @@
+{
+  "schema_name": "qiki_body_v0_2_2_json_companion_manifest",
+  "schema_version": "0.1",
+  "generated_at": "2026-06-20T21:06:42+00:00",
+  "package": {
+    "name": "QIKI Body v0.2.2 JSON Companion Package",
+    "version": "v0.2.2",
+    "status": "json companion / documentation-only",
+    "primary_markdown_package": "qiki_body_v0_2_2",
+    "repo_markdown_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+    "repo_json_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/_json/",
+    "runtime_conformance": "not claimed"
+  },
+  "purpose": "Provide a machine-readable companion index for the QIKI Body v0.2.2 Documentation Package.",
+  "trust_note": {
+    "json_does_not_replace_markdown": true,
+    "markdown_primary_sources_remain_primary": true,
+    "reader_manual_is_derived": true,
+    "implemented_requires_evidence": true,
+    "verified_requires_evidence_and_verification": true
+  },
+  "source_files_count": 25,
+  "adr_count": 15,
+  "json_files": [
+    "00_package_manifest.json",
+    "01_document_catalog.json",
+    "02_status_legend.json",
+    "03_source_priority.json",
+    "04_requirements_catalog.json",
+    "05_viewpoints_catalog.json",
+    "06_calculation_catalog.json",
+    "07_interface_catalog.json",
+    "08_adr_index.json",
+    "09_repository_insertion.json",
+    "10_acceptance_summary.json",
+    "11_traceability_map.json",
+    "12_forbidden_wording.json",
+    "13_source_file_inventory.json",
+    "qiki_body_v0_2_2_companion_aggregate.json",
+    "14_description_what_is_what.json",
+    "README_JSON_PACKAGE.md"
+  ]
+}

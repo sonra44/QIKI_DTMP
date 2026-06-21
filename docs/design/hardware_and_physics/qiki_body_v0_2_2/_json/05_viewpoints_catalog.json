@@ -1,0 +1,79 @@
+{
+  "description": "Каталог архитектурных точек зрения. Полное описание находится в 03_ARCHITECTURE_VIEWPOINTS.md.",
+  "viewpoints": [
+    {
+      "id": "VP-01",
+      "name": "Runtime Truth",
+      "meaning": "Проверять, что физическая истина не подменяется текстом, голосом или интерфейсом."
+    },
+    {
+      "id": "VP-02",
+      "name": "Machine Body",
+      "meaning": "Проверять QIKI как машинное тело, а не персонажа или ассистента."
+    },
+    {
+      "id": "VP-03",
+      "name": "Geometry / Mounting",
+      "meaning": "Проверять грани, mount points и запрет произвольной установки."
+    },
+    {
+      "id": "VP-04",
+      "name": "Mass / CoM / Inertia",
+      "meaning": "Проверять массу, центр масс, инерцию и ограничения манёвров."
+    },
+    {
+      "id": "VP-05",
+      "name": "Power / Thermal",
+      "meaning": "Проверять battery / supercap, PDU, thermal nodes, peak actions."
+    },
+    {
+      "id": "VP-06",
+      "name": "Motion / RCS",
+      "meaning": "Проверять RCS, Thrust Map, Torque Map, CoM and inertia effects."
+    },
+    {
+      "id": "VP-07",
+      "name": "Sensor / Communication",
+      "meaning": "Проверять сенсоры, связь, NBL, freshness, trust, EMCON."
+    },
+    {
+      "id": "VP-08",
+      "name": "Modularity / Module Passport",
+      "meaning": "Проверять модуль как физическое изменение тела и обязательный паспорт."
+    },
+    {
+      "id": "VP-09",
+      "name": "Command Safety",
+      "meaning": "Проверять request, validation, publish, ACK, effect confirmation, audit."
+    },
+    {
+      "id": "VP-10",
+      "name": "Operator Evidence",
+      "meaning": "Проверять ORION как evidence station."
+    },
+    {
+      "id": "VP-11",
+      "name": "Repository Governance",
+      "meaning": "Проверять documentation-only package insertion."
+    },
+    {
+      "id": "VP-12",
+      "name": "Engineering Rationale",
+      "meaning": "Проверять инженерные запреты и ADR rationale."
+    }
+  ],
+  "extracted_ids": [
+    "VP-01",
+    "VP-02",
+    "VP-03",
+    "VP-04",
+    "VP-05",
+    "VP-06",
+    "VP-07",
+    "VP-08",
+    "VP-09",
+    "VP-10",
+    "VP-11",
+    "VP-12"
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "description": "Каталог requirements namespace. Полные тексты требований остаются в 02_REQUIREMENTS.md.",
+  "warning": "JSON catalog is index-level companion; it does not override markdown source.",
+  "namespaces": [
+    {
+      "namespace": "REQ-BODY",
+      "meaning": "Тело, идентичность, runtime truth"
+    },
+    {
+      "namespace": "REQ-GEOM",
+      "meaning": "Геометрия и Face Map"
+    },
+    {
+      "namespace": "REQ-MASS",
+      "meaning": "Масса, центр масс, инерция"
+    },
+    {
+      "namespace": "REQ-BAYONET",
+      "meaning": "Байонет, hard lock, bridge"
+    },
+    {
+      "namespace": "REQ-RCS",
+      "meaning": "RCS, Thrust Map, Torque Map, движение"
+    },
+    {
+      "namespace": "REQ-POWER",
+      "meaning": "Питание, battery / supercap, PDU"
+    },
+    {
+      "namespace": "REQ-THERMAL",
+      "meaning": "Тепло, thermal nodes, cooldown"
+    },
+    {
+      "namespace": "REQ-SENSOR",
+      "meaning": "Сенсоры, source, freshness, trust"
+    },
+    {
+      "namespace": "REQ-COMMS",
+      "meaning": "Обычная связь, latency, bandwidth, EMCON"
+    },
+    {
+      "namespace": "REQ-NBL",
+      "meaning": "NBL emergency low-rate"
+    },
+    {
+      "namespace": "REQ-PROTECT",
+      "meaning": "Защита, deflector, не absolute shield"
+    },
+    {
+      "namespace": "REQ-FIELD",
+      "meaning": "Field drive / Terta-exotic motion"
+    },
+    {
+      "namespace": "REQ-MODULE",
+      "meaning": "Модульность и module passport"
+    },
+    {
+      "namespace": "REQ-CMD",
+      "meaning": "Command gating and lifecycle"
+    },
+    {
+      "namespace": "REQ-SAFE",
+      "meaning": "SAFE mode"
+    },
+    {
+      "namespace": "REQ-ORION",
+      "meaning": "ORION Evidence"
+    },
+    {
+      "namespace": "REQ-AUDIT",
+      "meaning": "ACK, effect confirmation, audit, blackbox"
+    },
+    {
+      "namespace": "REQ-REPO",
+      "meaning": "Репозиторное внедрение"
+    },
+    {
+      "namespace": "REQ-ADR",
+      "meaning": "ADR governance"
+    }
+  ],
+  "extracted_ids": [
+    "REQ-ADR-001",
+    "REQ-ADR-002",
+    "REQ-AUDIT-001",
+    "REQ-AUDIT-002",
+    "REQ-BAYONET-001",
+    "REQ-BAYONET-002",
+    "REQ-BAYONET-003",
+    "REQ-BAYONET-004",
+    "REQ-BAYONET-005",
+    "REQ-BODY-001",
+    "REQ-BODY-002",
+    "REQ-BODY-003",
+    "REQ-BODY-004",
+    "REQ-BODY-005",
+    "REQ-BODY-006",
+    "REQ-CMD-001",
+    "REQ-CMD-002",
+    "REQ-CMD-003",
+    "REQ-CMD-004",
+    "REQ-CMD-005",
+    "REQ-COMMS-001",
+    "REQ-COMMS-002",
+    "REQ-FIELD-001",
+    "REQ-FIELD-002",
+    "REQ-GEOM-001",
+    "REQ-GEOM-002",
+    "REQ-GEOM-003",
+    "REQ-GEOM-004",
+    "REQ-GEOM-005",
+    "REQ-MASS-001",
+    "REQ-MASS-002",
+    "REQ-MASS-003",
+    "REQ-MASS-004",
+    "REQ-MODULE-001",
+    "REQ-MODULE-002",
+    "REQ-MODULE-003",
+    "REQ-MODULE-004",
+    "REQ-NBL-001",
+    "REQ-NBL-002",
+    "REQ-NBL-003",
+    "REQ-NBL-004",
+    "REQ-ORION-001",
+    "REQ-ORION-002",
+    "REQ-ORION-003",
+    "REQ-POWER-001",
+    "REQ-POWER-002",
+    "REQ-POWER-003",
+    "REQ-POWER-004",
+    "REQ-POWER-005",
+    "REQ-PROTECT-001",
+    "REQ-PROTECT-002",
+    "REQ-RCS-001",
+    "REQ-RCS-002",
+    "REQ-RCS-003",
+    "REQ-RCS-004",
+    "REQ-RCS-005",
+    "REQ-RCS-006",
+    "REQ-REPO-001",
+    "REQ-REPO-002",
+    "REQ-REPO-003",
+    "REQ-REPO-004",
+    "REQ-SAFE-001",
+    "REQ-SAFE-002",
+    "REQ-SAFE-003",
+    "REQ-SENSOR-001",
+    "REQ-SENSOR-002",
+    "REQ-SENSOR-003",
+    "REQ-SENSOR-004",
+    "REQ-THERMAL-001",
+    "REQ-THERMAL-002",
+    "REQ-THERMAL-003"
+  ],
+  "extracted_namespaces": [
+    "REQ-ADR",
+    "REQ-AUDIT",
+    "REQ-BAYONET",
+    "REQ-BODY",
+    "REQ-CMD",
+    "REQ-COMMS",
+    "REQ-FIELD",
+    "REQ-GEOM",
+    "REQ-MASS",
+    "REQ-MODULE",
+    "REQ-NAMESPACE",
+    "REQ-NBL",
+    "REQ-ORION",
+    "REQ-POWER",
+    "REQ-PROTECT",
+    "REQ-RCS",
+    "REQ-REPO",
+    "REQ-SAFE",
+    "REQ-SENSOR",
+    "REQ-THERMAL"
+  ]
+}

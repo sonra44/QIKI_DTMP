@@ -1,0 +1,30 @@
+{
+  "description": "Как вставлять пакет в репозиторий.",
+  "target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+  "patch_type": "documentation-only",
+  "allowed": [
+    "create markdown files",
+    "create ADR markdown files",
+    "create local package index",
+    "update documentation indexes",
+    "add old GDD alignment note",
+    "mark old conflicting statements as superseded",
+    "add acceptance checklist"
+  ],
+  "forbidden": [
+    "runtime code changes",
+    "simulation code changes",
+    "ORION UI changes",
+    "MFD changes",
+    "proto changes",
+    "NATS subject changes",
+    "gRPC contract changes",
+    "telemetry path changes",
+    "generated file changes",
+    "tests implying runtime conformance",
+    "fake evidence",
+    "implemented claims without evidence",
+    "verified claims without verification"
+  ],
+  "old_gdd_alignment_note": "Older GDD remains game-design and historical context. Hardware/body/power/thermal/RCS/bayonet/NBL/protection/modularity/command/evidence claims should be checked against QIKI Body v0.2.2."
+}

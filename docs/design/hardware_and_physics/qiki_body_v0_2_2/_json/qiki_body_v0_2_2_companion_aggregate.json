@@ -1,0 +1,1188 @@
+{
+  "manifest": {
+    "schema_name": "qiki_body_v0_2_2_json_companion_manifest",
+    "schema_version": "0.1",
+    "generated_at": "2026-06-20T21:06:42+00:00",
+    "package": {
+      "name": "QIKI Body v0.2.2 JSON Companion Package",
+      "version": "v0.2.2",
+      "status": "json companion / documentation-only",
+      "primary_markdown_package": "qiki_body_v0_2_2",
+      "repo_markdown_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+      "repo_json_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/_json/",
+      "runtime_conformance": "not claimed"
+    },
+    "purpose": "Provide a machine-readable companion index for the QIKI Body v0.2.2 Documentation Package.",
+    "trust_note": {
+      "json_does_not_replace_markdown": true,
+      "markdown_primary_sources_remain_primary": true,
+      "reader_manual_is_derived": true,
+      "implemented_requires_evidence": true,
+      "verified_requires_evidence_and_verification": true
+    },
+    "source_files_count": 25,
+    "adr_count": 15,
+    "json_files": [
+      "00_package_manifest.json",
+      "01_document_catalog.json",
+      "02_status_legend.json",
+      "03_source_priority.json",
+      "04_requirements_catalog.json",
+      "05_viewpoints_catalog.json",
+      "06_calculation_catalog.json",
+      "07_interface_catalog.json",
+      "08_adr_index.json",
+      "09_repository_insertion.json",
+      "10_acceptance_summary.json",
+      "11_traceability_map.json",
+      "12_forbidden_wording.json",
+      "13_source_file_inventory.json",
+      "qiki_body_v0_2_2_companion_aggregate.json",
+      "14_description_what_is_what.json",
+      "README_JSON_PACKAGE.md"
+    ]
+  },
+  "document_catalog": [
+    {
+      "file": "00_INDEX.md",
+      "json_role": "navigation_and_trust_entrypoint",
+      "description": "Индекс пакета: статус, карта файлов, source priority, легенда статусов, documentation-only boundary.",
+      "what_it_is_for": "Начинать чтение и проверять, что пакет не заявляет runtime implementation."
+    },
+    {
+      "file": "01_BODY_CANON.md",
+      "json_role": "primary_body_canon",
+      "description": "Главный канон тела QIKI: machine body, runtime truth, геометрия, масса, байонеты, RCS, питание, тепло, сенсоры, связь, NBL, защита, модульность, команды, SAFE, ORION, audit, blackbox.",
+      "what_it_is_for": "Главный смысловой источник для body hardware / physics."
+    },
+    {
+      "file": "02_REQUIREMENTS.md",
+      "json_role": "requirements_register",
+      "description": "Реестр требований REQ-* со статусами, rationale, verification method и evidence status.",
+      "what_it_is_for": "Перевести канон в проверяемые требования."
+    },
+    {
+      "file": "03_ARCHITECTURE_VIEWPOINTS.md",
+      "json_role": "architecture_viewpoints",
+      "description": "Stakeholders, concerns, viewpoints, models и traceability.",
+      "what_it_is_for": "Проверять QIKI с разных архитектурных сторон, а не только как линейный текст."
+    },
+    {
+      "file": "04_CALCULATION_FRAME.md",
+      "json_role": "calculation_templates",
+      "description": "Face Map, Mass/CoM/Inertia, Power Budget, Thermal Budget, Thrust Map, Torque Map, Bayonet Bridge, Module Passport, NBL Rules, Command Matrix, ORION Checklist.",
+      "what_it_is_for": "Держать расчётные поля и TBD-зоны без выдуманных чисел."
+    },
+    {
+      "file": "05_ENGINEERING_RATIONALE.md",
+      "json_role": "engineering_rationale",
+      "description": "Почему RTG не boost-source, reactor external, NBL emergency low-rate, protection not absolute shield, field drive not baseline, bayonet hard lock, RCS needs maps, module passport mandatory.",
+      "what_it_is_for": "Защитить канон от обратного размягчения."
+    },
+    {
+      "file": "06_INTERFACE_CONTROL.md",
+      "json_role": "interface_control",
+      "description": "Target interface records между подсистемами: bayonet, PDU, power, thermal, RCS, sensors, comms, NBL, command bus, ORION, audit, blackbox, SAFE.",
+      "what_it_is_for": "Описать границы и reason_codes без заявления runtime protocol."
+    },
+    {
+      "file": "07_ADR/",
+      "json_role": "architecture_decision_records",
+      "description": "15 ADR-файлов с принятыми архитектурными решениями.",
+      "what_it_is_for": "Зафиксировать решения, которые нельзя молча откатывать."
+    },
+    {
+      "file": "08_IMPLEMENTATION_BRIDGE.md",
+      "json_role": "repository_insertion_bridge",
+      "description": "Порядок внесения пакета в репозиторий как documentation-only patch.",
+      "what_it_is_for": "Не смешать документацию и runtime-реализацию."
+    },
+    {
+      "file": "09_ACCEPTANCE_CHECKS.md",
+      "json_role": "acceptance_checklist",
+      "description": "Чеклист приёмки пакета.",
+      "what_it_is_for": "Проверять структуру, статусы, отсутствие runtime claims и no-runtime-diff."
+    },
+    {
+      "file": "10_READER_MANUAL.md",
+      "json_role": "derived_reader_manual",
+      "description": "Читательская сборка пакета.",
+      "what_it_is_for": "Читать цельную версию человеком. Не является главным source of truth."
+    }
+  ],
+  "status_legend": {
+    "canon": {
+      "meaning": "Правило принято как часть канона QIKI Body v0.2.2.",
+      "does_not_mean": "implemented"
+    },
+    "target-only": {
+      "meaning": "Целевое требование или проектное утверждение.",
+      "does_not_mean": "runtime-ready"
+    },
+    "template-only": {
+      "meaning": "Шаблон задан, но runtime schema или заполненные экземпляры не заявлены.",
+      "does_not_mean": "runtime schema exists"
+    },
+    "rules-only": {
+      "meaning": "Правила заданы, но runtime protocol или enforcement не заявлены.",
+      "does_not_mean": "protocol implemented"
+    },
+    "calculation-required": {
+      "meaning": "Нужен расчёт до утверждения значения.",
+      "does_not_mean": "calculated"
+    },
+    "implemented": {
+      "meaning": "Функция существует в runtime.",
+      "requires": "explicit evidence"
+    },
+    "verified": {
+      "meaning": "Функция существует в runtime и проверена.",
+      "requires": "explicit evidence and verification"
+    },
+    "superseded": {
+      "meaning": "Предыдущее утверждение заменено новым."
+    },
+    "rejected": {
+      "meaning": "Вариант рассмотрен и отклонён."
+    }
+  },
+  "source_priority": [
+    "01_BODY_CANON.md",
+    "02_REQUIREMENTS.md",
+    "03_ARCHITECTURE_VIEWPOINTS.md",
+    "04_CALCULATION_FRAME.md",
+    "05_ENGINEERING_RATIONALE.md",
+    "06_INTERFACE_CONTROL.md",
+    "07_ADR/",
+    "08_IMPLEMENTATION_BRIDGE.md",
+    "09_ACCEPTANCE_CHECKS.md",
+    "10_READER_MANUAL.md"
+  ],
+  "requirements_catalog": {
+    "description": "Каталог requirements namespace. Полные тексты требований остаются в 02_REQUIREMENTS.md.",
+    "warning": "JSON catalog is index-level companion; it does not override markdown source.",
+    "namespaces": [
+      {
+        "namespace": "REQ-BODY",
+        "meaning": "Тело, идентичность, runtime truth"
+      },
+      {
+        "namespace": "REQ-GEOM",
+        "meaning": "Геометрия и Face Map"
+      },
+      {
+        "namespace": "REQ-MASS",
+        "meaning": "Масса, центр масс, инерция"
+      },
+      {
+        "namespace": "REQ-BAYONET",
+        "meaning": "Байонет, hard lock, bridge"
+      },
+      {
+        "namespace": "REQ-RCS",
+        "meaning": "RCS, Thrust Map, Torque Map, движение"
+      },
+      {
+        "namespace": "REQ-POWER",
+        "meaning": "Питание, battery / supercap, PDU"
+      },
+      {
+        "namespace": "REQ-THERMAL",
+        "meaning": "Тепло, thermal nodes, cooldown"
+      },
+      {
+        "namespace": "REQ-SENSOR",
+        "meaning": "Сенсоры, source, freshness, trust"
+      },
+      {
+        "namespace": "REQ-COMMS",
+        "meaning": "Обычная связь, latency, bandwidth, EMCON"
+      },
+      {
+        "namespace": "REQ-NBL",
+        "meaning": "NBL emergency low-rate"
+      },
+      {
+        "namespace": "REQ-PROTECT",
+        "meaning": "Защита, deflector, не absolute shield"
+      },
+      {
+        "namespace": "REQ-FIELD",
+        "meaning": "Field drive / Terta-exotic motion"
+      },
+      {
+        "namespace": "REQ-MODULE",
+        "meaning": "Модульность и module passport"
+      },
+      {
+        "namespace": "REQ-CMD",
+        "meaning": "Command gating and lifecycle"
+      },
+      {
+        "namespace": "REQ-SAFE",
+        "meaning": "SAFE mode"
+      },
+      {
+        "namespace": "REQ-ORION",
+        "meaning": "ORION Evidence"
+      },
+      {
+        "namespace": "REQ-AUDIT",
+        "meaning": "ACK, effect confirmation, audit, blackbox"
+      },
+      {
+        "namespace": "REQ-REPO",
+        "meaning": "Репозиторное внедрение"
+      },
+      {
+        "namespace": "REQ-ADR",
+        "meaning": "ADR governance"
+      }
+    ],
+    "extracted_ids": [
+      "REQ-ADR-001",
+      "REQ-ADR-002",
+      "REQ-AUDIT-001",
+      "REQ-AUDIT-002",
+      "REQ-BAYONET-001",
+      "REQ-BAYONET-002",
+      "REQ-BAYONET-003",
+      "REQ-BAYONET-004",
+      "REQ-BAYONET-005",
+      "REQ-BODY-001",
+      "REQ-BODY-002",
+      "REQ-BODY-003",
+      "REQ-BODY-004",
+      "REQ-BODY-005",
+      "REQ-BODY-006",
+      "REQ-CMD-001",
+      "REQ-CMD-002",
+      "REQ-CMD-003",
+      "REQ-CMD-004",
+      "REQ-CMD-005",
+      "REQ-COMMS-001",
+      "REQ-COMMS-002",
+      "REQ-FIELD-001",
+      "REQ-FIELD-002",
+      "REQ-GEOM-001",
+      "REQ-GEOM-002",
+      "REQ-GEOM-003",
+      "REQ-GEOM-004",
+      "REQ-GEOM-005",
+      "REQ-MASS-001",
+      "REQ-MASS-002",
+      "REQ-MASS-003",
+      "REQ-MASS-004",
+      "REQ-MODULE-001",
+      "REQ-MODULE-002",
+      "REQ-MODULE-003",
+      "REQ-MODULE-004",
+      "REQ-NBL-001",
+      "REQ-NBL-002",
+      "REQ-NBL-003",
+      "REQ-NBL-004",
+      "REQ-ORION-001",
+      "REQ-ORION-002",
+      "REQ-ORION-003",
+      "REQ-POWER-001",
+      "REQ-POWER-002",
+      "REQ-POWER-003",
+      "REQ-POWER-004",
+      "REQ-POWER-005",
+      "REQ-PROTECT-001",
+      "REQ-PROTECT-002",
+      "REQ-RCS-001",
+      "REQ-RCS-002",
+      "REQ-RCS-003",
+      "REQ-RCS-004",
+      "REQ-RCS-005",
+      "REQ-RCS-006",
+      "REQ-REPO-001",
+      "REQ-REPO-002",
+      "REQ-REPO-003",
+      "REQ-REPO-004",
+      "REQ-SAFE-001",
+      "REQ-SAFE-002",
+      "REQ-SAFE-003",
+      "REQ-SENSOR-001",
+      "REQ-SENSOR-002",
+      "REQ-SENSOR-003",
+      "REQ-SENSOR-004",
+      "REQ-THERMAL-001",
+      "REQ-THERMAL-002",
+      "REQ-THERMAL-003"
+    ],
+    "extracted_namespaces": [
+      "REQ-ADR",
+      "REQ-AUDIT",
+      "REQ-BAYONET",
+      "REQ-BODY",
+      "REQ-CMD",
+      "REQ-COMMS",
+      "REQ-FIELD",
+      "REQ-GEOM",
+      "REQ-MASS",
+      "REQ-MODULE",
+      "REQ-NAMESPACE",
+      "REQ-NBL",
+      "REQ-ORION",
+      "REQ-POWER",
+      "REQ-PROTECT",
+      "REQ-RCS",
+      "REQ-REPO",
+      "REQ-SAFE",
+      "REQ-SENSOR",
+      "REQ-THERMAL"
+    ]
+  },
+  "viewpoints_catalog": {
+    "description": "Каталог архитектурных точек зрения. Полное описание находится в 03_ARCHITECTURE_VIEWPOINTS.md.",
+    "viewpoints": [
+      {
+        "id": "VP-01",
+        "name": "Runtime Truth",
+        "meaning": "Проверять, что физическая истина не подменяется текстом, голосом или интерфейсом."
+      },
+      {
+        "id": "VP-02",
+        "name": "Machine Body",
+        "meaning": "Проверять QIKI как машинное тело, а не персонажа или ассистента."
+      },
+      {
+        "id": "VP-03",
+        "name": "Geometry / Mounting",
+        "meaning": "Проверять грани, mount points и запрет произвольной установки."
+      },
+      {
+        "id": "VP-04",
+        "name": "Mass / CoM / Inertia",
+        "meaning": "Проверять массу, центр масс, инерцию и ограничения манёвров."
+      },
+      {
+        "id": "VP-05",
+        "name": "Power / Thermal",
+        "meaning": "Проверять battery / supercap, PDU, thermal nodes, peak actions."
+      },
+      {
+        "id": "VP-06",
+        "name": "Motion / RCS",
+        "meaning": "Проверять RCS, Thrust Map, Torque Map, CoM and inertia effects."
+      },
+      {
+        "id": "VP-07",
+        "name": "Sensor / Communication",
+        "meaning": "Проверять сенсоры, связь, NBL, freshness, trust, EMCON."
+      },
+      {
+        "id": "VP-08",
+        "name": "Modularity / Module Passport",
+        "meaning": "Проверять модуль как физическое изменение тела и обязательный паспорт."
+      },
+      {
+        "id": "VP-09",
+        "name": "Command Safety",
+        "meaning": "Проверять request, validation, publish, ACK, effect confirmation, audit."
+      },
+      {
+        "id": "VP-10",
+        "name": "Operator Evidence",
+        "meaning": "Проверять ORION как evidence station."
+      },
+      {
+        "id": "VP-11",
+        "name": "Repository Governance",
+        "meaning": "Проверять documentation-only package insertion."
+      },
+      {
+        "id": "VP-12",
+        "name": "Engineering Rationale",
+        "meaning": "Проверять инженерные запреты и ADR rationale."
+      }
+    ],
+    "extracted_ids": [
+      "VP-01",
+      "VP-02",
+      "VP-03",
+      "VP-04",
+      "VP-05",
+      "VP-06",
+      "VP-07",
+      "VP-08",
+      "VP-09",
+      "VP-10",
+      "VP-11",
+      "VP-12"
+    ]
+  },
+  "calculation_catalog": {
+    "description": "Карта расчётных таблиц и шаблонов. Полные таблицы находятся в 04_CALCULATION_FRAME.md.",
+    "items": [
+      {
+        "id": "face_map",
+        "name": "Face Map",
+        "status": "target-only / calculation-required",
+        "purpose": "12 граней F00–F11, роли, нормали, mount constraints, conflicts."
+      },
+      {
+        "id": "mount_compatibility_matrix",
+        "name": "Mount Compatibility Matrix",
+        "status": "target-only",
+        "purpose": "Совместимость классов модулей с face, bayonet, internal, paired, deployable, external."
+      },
+      {
+        "id": "mass_com_inertia_sheet",
+        "name": "Mass / CoM / Inertia Sheet",
+        "status": "target-only / calculation-required",
+        "purpose": "Масса, local positions, CoM_delta, inertia class, restrictions."
+      },
+      {
+        "id": "power_budget_sheet",
+        "name": "Power Budget Sheet",
+        "status": "target-only",
+        "purpose": "source → battery → bus → supercap → peak consumers."
+      },
+      {
+        "id": "thermal_budget_sheet",
+        "name": "Thermal Budget Sheet",
+        "status": "target-only / calculation-required",
+        "purpose": "Thermal nodes, temperatures, cooldown, blocked commands."
+      },
+      {
+        "id": "thrust_map",
+        "name": "Thrust Map",
+        "status": "calculation-required",
+        "purpose": "Линейная тяга RCS; нельзя заявлять balanced thrust без неё."
+      },
+      {
+        "id": "torque_map",
+        "name": "Torque Map",
+        "status": "calculation-required",
+        "purpose": "Моменты RCS; нельзя заявлять all-axis control без неё."
+      },
+      {
+        "id": "bayonet_bridge_sheet",
+        "name": "Bayonet Bridge Sheet",
+        "status": "target-only",
+        "purpose": "Состояния bayonet/bridge: hard lock, safety, umbilical, passport, bridge allowed."
+      },
+      {
+        "id": "module_passport_template",
+        "name": "Module Passport Template",
+        "status": "template-only",
+        "purpose": "Минимальный контракт модуля как runtime-ready candidate."
+      },
+      {
+        "id": "nbl_emergency_packet_rules",
+        "name": "NBL Emergency Packet Rules",
+        "status": "rules-only / target-only",
+        "purpose": "Emergency low-rate packets, criticality, SoC_cap, thermal, audit."
+      },
+      {
+        "id": "command_gating_matrix",
+        "name": "Command Gating Matrix",
+        "status": "target-only",
+        "purpose": "Validation checks for commands through body state."
+      },
+      {
+        "id": "orion_evidence_checklist",
+        "name": "ORION Evidence Checklist",
+        "status": "target-only",
+        "purpose": "source, freshness, trust, status, reason_codes, audit, blackbox."
+      }
+    ]
+  },
+  "interface_catalog": {
+    "description": "Каталог target interface records. Полные интерфейсы находятся в 06_INTERFACE_CONTROL.md.",
+    "interfaces": [
+      {
+        "id": "IF-BAYONET-MECH-001",
+        "name": "Bayonet Mechanical State Interface"
+      },
+      {
+        "id": "IF-BAYONET-BRIDGE-001",
+        "name": "Bayonet Power/Data Bridge Interface"
+      },
+      {
+        "id": "IF-MODULE-PASSPORT-001",
+        "name": "Module Passport Handshake Interface"
+      },
+      {
+        "id": "IF-PDU-POWER-001",
+        "name": "PDU Load Permission Interface"
+      },
+      {
+        "id": "IF-POWER-TELEM-001",
+        "name": "Battery / Supercap Telemetry Interface"
+      },
+      {
+        "id": "IF-THERMAL-TELEM-001",
+        "name": "Thermal Node Telemetry Interface"
+      },
+      {
+        "id": "IF-RCS-CMD-001",
+        "name": "RCS Command Interface"
+      },
+      {
+        "id": "IF-SENSOR-TELEM-001",
+        "name": "Sensor Telemetry Interface"
+      },
+      {
+        "id": "IF-COMMS-001",
+        "name": "Normal Communication Interface"
+      },
+      {
+        "id": "IF-NBL-001",
+        "name": "NBL Emergency Packet Interface"
+      },
+      {
+        "id": "IF-CMD-BUS-001",
+        "name": "Command Bus / Lifecycle Interface"
+      },
+      {
+        "id": "IF-ORION-EVIDENCE-001",
+        "name": "ORION Evidence Feed Interface"
+      },
+      {
+        "id": "IF-AUDIT-001",
+        "name": "Audit Event Stream Interface"
+      },
+      {
+        "id": "IF-BLACKBOX-001",
+        "name": "Blackbox Record Interface"
+      },
+      {
+        "id": "IF-SAFE-001",
+        "name": "SAFE State Interface"
+      }
+    ],
+    "extracted_ids": [
+      "IF-AUDIT-001",
+      "IF-BAYONET-BRIDGE-001",
+      "IF-BAYONET-MECH-001",
+      "IF-BLACKBOX-001",
+      "IF-CMD-BUS-001",
+      "IF-COMMS-001",
+      "IF-MODULE-PASSPORT-001",
+      "IF-NBL-001",
+      "IF-ORION-EVIDENCE-001",
+      "IF-PDU-POWER-001",
+      "IF-POWER-TELEM-001",
+      "IF-RCS-CMD-001",
+      "IF-SAFE-001",
+      "IF-SENSOR-TELEM-001",
+      "IF-THERMAL-TELEM-001"
+    ]
+  },
+  "adr_index": [
+    {
+      "id": "0001",
+      "filename": "ADR-0001-machine-body-not-model-voice.md",
+      "title": "ADR-0001 — QIKI is a machine body, not a model voice",
+      "status": "Accepted",
+      "decision_summary": "QIKI рассматривается как машинное тело. Голос, модель и ORION не являются последней физической истиной. Последняя физическая истина должна идти из runtime state, simulation, telemetry, events, ACK, effect confirmation, audit and blackbox.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "sha256": "3fdc3d4b9eca390e7eeceaaafe3ad7ebfcb86256e71a90f6cd8327eeed6cbc5b"
+    },
+    {
+      "id": "0002",
+      "filename": "ADR-0002-body-canon-separated-from-old-gdd.md",
+      "title": "ADR-0002 — Body canon is separated from old game GDD",
+      "status": "Accepted",
+      "decision_summary": "Актуальный канон тела QIKI выносится в отдельный hardware / physics documentation package. Старый GDD сохраняется как game-design / historical layer и получает superseded / alignment note.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "sha256": "a06d09e7745033576c13ceb637647831126af32e782d312e90bf02f35b420312"
+    },
+    {
+      "id": "0003",
+      "filename": "ADR-0003-battery-supercap-split.md",
+      "title": "ADR-0003 — Battery and supercap are separated",
+      "status": "Accepted",
+      "decision_summary": "Battery и supercap разделяются. Battery отвечает за длительность жизни. Supercap отвечает за краткие пиковые действия. Peak action requires SoC_cap, PDU allowance and thermal clearance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "sha256": "5891a5cebd26454929a9508b83a781c77283132f433073f75739da2157e48787"
+    },
+    {
+      "id": "0004",
+      "filename": "ADR-0004-rtg-trickle-not-boost.md",
+      "title": "ADR-0004 — RTG is a trickle source, not boost-source",
+      "status": "Accepted",
+      "decision_summary": "RTG-class source является heavy / trickle source. RTG-class source не является boost-source. RTG может поддерживать survival, drift, cold-zone, sleep and slow recharge, но не должен напрямую питать пиковые действия.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "sha256": "588ed7cd43362f43e1d930bf724858303e3a85141efa1b905ce3165ac26f531f"
+    },
+    {
+      "id": "0005",
+      "filename": "ADR-0005-reactor-external-source.md",
+      "title": "ADR-0005 — Reactor-class source is external / station / sled",
+      "status": "Accepted",
+      "decision_summary": "Reactor-class source является external / station / sled / heavy infrastructure. QIKI может подключаться к нему только через validated structural-rated, electrically safe, thermally checked and passport-valid bridge.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "sha256": "9b734ba9275cc642ea294ec5099b4452476ea867f97002e245ed392ba4a70723"
+    },
+    {
+      "id": "0006",
+      "filename": "ADR-0006-nbl-emergency-low-rate.md",
+      "title": "ADR-0006 — Baseline NBL is emergency low-rate only",
+      "status": "Accepted",
+      "decision_summary": "Baseline NBL является emergency low-rate channel only. NBL используется для коротких критических пакетов и требует criticality gating, SoC_cap, PDU allowance and thermal clearance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "sha256": "3be47d1b724a898c80f4416fdb6dfacd218bba9728e65087e5aef74d949f2b61"
+    },
+    {
+      "id": "0007",
+      "filename": "ADR-0007-deflector-not-absolute-shield.md",
+      "title": "ADR-0007 — Protection is deployable deflector, not absolute shield",
+      "status": "Accepted",
+      "decision_summary": "Protection is a constrained mechanism against a specific threat class, not an absolute shield. Radiation deflector / deployable deflector can be used as a constrained protective mechanism with cost, geometry and degradation.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "sha256": "fe3edbdc1a7b363d03f0d4a028b3311028532af28c639df1b0db68996ca40f13"
+    },
+    {
+      "id": "0008",
+      "filename": "ADR-0008-field-drive-not-baseline.md",
+      "title": "ADR-0008 — Field drive is not baseline",
+      "status": "Accepted",
+      "decision_summary": "Field drive is not baseline. If used, field drive must be Terta-exotic / advanced speculative / scenario-specific and must have explicit cost, limits, risk, cooldown, evidence path, audit and blackbox relevance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "sha256": "5fd94bd35094bddae1d2e204e0d02c6b4642d91151511cfb9b6bc24566010008"
+    },
+    {
+      "id": "0009",
+      "filename": "ADR-0009-bayonet-mechanical-hard-lock.md",
+      "title": "ADR-0009 — Bayonet requires mechanical hard lock",
+      "status": "Accepted",
+      "decision_summary": "Bayonet requires mechanical hard lock, structural check, electrical safety, umbilical mate, module handshake and passport validation before bridge allowed. Magnetic pre-align is not structural lock. Soft capture is not bridge allowed.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "sha256": "e986d70fb2c4f12e55cf347aecab81869e4e67537617c7aeca46ec6e3cb8d052"
+    },
+    {
+      "id": "0010",
+      "filename": "ADR-0010-rcs-thrust-torque-maps-required.md",
+      "title": "ADR-0010 — RCS requires Thrust Map and Torque Map",
+      "status": "Accepted",
+      "decision_summary": "RCS requires Thrust Map and Torque Map before balanced thrust, all-axis control, safe docking burn, tumble recovery or full maneuverability can be claimed.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "sha256": "a007fd4847068f0522508a54efaca61a62730dd751f0a3596dbc46c8a8719b5f"
+    },
+    {
+      "id": "0011",
+      "filename": "ADR-0011-module-passport-mandatory.md",
+      "title": "ADR-0011 — Module passport is mandatory",
+      "status": "Accepted",
+      "decision_summary": "Module passport is mandatory for runtime-ready module status. A module without passport is not a runtime module.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "sha256": "dbadc3765650cb5dc4ff57308d60c4a407fa5e639e49986b7fce8251d4ad13ad"
+    },
+    {
+      "id": "0012",
+      "filename": "ADR-0012-documentation-only-first-patch.md",
+      "title": "ADR-0012 — First repository patch is documentation-only",
+      "status": "Accepted",
+      "decision_summary": "The first repository patch for QIKI Body v0.2.2 must be documentation-only. Runtime work requires a separate task and evidence.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "sha256": "11aa463abb8cf74cc7404925a3508e316d9013c9ebc794184cf423232093df3d"
+    },
+    {
+      "id": "0013",
+      "filename": "ADR-0013-reader-manual-derived.md",
+      "title": "ADR-0013 — Reader manual is derived; repo package is primary",
+      "status": "Accepted",
+      "decision_summary": "`10_READER_MANUAL.md` is a derived readable build. Primary source files are `00_INDEX.md` through `09_ACCEPTANCE_CHECKS.md` and `07_ADR/`. If reader manual conflicts with source files, source files win.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "sha256": "e0c6144d953deaa026653e6f779eaec61064f7f0df8004dc414706a9a9366130"
+    },
+    {
+      "id": "0014",
+      "filename": "ADR-0014-orion-evidence-station.md",
+      "title": "ADR-0014 — ORION is evidence station, not decorative HUD",
+      "status": "Accepted",
+      "decision_summary": "ORION is an evidence station. ORION must show source, freshness, trust, status, reason_codes, target-only, not implemented, calculation-required, ACK, effect confirmation, audit trail and blackbox relevance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "sha256": "8055948488fc502644cb8b2bc5434cca22dda6f14f9ed9e4d5c763cad990e7b3"
+    },
+    {
+      "id": "0015",
+      "filename": "ADR-0015-ack-not-effect-confirmation.md",
+      "title": "ADR-0015 — ACK is not effect confirmation",
+      "status": "Accepted",
+      "decision_summary": "ACK is not effect confirmation. Command lifecycle must distinguish request, validation, allowed / rejected, publish, ACK, effect confirmation and audit.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "sha256": "0b985e06a47d08cb69421ce6665f1930a98118bd3b4f94dcddbeedb45dc4c85d"
+    }
+  ],
+  "repository_insertion": {
+    "description": "Как вставлять пакет в репозиторий.",
+    "target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+    "patch_type": "documentation-only",
+    "allowed": [
+      "create markdown files",
+      "create ADR markdown files",
+      "create local package index",
+      "update documentation indexes",
+      "add old GDD alignment note",
+      "mark old conflicting statements as superseded",
+      "add acceptance checklist"
+    ],
+    "forbidden": [
+      "runtime code changes",
+      "simulation code changes",
+      "ORION UI changes",
+      "MFD changes",
+      "proto changes",
+      "NATS subject changes",
+      "gRPC contract changes",
+      "telemetry path changes",
+      "generated file changes",
+      "tests implying runtime conformance",
+      "fake evidence",
+      "implemented claims without evidence",
+      "verified claims without verification"
+    ],
+    "old_gdd_alignment_note": "Older GDD remains game-design and historical context. Hardware/body/power/thermal/RCS/bayonet/NBL/protection/modularity/command/evidence claims should be checked against QIKI Body v0.2.2."
+  },
+  "acceptance_summary": {
+    "description": "Acceptance summary for the markdown package generated in this chat.",
+    "status": "PASS",
+    "checks_passed": 34,
+    "checks_failed": 0,
+    "markdown_files": 25,
+    "does_not_claim": [
+      "runtime implementation",
+      "runtime conformance",
+      "telemetry support",
+      "ORION UI support",
+      "proto/NATS/gRPC support",
+      "verified physics values"
+    ]
+  },
+  "traceability_map": {
+    "description": "High-level traceability between sources, requirements, viewpoints, calculations and interfaces.",
+    "links": [
+      {
+        "topic": "runtime_truth",
+        "source_files": [
+          "01_BODY_CANON.md",
+          "02_REQUIREMENTS.md",
+          "03_ARCHITECTURE_VIEWPOINTS.md",
+          "06_INTERFACE_CONTROL.md",
+          "09_ACCEPTANCE_CHECKS.md"
+        ],
+        "requirements": [
+          "REQ-BODY",
+          "REQ-ORION",
+          "REQ-AUDIT"
+        ],
+        "viewpoints": [
+          "VP-01",
+          "VP-10"
+        ],
+        "interfaces": [
+          "IF-ORION-EVIDENCE-001",
+          "IF-AUDIT-001",
+          "IF-BLACKBOX-001"
+        ],
+        "adr": [
+          "ADR-0001",
+          "ADR-0014",
+          "ADR-0015"
+        ]
+      },
+      {
+        "topic": "battery_supercap_split",
+        "source_files": [
+          "01_BODY_CANON.md",
+          "04_CALCULATION_FRAME.md",
+          "05_ENGINEERING_RATIONALE.md",
+          "06_INTERFACE_CONTROL.md"
+        ],
+        "requirements": [
+          "REQ-POWER",
+          "REQ-THERMAL",
+          "REQ-CMD"
+        ],
+        "viewpoints": [
+          "VP-05",
+          "VP-09"
+        ],
+        "interfaces": [
+          "IF-PDU-POWER-001",
+          "IF-POWER-TELEM-001",
+          "IF-THERMAL-TELEM-001"
+        ],
+        "adr": [
+          "ADR-0003"
+        ]
+      },
+      {
+        "topic": "bayonet_bridge",
+        "source_files": [
+          "01_BODY_CANON.md",
+          "04_CALCULATION_FRAME.md",
+          "06_INTERFACE_CONTROL.md",
+          "07_ADR/"
+        ],
+        "requirements": [
+          "REQ-BAYONET",
+          "REQ-MODULE",
+          "REQ-CMD"
+        ],
+        "viewpoints": [
+          "VP-03",
+          "VP-08",
+          "VP-09"
+        ],
+        "interfaces": [
+          "IF-BAYONET-MECH-001",
+          "IF-BAYONET-BRIDGE-001",
+          "IF-MODULE-PASSPORT-001"
+        ],
+        "adr": [
+          "ADR-0009"
+        ]
+      },
+      {
+        "topic": "rcs_maps",
+        "source_files": [
+          "01_BODY_CANON.md",
+          "04_CALCULATION_FRAME.md",
+          "05_ENGINEERING_RATIONALE.md",
+          "06_INTERFACE_CONTROL.md"
+        ],
+        "requirements": [
+          "REQ-RCS",
+          "REQ-MASS",
+          "REQ-CMD"
+        ],
+        "viewpoints": [
+          "VP-06",
+          "VP-04"
+        ],
+        "interfaces": [
+          "IF-RCS-CMD-001"
+        ],
+        "adr": [
+          "ADR-0010"
+        ]
+      },
+      {
+        "topic": "module_passport",
+        "source_files": [
+          "01_BODY_CANON.md",
+          "04_CALCULATION_FRAME.md",
+          "06_INTERFACE_CONTROL.md",
+          "07_ADR/"
+        ],
+        "requirements": [
+          "REQ-MODULE",
+          "REQ-GEOM",
+          "REQ-MASS",
+          "REQ-POWER",
+          "REQ-THERMAL"
+        ],
+        "viewpoints": [
+          "VP-08",
+          "VP-03"
+        ],
+        "interfaces": [
+          "IF-MODULE-PASSPORT-001"
+        ],
+        "adr": [
+          "ADR-0011"
+        ]
+      }
+    ]
+  },
+  "forbidden_wording": [
+    {
+      "forbidden": "RTG battery",
+      "replacement": "RTG-class heavy / trickle source"
+    },
+    {
+      "forbidden": "RTG boost",
+      "replacement": "RTG cannot be boost-source"
+    },
+    {
+      "forbidden": "Reactor module on face",
+      "replacement": "Reactor-class external / station / sled source"
+    },
+    {
+      "forbidden": "NBL broadband",
+      "replacement": "NBL emergency low-rate only"
+    },
+    {
+      "forbidden": "NBL normal telemetry",
+      "replacement": "NBL critical packet only"
+    },
+    {
+      "forbidden": "Absolute shield",
+      "replacement": "constrained protection / deflector"
+    },
+    {
+      "forbidden": "Field drive baseline",
+      "replacement": "field drive Terta-exotic / not baseline"
+    },
+    {
+      "forbidden": "Pure energy thrust",
+      "replacement": "propulsion requires working mass, environment interaction or explicit exotic status"
+    },
+    {
+      "forbidden": "Magnetic lock",
+      "replacement": "magnetic pre-align / mechanical hard lock required"
+    },
+    {
+      "forbidden": "Soft capture connected",
+      "replacement": "soft capture is not bridge allowed"
+    },
+    {
+      "forbidden": "RCS balanced",
+      "replacement": "RCS requires Thrust Map and Torque Map"
+    },
+    {
+      "forbidden": "Module installed",
+      "replacement": "module installed only with mount point and passport"
+    },
+    {
+      "forbidden": "ACK complete",
+      "replacement": "ACK is not effect confirmation"
+    },
+    {
+      "forbidden": "ORION truth",
+      "replacement": "ORION evidence view with source"
+    },
+    {
+      "forbidden": "Target-only implemented",
+      "replacement": "target-only is not runtime-ready"
+    },
+    {
+      "forbidden": "Template is schema",
+      "replacement": "template-only is not runtime schema"
+    }
+  ],
+  "source_file_inventory": [
+    {
+      "relative_path": "00_INDEX.md",
+      "source_package_path": "qiki_body_v0_2_2/00_INDEX.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md",
+      "size_bytes": 15434,
+      "sha256": "a8078bcc9f971c788d29216106302f10bcad49c3e41eaf2cbf0aa9d2a025fc0e",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "01_BODY_CANON.md",
+      "source_package_path": "qiki_body_v0_2_2/01_BODY_CANON.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/01_BODY_CANON.md",
+      "size_bytes": 54915,
+      "sha256": "64106578d98d401cbbd963dab2755284de982a7c413d40fd011fd6e3870e67d9",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "02_REQUIREMENTS.md",
+      "source_package_path": "qiki_body_v0_2_2/02_REQUIREMENTS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/02_REQUIREMENTS.md",
+      "size_bytes": 47010,
+      "sha256": "0d7d823060ba6695b04eec2f5d33d57165a315e64d4fb6e28713aa460db0b329",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "03_ARCHITECTURE_VIEWPOINTS.md",
+      "source_package_path": "qiki_body_v0_2_2/03_ARCHITECTURE_VIEWPOINTS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/03_ARCHITECTURE_VIEWPOINTS.md",
+      "size_bytes": 29239,
+      "sha256": "33de8bbcd2f023d061b1b661a7fd891c738d95f492f7526a5585351d0477ce8b",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "04_CALCULATION_FRAME.md",
+      "source_package_path": "qiki_body_v0_2_2/04_CALCULATION_FRAME.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/04_CALCULATION_FRAME.md",
+      "size_bytes": 43707,
+      "sha256": "64c43f2f2ab46652c80425f9a21993e16b59b3b9714fa458453c6a6ff5749b18",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "05_ENGINEERING_RATIONALE.md",
+      "source_package_path": "qiki_body_v0_2_2/05_ENGINEERING_RATIONALE.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/05_ENGINEERING_RATIONALE.md",
+      "size_bytes": 33101,
+      "sha256": "599d34af270eab0e5ffaf64e8811b4bde8d8cb72caa8299bbbc804e7317214a5",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "06_INTERFACE_CONTROL.md",
+      "source_package_path": "qiki_body_v0_2_2/06_INTERFACE_CONTROL.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/06_INTERFACE_CONTROL.md",
+      "size_bytes": 35395,
+      "sha256": "cd7156b22e09a02c3ac09a78a9c116e420e0d9d45ef89c4e46ea482fad72963f",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "size_bytes": 2334,
+      "sha256": "3fdc3d4b9eca390e7eeceaaafe3ad7ebfcb86256e71a90f6cd8327eeed6cbc5b",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "size_bytes": 2172,
+      "sha256": "a06d09e7745033576c13ceb637647831126af32e782d312e90bf02f35b420312",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0003-battery-supercap-split.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "size_bytes": 1921,
+      "sha256": "5891a5cebd26454929a9508b83a781c77283132f433073f75739da2157e48787",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "size_bytes": 1866,
+      "sha256": "588ed7cd43362f43e1d930bf724858303e3a85141efa1b905ce3165ac26f531f",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0005-reactor-external-source.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "size_bytes": 1826,
+      "sha256": "9b734ba9275cc642ea294ec5099b4452476ea867f97002e245ed392ba4a70723",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "size_bytes": 1635,
+      "sha256": "3be47d1b724a898c80f4416fdb6dfacd218bba9728e65087e5aef74d949f2b61",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "size_bytes": 1781,
+      "sha256": "fe3edbdc1a7b363d03f0d4a028b3311028532af28c639df1b0db68996ca40f13",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "size_bytes": 1538,
+      "sha256": "5fd94bd35094bddae1d2e204e0d02c6b4642d91151511cfb9b6bc24566010008",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "size_bytes": 1741,
+      "sha256": "e986d70fb2c4f12e55cf347aecab81869e4e67537617c7aeca46ec6e3cb8d052",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "size_bytes": 1636,
+      "sha256": "a007fd4847068f0522508a54efaca61a62730dd751f0a3596dbc46c8a8719b5f",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0011-module-passport-mandatory.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "size_bytes": 1668,
+      "sha256": "dbadc3765650cb5dc4ff57308d60c4a407fa5e639e49986b7fce8251d4ad13ad",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "size_bytes": 1612,
+      "sha256": "11aa463abb8cf74cc7404925a3508e316d9013c9ebc794184cf423232093df3d",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0013-reader-manual-derived.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "size_bytes": 1454,
+      "sha256": "e0c6144d953deaa026653e6f779eaec61064f7f0df8004dc414706a9a9366130",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0014-orion-evidence-station.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "size_bytes": 1562,
+      "sha256": "8055948488fc502644cb8b2bc5434cca22dda6f14f9ed9e4d5c763cad990e7b3",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "size_bytes": 1578,
+      "sha256": "0b985e06a47d08cb69421ce6665f1930a98118bd3b4f94dcddbeedb45dc4c85d",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "08_IMPLEMENTATION_BRIDGE.md",
+      "source_package_path": "qiki_body_v0_2_2/08_IMPLEMENTATION_BRIDGE.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/08_IMPLEMENTATION_BRIDGE.md",
+      "size_bytes": 20421,
+      "sha256": "a794431963bedef54e0c1573497984a1fbff85e40e59256a33c861a12369d15f",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "09_ACCEPTANCE_CHECKS.md",
+      "source_package_path": "qiki_body_v0_2_2/09_ACCEPTANCE_CHECKS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/09_ACCEPTANCE_CHECKS.md",
+      "size_bytes": 23480,
+      "sha256": "adf43e60a3aab3f93b083ebae51c6c3ea0481962136b7f72044a6a74eb99fe87",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "10_READER_MANUAL.md",
+      "source_package_path": "qiki_body_v0_2_2/10_READER_MANUAL.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/10_READER_MANUAL.md",
+      "size_bytes": 38731,
+      "sha256": "8dc4164cc2a29b8a00ebf52231f08066a23745b76a0ba35580cc131bb7c5227b",
+      "role": "derived_reader_manual"
+    }
+  ],
+  "description_what_is_what": {
+    "title": "QIKI Body v0.2.2 JSON Package — описание",
+    "plain_language_summary": [
+      "Markdown-пакет является главным документальным источником.",
+      "JSON-пакет является машинно-читаемым companion-слоем.",
+      "Он не заменяет канон, а помогает агенту понять, где что лежит.",
+      "Главные JSON-части: manifest, catalog, statuses, requirements, viewpoints, calculations, interfaces, ADR, repository insertion, acceptance, traceability.",
+      "Использовать JSON для навигации и проверки, но не как доказательство runtime-реализации."
+    ],
+    "what_to_use_for_what": {
+      "human_reading": "10_READER_MANUAL.md and README_JSON_PACKAGE.md",
+      "canonical_meaning": "01_BODY_CANON.md",
+      "machine_navigation": "00_package_manifest.json and qiki_body_v0_2_2_companion_aggregate.json",
+      "requirements_indexing": "04_requirements_catalog.json",
+      "architecture_navigation": "05_viewpoints_catalog.json",
+      "calculation_templates_navigation": "06_calculation_catalog.json",
+      "interface_navigation": "07_interface_catalog.json",
+      "decision_tracking": "08_adr_index.json",
+      "repo_insertion": "09_repository_insertion.json",
+      "acceptance": "10_acceptance_summary.json",
+      "cross_links": "11_traceability_map.json",
+      "unsafe_language_filter": "12_forbidden_wording.json",
+      "file_integrity": "13_source_file_inventory.json"
+    }
+  }
+}

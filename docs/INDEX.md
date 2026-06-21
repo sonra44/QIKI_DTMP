@@ -18,6 +18,7 @@ part of this published documentation set.
 - `docs/NEW_QIKI_PLATFORM_DESIGN.md` - product direction and operating principles.
 - `docs/design/game/` - game layer, lore, intent, and sector notes.
 - `docs/design/hardware_and_physics/` - physical-system, sensor, power, thermal, and hardware notes.
+- [QIKI Body v0.2.2 Documentation Package](design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md) — target documentation canon for QIKI machine body, hardware / physics, calculation frame, interface control, ADR and acceptance checks. Runtime conformance is not claimed.
 - `docs/design/q-core-agent/` - QIKI core-agent design notes.
 - `docs/design/operator_console/` - ORION operator-console contracts and interaction design.
 - `docs/design/canon/ADR/` - architecture and design decisions.
