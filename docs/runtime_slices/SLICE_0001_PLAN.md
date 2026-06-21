@@ -107,3 +107,17 @@ Allowed status vocabulary: `skeleton` · `template` · `target-only` · `not-imp
 ## Not in this commit
 
 Untracked `AGENTS.md*`, `CLAUDE.md*` backups and `artifacts/` are unrelated to Slice 0001 and are NOT included.
+
+## Protocol corrections — agreed Claude + Codex (2026-06-21)
+
+Adopted amendments to the operator's two-agent execution protocol (apply to this slice and as defaults for future runtime slices):
+
+1. **Audit reuse (DoD).** The rejection MUST be recorded into the existing project audit layer (`event_store.SystemEvent` via `EventStore.append_new`). A slice-local sink is allowed only as a RED-step scaffold and must be adapted to the real store before DoD. No second audit format.
+2. **Audit → evidence consistency (Core Invariant).** The read-only evidence stub MUST read from the audit event and guard `rejection ↔ audit` consistency (reason_code, source_owner, module_id); inconsistent evidence is not surfaced (raises).
+3. **Passport shape.** A passport is "present" only if required fields are non-empty AFTER `strip()`. Whitespace-only == missing → `MODULE_PASSPORT_MISSING`.
+4. **Forbidden-wording test scope.** The guard checks only operator-facing strings produced by runtime/evidence, NOT a repo-wide grep (docs/tests legitimately list banned phrases as a prohibition).
+5. **Cycle granularity.** Small cycles may be merged when both agents approve, provided the per-(merged-)cycle Agent-A report + Agent-B verdict are preserved. `C0_FILE_MAP` lives inside this `SLICE_0001_PLAN.md` — no separate artifact.
+
+**§16 data-contract reconcile (principle).** Align the implementation to the protocol's minimal contract ONLY for fields that strengthen the `rejection → audit → evidence` chain. Applied now: `module_id` in `AttachResult` + `RejectionAuditEvent` + `SystemEvent.payload` + `RejectionEvidence`; `claim_type="module_attach_rejection"`, `source_type="audit"`, `read_only=True` in evidence (aligns `IF-ORION-EVIDENCE-001`). Deferred as template-inflation-without-consumer: `body_id`, `modules` list, full face_map object, `status` string vs `rejected` bool.
+
+**Branch-base principle (hard, learned).** A runtime/PR branch is ALWAYS created from fresh `origin/main`, never from an integration/overlay/codex branch or a dirty local branch.

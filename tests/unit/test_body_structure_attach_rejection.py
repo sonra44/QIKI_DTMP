@@ -86,6 +86,8 @@ def test_attach_without_passport_rejected_with_reason_audit_and_evidence() -> No
     assert event.attempted_mount == "F06"
     assert event.source_owner  # non-empty runtime/policy owner (not ORION)
     assert event.timestamp is not None
+    assert event.module_id == "mod-x"
+    assert result.module_id == "mod-x"
 
     # Then: the read-only ORION evidence stub can surface the rejection as a fact.
     # The stub is given the already-produced rejection + audit event; it must not
@@ -112,6 +114,12 @@ def test_attach_without_passport_rejected_with_reason_audit_and_evidence() -> No
     # the stub actually reads the AUDIT event (closes audit-event -> evidence loop).
     assert evidence.audit_request_id == event.request_id
     assert evidence.audit_attempted_mount == event.attempted_mount
+
+    # IF-ORION-EVIDENCE-001-aligned fields (still a stub, not the full #4908 card).
+    assert evidence.module_id == "mod-x"
+    assert evidence.claim_type == "module_attach_rejection"
+    assert evidence.source_type == "audit"
+    assert evidence.read_only is True
 
 
 def test_passport_with_whitespace_fields_is_treated_as_missing() -> None:
@@ -151,6 +159,7 @@ def test_rejection_is_recorded_into_shared_event_store_as_system_event() -> None
     assert sys_event.event_type == "module_attach_rejected"
     assert sys_event.reason == MODULE_PASSPORT_MISSING
     assert sys_event.payload["request_id"] == "req-3"
+    assert sys_event.payload["module_id"] == "mod-z"
     assert sys_event.payload["attempted_mount"] == "F08"
     assert sys_event.payload["reason_code"] == MODULE_PASSPORT_MISSING
 
@@ -167,6 +176,7 @@ def test_evidence_stub_refuses_inconsistent_rejection_and_audit() -> None:
     bad_event = RejectionAuditEvent(
         reason_code="SOMETHING_ELSE",
         request_id="req-4",
+        module_id=result.module_id,
         attempted_mount="F09",
         source_owner=result.source_owner,
         timestamp=1.0,

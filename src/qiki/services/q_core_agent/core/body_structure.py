@@ -5,7 +5,7 @@ Minimal, honest body-structure contour that owns ONE negative causal loop:
     module attach request without a passport
       -> rejected (this layer owns the decision)
       -> reason_code MODULE_PASSPORT_MISSING
-      -> audit event recorded via an injected sink
+      -> audit event recorded via an injected sink (real EventStore in production)
 
 Discipline (QIKI Body v0.2.2, target canon; Canon != implemented):
 - Face Map is a *skeleton* (F00-F11) with no geometry / normals / adjacency claimed.
@@ -76,10 +76,11 @@ class ModuleAttachRequest:
 @dataclass(frozen=True, slots=True)
 class RejectionAuditEvent:
     """Audit record for an attach rejection (slice-local; mapped to the shared
-    event store via a thin adapter when wired — no second audit format invented)."""
+    event store via EventStoreRejectionSink — no second audit format invented)."""
 
     reason_code: str
     request_id: str
+    module_id: str
     attempted_mount: str
     source_owner: str
     timestamp: float
@@ -95,6 +96,7 @@ class AttachResult:
     reason_code: str
     runtime_ready: bool
     request_id: str
+    module_id: str
     attempted_mount: str
     source_owner: str
 
@@ -102,6 +104,7 @@ class AttachResult:
 def _passport_has_required_shape(passport: ModulePassport | None) -> bool:
     if passport is None:
         return False
+    # "present" means required fields are non-empty AFTER trimming (whitespace == missing).
     return bool(
         passport.module_id.strip()
         and passport.module_class.strip()
@@ -125,6 +128,7 @@ class EventStoreRejectionSink:
             event_type="module_attach_rejected",
             payload={
                 "request_id": event.request_id,
+                "module_id": event.module_id,
                 "attempted_mount": event.attempted_mount,
                 "reason_code": event.reason_code,
                 "source_owner": event.source_owner,
@@ -150,6 +154,7 @@ def attach_module(
         event = RejectionAuditEvent(
             reason_code=MODULE_PASSPORT_MISSING,
             request_id=request.request_id,
+            module_id=request.module_id,
             attempted_mount=request.mount_point,
             source_owner=SOURCE_OWNER,
             timestamp=time.time(),
@@ -160,6 +165,7 @@ def attach_module(
             reason_code=MODULE_PASSPORT_MISSING,
             runtime_ready=False,
             request_id=request.request_id,
+            module_id=request.module_id,
             attempted_mount=request.mount_point,
             source_owner=SOURCE_OWNER,
         )
@@ -172,6 +178,7 @@ def attach_module(
         reason_code="MODULE_ATTACH_NOT_IMPLEMENTED",
         runtime_ready=False,
         request_id=request.request_id,
+        module_id=request.module_id,
         attempted_mount=request.mount_point,
         source_owner=SOURCE_OWNER,
     )
