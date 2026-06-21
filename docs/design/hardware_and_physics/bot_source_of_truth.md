@@ -1,10 +1,36 @@
 # Bot Source of Truth (QIKI_DTMP)
 
-> **Alignment note — QIKI Body v0.2.2**
->
-> For body hardware / physics / machine-body constraints, the current target documentation canon is QIKI Body v0.2.2 (`docs/design/hardware_and_physics/qiki_body_v0_2_2/`); status: target canon / documentation-only, runtime conformance not claimed.
-> This document remains the working body source-of-truth, but hardware, power, thermal, RCS, bayonet, NBL, protection, modularity, command gating and evidence claims should be checked against that package.
-> Older conflicting statements are treated as **superseded** by QIKI Body v0.2.2 unless explicitly re-accepted by a later ADR.
+## QIKI Body v0.2.2 alignment
+
+QIKI Body v0.2.2 is the current target documentation canon for QIKI body hardware / physics / machine-body constraints.
+
+Canonical package:
+
+`docs/design/hardware_and_physics/qiki_body_v0_2_2/`
+
+Primary body canon:
+
+`docs/design/hardware_and_physics/qiki_body_v0_2_2/01_BODY_CANON.md`
+
+Calculation frame:
+
+`docs/design/hardware_and_physics/qiki_body_v0_2_2/04_CALCULATION_FRAME.md`
+
+Requirements:
+
+`docs/design/hardware_and_physics/qiki_body_v0_2_2/02_REQUIREMENTS.md`
+
+Interface control:
+
+`docs/design/hardware_and_physics/qiki_body_v0_2_2/06_INTERFACE_CONTROL.md`
+
+This file remains available as an existing source-of-truth / runtime-adjacent reference.
+
+QIKI Body v0.2.2 is target canon and does not imply current runtime compliance.
+
+Current runtime values in this file MUST NOT be overwritten unless separate implementation evidence exists.
+
+If this file conflicts with QIKI Body v0.2.2 on body geometry, power, thermal, RCS, bayonet, NBL, protection, modularity, command gating or evidence policy, the conflict must be resolved through documentation review or ADR, not by silent overwrite.
 
 ## 0) Назначение и статус
 Этот документ — **единый источник правды** по *структуре* бота (геометрия/стыковка), *двигательной подсистеме* (RCS и принципы управления) и *формату hardware‑контрактов/сборки профиля*.
