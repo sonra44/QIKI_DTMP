@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-06-21T04:25:01+00:00",
+  "name": "QIKI Body v0.2.2 Agent Handoff",
+  "target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+  "patch_type": "documentation-only",
+  "allowed_actions": [
+    "unpack repo overlay",
+    "add markdown package files",
+    "add ADR directory",
+    "add JSON companion under _json",
+    "add old GDD alignment note",
+    "update documentation indexes",
+    "check git status",
+    "prepare documentation-only commit"
+  ],
+  "forbidden_actions": [
+    "runtime code changes",
+    "simulation code changes",
+    "ORION UI changes",
+    "MFD changes",
+    "proto changes",
+    "NATS subject changes",
+    "gRPC contract changes",
+    "telemetry path changes",
+    "generated file changes",
+    "runtime tests",
+    "runtime config changes",
+    "implemented without evidence",
+    "verified without verification",
+    "invented numeric values"
+  ],
+  "stop_conditions": [
+    "git status shows non-doc runtime files",
+    "task requires telemetry path changes",
+    "task requires ORION UI changes",
+    "old GDD deletion is requested",
+    "new modules or Terta-exotic technologies are introduced",
+    "implemented or verified claims appear without evidence"
+  ],
+  "expected_git_status_prefixes": [
+    "A  docs/design/hardware_and_physics/qiki_body_v0_2_2/",
+    "M  docs/INDEX.md",
+    "M  docs/design/game/bot_gdd.md"
+  ],
+  "commit_message_options": [
+    "docs: add QIKI Body v0.2.2 documentation package",
+    "docs: add QIKI Body v0.2.2 documentation and JSON companion"
+  ]
+}

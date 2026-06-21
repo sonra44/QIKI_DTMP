@@ -1,0 +1,15 @@
+{
+  "source_priority": [
+    "01_BODY_CANON.md",
+    "02_REQUIREMENTS.md",
+    "03_ARCHITECTURE_VIEWPOINTS.md",
+    "04_CALCULATION_FRAME.md",
+    "05_ENGINEERING_RATIONALE.md",
+    "06_INTERFACE_CONTROL.md",
+    "07_ADR/",
+    "08_IMPLEMENTATION_BRIDGE.md",
+    "09_ACCEPTANCE_CHECKS.md",
+    "10_READER_MANUAL.md"
+  ],
+  "note": "00_INDEX.md is entrypoint. 10_READER_MANUAL.md is derived."
+}

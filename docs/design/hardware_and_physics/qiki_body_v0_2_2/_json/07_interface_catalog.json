@@ -1,0 +1,82 @@
+{
+  "description": "Каталог target interface records. Полные интерфейсы находятся в 06_INTERFACE_CONTROL.md.",
+  "interfaces": [
+    {
+      "id": "IF-BAYONET-MECH-001",
+      "name": "Bayonet Mechanical State Interface"
+    },
+    {
+      "id": "IF-BAYONET-BRIDGE-001",
+      "name": "Bayonet Power/Data Bridge Interface"
+    },
+    {
+      "id": "IF-MODULE-PASSPORT-001",
+      "name": "Module Passport Handshake Interface"
+    },
+    {
+      "id": "IF-PDU-POWER-001",
+      "name": "PDU Load Permission Interface"
+    },
+    {
+      "id": "IF-POWER-TELEM-001",
+      "name": "Battery / Supercap Telemetry Interface"
+    },
+    {
+      "id": "IF-THERMAL-TELEM-001",
+      "name": "Thermal Node Telemetry Interface"
+    },
+    {
+      "id": "IF-RCS-CMD-001",
+      "name": "RCS Command Interface"
+    },
+    {
+      "id": "IF-SENSOR-TELEM-001",
+      "name": "Sensor Telemetry Interface"
+    },
+    {
+      "id": "IF-COMMS-001",
+      "name": "Normal Communication Interface"
+    },
+    {
+      "id": "IF-NBL-001",
+      "name": "NBL Emergency Packet Interface"
+    },
+    {
+      "id": "IF-CMD-BUS-001",
+      "name": "Command Bus / Lifecycle Interface"
+    },
+    {
+      "id": "IF-ORION-EVIDENCE-001",
+      "name": "ORION Evidence Feed Interface"
+    },
+    {
+      "id": "IF-AUDIT-001",
+      "name": "Audit Event Stream Interface"
+    },
+    {
+      "id": "IF-BLACKBOX-001",
+      "name": "Blackbox Record Interface"
+    },
+    {
+      "id": "IF-SAFE-001",
+      "name": "SAFE State Interface"
+    }
+  ],
+  "extracted_ids": [
+    "IF-AUDIT-001",
+    "IF-BAYONET-BRIDGE-001",
+    "IF-BAYONET-MECH-001",
+    "IF-BLACKBOX-001",
+    "IF-CMD-BUS-001",
+    "IF-COMMS-001",
+    "IF-MODULE-PASSPORT-001",
+    "IF-NBL-001",
+    "IF-ORION-EVIDENCE-001",
+    "IF-PDU-POWER-001",
+    "IF-POWER-TELEM-001",
+    "IF-RCS-CMD-001",
+    "IF-SAFE-001",
+    "IF-SENSOR-TELEM-001",
+    "IF-THERMAL-TELEM-001"
+  ]
+}

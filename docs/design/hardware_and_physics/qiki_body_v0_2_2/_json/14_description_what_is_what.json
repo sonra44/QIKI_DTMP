@@ -1,0 +1,25 @@
+{
+  "title": "QIKI Body v0.2.2 JSON Package — описание",
+  "plain_language_summary": [
+    "Markdown-пакет является главным документальным источником.",
+    "JSON-пакет является машинно-читаемым companion-слоем.",
+    "Он не заменяет канон, а помогает агенту понять, где что лежит.",
+    "Главные JSON-части: manifest, catalog, statuses, requirements, viewpoints, calculations, interfaces, ADR, repository insertion, acceptance, traceability.",
+    "Использовать JSON для навигации и проверки, но не как доказательство runtime-реализации."
+  ],
+  "what_to_use_for_what": {
+    "human_reading": "10_READER_MANUAL.md and README_JSON_PACKAGE.md",
+    "canonical_meaning": "01_BODY_CANON.md",
+    "machine_navigation": "00_package_manifest.json and qiki_body_v0_2_2_companion_aggregate.json",
+    "requirements_indexing": "04_requirements_catalog.json",
+    "architecture_navigation": "05_viewpoints_catalog.json",
+    "calculation_templates_navigation": "06_calculation_catalog.json",
+    "interface_navigation": "07_interface_catalog.json",
+    "decision_tracking": "08_adr_index.json",
+    "repo_insertion": "09_repository_insertion.json",
+    "acceptance": "10_acceptance_summary.json",
+    "cross_links": "11_traceability_map.json",
+    "unsafe_language_filter": "12_forbidden_wording.json",
+    "file_integrity": "13_source_file_inventory.json"
+  }
+}

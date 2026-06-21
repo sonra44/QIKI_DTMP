@@ -1,0 +1,204 @@
+{
+  "source_files": [
+    {
+      "relative_path": "00_INDEX.md",
+      "source_package_path": "qiki_body_v0_2_2/00_INDEX.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md",
+      "size_bytes": 15434,
+      "sha256": "a8078bcc9f971c788d29216106302f10bcad49c3e41eaf2cbf0aa9d2a025fc0e",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "01_BODY_CANON.md",
+      "source_package_path": "qiki_body_v0_2_2/01_BODY_CANON.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/01_BODY_CANON.md",
+      "size_bytes": 54915,
+      "sha256": "64106578d98d401cbbd963dab2755284de982a7c413d40fd011fd6e3870e67d9",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "02_REQUIREMENTS.md",
+      "source_package_path": "qiki_body_v0_2_2/02_REQUIREMENTS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/02_REQUIREMENTS.md",
+      "size_bytes": 47010,
+      "sha256": "0d7d823060ba6695b04eec2f5d33d57165a315e64d4fb6e28713aa460db0b329",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "03_ARCHITECTURE_VIEWPOINTS.md",
+      "source_package_path": "qiki_body_v0_2_2/03_ARCHITECTURE_VIEWPOINTS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/03_ARCHITECTURE_VIEWPOINTS.md",
+      "size_bytes": 29239,
+      "sha256": "33de8bbcd2f023d061b1b661a7fd891c738d95f492f7526a5585351d0477ce8b",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "04_CALCULATION_FRAME.md",
+      "source_package_path": "qiki_body_v0_2_2/04_CALCULATION_FRAME.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/04_CALCULATION_FRAME.md",
+      "size_bytes": 43707,
+      "sha256": "64c43f2f2ab46652c80425f9a21993e16b59b3b9714fa458453c6a6ff5749b18",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "05_ENGINEERING_RATIONALE.md",
+      "source_package_path": "qiki_body_v0_2_2/05_ENGINEERING_RATIONALE.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/05_ENGINEERING_RATIONALE.md",
+      "size_bytes": 33101,
+      "sha256": "599d34af270eab0e5ffaf64e8811b4bde8d8cb72caa8299bbbc804e7317214a5",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "06_INTERFACE_CONTROL.md",
+      "source_package_path": "qiki_body_v0_2_2/06_INTERFACE_CONTROL.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/06_INTERFACE_CONTROL.md",
+      "size_bytes": 35395,
+      "sha256": "cd7156b22e09a02c3ac09a78a9c116e420e0d9d45ef89c4e46ea482fad72963f",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "size_bytes": 2334,
+      "sha256": "3fdc3d4b9eca390e7eeceaaafe3ad7ebfcb86256e71a90f6cd8327eeed6cbc5b",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "size_bytes": 2172,
+      "sha256": "a06d09e7745033576c13ceb637647831126af32e782d312e90bf02f35b420312",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0003-battery-supercap-split.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "size_bytes": 1921,
+      "sha256": "5891a5cebd26454929a9508b83a781c77283132f433073f75739da2157e48787",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "size_bytes": 1866,
+      "sha256": "588ed7cd43362f43e1d930bf724858303e3a85141efa1b905ce3165ac26f531f",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0005-reactor-external-source.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "size_bytes": 1826,
+      "sha256": "9b734ba9275cc642ea294ec5099b4452476ea867f97002e245ed392ba4a70723",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "size_bytes": 1635,
+      "sha256": "3be47d1b724a898c80f4416fdb6dfacd218bba9728e65087e5aef74d949f2b61",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "size_bytes": 1781,
+      "sha256": "fe3edbdc1a7b363d03f0d4a028b3311028532af28c639df1b0db68996ca40f13",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "size_bytes": 1538,
+      "sha256": "5fd94bd35094bddae1d2e204e0d02c6b4642d91151511cfb9b6bc24566010008",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "size_bytes": 1741,
+      "sha256": "e986d70fb2c4f12e55cf347aecab81869e4e67537617c7aeca46ec6e3cb8d052",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "size_bytes": 1636,
+      "sha256": "a007fd4847068f0522508a54efaca61a62730dd751f0a3596dbc46c8a8719b5f",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0011-module-passport-mandatory.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "size_bytes": 1668,
+      "sha256": "dbadc3765650cb5dc4ff57308d60c4a407fa5e639e49986b7fce8251d4ad13ad",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "size_bytes": 1612,
+      "sha256": "11aa463abb8cf74cc7404925a3508e316d9013c9ebc794184cf423232093df3d",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0013-reader-manual-derived.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "size_bytes": 1454,
+      "sha256": "e0c6144d953deaa026653e6f779eaec61064f7f0df8004dc414706a9a9366130",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0014-orion-evidence-station.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "size_bytes": 1562,
+      "sha256": "8055948488fc502644cb8b2bc5434cca22dda6f14f9ed9e4d5c763cad990e7b3",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "source_package_path": "qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "size_bytes": 1578,
+      "sha256": "0b985e06a47d08cb69421ce6665f1930a98118bd3b4f94dcddbeedb45dc4c85d",
+      "role": "architecture_decision_record"
+    },
+    {
+      "relative_path": "08_IMPLEMENTATION_BRIDGE.md",
+      "source_package_path": "qiki_body_v0_2_2/08_IMPLEMENTATION_BRIDGE.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/08_IMPLEMENTATION_BRIDGE.md",
+      "size_bytes": 20421,
+      "sha256": "a794431963bedef54e0c1573497984a1fbff85e40e59256a33c861a12369d15f",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "09_ACCEPTANCE_CHECKS.md",
+      "source_package_path": "qiki_body_v0_2_2/09_ACCEPTANCE_CHECKS.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/09_ACCEPTANCE_CHECKS.md",
+      "size_bytes": 23480,
+      "sha256": "adf43e60a3aab3f93b083ebae51c6c3ea0481962136b7f72044a6a74eb99fe87",
+      "role": "primary_source_file"
+    },
+    {
+      "relative_path": "10_READER_MANUAL.md",
+      "source_package_path": "qiki_body_v0_2_2/10_READER_MANUAL.md",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/10_READER_MANUAL.md",
+      "size_bytes": 38731,
+      "sha256": "8dc4164cc2a29b8a00ebf52231f08066a23745b76a0ba35580cc131bb7c5227b",
+      "role": "derived_reader_manual"
+    }
+  ]
+}

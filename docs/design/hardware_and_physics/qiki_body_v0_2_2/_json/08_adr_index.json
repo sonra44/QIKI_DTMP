@@ -1,0 +1,139 @@
+{
+  "adr_index": [
+    {
+      "id": "0001",
+      "filename": "ADR-0001-machine-body-not-model-voice.md",
+      "title": "ADR-0001 — QIKI is a machine body, not a model voice",
+      "status": "Accepted",
+      "decision_summary": "QIKI рассматривается как машинное тело. Голос, модель и ORION не являются последней физической истиной. Последняя физическая истина должна идти из runtime state, simulation, telemetry, events, ACK, effect confirmation, audit and blackbox.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0001-machine-body-not-model-voice.md",
+      "sha256": "3fdc3d4b9eca390e7eeceaaafe3ad7ebfcb86256e71a90f6cd8327eeed6cbc5b"
+    },
+    {
+      "id": "0002",
+      "filename": "ADR-0002-body-canon-separated-from-old-gdd.md",
+      "title": "ADR-0002 — Body canon is separated from old game GDD",
+      "status": "Accepted",
+      "decision_summary": "Актуальный канон тела QIKI выносится в отдельный hardware / physics documentation package. Старый GDD сохраняется как game-design / historical layer и получает superseded / alignment note.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0002-body-canon-separated-from-old-gdd.md",
+      "sha256": "a06d09e7745033576c13ceb637647831126af32e782d312e90bf02f35b420312"
+    },
+    {
+      "id": "0003",
+      "filename": "ADR-0003-battery-supercap-split.md",
+      "title": "ADR-0003 — Battery and supercap are separated",
+      "status": "Accepted",
+      "decision_summary": "Battery и supercap разделяются. Battery отвечает за длительность жизни. Supercap отвечает за краткие пиковые действия. Peak action requires SoC_cap, PDU allowance and thermal clearance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0003-battery-supercap-split.md",
+      "sha256": "5891a5cebd26454929a9508b83a781c77283132f433073f75739da2157e48787"
+    },
+    {
+      "id": "0004",
+      "filename": "ADR-0004-rtg-trickle-not-boost.md",
+      "title": "ADR-0004 — RTG is a trickle source, not boost-source",
+      "status": "Accepted",
+      "decision_summary": "RTG-class source является heavy / trickle source. RTG-class source не является boost-source. RTG может поддерживать survival, drift, cold-zone, sleep and slow recharge, но не должен напрямую питать пиковые действия.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0004-rtg-trickle-not-boost.md",
+      "sha256": "588ed7cd43362f43e1d930bf724858303e3a85141efa1b905ce3165ac26f531f"
+    },
+    {
+      "id": "0005",
+      "filename": "ADR-0005-reactor-external-source.md",
+      "title": "ADR-0005 — Reactor-class source is external / station / sled",
+      "status": "Accepted",
+      "decision_summary": "Reactor-class source является external / station / sled / heavy infrastructure. QIKI может подключаться к нему только через validated structural-rated, electrically safe, thermally checked and passport-valid bridge.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0005-reactor-external-source.md",
+      "sha256": "9b734ba9275cc642ea294ec5099b4452476ea867f97002e245ed392ba4a70723"
+    },
+    {
+      "id": "0006",
+      "filename": "ADR-0006-nbl-emergency-low-rate.md",
+      "title": "ADR-0006 — Baseline NBL is emergency low-rate only",
+      "status": "Accepted",
+      "decision_summary": "Baseline NBL является emergency low-rate channel only. NBL используется для коротких критических пакетов и требует criticality gating, SoC_cap, PDU allowance and thermal clearance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0006-nbl-emergency-low-rate.md",
+      "sha256": "3be47d1b724a898c80f4416fdb6dfacd218bba9728e65087e5aef74d949f2b61"
+    },
+    {
+      "id": "0007",
+      "filename": "ADR-0007-deflector-not-absolute-shield.md",
+      "title": "ADR-0007 — Protection is deployable deflector, not absolute shield",
+      "status": "Accepted",
+      "decision_summary": "Protection is a constrained mechanism against a specific threat class, not an absolute shield. Radiation deflector / deployable deflector can be used as a constrained protective mechanism with cost, geometry and degradation.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0007-deflector-not-absolute-shield.md",
+      "sha256": "fe3edbdc1a7b363d03f0d4a028b3311028532af28c639df1b0db68996ca40f13"
+    },
+    {
+      "id": "0008",
+      "filename": "ADR-0008-field-drive-not-baseline.md",
+      "title": "ADR-0008 — Field drive is not baseline",
+      "status": "Accepted",
+      "decision_summary": "Field drive is not baseline. If used, field drive must be Terta-exotic / advanced speculative / scenario-specific and must have explicit cost, limits, risk, cooldown, evidence path, audit and blackbox relevance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0008-field-drive-not-baseline.md",
+      "sha256": "5fd94bd35094bddae1d2e204e0d02c6b4642d91151511cfb9b6bc24566010008"
+    },
+    {
+      "id": "0009",
+      "filename": "ADR-0009-bayonet-mechanical-hard-lock.md",
+      "title": "ADR-0009 — Bayonet requires mechanical hard lock",
+      "status": "Accepted",
+      "decision_summary": "Bayonet requires mechanical hard lock, structural check, electrical safety, umbilical mate, module handshake and passport validation before bridge allowed. Magnetic pre-align is not structural lock. Soft capture is not bridge allowed.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0009-bayonet-mechanical-hard-lock.md",
+      "sha256": "e986d70fb2c4f12e55cf347aecab81869e4e67537617c7aeca46ec6e3cb8d052"
+    },
+    {
+      "id": "0010",
+      "filename": "ADR-0010-rcs-thrust-torque-maps-required.md",
+      "title": "ADR-0010 — RCS requires Thrust Map and Torque Map",
+      "status": "Accepted",
+      "decision_summary": "RCS requires Thrust Map and Torque Map before balanced thrust, all-axis control, safe docking burn, tumble recovery or full maneuverability can be claimed.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0010-rcs-thrust-torque-maps-required.md",
+      "sha256": "a007fd4847068f0522508a54efaca61a62730dd751f0a3596dbc46c8a8719b5f"
+    },
+    {
+      "id": "0011",
+      "filename": "ADR-0011-module-passport-mandatory.md",
+      "title": "ADR-0011 — Module passport is mandatory",
+      "status": "Accepted",
+      "decision_summary": "Module passport is mandatory for runtime-ready module status. A module without passport is not a runtime module.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0011-module-passport-mandatory.md",
+      "sha256": "dbadc3765650cb5dc4ff57308d60c4a407fa5e639e49986b7fce8251d4ad13ad"
+    },
+    {
+      "id": "0012",
+      "filename": "ADR-0012-documentation-only-first-patch.md",
+      "title": "ADR-0012 — First repository patch is documentation-only",
+      "status": "Accepted",
+      "decision_summary": "The first repository patch for QIKI Body v0.2.2 must be documentation-only. Runtime work requires a separate task and evidence.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0012-documentation-only-first-patch.md",
+      "sha256": "11aa463abb8cf74cc7404925a3508e316d9013c9ebc794184cf423232093df3d"
+    },
+    {
+      "id": "0013",
+      "filename": "ADR-0013-reader-manual-derived.md",
+      "title": "ADR-0013 — Reader manual is derived; repo package is primary",
+      "status": "Accepted",
+      "decision_summary": "`10_READER_MANUAL.md` is a derived readable build. Primary source files are `00_INDEX.md` through `09_ACCEPTANCE_CHECKS.md` and `07_ADR/`. If reader manual conflicts with source files, source files win.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0013-reader-manual-derived.md",
+      "sha256": "e0c6144d953deaa026653e6f779eaec61064f7f0df8004dc414706a9a9366130"
+    },
+    {
+      "id": "0014",
+      "filename": "ADR-0014-orion-evidence-station.md",
+      "title": "ADR-0014 — ORION is evidence station, not decorative HUD",
+      "status": "Accepted",
+      "decision_summary": "ORION is an evidence station. ORION must show source, freshness, trust, status, reason_codes, target-only, not implemented, calculation-required, ACK, effect confirmation, audit trail and blackbox relevance.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0014-orion-evidence-station.md",
+      "sha256": "8055948488fc502644cb8b2bc5434cca22dda6f14f9ed9e4d5c763cad990e7b3"
+    },
+    {
+      "id": "0015",
+      "filename": "ADR-0015-ack-not-effect-confirmation.md",
+      "title": "ADR-0015 — ACK is not effect confirmation",
+      "status": "Accepted",
+      "decision_summary": "ACK is not effect confirmation. Command lifecycle must distinguish request, validation, allowed / rejected, publish, ACK, effect confirmation and audit.",
+      "repo_target_path": "docs/design/hardware_and_physics/qiki_body_v0_2_2/07_ADR/ADR-0015-ack-not-effect-confirmation.md",
+      "sha256": "0b985e06a47d08cb69421ce6665f1930a98118bd3b4f94dcddbeedb45dc4c85d"
+    }
+  ]
+}

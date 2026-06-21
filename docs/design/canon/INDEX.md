@@ -35,6 +35,7 @@ This file exists as a stable **design canon entrypoint** referenced by session b
 ## Canon spotlights (selected)
 
 - Radar visualization strategy/spec: `docs/design/operator_console/RADAR_VISUALIZATION_RFC.md`
+- QIKI Body v0.2.2 (machine body — hardware/physics): **target canon, documentation-only, runtime conformance NOT claimed** — `docs/design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md`
 - ORION V clickable UX acceptance: `docs/design/operator_console/ORION_V_CLICKABLE_ACCEPTANCE_CHECKLIST.md`
 - Terminal game narrative canon: `docs/design/game/SECTOR_TERTA_CANON.md`
 

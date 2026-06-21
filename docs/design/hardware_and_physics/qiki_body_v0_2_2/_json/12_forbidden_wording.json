@@ -1,0 +1,68 @@
+{
+  "forbidden_wording": [
+    {
+      "forbidden": "RTG battery",
+      "replacement": "RTG-class heavy / trickle source"
+    },
+    {
+      "forbidden": "RTG boost",
+      "replacement": "RTG cannot be boost-source"
+    },
+    {
+      "forbidden": "Reactor module on face",
+      "replacement": "Reactor-class external / station / sled source"
+    },
+    {
+      "forbidden": "NBL broadband",
+      "replacement": "NBL emergency low-rate only"
+    },
+    {
+      "forbidden": "NBL normal telemetry",
+      "replacement": "NBL critical packet only"
+    },
+    {
+      "forbidden": "Absolute shield",
+      "replacement": "constrained protection / deflector"
+    },
+    {
+      "forbidden": "Field drive baseline",
+      "replacement": "field drive Terta-exotic / not baseline"
+    },
+    {
+      "forbidden": "Pure energy thrust",
+      "replacement": "propulsion requires working mass, environment interaction or explicit exotic status"
+    },
+    {
+      "forbidden": "Magnetic lock",
+      "replacement": "magnetic pre-align / mechanical hard lock required"
+    },
+    {
+      "forbidden": "Soft capture connected",
+      "replacement": "soft capture is not bridge allowed"
+    },
+    {
+      "forbidden": "RCS balanced",
+      "replacement": "RCS requires Thrust Map and Torque Map"
+    },
+    {
+      "forbidden": "Module installed",
+      "replacement": "module installed only with mount point and passport"
+    },
+    {
+      "forbidden": "ACK complete",
+      "replacement": "ACK is not effect confirmation"
+    },
+    {
+      "forbidden": "ORION truth",
+      "replacement": "ORION evidence view with source"
+    },
+    {
+      "forbidden": "Target-only implemented",
+      "replacement": "target-only is not runtime-ready"
+    },
+    {
+      "forbidden": "Template is schema",
+      "replacement": "template-only is not runtime schema"
+    }
+  ]
+}

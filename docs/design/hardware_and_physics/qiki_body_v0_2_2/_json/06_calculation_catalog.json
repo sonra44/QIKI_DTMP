@@ -1,0 +1,77 @@
+{
+  "description": "Карта расчётных таблиц и шаблонов. Полные таблицы находятся в 04_CALCULATION_FRAME.md.",
+  "items": [
+    {
+      "id": "face_map",
+      "name": "Face Map",
+      "status": "target-only / calculation-required",
+      "purpose": "12 граней F00–F11, роли, нормали, mount constraints, conflicts."
+    },
+    {
+      "id": "mount_compatibility_matrix",
+      "name": "Mount Compatibility Matrix",
+      "status": "target-only",
+      "purpose": "Совместимость классов модулей с face, bayonet, internal, paired, deployable, external."
+    },
+    {
+      "id": "mass_com_inertia_sheet",
+      "name": "Mass / CoM / Inertia Sheet",
+      "status": "target-only / calculation-required",
+      "purpose": "Масса, local positions, CoM_delta, inertia class, restrictions."
+    },
+    {
+      "id": "power_budget_sheet",
+      "name": "Power Budget Sheet",
+      "status": "target-only",
+      "purpose": "source → battery → bus → supercap → peak consumers."
+    },
+    {
+      "id": "thermal_budget_sheet",
+      "name": "Thermal Budget Sheet",
+      "status": "target-only / calculation-required",
+      "purpose": "Thermal nodes, temperatures, cooldown, blocked commands."
+    },
+    {
+      "id": "thrust_map",
+      "name": "Thrust Map",
+      "status": "calculation-required",
+      "purpose": "Линейная тяга RCS; нельзя заявлять balanced thrust без неё."
+    },
+    {
+      "id": "torque_map",
+      "name": "Torque Map",
+      "status": "calculation-required",
+      "purpose": "Моменты RCS; нельзя заявлять all-axis control без неё."
+    },
+    {
+      "id": "bayonet_bridge_sheet",
+      "name": "Bayonet Bridge Sheet",
+      "status": "target-only",
+      "purpose": "Состояния bayonet/bridge: hard lock, safety, umbilical, passport, bridge allowed."
+    },
+    {
+      "id": "module_passport_template",
+      "name": "Module Passport Template",
+      "status": "template-only",
+      "purpose": "Минимальный контракт модуля как runtime-ready candidate."
+    },
+    {
+      "id": "nbl_emergency_packet_rules",
+      "name": "NBL Emergency Packet Rules",
+      "status": "rules-only / target-only",
+      "purpose": "Emergency low-rate packets, criticality, SoC_cap, thermal, audit."
+    },
+    {
+      "id": "command_gating_matrix",
+      "name": "Command Gating Matrix",
+      "status": "target-only",
+      "purpose": "Validation checks for commands through body state."
+    },
+    {
+      "id": "orion_evidence_checklist",
+      "name": "ORION Evidence Checklist",
+      "status": "target-only",
+      "purpose": "source, freshness, trust, status, reason_codes, audit, blackbox."
+    }
+  ]
+}

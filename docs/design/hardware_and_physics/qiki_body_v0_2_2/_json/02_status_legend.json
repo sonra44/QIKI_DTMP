@@ -1,0 +1,36 @@
+{
+  "canon": {
+    "meaning": "Правило принято как часть канона QIKI Body v0.2.2.",
+    "does_not_mean": "implemented"
+  },
+  "target-only": {
+    "meaning": "Целевое требование или проектное утверждение.",
+    "does_not_mean": "runtime-ready"
+  },
+  "template-only": {
+    "meaning": "Шаблон задан, но runtime schema или заполненные экземпляры не заявлены.",
+    "does_not_mean": "runtime schema exists"
+  },
+  "rules-only": {
+    "meaning": "Правила заданы, но runtime protocol или enforcement не заявлены.",
+    "does_not_mean": "protocol implemented"
+  },
+  "calculation-required": {
+    "meaning": "Нужен расчёт до утверждения значения.",
+    "does_not_mean": "calculated"
+  },
+  "implemented": {
+    "meaning": "Функция существует в runtime.",
+    "requires": "explicit evidence"
+  },
+  "verified": {
+    "meaning": "Функция существует в runtime и проверена.",
+    "requires": "explicit evidence and verification"
+  },
+  "superseded": {
+    "meaning": "Предыдущее утверждение заменено новым."
+  },
+  "rejected": {
+    "meaning": "Вариант рассмотрен и отклонён."
+  }
+}
