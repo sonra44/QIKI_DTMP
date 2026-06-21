@@ -18,13 +18,19 @@ the full 4908 ORION Evidence Card, MFD, NATS/proto/telemetry, etc.
 
 from __future__ import annotations
 
+import pytest
+
 # Slice 0001 runtime/policy contour (does not exist yet -> ImportError = first red).
 from qiki.services.q_core_agent.core.body_structure import (
     BodyConfigSnapshot,
+    EventStoreRejectionSink,
     ModuleAttachRequest,
+    ModulePassport,
+    RejectionAuditEvent,
     attach_module,
     MODULE_PASSPORT_MISSING,
 )
+from qiki.services.q_core_agent.core.event_store import EventStore
 
 # Read-only ORION evidence stub (consumer only; never validates the passport itself).
 from qiki.services.operator_console.orion_v.body_structure_evidence import (
@@ -102,3 +108,68 @@ def test_attach_without_passport_rejected_with_reason_audit_and_evidence() -> No
         assert banned not in text
     # honest rejection phrasing.
     assert "passport" in text
+
+    # the stub actually reads the AUDIT event (closes audit-event -> evidence loop).
+    assert evidence.audit_request_id == event.request_id
+    assert evidence.audit_attempted_mount == event.attempted_mount
+
+
+def test_passport_with_whitespace_fields_is_treated_as_missing() -> None:
+    body = BodyConfigSnapshot.skeleton()
+    audit = _RecordingAudit()
+    request = ModuleAttachRequest(
+        request_id="req-2",
+        module_id="mod-y",
+        mount_point="F07",
+        passport=ModulePassport(module_id="  ", module_class="\t", mount_point=" "),
+    )
+
+    result = attach_module(body, request, audit_sink=audit)
+
+    assert result.rejected is True
+    assert result.reason_code == MODULE_PASSPORT_MISSING
+    assert result.runtime_ready is False
+    assert len(audit.events) == 1
+    assert audit.events[0].reason_code == MODULE_PASSPORT_MISSING
+
+
+def test_rejection_is_recorded_into_shared_event_store_as_system_event() -> None:
+    # Reuses the existing audit layer (event_store.SystemEvent), no second format.
+    store = EventStore(backend="memory")
+    sink = EventStoreRejectionSink(store)
+    body = BodyConfigSnapshot.skeleton()
+    request = ModuleAttachRequest(
+        request_id="req-3", module_id="mod-z", mount_point="F08", passport=None
+    )
+
+    result = attach_module(body, request, audit_sink=sink)
+    assert result.reason_code == MODULE_PASSPORT_MISSING
+
+    recorded = store.recent(5)
+    assert len(recorded) == 1
+    sys_event = recorded[0]
+    assert sys_event.event_type == "module_attach_rejected"
+    assert sys_event.reason == MODULE_PASSPORT_MISSING
+    assert sys_event.payload["request_id"] == "req-3"
+    assert sys_event.payload["attempted_mount"] == "F08"
+    assert sys_event.payload["reason_code"] == MODULE_PASSPORT_MISSING
+
+
+def test_evidence_stub_refuses_inconsistent_rejection_and_audit() -> None:
+    body = BodyConfigSnapshot.skeleton()
+    audit = _RecordingAudit()
+    request = ModuleAttachRequest(
+        request_id="req-4", module_id="mod-w", mount_point="F09", passport=None
+    )
+    result = attach_module(body, request, audit_sink=audit)
+
+    # Tamper: an audit event whose reason disagrees with the result.
+    bad_event = RejectionAuditEvent(
+        reason_code="SOMETHING_ELSE",
+        request_id="req-4",
+        attempted_mount="F09",
+        source_owner=result.source_owner,
+        timestamp=1.0,
+    )
+    with pytest.raises(ValueError):
+        rejection_to_evidence(result, bad_event)

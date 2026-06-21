@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 # Domain reason code (stable). Owned by the runtime/policy layer, not ORION.
 MODULE_PASSPORT_MISSING = "MODULE_PASSPORT_MISSING"
@@ -102,7 +102,36 @@ class AttachResult:
 def _passport_has_required_shape(passport: ModulePassport | None) -> bool:
     if passport is None:
         return False
-    return bool(passport.module_id and passport.module_class and passport.mount_point)
+    return bool(
+        passport.module_id.strip()
+        and passport.module_class.strip()
+        and passport.mount_point.strip()
+    )
+
+
+class EventStoreRejectionSink:
+    """Adapter: records a rejection into the shared EventStore as a SystemEvent.
+
+    Reuses the existing project audit layer (``event_store.SystemEvent`` via
+    ``EventStore.append_new``) — it does NOT invent a second audit format.
+    """
+
+    def __init__(self, event_store: Any) -> None:
+        self._store = event_store
+
+    def append_rejection(self, event: "RejectionAuditEvent") -> None:
+        self._store.append_new(
+            subsystem=event.source_owner,
+            event_type="module_attach_rejected",
+            payload={
+                "request_id": event.request_id,
+                "attempted_mount": event.attempted_mount,
+                "reason_code": event.reason_code,
+                "source_owner": event.source_owner,
+            },
+            reason=event.reason_code,
+            ts=event.timestamp,
+        )
 
 
 def attach_module(
