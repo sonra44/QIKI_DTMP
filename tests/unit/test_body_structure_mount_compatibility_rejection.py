@@ -138,8 +138,8 @@ def test_known_mount_without_class_rules_is_rejected_fail_closed() -> None:
     assert rejection.payload["mount_point"] == "F06"
 
 
-def test_present_forbidden_only_mount_rules_still_allow_non_forbidden_classes() -> None:
-    """Fail-closed applies to missing rules, not to explicit blocklist-only rules."""
+def test_present_empty_allowlist_mount_rules_reject_non_forbidden_classes() -> None:
+    """A present rule set with an empty allow-list must not become wildcard-allow."""
     body = BodyConfigSnapshot.skeleton()
     body = replace(
         body,
@@ -156,9 +156,34 @@ def test_present_forbidden_only_mount_rules_still_allow_non_forbidden_classes() 
         body, request, audit_sink=EventStoreRegistrationSink(store)
     )
 
-    assert result.status == "attached"
-    assert result.reason_code is None
-    assert body_after.face_occupancy["F06"] == "test_sensor_module_001"
+    assert result.status == "rejected"
+    assert result.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
+    assert body_after.face_occupancy["F06"] == "free"
+    assert body_after.modules == ()
+
+
+def test_present_mount_rules_without_allow_key_reject_non_forbidden_classes() -> None:
+    """A present rule set missing the allow-list is also fail-closed."""
+    body = BodyConfigSnapshot.skeleton()
+    body = replace(
+        body,
+        face_mount_classes={
+            **body.face_mount_classes,
+            "F06": {"forbidden": ("reactor-class",)},
+        },
+    )
+    store = EventStore(backend="memory")
+
+    passport = ModulePassport("test_sensor_module_001", "sensor", "F06")
+    request = ModuleAttachRequest("req-1", "test_sensor_module_001", "F06", passport=passport)
+    result, body_after = register_module(
+        body, request, audit_sink=EventStoreRegistrationSink(store)
+    )
+
+    assert result.status == "rejected"
+    assert result.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
+    assert body_after.face_occupancy["F06"] == "free"
+    assert body_after.modules == ()
 
 
 def test_module_class_is_normalized_before_mount_class_check() -> None:

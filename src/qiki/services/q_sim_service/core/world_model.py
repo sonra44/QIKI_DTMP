@@ -1820,7 +1820,7 @@ def _bridge_reason_codes(
         reason_codes.append(BRIDGE_PASSPORT_MISSING)
     if pdu_allowance_state != "allowed":
         reason_codes.append(BRIDGE_PDU_DENIED)
-    if thermal_clearance == "blocked":
+    if thermal_clearance != "clear":
         reason_codes.append(BRIDGE_THERMAL_BLOCK)
     if safe_state in {"safe_warning", "safe_limited", "safe_lockdown"}:
         reason_codes.append(BRIDGE_SAFE_BLOCK)

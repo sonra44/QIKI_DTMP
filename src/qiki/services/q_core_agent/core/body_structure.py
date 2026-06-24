@@ -701,9 +701,7 @@ def _evaluate_registration_guard(
         module_class = (request.passport.module_class if request.passport else "").strip()
         forbidden_classes = tuple(rules.get("forbidden", ())) if rules else ()
         allowed_classes = tuple(rules.get("allowed", ())) if rules else ()
-        if rules is not None and module_class not in forbidden_classes and (
-            not allowed_classes or module_class in allowed_classes
-        ):
+        if rules is not None and module_class not in forbidden_classes and module_class in allowed_classes:
             return None
         return _RegistrationRejection(
             reason_code=guard.reason_code,

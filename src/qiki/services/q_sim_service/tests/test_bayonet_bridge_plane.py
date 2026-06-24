@@ -54,6 +54,7 @@ def test_if_bayonet_bridge_defaults_disallowed_without_chain() -> None:
         "BRIDGE_UMBILICAL_MISSING",
         "BRIDGE_PASSPORT_MISSING",
         "BRIDGE_PDU_DENIED",
+        "BRIDGE_THERMAL_BLOCK",
     )
 
 
@@ -84,6 +85,23 @@ def test_if_bayonet_bridge_full_chain_allows_bridge() -> None:
     assert record.connected_object_id == "module:arm"
     assert record.structural_check == "passed"
     assert record.reason_codes == ()
+
+
+def test_if_bayonet_bridge_missing_thermal_clearance_blocks_bridge() -> None:
+    record = bayonet_bridge_from_runtime_state(
+        _ready_mech(),
+        electrical_safety_state="passed",
+        umbilical_state="mated",
+        passport_state="validated",
+        pdu_allowance_state="allowed",
+        thermal_clearance="missing",
+        power_direction="module_to_body",
+        power_limit_W=120.0,
+        data_link_state="online",
+    )
+
+    assert record.bridge_state == "bridge_disallowed"
+    assert "BRIDGE_THERMAL_BLOCK" in record.reason_codes
 
 
 def test_if_bayonet_bridge_active_restricted_motion_degrades() -> None:
