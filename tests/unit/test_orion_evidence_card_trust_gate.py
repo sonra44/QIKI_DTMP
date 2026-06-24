@@ -1,10 +1,10 @@
-"""REMEDIATION H5 — ORION must not mark a forged/non-audit object as audit_backed.
+"""REMEDIATION H5 — ORION must not mark a forged/non-audit object as trusted.
 
 Audit finding H5 (ПАЧИ/ATTACH_SEED_CRITICAL_AUDIT_2026-06-21):
 `evidence_card_mapping.source_type_for` classifies ANY object that merely has a
 supported `event_type` string and a `dict` payload as a trusted `audit_event`,
-so `trust_status_for` returns `audit_backed`. A hand-crafted or replayed object
-can therefore claim `trust_status="audit_backed"` (and `status="implemented"`)
+so `trust_status_for` returns `trusted`. A hand-crafted or replayed object
+can therefore claim `trust_status="trusted"` (and `status="implemented"`)
 without being a genuine audit record — the exact "evidence vs invented state"
 boundary the Evidence Card line is meant to protect.
 
@@ -24,7 +24,7 @@ from qiki.services.q_core_agent.core.body_structure import (
 )
 from qiki.services.q_core_agent.core.event_store import SystemEvent, TruthState
 from qiki.services.operator_console.orion_v.evidence_card_mapping import (
-    TRUST_STATUS_AUDIT_BACKED,
+    TRUST_STATUS_TRUSTED,
     trust_status_for,
 )
 
@@ -50,7 +50,7 @@ def _genuine_rejection_event() -> SystemEvent:
 
 def test_genuine_audit_event_stays_audit_backed() -> None:
     # Positive control: a real, OK, owner-consistent SystemEvent must remain trusted.
-    assert trust_status_for(_genuine_rejection_event()) == TRUST_STATUS_AUDIT_BACKED
+    assert trust_status_for(_genuine_rejection_event()) == TRUST_STATUS_TRUSTED
 
 
 def test_duck_typed_forgery_is_not_audit_backed() -> None:
@@ -68,7 +68,7 @@ def test_duck_typed_forgery_is_not_audit_backed() -> None:
         truth_state=TruthState.OK,
         reason=MODULE_PASSPORT_MISSING,
     )
-    assert trust_status_for(forged) != TRUST_STATUS_AUDIT_BACKED
+    assert trust_status_for(forged) != TRUST_STATUS_TRUSTED
 
 
 def test_non_ok_truth_state_is_not_audit_backed() -> None:
@@ -88,7 +88,7 @@ def test_non_ok_truth_state_is_not_audit_backed() -> None:
         truth_state=TruthState.INVALID,
         reason=MODULE_PASSPORT_MISSING,
     )
-    assert trust_status_for(event) != TRUST_STATUS_AUDIT_BACKED
+    assert trust_status_for(event) != TRUST_STATUS_TRUSTED
 
 
 def test_owner_not_allowed_is_not_audit_backed() -> None:
@@ -108,7 +108,7 @@ def test_owner_not_allowed_is_not_audit_backed() -> None:
         truth_state=TruthState.OK,
         reason=MODULE_PASSPORT_MISSING,
     )
-    assert trust_status_for(event) != TRUST_STATUS_AUDIT_BACKED
+    assert trust_status_for(event) != TRUST_STATUS_TRUSTED
 
 
 def test_source_owner_mismatch_is_not_audit_backed() -> None:
@@ -128,4 +128,4 @@ def test_source_owner_mismatch_is_not_audit_backed() -> None:
         truth_state=TruthState.OK,
         reason=MODULE_PASSPORT_MISSING,
     )
-    assert trust_status_for(event) != TRUST_STATUS_AUDIT_BACKED
+    assert trust_status_for(event) != TRUST_STATUS_TRUSTED

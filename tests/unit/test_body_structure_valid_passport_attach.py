@@ -89,7 +89,7 @@ def test_valid_passport_module_attach_registers_body_config_and_evidence() -> No
     assert card.subject_id == "test_sensor_module_001"
     assert card.subject_status == "attached"
     assert card.source_type == "audit"
-    assert card.trust_status == "audit_backed"
+    assert card.trust_status == "trusted"
     # a fully audit-backed registration must report §17 evidence status "implemented",
     # not "missing" — guards the mount_point/attempted_mount payload-key contract.
     assert card.status == "implemented"

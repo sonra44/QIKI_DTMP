@@ -62,7 +62,7 @@ class EvidenceCard:
     source_type: str  # "audit_event"
     source_id: str
     source_timestamp: float
-    trust_status: str  # "audit_backed" / "missing"
+    trust_status: str  # canon §17: "trusted" / "missing"
     read_only: bool
     runtime_ready: bool
     facts: Mapping[str, Any]

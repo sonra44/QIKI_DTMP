@@ -64,7 +64,7 @@ def test_module_passport_missing_rejection_becomes_read_only_evidence_card() -> 
     assert card.source_type == "audit"
     assert card.source_id == audit_event.event_id
     assert card.related_audit_event_id == audit_event.event_id
-    assert card.trust_status == "audit_backed"
+    assert card.trust_status == "trusted"
     assert card.read_only is True
 
     # the card does NOT mark the module runtime-ready

@@ -28,7 +28,7 @@ ORION_SOURCE_MISSING = "ORION_SOURCE_MISSING"
 
 SOURCE_TYPE_AUDIT = "audit"  # canon QIKI Body v0.2.2 §17 source_type enum (04_CALCULATION_FRAME.md)
 SOURCE_TYPE_MISSING = "missing"
-TRUST_STATUS_AUDIT_BACKED = "audit_backed"
+TRUST_STATUS_TRUSTED = "trusted"  # canon QIKI Body v0.2.2 §17 trust_status enum (04_CALCULATION_FRAME.md)
 TRUST_STATUS_MISSING = "missing"
 EVIDENCE_STATUS_IMPLEMENTED = "implemented"
 EVIDENCE_STATUS_MISSING = "missing"
@@ -126,7 +126,7 @@ def source_type_for(event: Any) -> str:
 
 
 def trust_status_for(event: Any) -> str:
-    return TRUST_STATUS_AUDIT_BACKED if source_type_for(event) == SOURCE_TYPE_AUDIT else TRUST_STATUS_MISSING
+    return TRUST_STATUS_TRUSTED if source_type_for(event) == SOURCE_TYPE_AUDIT else TRUST_STATUS_MISSING
 
 
 def evidence_status_for(event: Any) -> str:

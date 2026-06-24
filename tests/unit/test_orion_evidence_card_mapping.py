@@ -160,7 +160,7 @@ def test_module_attach_rejection_event_maps_to_audit_backed_card_contract() -> N
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-1"
     assert mapped.reason_code == MODULE_PASSPORT_MISSING
@@ -178,7 +178,7 @@ def test_mount_point_occupied_rejection_maps_to_audit_backed_card_contract() -> 
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-3"
     assert mapped.reason_code == MOUNT_POINT_OCCUPIED
@@ -198,7 +198,7 @@ def test_module_mount_class_forbidden_rejection_maps_to_audit_backed_card_contra
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-4"
     assert mapped.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
@@ -218,7 +218,7 @@ def test_module_passport_invalid_rejection_maps_to_audit_backed_card_contract() 
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-5"
     assert mapped.reason_code == MODULE_PASSPORT_INVALID
@@ -238,7 +238,7 @@ def test_mount_point_unknown_rejection_maps_to_audit_backed_card_contract() -> N
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-6"
     assert mapped.reason_code == MOUNT_POINT_UNKNOWN
@@ -281,7 +281,7 @@ def test_module_attach_registered_event_maps_to_audit_backed_inactive_card_contr
     assert mapped.subject_type == "module"
     assert mapped.subject_status == "attached"
     assert mapped.status == "implemented"
-    assert mapped.trust_status == "audit_backed"
+    assert mapped.trust_status == "trusted"
     assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-2"
     assert mapped.module_id == "mod-ok"
