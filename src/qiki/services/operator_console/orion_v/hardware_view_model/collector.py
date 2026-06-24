@@ -2029,10 +2029,19 @@ class HardwareCollector:
         self, snapshot: dict[str, Any], aliases: tuple[str, ...] | list[str]
     ) -> tuple[str, str | None, str]:
         for alias in aliases:
-            status_raw = self._raw(snapshot, f"sensor.{alias}.status", f"{alias}.status")
+            # Real q-sim sensor status lives under sensor_plane.<alias>.status; it MUST be read
+            # before the .enabled fallback, otherwise an enabled-but-degraded sensor is masked
+            # as OK (a dishonest perception surface). REQ-SENSOR / IF-SENSOR-TELEM §15.
+            status_raw = self._raw(
+                snapshot, f"sensor.{alias}.status", f"{alias}.status", f"sensor_plane.{alias}.status"
+            )
             if status_raw is not None:
                 normalized = normalize_sensor_status(status_raw)
-                return normalized, self._sensor_status_text(normalized), "status"
+                # An UNKNOWN-normalizing status (e.g. "na", "") is not informative; fall through to
+                # the .enabled signal so a deliberately-disabled sensor still reads "Отключен"
+                # rather than "Нет данных".
+                if normalized != "UNKNOWN":
+                    return normalized, self._sensor_status_text(normalized), "status"
 
             enabled_raw = self._raw(snapshot, f"sensor_plane.{alias}.enabled")
             if enabled_raw is not None:

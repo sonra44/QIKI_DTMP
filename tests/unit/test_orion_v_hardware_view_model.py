@@ -409,6 +409,55 @@ def test_sensors_disabled_sensor_plane_does_not_raise_subsystem_warning() -> Non
     assert radiation_value.status == ViewStatus.OK
 
 
+def test_sensors_real_plane_degraded_status_not_masked_as_ok() -> None:
+    # HIGH-honesty: the live collector must read sensor_plane.<alias>.status, not silently fall
+    # back to .enabled. A degraded sensor (enabled=True, status="warn") must show WARN, never OK
+    # — an enabled-but-degraded sensor reported as OK is a dishonest perception surface.
+    model = HardwareCollector().update(
+        {
+            "sensor_plane.imu.enabled": True,
+            "sensor_plane.imu.status": "warn",
+            "sensor_plane.imu.roll_rate_rps": 0.01,
+        }
+    )
+
+    sensors = model.subsystems["sensors"]
+    imu_status = next(field for field in sensors.fields if field.key == "sensors.imu_main.status")
+    assert imu_status.status == ViewStatus.WARN
+
+
+def test_sensors_real_plane_status_ok_stays_ok() -> None:
+    # Negative: a genuinely healthy real-plane sensor must remain OK (no over-flagging).
+    model = HardwareCollector().update(
+        {
+            "sensor_plane.imu.enabled": True,
+            "sensor_plane.imu.status": "ok",
+            "sensor_plane.imu.roll_rate_rps": 0.01,
+        }
+    )
+
+    sensors = model.subsystems["sensors"]
+    imu_status = next(field for field in sensors.fields if field.key == "sensors.imu_main.status")
+    assert imu_status.status == ViewStatus.OK
+
+
+def test_sensors_disabled_with_uninformative_status_stays_disabled_not_no_data() -> None:
+    # A deliberately-disabled sensor that emits an uninformative status (e.g. star tracker
+    # status="na", enabled=False) must still read as "Отключен" (intentionally off, OK), not be
+    # misread as "Нет данных" via the status path.
+    model = HardwareCollector().update(
+        {
+            "sensor_plane.star_tracker.enabled": False,
+            "sensor_plane.star_tracker.status": "na",
+        }
+    )
+
+    sensors = model.subsystems["sensors"]
+    star_tracker = next(field for field in sensors.fields if field.key == "sensors.sensor_star_tracker.status")
+    assert star_tracker.value == "Отключен"
+    assert star_tracker.status == ViewStatus.OK
+
+
 def test_hull_integrity_pct_critical_sets_critical_status() -> None:
     model = HardwareCollector().update({"hull.integrity_pct": 35})
 
