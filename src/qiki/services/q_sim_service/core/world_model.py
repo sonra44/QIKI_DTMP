@@ -70,6 +70,16 @@ BLACKBOX_TARGET_ONLY = "BLACKBOX_TARGET_ONLY"
 BLACKBOX_NOT_RECORDED = "BLACKBOX_NOT_RECORDED"
 BLACKBOX_TRIGGER_MISSING = "BLACKBOX_TRIGGER_MISSING"
 BLACKBOX_TRIGGER_DETECTED = "BLACKBOX_TRIGGER_DETECTED"
+SAFE_POWER_LOW = "SAFE_POWER_LOW"
+SAFE_CAP_LOW = "SAFE_CAP_LOW"
+SAFE_THERMAL_CRITICAL = "SAFE_THERMAL_CRITICAL"
+SAFE_SENSOR_CONFLICT = "SAFE_SENSOR_CONFLICT"
+SAFE_ORIENTATION_LOST = "SAFE_ORIENTATION_LOST"
+SAFE_BAYONET_UNSAFE = "SAFE_BAYONET_UNSAFE"
+SAFE_PDU_FAULT = "SAFE_PDU_FAULT"
+SAFE_COMMS_LOSS = "SAFE_COMMS_LOSS"
+SAFE_DAMAGE_CRITICAL = "SAFE_DAMAGE_CRITICAL"
+SAFE_BLACKBOX_CRITICAL = "SAFE_BLACKBOX_CRITICAL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +256,25 @@ class BlackboxRecord:
     reason_codes: tuple[str, ...]
     loss_context: str
     recovery_notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class SafeStateRecord:
+    """IF-SAFE-001 target-only survival-state projection; no SAFE engine is claimed."""
+
+    SAFE_state: str
+    SAFE_reason: str
+    blocked_commands: tuple[str, ...]
+    allowed_commands: tuple[str, ...]
+    exit_conditions: tuple[str, ...]
+    power_state: str
+    thermal_state: str
+    sensor_state: str
+    bayonet_state: str
+    damage_state: str
+    timestamp: float | None
+    reason_codes: tuple[str, ...]
+    blackbox_relevance: bool
 
 
 def _num_or_none(value: Any) -> float | None:
@@ -1426,6 +1455,157 @@ def blackbox_record_from_runtime_event(
         reason_codes=reason_codes,
         loss_context=str(loss_context or "target-only"),
         recovery_notes=str(recovery_notes or "target-only"),
+    )
+
+
+def _safe_get(item: Any, key: str, default: Any = None) -> Any:
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
+def _safe_power_state(power: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+    if not power:
+        return "unknown", ()
+    reason_codes: list[str] = []
+    soc = _num_or_none(power.get("soc_pct"))
+    cap = _num_or_none(power.get("supercap_soc_pct"))
+    if soc is not None and soc <= 10.0:
+        reason_codes.append(SAFE_POWER_LOW)
+    if cap is not None and cap <= 10.0:
+        reason_codes.append(SAFE_CAP_LOW)
+    if reason_codes:
+        return "low", tuple(reason_codes)
+    return "nominal", ()
+
+
+def _safe_thermal_state(thermal: dict[str, Any]) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    if not thermal:
+        return "unknown", (), ()
+    records = thermal_telemetry_from_thermal_state(thermal)
+    states = {record.thermal_state for record in records}
+    blocked: list[str] = []
+    for record in records:
+        blocked.extend(record.blocked_commands)
+    if "critical" in states:
+        return "critical", (SAFE_THERMAL_CRITICAL,), tuple(dict.fromkeys(blocked))
+    if "hot" in states:
+        return "degraded", (), tuple(dict.fromkeys(blocked))
+    if states == {"unknown"}:
+        return "unknown", (), tuple(dict.fromkeys(blocked))
+    return "nominal", (), tuple(dict.fromkeys(blocked))
+
+
+def _safe_sensor_state(sensor_records: Sequence[Any] | None) -> tuple[str, tuple[str, ...]]:
+    if not sensor_records:
+        return "unknown", ()
+    saw_known = False
+    for record in sensor_records:
+        trust_status = str(_safe_get(record, "trust_status", "") or "").strip().lower()
+        reasons = set(_string_tuple(_safe_get(record, "reason_codes", ())))
+        if trust_status == "conflicting" or SENSOR_CONFLICTING in reasons:
+            return "conflicting", (SAFE_SENSOR_CONFLICT,)
+        if trust_status and trust_status not in {"missing", "unknown"}:
+            saw_known = True
+    return ("nominal" if saw_known else "unknown"), ()
+
+
+def _safe_pdu_state(pdu_permissions: Sequence[Any] | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if not pdu_permissions:
+        return (), ()
+    blocked: list[str] = []
+    for record in pdu_permissions:
+        reasons = set(_string_tuple(_safe_get(record, "reason_codes", ())))
+        allowance = str(_safe_get(record, "allowance_state", "") or "")
+        load_id = str(_safe_get(record, "load_id", "") or "")
+        if reasons.intersection({PDU_OVERLOAD, PDU_DENIED, PDU_PEAK_DENIED, BUS_UNSTABLE}) or allowance in {
+            "load_rejected",
+            "load_shed",
+            "PDU_safe_mode",
+        }:
+            if load_id and load_id != "missing":
+                blocked.append(load_id)
+    return ((SAFE_PDU_FAULT,) if blocked else ()), tuple(dict.fromkeys(blocked))
+
+
+def _safe_exit_conditions(reason_codes: tuple[str, ...]) -> tuple[str, ...]:
+    conditions: list[str] = []
+    if SAFE_POWER_LOW in reason_codes or SAFE_CAP_LOW in reason_codes:
+        conditions.append("exit_power_recovered")
+    if SAFE_THERMAL_CRITICAL in reason_codes:
+        conditions.append("exit_thermal_nominal")
+    if SAFE_SENSOR_CONFLICT in reason_codes:
+        conditions.append("exit_sensor_conflict_resolved")
+    if SAFE_PDU_FAULT in reason_codes:
+        conditions.append("exit_pdu_fault_cleared")
+    if SAFE_DAMAGE_CRITICAL in reason_codes:
+        conditions.append("exit_damage_assessed")
+    if SAFE_BLACKBOX_CRITICAL in reason_codes:
+        conditions.append("exit_blackbox_reviewed")
+    return tuple(dict.fromkeys(conditions))
+
+
+def _safe_state_from_reasons(reason_codes: tuple[str, ...]) -> str:
+    if not reason_codes:
+        return "safe_unknown"
+    if any(reason in reason_codes for reason in (SAFE_THERMAL_CRITICAL, SAFE_DAMAGE_CRITICAL, SAFE_BLACKBOX_CRITICAL)):
+        return "safe_lockdown"
+    if SAFE_SENSOR_CONFLICT in reason_codes and len(reason_codes) == 1:
+        return "safe_warning"
+    return "safe_limited"
+
+
+def safe_state_from_runtime_state(
+    *,
+    power: dict[str, Any] | None = None,
+    thermal: dict[str, Any] | None = None,
+    sensor_records: Sequence[Any] | None = None,
+    pdu_permissions: Sequence[Any] | None = None,
+    bayonet_state: str = "unknown",
+    damage_state: str = "unknown",
+    blackbox_record: Any | None = None,
+    timestamp: float | None = None,
+) -> SafeStateRecord:
+    """Map observed runtime risk signals into IF-SAFE-001 without claiming a SAFE engine."""
+    power_data = power if isinstance(power, dict) else {}
+    thermal_data = thermal if isinstance(thermal, dict) else {}
+    power_state, power_reasons = _safe_power_state(power_data)
+    thermal_state, thermal_reasons, thermal_blocked = _safe_thermal_state(thermal_data)
+    sensor_state, sensor_reasons = _safe_sensor_state(sensor_records)
+    pdu_reasons, pdu_blocked = _safe_pdu_state(pdu_permissions)
+
+    reason_codes: list[str] = []
+    reason_codes.extend(power_reasons)
+    reason_codes.extend(thermal_reasons)
+    reason_codes.extend(sensor_reasons)
+    reason_codes.extend(pdu_reasons)
+    if str(bayonet_state).lower() in {"unsafe", "soft_capture", "fault"}:
+        reason_codes.append(SAFE_BAYONET_UNSAFE)
+    if str(damage_state).lower() in {"critical", "fatal"}:
+        reason_codes.append(SAFE_DAMAGE_CRITICAL)
+    if blackbox_record is not None and str(_safe_get(blackbox_record, "severity", "")).lower() == "critical":
+        reason_codes.append(SAFE_BLACKBOX_CRITICAL)
+
+    reason_tuple = tuple(dict.fromkeys(reason_codes))
+    blocked_commands = tuple(dict.fromkeys((*thermal_blocked, *pdu_blocked)))
+    safe_state = _safe_state_from_reasons(reason_tuple)
+    return SafeStateRecord(
+        SAFE_state=safe_state,
+        SAFE_reason=reason_tuple[0] if reason_tuple else "missing",
+        blocked_commands=blocked_commands,
+        allowed_commands=("status", "recovery") if safe_state == "safe_lockdown" else ("status",),
+        exit_conditions=_safe_exit_conditions(reason_tuple),
+        power_state=power_state,
+        thermal_state=thermal_state,
+        sensor_state=sensor_state,
+        bayonet_state=str(bayonet_state or "unknown"),
+        damage_state=str(damage_state or "unknown"),
+        timestamp=timestamp,
+        reason_codes=reason_tuple,
+        blackbox_relevance=any(
+            reason in reason_tuple
+            for reason in (SAFE_THERMAL_CRITICAL, SAFE_DAMAGE_CRITICAL, SAFE_BLACKBOX_CRITICAL)
+        ),
     )
 
 
