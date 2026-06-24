@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 
+from qiki.services.q_sim_service.core.world_model import (
+    CommsChannelRecord,
+    comms_channels_from_comms_state,
+)
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.models.core import CommandMessage, MessageMetadata
@@ -91,3 +96,115 @@ def test_comms_disabled_forces_xpdr_off(monkeypatch, tmp_path) -> None:
     meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
     enable = CommandMessage(command_name="sim.xpdr.mode", parameters={"mode": "ON"}, metadata=meta)
     assert qsim.apply_control_command(enable) is False
+
+
+def test_if_comms_record_exposes_canon_fields() -> None:
+    record_fields = {field.name for field in fields(CommsChannelRecord)}
+
+    assert record_fields == {
+        "channel_id",
+        "channel_class",
+        "direction",
+        "bandwidth_class",
+        "latency",
+        "power_cost_W",
+        "thermal_node",
+        "signature_class",
+        "EMCON_state",
+        "delivery_state",
+        "timestamp",
+        "freshness",
+        "trust_status",
+        "reason_codes",
+    }
+
+
+def test_if_comms_mapper_projects_real_xpdr_channel() -> None:
+    qsim = QSimService(QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO"))
+    state = qsim.world_model.get_state()
+    payload = qsim._build_telemetry_payload(state)
+
+    records = comms_channels_from_comms_state(
+        payload.get("comms"),
+        power=payload.get("power"),
+        thermal=payload.get("thermal"),
+        timestamp=payload.get("timestamp"),
+    )
+
+    assert len(records) == 1
+    xpdr = records[0]
+    assert xpdr.channel_id == "transponder"
+    assert xpdr.channel_class == "transponder"
+    assert xpdr.direction == "tx"
+    assert xpdr.latency == payload["comms"]["latency_ms"]
+    assert xpdr.power_cost_W == payload["comms"]["tx_power_w"]
+    assert xpdr.delivery_state in {"online", "channel_degraded", "power_block", "not_implemented"}
+    assert xpdr.EMCON_state == "missing"
+
+
+def test_if_comms_mapper_marks_missing_comms_not_implemented() -> None:
+    records = comms_channels_from_comms_state(None)
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.channel_id == "missing"
+    assert record.delivery_state == "not_implemented"
+    assert record.trust_status == "missing"
+    assert record.reason_codes == ("COMMS_NOT_IMPLEMENTED",)
+
+
+def test_if_comms_mapper_surfaces_power_block_without_faking_delivery() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "xpdr": {"active": False, "allowed": False, "mode": "ON"},
+            "link": "degraded",
+            "latency_ms": 1600.0,
+            "tx_power_w": 0.0,
+            "data_rate_kbps": 0.0,
+        },
+        power={"shed_loads": ["transponder"], "shed_reasons": ["low_soc"]},
+    )
+
+    record = records[0]
+    assert record.delivery_state == "power_block"
+    assert record.trust_status == "degraded"
+    assert "COMMS_POWER_BLOCK" in record.reason_codes
+
+
+def test_if_comms_mapper_surfaces_thermal_block() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+        },
+        thermal={"nodes": [{"id": "comms", "temp_c": 80.0, "warn_c": 60.0, "tripped": True}]},
+    )
+
+    record = records[0]
+    assert record.delivery_state == "thermal_block"
+    assert record.trust_status == "degraded"
+    assert record.reason_codes == ("COMMS_THERMAL_BLOCK",)
+
+
+def test_if_comms_mapper_surfaces_emcon_block() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+            "EMCON_state": "EMCON_block",
+        }
+    )
+
+    record = records[0]
+    assert record.delivery_state == "EMCON_block"
+    assert record.EMCON_state == "EMCON_block"
+    assert record.reason_codes == ("EMCON_BLOCK",)
