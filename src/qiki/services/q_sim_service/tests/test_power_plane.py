@@ -5,9 +5,11 @@ import pytest
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Unit as ProtoUnit
 from qiki.services.q_sim_service.core.world_model import (
+    NblPacketRecord,
     PduPermissionRecord,
     PowerTelemetryRecord,
     WorldModel,
+    nbl_packet_from_runtime_state,
     pdu_permissions_from_power_state,
     power_telemetry_from_power_state,
 )
@@ -158,6 +160,82 @@ def test_if_pdu_power_record_exposes_canon_fields() -> None:
         "allowance_state",
         "reason_codes",
     } <= record_fields
+
+
+def test_if_nbl_record_exposes_canon_fields_and_status() -> None:
+    record_fields = {field.name for field in fields(NblPacketRecord)}
+
+    assert {
+        "packet_id",
+        "criticality",
+        "payload_class",
+        "payload_size_bits",
+        "transmit_attempts",
+        "SoC_cap_cost",
+        "power_cost",
+        "thermal_node",
+        "expected_latency",
+        "delivery_confidence",
+        "audit_required",
+        "blackbox_relevance",
+        "reason_codes",
+    } <= record_fields
+    assert "status" in record_fields
+
+
+def test_if_nbl_mapper_defaults_to_rules_only_not_sent() -> None:
+    record = nbl_packet_from_runtime_state(None)
+
+    assert record.status == "not_implemented"
+    assert record.delivery_confidence == "unknown"
+    assert record.reason_codes == ("NBL_NOT_IMPLEMENTED", "NBL_RULES_ONLY")
+    assert record.blackbox_relevance is False
+
+
+def test_if_nbl_mapper_rejects_non_critical_packet() -> None:
+    record = nbl_packet_from_runtime_state(
+        {"nbl_active": True, "nbl_allowed": True, "nbl_budget_w": 20.0, "supercap_soc_pct": 60.0},
+        packet_id="pkt-chatty",
+        criticality="routine",
+        payload_class="bulk_telemetry",
+        payload_size_bits=128,
+    )
+
+    assert record.status == "packet_rejected"
+    assert "NBL_NOT_CRITICAL" in record.reason_codes
+    assert "NBL_RULES_ONLY" in record.reason_codes
+    assert record.delivery_confidence == "unknown"
+
+
+def test_if_nbl_mapper_allows_critical_packet_but_does_not_fake_delivery() -> None:
+    record = nbl_packet_from_runtime_state(
+        {"nbl_active": True, "nbl_allowed": True, "nbl_budget_w": 20.0, "supercap_soc_pct": 60.0},
+        packet_id="pkt-distress",
+        criticality="emergency",
+        payload_class="distress_packet",
+        payload_size_bits=128,
+    )
+
+    assert record.status == "packet_allowed"
+    assert record.audit_required is True
+    assert record.blackbox_relevance is True
+    assert record.delivery_confidence == "unknown"
+    assert record.reason_codes == ("NBL_RULES_ONLY",)
+
+
+def test_if_nbl_mapper_surfaces_cap_low_and_thermal_block() -> None:
+    record = nbl_packet_from_runtime_state(
+        {"nbl_active": True, "nbl_allowed": False, "nbl_budget_w": 0.0, "supercap_soc_pct": 0.0},
+        thermal={"nodes": [{"id": "core", "temp_c": 95.0, "warn_c": 70.0, "tripped": True}]},
+        packet_id="pkt-blocked",
+        criticality="emergency",
+        payload_class="distress_packet",
+        payload_size_bits=128,
+    )
+
+    assert record.status == "packet_rejected"
+    assert "NBL_CAP_LOW" in record.reason_codes
+    assert "NBL_THERMAL_BLOCK" in record.reason_codes
 
 
 def test_if_pdu_power_mapper_projects_real_shed_and_throttle_gates() -> None:

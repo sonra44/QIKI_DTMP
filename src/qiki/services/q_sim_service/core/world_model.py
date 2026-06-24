@@ -59,6 +59,13 @@ COM_INVALID = "COM_INVALID"
 INERTIA_UNMODELED = "INERTIA_UNMODELED"
 BAYONET_SOFT_CAPTURE_ONLY = "BAYONET_SOFT_CAPTURE_ONLY"
 BRIDGE_ACTIVE_RESTRICTED_MOTION = "BRIDGE_ACTIVE_RESTRICTED_MOTION"
+NBL_NOT_CRITICAL = "NBL_NOT_CRITICAL"
+NBL_PAYLOAD_TOO_LARGE = "NBL_PAYLOAD_TOO_LARGE"
+NBL_CAP_LOW = "NBL_CAP_LOW"
+NBL_PDU_DENIED = "NBL_PDU_DENIED"
+NBL_THERMAL_BLOCK = "NBL_THERMAL_BLOCK"
+NBL_NOT_IMPLEMENTED = "NBL_NOT_IMPLEMENTED"
+NBL_RULES_ONLY = "NBL_RULES_ONLY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +200,26 @@ class RcsCommandRecord:
     Thrust_Map_status: str
     Torque_Map_status: str
     validation_status: str
+    reason_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NblPacketRecord:
+    """IF-NBL-001 rules-only / target-only projection from q_sim power gates."""
+
+    packet_id: str
+    status: str
+    criticality: str
+    payload_class: str
+    payload_size_bits: int | None
+    transmit_attempts: int
+    SoC_cap_cost: float | None
+    power_cost: float | None
+    thermal_node: str | None
+    expected_latency: str
+    delivery_confidence: str
+    audit_required: bool
+    blackbox_relevance: bool
     reason_codes: tuple[str, ...]
 
 
@@ -1127,6 +1154,125 @@ def rcs_command_from_runtime_state(
         Thrust_Map_status=thrust_map_status,
         Torque_Map_status=torque_map_status,
         validation_status="rejected" if reason_codes else "allowed",
+        reason_codes=reason_codes,
+    )
+
+
+_NBL_CRITICALITIES = {"critical", "emergency", "distress"}
+_NBL_BLACKBOX_PAYLOADS = {"distress_packet", "emergency_beacon", "last_state_packet"}
+
+
+def _nbl_thermal_node(thermal: dict[str, Any] | None, power: dict[str, Any]) -> str | None:
+    shed_reasons = _string_tuple(power.get("shed_reasons"))
+    shed_loads = _string_tuple(power.get("shed_loads"))
+    if "thermal_overheat" in shed_reasons and "nbl" in shed_loads:
+        return "core"
+    if not isinstance(thermal, dict):
+        return None
+    nodes = thermal.get("nodes")
+    if not isinstance(nodes, list):
+        return None
+    for raw in nodes:
+        if not isinstance(raw, dict):
+            continue
+        node_id = str(raw.get("id") or "").strip()
+        if node_id.lower() not in {"core", "pdu", "nbl"}:
+            continue
+        if _thermal_state_from_node(raw) in {"hot", "critical"}:
+            return node_id
+    return None
+
+
+def _nbl_reason_codes(
+    *,
+    power: dict[str, Any],
+    criticality: str,
+    payload_size_bits: int | None,
+    max_payload_bits: int,
+    thermal_node: str | None,
+    safe_state: str,
+) -> tuple[str, ...]:
+    reason_codes: list[str] = []
+    if criticality not in _NBL_CRITICALITIES:
+        reason_codes.append(NBL_NOT_CRITICAL)
+    if payload_size_bits is not None and payload_size_bits > max_payload_bits:
+        reason_codes.append(NBL_PAYLOAD_TOO_LARGE)
+    soc_cap = _num_or_none(power.get("supercap_soc_pct"))
+    if soc_cap is not None and soc_cap <= 0.0:
+        reason_codes.append(NBL_CAP_LOW)
+    if power.get("nbl_allowed") is False:
+        reason_codes.append(NBL_PDU_DENIED)
+    if thermal_node:
+        reason_codes.append(NBL_THERMAL_BLOCK)
+    reason_codes.append(NBL_RULES_ONLY)
+    return tuple(dict.fromkeys(reason_codes))
+
+
+def nbl_packet_from_runtime_state(
+    power: dict[str, Any] | None,
+    *,
+    thermal: dict[str, Any] | None = None,
+    packet_id: str = "missing",
+    criticality: str = "missing",
+    payload_class: str = "missing",
+    payload_size_bits: int | None = None,
+    transmit_attempts: int = 0,
+    safe_state: str = "unknown",
+    max_payload_bits: int = 1024,
+) -> NblPacketRecord:
+    """Map q_sim NBL rules/power gates into IF-NBL-001 without claiming delivery."""
+    if not isinstance(power, dict):
+        return NblPacketRecord(
+            packet_id=str(packet_id or "missing"),
+            status="not_implemented",
+            criticality=str(criticality or "missing"),
+            payload_class=str(payload_class or "missing"),
+            payload_size_bits=payload_size_bits,
+            transmit_attempts=max(0, int(transmit_attempts)),
+            SoC_cap_cost=None,
+            power_cost=None,
+            thermal_node=None,
+            expected_latency="unknown",
+            delivery_confidence="unknown",
+            audit_required=False,
+            blackbox_relevance=False,
+            reason_codes=(NBL_NOT_IMPLEMENTED, NBL_RULES_ONLY),
+        )
+
+    criticality_text = str(criticality or "missing").strip().lower() or "missing"
+    payload_text = str(payload_class or "missing").strip() or "missing"
+    thermal_node = _nbl_thermal_node(thermal, power)
+    reason_codes = _nbl_reason_codes(
+        power=power,
+        criticality=criticality_text,
+        payload_size_bits=payload_size_bits,
+        max_payload_bits=max_payload_bits,
+        thermal_node=thermal_node,
+        safe_state=safe_state,
+    )
+    blocking_reasons = tuple(reason for reason in reason_codes if reason != NBL_RULES_ONLY)
+    status = "packet_allowed" if not blocking_reasons else "packet_rejected"
+    if not bool(power.get("nbl_active", False)) and status == "packet_allowed":
+        status = "critical_only"
+
+    power_cost = _num_or_none(power.get("nbl_budget_w"))
+    if power_cost is None:
+        power_cost = _num_or_none(power.get("nbl_power_w"))
+    blackbox_relevance = criticality_text in _NBL_CRITICALITIES and payload_text in _NBL_BLACKBOX_PAYLOADS
+    return NblPacketRecord(
+        packet_id=str(packet_id or "missing"),
+        status=status,
+        criticality=criticality_text,
+        payload_class=payload_text,
+        payload_size_bits=payload_size_bits,
+        transmit_attempts=max(0, int(transmit_attempts)),
+        SoC_cap_cost=_num_or_none(power.get("supercap_soc_pct")),
+        power_cost=power_cost,
+        thermal_node=thermal_node,
+        expected_latency="unknown",
+        delivery_confidence="unknown",
+        audit_required=criticality_text in _NBL_CRITICALITIES,
+        blackbox_relevance=blackbox_relevance,
         reason_codes=reason_codes,
     )
 
