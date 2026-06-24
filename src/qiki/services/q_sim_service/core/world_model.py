@@ -66,6 +66,10 @@ NBL_PDU_DENIED = "NBL_PDU_DENIED"
 NBL_THERMAL_BLOCK = "NBL_THERMAL_BLOCK"
 NBL_NOT_IMPLEMENTED = "NBL_NOT_IMPLEMENTED"
 NBL_RULES_ONLY = "NBL_RULES_ONLY"
+BLACKBOX_TARGET_ONLY = "BLACKBOX_TARGET_ONLY"
+BLACKBOX_NOT_RECORDED = "BLACKBOX_NOT_RECORDED"
+BLACKBOX_TRIGGER_MISSING = "BLACKBOX_TRIGGER_MISSING"
+BLACKBOX_TRIGGER_DETECTED = "BLACKBOX_TRIGGER_DETECTED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +225,27 @@ class NblPacketRecord:
     audit_required: bool
     blackbox_relevance: bool
     reason_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BlackboxRecord:
+    """IF-BLACKBOX-001 target-only projection; no runtime store is claimed."""
+
+    record_id: str
+    recorded_state: str
+    timestamp: float | None
+    trigger_event: str
+    severity: str
+    body_state_snapshot: dict[str, Any]
+    power_snapshot: dict[str, Any]
+    thermal_snapshot: dict[str, Any]
+    motion_snapshot: dict[str, Any]
+    sensor_snapshot: dict[str, Any]
+    command_chain: tuple[str, ...]
+    audit_refs: tuple[str, ...]
+    reason_codes: tuple[str, ...]
+    loss_context: str
+    recovery_notes: str
 
 
 def _num_or_none(value: Any) -> float | None:
@@ -1274,6 +1299,133 @@ def nbl_packet_from_runtime_state(
         audit_required=criticality_text in _NBL_CRITICALITIES,
         blackbox_relevance=blackbox_relevance,
         reason_codes=reason_codes,
+    )
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Sequence):
+        return tuple(str(item) for item in value)
+    return (str(value),)
+
+
+def _mapping_snapshot(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def _blackbox_power_is_critical(power: dict[str, Any]) -> bool:
+    faults = {str(fault) for fault in power.get("faults", ()) if fault is not None}
+    if faults.intersection({"BUS_V_ZERO", "CRITICAL_POWER_LOSS", "BODY_POWER_LOSS"}):
+        return True
+    battery_soc = _num_or_none(power.get("soc_pct"))
+    cap_soc = _num_or_none(power.get("supercap_soc_pct"))
+    return battery_soc == 0.0 or cap_soc == 0.0
+
+
+def _blackbox_thermal_is_critical(thermal: dict[str, Any]) -> bool:
+    nodes = thermal.get("nodes")
+    if isinstance(nodes, dict):
+        node_values = nodes.values()
+    elif isinstance(nodes, Sequence) and not isinstance(nodes, str):
+        node_values = nodes
+    else:
+        return False
+    for raw in node_values:
+        if not isinstance(raw, dict):
+            continue
+        if bool(raw.get("tripped")):
+            return True
+        if _thermal_state_from_node(raw) == "critical":
+            return True
+    return False
+
+
+def _blackbox_trigger_from_event(
+    event: dict[str, Any],
+    *,
+    power: dict[str, Any],
+    thermal: dict[str, Any],
+) -> tuple[str, str]:
+    event_type = str(event.get("event_type") or "").strip().lower()
+    if _blackbox_power_is_critical(power):
+        return "critical power loss", "critical"
+    if _blackbox_thermal_is_critical(thermal):
+        return "critical thermal event", "critical"
+    if event_type == "nbl_packet" or bool(event.get("blackbox_relevance")):
+        return "NBL emergency packet", "critical"
+    if event_type in {"safe_escalation", "emergency_detach", "postmortem_marker"}:
+        return event_type.replace("_", " "), "critical"
+    if event_type in {"failed_critical_command", "sensor_conflict_critical_cmd"}:
+        return event_type.replace("_", " "), "critical"
+    return "missing", "missing"
+
+
+def blackbox_record_from_runtime_event(
+    event: dict[str, Any] | None,
+    *,
+    state: dict[str, Any] | None = None,
+    command_chain: Sequence[str] | None = None,
+    audit_refs: Sequence[str] | None = None,
+    loss_context: str = "target-only",
+    recovery_notes: str = "target-only",
+) -> BlackboxRecord:
+    """Project runtime state toward IF-BLACKBOX-001 without claiming persistence."""
+    event_data = event if isinstance(event, dict) else {}
+    state_data = state if isinstance(state, dict) else {}
+    power_snapshot = _mapping_snapshot(state_data.get("power"))
+    thermal_snapshot = _mapping_snapshot(state_data.get("thermal"))
+    sensor_snapshot = _mapping_snapshot(state_data.get("sensor_plane") or state_data.get("sensors"))
+    body_state_snapshot = {
+        key: state_data[key]
+        for key in ("body_state", "safe_state", "qiki_state", "health_state")
+        if key in state_data
+    }
+    motion_snapshot = {
+        key: state_data[key]
+        for key in ("position", "heading", "speed", "speed_m_s", "velocity_xyz_m_s", "attitude", "orbit")
+        if key in state_data
+    }
+
+    trigger_event, severity = _blackbox_trigger_from_event(
+        event_data,
+        power=power_snapshot,
+        thermal=thermal_snapshot,
+    )
+    if trigger_event == "missing":
+        reason_codes = (
+            BLACKBOX_TARGET_ONLY,
+            BLACKBOX_NOT_RECORDED,
+            BLACKBOX_TRIGGER_MISSING,
+        )
+    else:
+        reason_codes = (
+            BLACKBOX_TARGET_ONLY,
+            BLACKBOX_NOT_RECORDED,
+            BLACKBOX_TRIGGER_DETECTED,
+        )
+
+    event_id = str(event_data.get("event_id") or "target-only")
+    return BlackboxRecord(
+        record_id=f"bb:{event_id}",
+        recorded_state="not_recorded",
+        timestamp=_num_or_none(event_data.get("timestamp")),
+        trigger_event=trigger_event,
+        severity=severity,
+        body_state_snapshot=body_state_snapshot,
+        power_snapshot=power_snapshot,
+        thermal_snapshot=thermal_snapshot,
+        motion_snapshot=motion_snapshot,
+        sensor_snapshot=sensor_snapshot,
+        command_chain=tuple(command_chain) if command_chain is not None else _string_tuple(event_data.get("command_chain")),
+        audit_refs=tuple(audit_refs) if audit_refs is not None else _string_tuple(event_data.get("audit_refs")),
+        reason_codes=reason_codes,
+        loss_context=str(loss_context or "target-only"),
+        recovery_notes=str(recovery_notes or "target-only"),
     )
 
 
