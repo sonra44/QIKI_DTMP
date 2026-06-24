@@ -17,7 +17,10 @@ from qiki.services.q_core_agent.core.body_structure import (
     MODULE_PASSPORT_MISSING,
     MOUNT_POINT_UNKNOWN,
     MOUNT_POINT_OCCUPIED,
+    PASSPORT_VALIDATOR_OWNER,
+    SOURCE_OWNER,
 )
+from qiki.services.q_core_agent.core.event_store import SystemEvent, TruthState
 
 BODY_MODULE_ATTACH_REJECTION = "BODY_MODULE_ATTACH_REJECTION"
 BODY_MODULE_ATTACH_REGISTERED = "BODY_MODULE_ATTACH_REGISTERED"
@@ -93,8 +96,31 @@ def card_type_for(event: Any) -> str:
     return BODY_MODULE_ATTACH_REJECTION
 
 
+_ALLOWED_AUDIT_OWNERS: frozenset[str] = frozenset({SOURCE_OWNER, PASSPORT_VALIDATOR_OWNER})
+
+
+def _is_genuine_audit_event(event: Any) -> bool:
+    """H5 trust gate — only a real, OK, owner-consistent SystemEvent is audit-backed.
+
+    A shaped/duck-typed object, a non-OK ``truth_state``, an unrecognized owner
+    subsystem, or a payload whose ``source_owner`` does not match the event
+    subsystem must NOT be treated as a trusted audit record (forgery/replay gap,
+    audit finding H5).
+    """
+    if not isinstance(event, SystemEvent):
+        return False
+    if event.truth_state != TruthState.OK:
+        return False
+    if event.subsystem not in _ALLOWED_AUDIT_OWNERS:
+        return False
+    payload = event.payload
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("source_owner") or "") == event.subsystem
+
+
 def source_type_for(event: Any) -> str:
-    if _is_supported_module_attach_event(event) and isinstance(getattr(event, "payload", None), dict):
+    if _is_supported_module_attach_event(event) and _is_genuine_audit_event(event):
         return SOURCE_TYPE_AUDIT_EVENT
     return SOURCE_TYPE_MISSING
 
