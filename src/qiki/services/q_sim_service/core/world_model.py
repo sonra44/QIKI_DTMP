@@ -77,6 +77,16 @@ BAYONET_STRUCTURAL_CHECK_FAILED = "BAYONET_STRUCTURAL_CHECK_FAILED"
 BAYONET_DEGRADED_LOCK = "BAYONET_DEGRADED_LOCK"
 BAYONET_EMERGENCY_DETACH_PENDING = "BAYONET_EMERGENCY_DETACH_PENDING"
 BAYONET_CONNECTED_OBJECT_UNKNOWN = "BAYONET_CONNECTED_OBJECT_UNKNOWN"
+BRIDGE_HARD_LOCK_MISSING = "BRIDGE_HARD_LOCK_MISSING"
+BRIDGE_STRUCTURAL_CHECK_MISSING = "BRIDGE_STRUCTURAL_CHECK_MISSING"
+BRIDGE_ELECTRICAL_UNSAFE = "BRIDGE_ELECTRICAL_UNSAFE"
+BRIDGE_UMBILICAL_MISSING = "BRIDGE_UMBILICAL_MISSING"
+BRIDGE_PASSPORT_MISSING = "BRIDGE_PASSPORT_MISSING"
+BRIDGE_PASSPORT_INVALID = "BRIDGE_PASSPORT_INVALID"
+BRIDGE_PDU_DENIED = "BRIDGE_PDU_DENIED"
+BRIDGE_THERMAL_BLOCK = "BRIDGE_THERMAL_BLOCK"
+BRIDGE_SAFE_BLOCK = "BRIDGE_SAFE_BLOCK"
+BRIDGE_ACTIVE_RESTRICTED_MOTION = "BRIDGE_ACTIVE_RESTRICTED_MOTION"
 SAFE_POWER_LOW = "SAFE_POWER_LOW"
 SAFE_CAP_LOW = "SAFE_CAP_LOW"
 SAFE_THERMAL_CRITICAL = "SAFE_THERMAL_CRITICAL"
@@ -298,6 +308,25 @@ class BayonetMechRecord:
     connected_object_id: str
     mechanical_load_class: str
     emergency_detach_available: bool
+    reason_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BayonetBridgeRecord:
+    """IF-BAYONET-BRIDGE-001 target-only validation projection."""
+
+    bayonet_id: str
+    connected_object_id: str
+    bridge_state: str
+    mechanical_state: str
+    structural_check: str
+    electrical_safety_state: str
+    umbilical_state: str
+    passport_state: str
+    power_direction: str
+    power_limit_W: float | None
+    data_link_state: str
+    thermal_node: str
     reason_codes: tuple[str, ...]
 
 
@@ -1748,6 +1777,110 @@ def bayonet_mech_from_docking_state(
         mechanical_load_class=mechanical_load_class,
         emergency_detach_available=emergency_detach_available,
         reason_codes=_bayonet_reason_codes(state, connected_object_id),
+    )
+
+
+def _bridge_structural_check(mech: BayonetMechRecord | None) -> str:
+    if mech is None:
+        return "missing"
+    if mech.state == "structural_check_passed":
+        return "passed"
+    if mech.state == "structural_check_failed" or mech.structural_rating == "failed":
+        return "failed"
+    if mech.structural_rating == "passed":
+        return "passed"
+    return "missing"
+
+
+def _bridge_reason_codes(
+    *,
+    mech: BayonetMechRecord | None,
+    structural_check: str,
+    electrical_safety_state: str,
+    umbilical_state: str,
+    passport_state: str,
+    pdu_allowance_state: str,
+    thermal_clearance: str,
+    safe_state: str,
+    motion_restriction: str,
+) -> tuple[str, ...]:
+    reason_codes: list[str] = []
+    mechanical_state = "unknown" if mech is None else mech.state
+    if mechanical_state not in {"mechanical_hard_lock", "structural_check_passed"}:
+        reason_codes.append(BRIDGE_HARD_LOCK_MISSING)
+    if structural_check != "passed":
+        reason_codes.append(BRIDGE_STRUCTURAL_CHECK_MISSING)
+    if electrical_safety_state != "passed":
+        reason_codes.append(BRIDGE_ELECTRICAL_UNSAFE)
+    if umbilical_state != "mated":
+        reason_codes.append(BRIDGE_UMBILICAL_MISSING)
+    if passport_state == "invalid":
+        reason_codes.append(BRIDGE_PASSPORT_INVALID)
+    elif passport_state != "validated":
+        reason_codes.append(BRIDGE_PASSPORT_MISSING)
+    if pdu_allowance_state != "allowed":
+        reason_codes.append(BRIDGE_PDU_DENIED)
+    if thermal_clearance == "blocked":
+        reason_codes.append(BRIDGE_THERMAL_BLOCK)
+    if safe_state in {"safe_warning", "safe_limited", "safe_lockdown"}:
+        reason_codes.append(BRIDGE_SAFE_BLOCK)
+    if motion_restriction == "restricted":
+        reason_codes.append(BRIDGE_ACTIVE_RESTRICTED_MOTION)
+    return tuple(dict.fromkeys(reason_codes))
+
+
+def bayonet_bridge_from_runtime_state(
+    mech: BayonetMechRecord | None,
+    *,
+    desired_bridge_state: str = "bridge_allowed",
+    electrical_safety_state: str = "missing",
+    umbilical_state: str = "missing",
+    passport_state: str = "missing",
+    pdu_allowance_state: str = "denied",
+    thermal_clearance: str = "missing",
+    safe_state: str = "safe_unknown",
+    motion_restriction: str = "none",
+    power_direction: str = "none",
+    power_limit_W: float | None = None,
+    data_link_state: str = "missing",
+    thermal_node: str = "missing",
+) -> BayonetBridgeRecord:
+    """Map bayonet validation chain into IF-BAYONET-BRIDGE-001 without activating bridge."""
+    structural_check = _bridge_structural_check(mech)
+    reason_codes = _bridge_reason_codes(
+        mech=mech,
+        structural_check=structural_check,
+        electrical_safety_state=electrical_safety_state,
+        umbilical_state=umbilical_state,
+        passport_state=passport_state,
+        pdu_allowance_state=pdu_allowance_state,
+        thermal_clearance=thermal_clearance,
+        safe_state=safe_state,
+        motion_restriction=motion_restriction,
+    )
+    if reason_codes == (BRIDGE_ACTIVE_RESTRICTED_MOTION,):
+        bridge_state = "bridge_degraded"
+    elif reason_codes:
+        bridge_state = "bridge_disallowed"
+    elif desired_bridge_state == "bridge_active":
+        bridge_state = "bridge_active"
+    else:
+        bridge_state = "bridge_allowed"
+
+    return BayonetBridgeRecord(
+        bayonet_id="bayonet:primary" if mech is None else mech.bayonet_id,
+        connected_object_id="unknown" if mech is None else mech.connected_object_id,
+        bridge_state=bridge_state,
+        mechanical_state="unknown" if mech is None else mech.state,
+        structural_check=structural_check,
+        electrical_safety_state=electrical_safety_state,
+        umbilical_state=umbilical_state,
+        passport_state=passport_state,
+        power_direction=power_direction,
+        power_limit_W=_num_or_none(power_limit_W),
+        data_link_state=data_link_state,
+        thermal_node=thermal_node,
+        reason_codes=reason_codes,
     )
 
 
