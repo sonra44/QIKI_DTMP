@@ -1,7 +1,97 @@
-from qiki.services.q_sim_service.core.world_model import WorldModel
+from dataclasses import fields
+
+from qiki.services.q_sim_service.core.world_model import (
+    ThermalTelemetryRecord,
+    WorldModel,
+    thermal_telemetry_from_thermal_state,
+)
 
 
 import pytest
+
+
+def test_if_thermal_telem_record_exposes_canon_fields() -> None:
+    record_fields = {field.name for field in fields(ThermalTelemetryRecord)}
+
+    assert {
+        "thermal_node_id",
+        "temp_current",
+        "thermal_state",
+        "temp_warning",
+        "temp_critical",
+        "heat_active_W",
+        "cooldown_state",
+        "blocked_commands",
+        "timestamp",
+        "freshness",
+        "source",
+        "trust_status",
+        "reason_codes",
+    } <= record_fields
+
+
+def test_if_thermal_telem_mapper_keeps_nodes_separate() -> None:
+    records = thermal_telemetry_from_thermal_state(
+        {
+            "nodes": [
+                {
+                    "id": "core",
+                    "temp_c": 82.0,
+                    "warned": True,
+                    "tripped": False,
+                    "warn_c": 80.0,
+                    "trip_c": 90.0,
+                },
+                {
+                    "id": "pdu",
+                    "temp_c": 96.0,
+                    "warned": False,
+                    "tripped": True,
+                    "warn_c": 85.0,
+                    "trip_c": 95.0,
+                },
+            ]
+        },
+        timestamp=123.0,
+        freshness="fresh",
+    )
+
+    assert [record.thermal_node_id for record in records] == ["core", "pdu"]
+    core, pdu = records
+    assert core.temp_current == pytest.approx(82.0)
+    assert core.thermal_state == "hot"
+    assert core.temp_warning == pytest.approx(80.0)
+    assert core.temp_critical == pytest.approx(90.0)
+    assert core.heat_active_W is None
+    assert core.cooldown_state == "missing"
+    assert core.blocked_commands == ()
+    assert core.trust_status == "trusted"
+    assert core.reason_codes == ("THERMAL_NODE_HOT",)
+    assert core.timestamp == pytest.approx(123.0)
+
+    assert pdu.temp_current == pytest.approx(96.0)
+    assert pdu.thermal_state == "critical"
+    assert pdu.blocked_commands == ("radar", "transponder", "nbl")
+    assert pdu.trust_status == "trusted"
+    assert pdu.reason_codes == ("THERMAL_NODE_CRITICAL", "PDU_THERMAL_BLOCK")
+
+
+def test_if_thermal_telem_mapper_marks_missing_nodes_unknown() -> None:
+    records = thermal_telemetry_from_thermal_state({}, freshness="unknown")
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.thermal_node_id == "missing"
+    assert record.temp_current is None
+    assert record.thermal_state == "unknown"
+    assert record.temp_warning is None
+    assert record.temp_critical is None
+    assert record.heat_active_W is None
+    assert record.cooldown_state == "missing"
+    assert record.blocked_commands == ()
+    assert record.freshness == "unknown"
+    assert record.trust_status == "missing"
+    assert record.reason_codes == ("THERMAL_TELEM_MISSING",)
 
 
 def test_thermal_nodes_follow_config_and_no_fake_defaults() -> None:
@@ -78,6 +168,11 @@ def test_thermal_nodes_follow_config_and_no_fake_defaults() -> None:
     assert isinstance(pdu, dict)
     assert float(pdu.get("warn_c", 0.0)) == pytest.approx(85.0)
     assert pdu.get("warned") is False
+
+    records = thermal_telemetry_from_thermal_state(thermal, timestamp=wm.sim_time_epoch_ts())
+    assert [record.thermal_node_id for record in records] == ["core", "pdu"]
+    assert records[0].temp_current == pytest.approx(float(core["temp_c"]))
+    assert records[1].temp_warning == pytest.approx(85.0)
 
 
 def test_thermal_plane_cools_towards_ambient_when_no_heat_sources() -> None:
