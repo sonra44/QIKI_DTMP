@@ -223,6 +223,18 @@ def test_if_nbl_mapper_allows_critical_packet_but_does_not_fake_delivery() -> No
     assert record.reason_codes == ("NBL_RULES_ONLY",)
 
 
+def test_if_nbl_soc_cap_cost_does_not_reuse_current_supercap_soc() -> None:
+    record = nbl_packet_from_runtime_state(
+        {"nbl_active": True, "nbl_allowed": True, "nbl_budget_w": 20.0, "supercap_soc_pct": 60.0},
+        packet_id="pkt-cost",
+        criticality="emergency",
+        payload_class="distress_packet",
+        payload_size_bits=128,
+    )
+
+    assert record.SoC_cap_cost is None
+
+
 def test_if_nbl_mapper_surfaces_cap_low_and_thermal_block() -> None:
     record = nbl_packet_from_runtime_state(
         {"nbl_active": True, "nbl_allowed": False, "nbl_budget_w": 0.0, "supercap_soc_pct": 0.0},

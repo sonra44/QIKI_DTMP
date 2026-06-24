@@ -216,6 +216,7 @@ class EventStore:
         self.enabled = bool(enabled)
         self._events: Deque[SystemEvent] = deque(maxlen=self.maxlen)
         self._events_lock = threading.RLock()
+        self._sqlite_lock = threading.RLock()
 
         backend_raw = str(backend or "memory").strip().lower()
         if backend_raw not in {mode.value for mode in _BackendMode}:
@@ -287,8 +288,8 @@ class EventStore:
             if not self._validate_event_contract(event):
                 return None
             self._events.append(event)
-            self._append_sqlite(event)
-            self._maybe_run_retention(event.ts)
+        self._append_sqlite(event)
+        self._maybe_run_retention(event.ts)
         return event
 
     def append_new(
@@ -420,9 +421,10 @@ class EventStore:
 
     def stats(self) -> EventStoreStats:
         if self.backend in {_BackendMode.SQLITE, _BackendMode.HYBRID} and self._sqlite_conn is not None:
-            self._flush_sqlite_writer()
-            row = self._sqlite_conn.execute("SELECT COUNT(*), MIN(ts), MAX(ts) FROM events").fetchone()
-            db_size = self._db_size_bytes()
+            with self._sqlite_lock:
+                self._flush_sqlite_writer()
+                row = self._sqlite_conn.execute("SELECT COUNT(*), MIN(ts), MAX(ts) FROM events").fetchone()
+                db_size = self._db_size_bytes()
             rows = int(row[0] if row and row[0] is not None else 0)
             oldest = float(row[1]) if row and row[1] is not None else None
             newest = float(row[2]) if row and row[2] is not None else None
@@ -446,8 +448,9 @@ class EventStore:
             if writer.last_error is not None and self.strict:
                 raise RuntimeError(f"eventstore sqlite writer failed during close: {writer.last_error}")
         if self._sqlite_conn is not None:
-            self._sqlite_conn.close()
-            self._sqlite_conn = None
+            with self._sqlite_lock:
+                self._sqlite_conn.close()
+                self._sqlite_conn = None
 
     @property
     def sqlite_queue_depth(self) -> int:
@@ -475,36 +478,37 @@ class EventStore:
     def _open_sqlite(self, *, vacuum_on_start: bool) -> None:
         path = Path(self.db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._sqlite_conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
-        self._sqlite_conn.execute("PRAGMA journal_mode=WAL")
-        self._sqlite_conn.execute("PRAGMA synchronous=NORMAL")
-        self._sqlite_conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY,
-                event_id TEXT,
-                ts REAL NOT NULL,
-                subsystem TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                truth_state TEXT,
-                session_id TEXT,
-                payload_json TEXT NOT NULL,
-                schema_version INTEGER NOT NULL
+        with self._sqlite_lock:
+            self._sqlite_conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+            self._sqlite_conn.execute("PRAGMA journal_mode=WAL")
+            self._sqlite_conn.execute("PRAGMA synchronous=NORMAL")
+            self._sqlite_conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY,
+                    event_id TEXT,
+                    ts REAL NOT NULL,
+                    subsystem TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    truth_state TEXT,
+                    session_id TEXT,
+                    payload_json TEXT NOT NULL,
+                    schema_version INTEGER NOT NULL
+                )
+                """
             )
-            """
-        )
-        columns = {row[1] for row in self._sqlite_conn.execute("PRAGMA table_info(events)").fetchall()}
-        if "event_id" not in columns:
-            self._sqlite_conn.execute("ALTER TABLE events ADD COLUMN event_id TEXT")
-        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)")
-        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_event_id ON events(event_id)")
-        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(event_type, ts)")
-        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_subsystem_ts ON events(subsystem, ts)")
-        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts)")
-        self._sqlite_conn.commit()
-        if vacuum_on_start:
-            self._sqlite_conn.execute("VACUUM")
+            columns = {row[1] for row in self._sqlite_conn.execute("PRAGMA table_info(events)").fetchall()}
+            if "event_id" not in columns:
+                self._sqlite_conn.execute("ALTER TABLE events ADD COLUMN event_id TEXT")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_event_id ON events(event_id)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(event_type, ts)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_subsystem_ts ON events(subsystem, ts)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts)")
             self._sqlite_conn.commit()
+            if vacuum_on_start:
+                self._sqlite_conn.execute("VACUUM")
+                self._sqlite_conn.commit()
 
         self._sqlite_writer = _SQLiteEventWriter(
             self.db_path,
@@ -674,45 +678,46 @@ class EventStore:
         order: str,
     ) -> list[SystemEvent]:
         assert self._sqlite_conn is not None
-        self._flush_sqlite_writer()
+        with self._sqlite_lock:
+            self._flush_sqlite_writer()
 
-        clauses: list[str] = []
-        params: list[Any] = []
-        if from_ts is not None:
-            clauses.append("ts >= ?")
-            params.append(float(from_ts))
-        if to_ts is not None:
-            clauses.append("ts <= ?")
-            params.append(float(to_ts))
-        if types:
-            placeholders = ",".join("?" for _ in types)
-            clauses.append(f"event_type IN ({placeholders})")
-            params.extend(sorted(types))
-        if subsystems:
-            placeholders = ",".join("?" for _ in subsystems)
-            clauses.append(f"subsystem IN ({placeholders})")
-            params.extend(sorted(subsystems))
-        if truth_states:
-            placeholders = ",".join("?" for _ in truth_states)
-            clauses.append(f"truth_state IN ({placeholders})")
-            params.extend(sorted(truth_states))
+            clauses: list[str] = []
+            params: list[Any] = []
+            if from_ts is not None:
+                clauses.append("ts >= ?")
+                params.append(float(from_ts))
+            if to_ts is not None:
+                clauses.append("ts <= ?")
+                params.append(float(to_ts))
+            if types:
+                placeholders = ",".join("?" for _ in types)
+                clauses.append(f"event_type IN ({placeholders})")
+                params.extend(sorted(types))
+            if subsystems:
+                placeholders = ",".join("?" for _ in subsystems)
+                clauses.append(f"subsystem IN ({placeholders})")
+                params.extend(sorted(subsystems))
+            if truth_states:
+                placeholders = ",".join("?" for _ in truth_states)
+                clauses.append(f"truth_state IN ({placeholders})")
+                params.extend(sorted(truth_states))
 
-        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        limit_sql = ""
-        if limit is not None:
-            limit_sql = " LIMIT ?"
-            params.append(int(limit))
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            limit_sql = ""
+            if limit is not None:
+                limit_sql = " LIMIT ?"
+                params.append(int(limit))
 
-        rows = self._sqlite_conn.execute(
-            f"""
-            SELECT event_id, ts, subsystem, event_type, truth_state, payload_json
-            FROM events
-            {where_sql}
-            ORDER BY ts {order}, id {order}
-            {limit_sql}
-            """,
-            params,
-        ).fetchall()
+            rows = self._sqlite_conn.execute(
+                f"""
+                SELECT event_id, ts, subsystem, event_type, truth_state, payload_json
+                FROM events
+                {where_sql}
+                ORDER BY ts {order}, id {order}
+                {limit_sql}
+                """,
+                params,
+            ).fetchall()
         result: list[SystemEvent] = []
         for idx, row in enumerate(rows):
             event_id, ts, subsystem, event_type, truth_state, payload_json = row
@@ -749,40 +754,41 @@ class EventStore:
     def _maybe_run_retention(self, now_ts: float) -> None:
         if self._sqlite_conn is None:
             return
-        now = float(now_ts)
-        if now - self._last_retention_run < self._retention_check_period_s:
-            return
-        self._last_retention_run = now
-        start = time.time()
-        deleted_rows = 0
-        self._flush_sqlite_writer()
+        with self._sqlite_lock:
+            now = float(now_ts)
+            if now - self._last_retention_run < self._retention_check_period_s:
+                return
+            self._last_retention_run = now
+            start = time.time()
+            deleted_rows = 0
+            self._flush_sqlite_writer()
 
-        if self.retention_hours > 0.0:
-            cutoff = now - (self.retention_hours * 3600.0)
-            while True:
+            if self.retention_hours > 0.0:
+                cutoff = now - (self.retention_hours * 3600.0)
+                while True:
+                    cur = self._sqlite_conn.execute(
+                        "DELETE FROM events WHERE id IN (SELECT id FROM events WHERE ts < ? ORDER BY ts ASC LIMIT ?)",
+                        (float(cutoff), int(self._retention_batch_rows)),
+                    )
+                    removed = int(cur.rowcount or 0)
+                    self._sqlite_conn.commit()
+                    deleted_rows += removed
+                    if removed < self._retention_batch_rows:
+                        break
+
+            max_bytes = int(self.max_db_mb * 1024.0 * 1024.0)
+            while self._db_size_bytes() > max_bytes:
                 cur = self._sqlite_conn.execute(
-                    "DELETE FROM events WHERE id IN (SELECT id FROM events WHERE ts < ? ORDER BY ts ASC LIMIT ?)",
-                    (float(cutoff), int(self._retention_batch_rows)),
+                    "DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY ts ASC LIMIT ?)",
+                    (int(self._retention_batch_rows),),
                 )
                 removed = int(cur.rowcount or 0)
                 self._sqlite_conn.commit()
                 deleted_rows += removed
-                if removed < self._retention_batch_rows:
+                if removed <= 0:
                     break
 
-        max_bytes = int(self.max_db_mb * 1024.0 * 1024.0)
-        while self._db_size_bytes() > max_bytes:
-            cur = self._sqlite_conn.execute(
-                "DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY ts ASC LIMIT ?)",
-                (int(self._retention_batch_rows),),
-            )
-            removed = int(cur.rowcount or 0)
-            self._sqlite_conn.commit()
-            deleted_rows += removed
-            if removed <= 0:
-                break
-
-        duration_ms = (time.time() - start) * 1000.0
+            duration_ms = (time.time() - start) * 1000.0
         self._emit_lifecycle_event(
             event_type="EVENTSTORE_RETENTION_RUN",
             reason="RETENTION",

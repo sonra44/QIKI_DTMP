@@ -20,16 +20,22 @@ def test_docking_plane_telemetry_and_control_commands() -> None:
 
     release = CommandMessage(command_name="sim.dock.release", parameters={}, metadata=meta)
     assert qsim.apply_control_command(release) is True
-    docking2 = qsim._build_telemetry_payload(qsim.world_model.get_state()).get("docking") or {}
+    state2 = qsim.world_model.get_state()
+    docking2 = qsim._build_telemetry_payload(state2).get("docking") or {}
     assert docking2.get("state") == "undocked"
     assert docking2.get("connected") is False
+    assert state2["power"]["dock_connected"] is False
 
     engage = CommandMessage(command_name="sim.dock.engage", parameters={"port": "B"}, metadata=meta)
     assert qsim.apply_control_command(engage) is True
-    docking3 = qsim._build_telemetry_payload(qsim.world_model.get_state()).get("docking") or {}
+    qsim.world_model.step(1.0)
+    state3 = qsim.world_model.get_state()
+    docking3 = qsim._build_telemetry_payload(state3).get("docking") or {}
     assert docking3.get("state") == "docked"
     assert docking3.get("connected") is True
     assert docking3.get("port") == "B"
+    assert state3["power"]["dock_connected"] is False
+    assert state3["power"]["dock_power_w"] == 0.0
 
     invalid = CommandMessage(command_name="sim.dock.engage", parameters={"port": "Z"}, metadata=meta)
     assert qsim.apply_control_command(invalid) is False

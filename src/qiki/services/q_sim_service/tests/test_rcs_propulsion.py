@@ -113,6 +113,30 @@ def test_sim_rcs_fire_control_command_emits_thrusters_block() -> None:
     assert qsim.apply_control_command(stop) is True
 
 
+def test_get_state_returns_isolated_rcs_thruster_snapshots() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
+    fire = CommandMessage(
+        command_name="sim.rcs.fire",
+        parameters={"axis": "forward", "pct": 50.0, "duration_s": 1.0},
+        metadata=meta,
+    )
+    assert qsim.apply_control_command(fire) is True
+    qsim.step(delta_time=0.1)
+
+    state = qsim.world_model.get_state()
+    thrusters = ((state.get("propulsion") or {}).get("rcs") or {}).get("thrusters")
+    assert isinstance(thrusters, list) and thrusters
+
+    first_index = int(thrusters[0]["index"])
+    before = qsim.world_model._rcs_thruster_state[first_index]["duty_pct"]
+    thrusters[0]["duty_pct"] = 999.0
+
+    assert qsim.world_model._rcs_thruster_state[first_index]["duty_pct"] == before
+
+
 def test_rcs_telemetry_exposes_fuel_cost_fields_after_burst() -> None:
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     qsim = QSimService(cfg)

@@ -3,6 +3,13 @@ from __future__ import annotations
 from qiki.services.q_sim_service.core.world_model import WorldModel
 
 
+def test_world_model_default_get_state_is_self_contained() -> None:
+    state = WorldModel().get_state()
+
+    assert isinstance(state.get("sensor_plane"), dict)
+    assert state["sensor_plane"]["radiation"]["status"] in {"na", "ok", "warn", "crit"}
+
+
 def test_radiation_status_na_when_limits_not_configured() -> None:
     bot_config = {"hardware_profile": {"sensor_plane": {"enabled": True, "radiation": {"enabled": True}}}}
     wm = WorldModel(bot_config=bot_config)

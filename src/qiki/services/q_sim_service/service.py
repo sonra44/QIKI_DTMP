@@ -244,11 +244,9 @@ class QSimService:
                 return False
             if port is None and not self.world_model.set_docking_port(None):
                 return False
-            self.world_model.set_dock_connected(True)
-            return True
+            return self.world_model.set_docking_connected(True)
         if name == "sim.dock.release":
-            self.world_model.set_dock_connected(False)
-            return True
+            return self.world_model.set_docking_connected(False)
 
         # RCS operator control (no new proto): drive existing RCS simulation via COMMANDS_CONTROL.
         if name == "sim.rcs.stop":

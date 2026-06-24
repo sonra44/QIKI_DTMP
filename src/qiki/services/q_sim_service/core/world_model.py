@@ -1373,7 +1373,7 @@ def nbl_packet_from_runtime_state(
         payload_class=payload_text,
         payload_size_bits=payload_size_bits,
         transmit_attempts=max(0, int(transmit_attempts)),
-        SoC_cap_cost=_num_or_none(power.get("supercap_soc_pct")),
+        SoC_cap_cost=None,
         power_cost=power_cost,
         thermal_node=thermal_node,
         expected_latency="unknown",
@@ -1979,6 +1979,7 @@ class WorldModel:
         self._docking_ports: list[str] = ["A", "B"]
         self._docking_default_port: str = "A"
         self.docking_port: str | None = None
+        self.docking_connected = False
         self.docking_state: str = "undocked"
 
         # Sensor Plane (internal telemetry sensors) — virtual hardware (no-mocks).
@@ -1993,6 +1994,8 @@ class WorldModel:
 
         self._radiation_enabled = False
         self._radiation_dose_total_usv: float | None = None
+        self._radiation_warn_usvh: float | None = None
+        self._radiation_crit_usvh: float | None = None
 
         self._proximity_enabled = False
         self._proximity_min_range_m: float | None = None
@@ -2218,10 +2221,12 @@ class WorldModel:
 
         if not self._docking_enabled:
             self.docking_port = None
+            self.docking_connected = False
             self.docking_state = "disabled"
         else:
             self.docking_port = self._docking_default_port
-            self.docking_state = "docked" if bool(self.dock_connected) else "undocked"
+            self.docking_connected = bool(self.dock_connected)
+            self.docking_state = "docked" if self.docking_connected else "undocked"
 
         # Sensor Plane params (single source of truth: bot_config.json).
         sp = hw.get("sensor_plane")
@@ -2603,8 +2608,6 @@ class WorldModel:
         if connected == bool(getattr(self, "dock_connected", False)):
             return
         self.dock_connected = connected
-        if self._docking_enabled:
-            self.docking_state = "docked" if connected else "undocked"
         if not connected:
             # Reset soft-start state when disconnecting.
             self._dock_since_s = 0.0
@@ -2616,6 +2619,18 @@ class WorldModel:
             # Restart soft-start ramp on a fresh connect.
             self._dock_since_s = 0.0
             self.dock_soft_start_pct = 0.0
+
+    def set_docking_connected(self, connected: bool) -> bool:
+        if not self._docking_enabled:
+            return False
+        connected = bool(connected)
+        self.docking_connected = connected
+        self.docking_state = "docked" if connected else "undocked"
+        if connected and self.docking_port is None:
+            self.docking_port = self._docking_default_port
+        if not connected:
+            self.set_dock_connected(False)
+        return True
 
     def set_docking_port(self, port: str | None) -> bool:
         if not self._docking_enabled:
@@ -3512,13 +3527,13 @@ class WorldModel:
                     "power_w": float(self.rcs_power_w),
                     "net_force_n": list(self._rcs_net_force_n),
                     "net_torque_nm": list(self._rcs_net_torque_nm),
-                    "thrusters": [self._rcs_thruster_state[i] for i in sorted(self._rcs_thruster_state.keys())],
+                    "thrusters": [dict(self._rcs_thruster_state[i]) for i in sorted(self._rcs_thruster_state.keys())],
                 }
             },
             "docking": {
                 "enabled": bool(self._docking_enabled),
                 "state": self.docking_state,
-                "connected": bool(self.dock_connected),
+                "connected": bool(self.docking_connected),
                 "port": self.docking_port,
                 "ports": list(self._docking_ports),
             },
