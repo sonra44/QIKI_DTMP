@@ -5,8 +5,10 @@ import pytest
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Unit as ProtoUnit
 from qiki.services.q_sim_service.core.world_model import (
+    PduPermissionRecord,
     PowerTelemetryRecord,
     WorldModel,
+    pdu_permissions_from_power_state,
     power_telemetry_from_power_state,
 )
 from qiki.services.q_sim_service.service import QSimService
@@ -135,6 +137,105 @@ def test_if_power_telem_mapper_marks_incomplete_power_state_missing() -> None:
     assert record.trust_status == "missing"
     assert record.reason_codes == ("POWER_TELEM_MISSING",)
     assert record.freshness == "unknown"
+
+
+def test_if_pdu_power_record_exposes_canon_fields() -> None:
+    record_fields = {field.name for field in fields(PduPermissionRecord)}
+
+    assert {
+        "load_id",
+        "load_class",
+        "requested_power_W",
+        "peak_required",
+        "duration_s",
+        "SoC_bat",
+        "SoC_cap",
+        "bus_voltage_V",
+        "bus_current_A",
+        "PDU_state",
+        "thermal_clearance",
+        "SAFE_state",
+        "allowance_state",
+        "reason_codes",
+    } <= record_fields
+
+
+def test_if_pdu_power_mapper_projects_real_shed_and_throttle_gates() -> None:
+    records = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"radar": 120.0, "rcs": 40.0},
+            "soc_pct": 55.0,
+            "supercap_soc_pct": 12.0,
+            "bus_v": 28.0,
+            "bus_a": 7.0,
+            "load_shedding": True,
+            "shed_loads": ["radar"],
+            "shed_reasons": ["pdu_overcurrent"],
+            "pdu_throttled": True,
+            "throttled_loads": ["rcs"],
+            "faults": ["PDU_OVERCURRENT"],
+        },
+        thermal={"nodes": [{"id": "pdu", "tripped": True}]},
+        duration_s=2.5,
+    )
+
+    by_load = {record.load_id: record for record in records}
+    radar = by_load["radar"]
+    assert radar.load_class == "sensor"
+    assert radar.requested_power_W == pytest.approx(120.0)
+    assert radar.peak_required is False
+    assert radar.duration_s == pytest.approx(2.5)
+    assert radar.SoC_bat == pytest.approx(55.0)
+    assert radar.SoC_cap == pytest.approx(12.0)
+    assert radar.bus_voltage_V == pytest.approx(28.0)
+    assert radar.bus_current_A == pytest.approx(7.0)
+    assert radar.PDU_state == "overcurrent"
+    assert radar.thermal_clearance == "blocked"
+    assert radar.SAFE_state == "unknown"
+    assert radar.allowance_state == "load_shed"
+    assert radar.reason_codes == ("PDU_OVERLOAD", "LOAD_SHED_ACTIVE", "THERMAL_BLOCK")
+
+    rcs = by_load["rcs"]
+    assert rcs.load_class == "peak"
+    assert rcs.peak_required is True
+    assert rcs.thermal_clearance == "clear"
+    assert rcs.allowance_state == "load_allowed_limited"
+    assert rcs.reason_codes == ("PDU_OVERLOAD",)
+
+
+def test_if_pdu_power_mapper_marks_missing_power_degraded() -> None:
+    records = pdu_permissions_from_power_state({}, thermal=None)
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.load_id == "missing"
+    assert record.load_class == "missing"
+    assert record.requested_power_W is None
+    assert record.peak_required is False
+    assert record.SoC_bat is None
+    assert record.SoC_cap is None
+    assert record.bus_voltage_V is None
+    assert record.bus_current_A is None
+    assert record.PDU_state == "missing"
+    assert record.thermal_clearance == "missing"
+    assert record.allowance_state == "load_degraded"
+    assert record.reason_codes == ("PDU_DENIED",)
+
+
+def test_if_pdu_power_mapper_keeps_thermal_clearance_missing_without_source() -> None:
+    records = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"radar": 10.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 50.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal=None,
+    )
+
+    assert records[0].thermal_clearance == "missing"
+    assert records[0].allowance_state == "load_allowed"
 
 
 def test_telemetry_battery_is_legacy_alias_of_power_soc_pct() -> None:
