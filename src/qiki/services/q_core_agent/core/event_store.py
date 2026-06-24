@@ -172,6 +172,8 @@ class _SQLiteEventWriter:
                     pending = []
         except Exception as exc:  # noqa: BLE001
             self._error = exc
+            for _ in pending:
+                self._queue.task_done()
             # drain queue so producers are not blocked forever
             while True:
                 try:
@@ -186,8 +188,8 @@ class _SQLiteEventWriter:
         conn.executemany(
             """
             INSERT INTO events (
-                ts, subsystem, event_type, truth_state, session_id, payload_json, schema_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                event_id, ts, subsystem, event_type, truth_state, session_id, payload_json, schema_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -472,6 +474,7 @@ class EventStore:
             """
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY,
+                event_id TEXT,
                 ts REAL NOT NULL,
                 subsystem TEXT NOT NULL,
                 event_type TEXT NOT NULL,
@@ -482,7 +485,11 @@ class EventStore:
             )
             """
         )
+        columns = {row[1] for row in self._sqlite_conn.execute("PRAGMA table_info(events)").fetchall()}
+        if "event_id" not in columns:
+            self._sqlite_conn.execute("ALTER TABLE events ADD COLUMN event_id TEXT")
         self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)")
+        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_event_id ON events(event_id)")
         self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(event_type, ts)")
         self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_subsystem_ts ON events(subsystem, ts)")
         self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts)")
@@ -513,6 +520,7 @@ class EventStore:
             if maybe is not None:
                 session_id = str(maybe)
         row = (
+            str(event.event_id),
             float(event.ts),
             str(event.subsystem),
             str(event.event_type),
@@ -581,6 +589,7 @@ class EventStore:
         if self._sqlite_writer is not None:
             session_id = ""
             row = (
+                str(event.event_id),
                 float(event.ts),
                 event.subsystem,
                 event.event_type,
@@ -687,7 +696,7 @@ class EventStore:
 
         rows = self._sqlite_conn.execute(
             f"""
-            SELECT ts, subsystem, event_type, truth_state, payload_json
+            SELECT event_id, ts, subsystem, event_type, truth_state, payload_json
             FROM events
             {where_sql}
             ORDER BY ts {order}, id {order}
@@ -697,7 +706,7 @@ class EventStore:
         ).fetchall()
         result: list[SystemEvent] = []
         for idx, row in enumerate(rows):
-            ts, subsystem, event_type, truth_state, payload_json = row
+            event_id, ts, subsystem, event_type, truth_state, payload_json = row
             payload: dict[str, Any]
             try:
                 loaded = json.loads(str(payload_json))
@@ -706,7 +715,7 @@ class EventStore:
                 payload = {}
             result.append(
                 SystemEvent(
-                    event_id=f"sqlite:{idx}:{float(ts):.6f}",
+                    event_id=str(event_id or f"sqlite:{idx}:{float(ts):.6f}"),
                     ts=float(ts),
                     subsystem=str(subsystem),
                     event_type=str(event_type),
