@@ -70,6 +70,13 @@ BLACKBOX_TARGET_ONLY = "BLACKBOX_TARGET_ONLY"
 BLACKBOX_NOT_RECORDED = "BLACKBOX_NOT_RECORDED"
 BLACKBOX_TRIGGER_MISSING = "BLACKBOX_TRIGGER_MISSING"
 BLACKBOX_TRIGGER_DETECTED = "BLACKBOX_TRIGGER_DETECTED"
+BAYONET_STATE_UNKNOWN = "BAYONET_STATE_UNKNOWN"
+BAYONET_SOFT_CAPTURE_ONLY = "BAYONET_SOFT_CAPTURE_ONLY"
+BAYONET_HARD_LOCK_MISSING = "BAYONET_HARD_LOCK_MISSING"
+BAYONET_STRUCTURAL_CHECK_FAILED = "BAYONET_STRUCTURAL_CHECK_FAILED"
+BAYONET_DEGRADED_LOCK = "BAYONET_DEGRADED_LOCK"
+BAYONET_EMERGENCY_DETACH_PENDING = "BAYONET_EMERGENCY_DETACH_PENDING"
+BAYONET_CONNECTED_OBJECT_UNKNOWN = "BAYONET_CONNECTED_OBJECT_UNKNOWN"
 SAFE_POWER_LOW = "SAFE_POWER_LOW"
 SAFE_CAP_LOW = "SAFE_CAP_LOW"
 SAFE_THERMAL_CRITICAL = "SAFE_THERMAL_CRITICAL"
@@ -275,6 +282,23 @@ class SafeStateRecord:
     timestamp: float | None
     reason_codes: tuple[str, ...]
     blackbox_relevance: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BayonetMechRecord:
+    """IF-BAYONET-MECH-001 target-only projection from docking/mechanical state."""
+
+    bayonet_id: str
+    state: str
+    state_timestamp: float | None
+    state_source: str
+    lock_quality: str
+    structural_rating: str
+    degraded_reason: str
+    connected_object_id: str
+    mechanical_load_class: str
+    emergency_detach_available: bool
+    reason_codes: tuple[str, ...]
 
 
 def _num_or_none(value: Any) -> float | None:
@@ -1606,6 +1630,124 @@ def safe_state_from_runtime_state(
             reason in reason_tuple
             for reason in (SAFE_THERMAL_CRITICAL, SAFE_DAMAGE_CRITICAL, SAFE_BLACKBOX_CRITICAL)
         ),
+    )
+
+
+_BAYONET_ALLOWED_STATES = {
+    "free",
+    "approach",
+    "alignment",
+    "magnetic_pre_align",
+    "soft_capture",
+    "mechanical_hard_lock",
+    "structural_check_passed",
+    "structural_check_failed",
+    "degraded_lock",
+    "emergency_detach_pending",
+    "detached",
+    "unknown",
+}
+
+
+def _bayonet_connected_object(docking: dict[str, Any], state: str) -> str:
+    explicit = str(docking.get("connected_object_id") or "").strip()
+    if explicit:
+        return explicit
+    port = str(docking.get("port") or "").strip()
+    if state in {"mechanical_hard_lock", "soft_capture", "degraded_lock", "structural_check_passed"}:
+        return f"dock:{port}" if port else "unknown"
+    if state == "detached":
+        return "none"
+    return "unknown"
+
+
+def _bayonet_state_from_docking(docking: dict[str, Any]) -> str:
+    raw_state = str(docking.get("state") or "").strip()
+    if raw_state in _BAYONET_ALLOWED_STATES:
+        return raw_state
+    if raw_state == "docked" or docking.get("connected") is True:
+        return "mechanical_hard_lock"
+    if raw_state == "undocked" or docking.get("connected") is False:
+        return "detached"
+    return "unknown"
+
+
+def _bayonet_reason_codes(state: str, connected_object_id: str) -> tuple[str, ...]:
+    reason_codes: list[str] = []
+    if state == "unknown":
+        reason_codes.append(BAYONET_STATE_UNKNOWN)
+    if state in {"soft_capture", "magnetic_pre_align"}:
+        reason_codes.append(BAYONET_SOFT_CAPTURE_ONLY)
+        reason_codes.append(BAYONET_HARD_LOCK_MISSING)
+    if state == "structural_check_failed":
+        reason_codes.append(BAYONET_STRUCTURAL_CHECK_FAILED)
+    if state == "degraded_lock":
+        reason_codes.append(BAYONET_DEGRADED_LOCK)
+    if state == "emergency_detach_pending":
+        reason_codes.append(BAYONET_EMERGENCY_DETACH_PENDING)
+    if connected_object_id == "unknown" and state not in {"unknown", "detached", "free"}:
+        reason_codes.append(BAYONET_CONNECTED_OBJECT_UNKNOWN)
+    return tuple(dict.fromkeys(reason_codes))
+
+
+def bayonet_mech_from_docking_state(
+    docking: dict[str, Any] | None,
+    *,
+    timestamp: float | None = None,
+    state_source: str = "q_sim_service.world_model.docking",
+    bayonet_id: str = "bayonet:primary",
+) -> BayonetMechRecord:
+    """Map docking/mechanical runtime state into IF-BAYONET-MECH-001 without bridge claims."""
+    if not isinstance(docking, dict) or not docking:
+        return BayonetMechRecord(
+            bayonet_id=bayonet_id,
+            state="unknown",
+            state_timestamp=timestamp,
+            state_source="missing",
+            lock_quality="unknown",
+            structural_rating="unknown",
+            degraded_reason="missing",
+            connected_object_id="unknown",
+            mechanical_load_class="unknown",
+            emergency_detach_available=False,
+            reason_codes=(BAYONET_STATE_UNKNOWN,),
+        )
+
+    if docking.get("enabled") is False:
+        state = "unknown"
+    else:
+        state = _bayonet_state_from_docking(docking)
+    connected_object_id = _bayonet_connected_object(docking, state)
+    structural_rating = str(docking.get("structural_rating") or "unknown")
+    lock_quality = str(docking.get("lock_quality") or "unknown")
+    if state == "mechanical_hard_lock" and lock_quality == "unknown":
+        lock_quality = "hard_lock_observed"
+    elif state == "soft_capture" and lock_quality == "unknown":
+        lock_quality = "soft_capture"
+    elif state in {"detached", "free"} and lock_quality == "unknown":
+        lock_quality = "none"
+
+    degraded_reason = str(docking.get("degraded_reason") or "missing")
+    mechanical_load_class = str(docking.get("mechanical_load_class") or "unknown")
+    emergency_detach_available = bool(docking.get("connected")) or state in {
+        "soft_capture",
+        "mechanical_hard_lock",
+        "structural_check_passed",
+        "degraded_lock",
+        "emergency_detach_pending",
+    }
+    return BayonetMechRecord(
+        bayonet_id=str(docking.get("bayonet_id") or bayonet_id),
+        state=state,
+        state_timestamp=timestamp,
+        state_source=state_source,
+        lock_quality=lock_quality,
+        structural_rating=structural_rating,
+        degraded_reason=degraded_reason,
+        connected_object_id=connected_object_id,
+        mechanical_load_class=mechanical_load_class,
+        emergency_detach_available=emergency_detach_available,
+        reason_codes=_bayonet_reason_codes(state, connected_object_id),
     )
 
 
