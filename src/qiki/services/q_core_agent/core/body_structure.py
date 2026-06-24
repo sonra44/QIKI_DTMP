@@ -661,11 +661,11 @@ def _evaluate_registration_guard(
         )
 
     if guard.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN:
-        rules = body.face_mount_classes.get(request.mount_point, {})
+        rules = body.face_mount_classes.get(request.mount_point)
         module_class = (request.passport.module_class if request.passport else "").strip()
-        forbidden_classes = tuple(rules.get("forbidden", ()))
-        allowed_classes = tuple(rules.get("allowed", ()))
-        if module_class not in forbidden_classes and (
+        forbidden_classes = tuple(rules.get("forbidden", ())) if rules else ()
+        allowed_classes = tuple(rules.get("allowed", ())) if rules else ()
+        if rules is not None and module_class not in forbidden_classes and (
             not allowed_classes or module_class in allowed_classes
         ):
             return None
@@ -895,7 +895,11 @@ def run_attach_pipeline(
     sink = EventStoreRegistrationSink(store)
     result, updated = register_module(body, request, audit_sink=sink)
 
-    stage = "registration" if result.reason_code is None else _STAGE_BY_REASON[result.reason_code]
+    stage = (
+        "registration"
+        if result.reason_code is None
+        else _STAGE_BY_REASON.get(result.reason_code, "unknown")
+    )
     # Remediation H3: causal identity comes from the event id the audit write RETURNED
     # (threaded through RegistrationResult), never from positional store.recent(1).
     audit_event_id = result.audit_event_id

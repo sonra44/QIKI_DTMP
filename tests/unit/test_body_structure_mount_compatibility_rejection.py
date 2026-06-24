@@ -11,6 +11,8 @@ Note: the allowed/forbidden classes are a runtime skeleton / TEST FIXTURE rule, 
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from qiki.services.q_core_agent.core.body_structure import (
     BodyConfigSnapshot,
     EventStoreRegistrationSink,
@@ -104,6 +106,59 @@ def test_free_mount_is_not_sufficient_when_module_class_is_forbidden() -> None:
     # body_config completely unchanged.
     assert body_after.modules == ()
     assert body_after.face_occupancy["F06"] == "free"
+
+
+def test_known_mount_without_class_rules_is_rejected_fail_closed() -> None:
+    """A known mount with no class rules must not default to permissive attach."""
+    body = BodyConfigSnapshot.skeleton()
+    body = replace(
+        body,
+        face_mount_classes={
+            mount: rules for mount, rules in body.face_mount_classes.items() if mount != "F06"
+        },
+    )
+    store = EventStore(backend="memory")
+
+    passport = ModulePassport("test_sensor_module_001", "sensor", "F06")
+    request = ModuleAttachRequest("req-1", "test_sensor_module_001", "F06", passport=passport)
+    result, body_after = register_module(
+        body, request, audit_sink=EventStoreRegistrationSink(store)
+    )
+
+    assert "F06" in body.face_occupancy
+    assert "F06" not in body.face_mount_classes
+    assert result.status == "rejected"
+    assert result.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
+    assert body_after.face_occupancy["F06"] == "free"
+    assert body_after.modules == ()
+
+    rejection = store.recent(1)[0]
+    assert rejection.reason == MODULE_MOUNT_CLASS_FORBIDDEN
+    assert rejection.payload["module_class"] == "sensor"
+    assert rejection.payload["mount_point"] == "F06"
+
+
+def test_present_forbidden_only_mount_rules_still_allow_non_forbidden_classes() -> None:
+    """Fail-closed applies to missing rules, not to explicit blocklist-only rules."""
+    body = BodyConfigSnapshot.skeleton()
+    body = replace(
+        body,
+        face_mount_classes={
+            **body.face_mount_classes,
+            "F06": {"allowed": (), "forbidden": ("reactor-class",)},
+        },
+    )
+    store = EventStore(backend="memory")
+
+    passport = ModulePassport("test_sensor_module_001", "sensor", "F06")
+    request = ModuleAttachRequest("req-1", "test_sensor_module_001", "F06", passport=passport)
+    result, body_after = register_module(
+        body, request, audit_sink=EventStoreRegistrationSink(store)
+    )
+
+    assert result.status == "attached"
+    assert result.reason_code is None
+    assert body_after.face_occupancy["F06"] == "test_sensor_module_001"
 
 
 def test_module_class_is_normalized_before_mount_class_check() -> None:

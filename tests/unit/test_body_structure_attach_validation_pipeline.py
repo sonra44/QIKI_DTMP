@@ -26,6 +26,7 @@ from qiki.services.q_core_agent.core.body_structure import (
     MOUNT_POINT_UNKNOWN,
     MOUNT_POINT_OCCUPIED,
     MODULE_MOUNT_CLASS_FORBIDDEN,
+    _STAGE_BY_REASON,
 )
 from qiki.services.q_core_agent.core.event_store import EventStore
 from qiki.services.operator_console.orion_v.evidence_card import (
@@ -215,3 +216,21 @@ def test_attach_decision_preserves_registration_rejection_context(
     assert decision.audit_event_id
     for field in context_fields:
         assert getattr(decision, field) == getattr(direct_result, field)
+
+
+def test_attach_pipeline_uses_unknown_stage_for_unmapped_rejection_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body, request, *_ = _case_unknown()
+    stages = dict(_STAGE_BY_REASON)
+    stages.pop(MOUNT_POINT_UNKNOWN)
+    monkeypatch.setattr(
+        "qiki.services.q_core_agent.core.body_structure._STAGE_BY_REASON",
+        stages,
+    )
+    store = EventStore(backend="memory")
+
+    decision, _ = run_attach_pipeline(body, request, store=store)
+
+    assert decision.reason_code == MOUNT_POINT_UNKNOWN
+    assert decision.stage == "unknown"
