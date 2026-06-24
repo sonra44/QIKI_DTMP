@@ -22,6 +22,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from qiki.services.q_core_agent.core.evidence_card_id import make_evidence_card_id
+
 # Domain reason codes (stable). Owned by the runtime/policy layer, not ORION.
 MODULE_PASSPORT_MISSING = "MODULE_PASSPORT_MISSING"
 # Slice 0004: a mount point already holding a module rejects a second attach.
@@ -766,9 +768,9 @@ def run_attach_pipeline(
             passport_status=result.passport_status,
             capability_status=result.capability_status,
             audit_event_id=audit_event_id,
-            # ORION evidence-card id convention (EvidenceCard.card_id == f"card:{event_id}").
+            # ORION evidence-card id convention (EvidenceCard.card_id == make_evidence_card_id(event_id)).
             # Shared id contract only — the card itself stays an ORION projection.
-            evidence_card_id=f"card:{audit_event_id}",
+            evidence_card_id=make_evidence_card_id(audit_event_id),
         ),
         updated,
     )

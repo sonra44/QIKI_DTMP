@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from qiki.services.q_core_agent.core.evidence_card_id import make_evidence_card_id
 from qiki.services.operator_console.orion_v.evidence_card_mapping import (
     card_type_for,
     evidence_status_for,
@@ -85,7 +86,7 @@ def evidence_card_from_audit_event(audit_event: Any) -> EvidenceCard:
     facts: dict[str, Any] = {key: payload[key] for key in _FACT_KEYS if key in payload}
 
     return EvidenceCard(
-        card_id=f"card:{event_id}",
+        card_id=make_evidence_card_id(event_id),
         card_type=card_type_for(audit_event),
         title=f"Module attach: {subject_status}",
         subject_type="module",
