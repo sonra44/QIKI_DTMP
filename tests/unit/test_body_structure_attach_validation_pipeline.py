@@ -181,7 +181,7 @@ def test_attach_pipeline_evidence_card_matches_audit_source() -> None:
 
     audit_event = next(e for e in store.recent(20) if e.event_id == decision.audit_event_id)
     card = evidence_card_from_audit_event(audit_event)
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.reason_code == decision.reason_code
     assert card.subject_id == audit_event.payload.get("module_id")
     assert card.operation == "module_attach"

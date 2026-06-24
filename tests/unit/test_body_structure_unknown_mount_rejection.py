@@ -60,7 +60,7 @@ def test_valid_passport_with_unknown_mount_point_is_rejected_and_audited() -> No
     assert card.card_type == CARD_TYPE_BODY_MODULE_ATTACH_REJECTION
     assert card.subject_id == "test_sensor_module_001"
     assert card.reason_code == MOUNT_POINT_UNKNOWN
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.status == "implemented"
     assert card.read_only is True
     assert card.facts.get("known_mount") is False

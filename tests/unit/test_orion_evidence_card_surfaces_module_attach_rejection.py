@@ -61,7 +61,7 @@ def test_module_passport_missing_rejection_becomes_read_only_evidence_card() -> 
     assert card.status == "implemented"
 
     assert card.reason_code == MODULE_PASSPORT_MISSING
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.source_id == audit_event.event_id
     assert card.related_audit_event_id == audit_event.event_id
     assert card.trust_status == "audit_backed"

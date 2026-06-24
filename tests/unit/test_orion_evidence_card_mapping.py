@@ -161,7 +161,7 @@ def test_module_attach_rejection_event_maps_to_audit_backed_card_contract() -> N
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-1"
     assert mapped.reason_code == MODULE_PASSPORT_MISSING
     assert mapped.module_id == "mod-x"
@@ -179,7 +179,7 @@ def test_mount_point_occupied_rejection_maps_to_audit_backed_card_contract() -> 
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-3"
     assert mapped.reason_code == MOUNT_POINT_OCCUPIED
     assert mapped.module_id == "mod-new"
@@ -199,7 +199,7 @@ def test_module_mount_class_forbidden_rejection_maps_to_audit_backed_card_contra
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-4"
     assert mapped.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
     assert mapped.module_id == "mod-reactor"
@@ -219,7 +219,7 @@ def test_module_passport_invalid_rejection_maps_to_audit_backed_card_contract() 
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-5"
     assert mapped.reason_code == MODULE_PASSPORT_INVALID
     assert mapped.module_id == "mod-requested"
@@ -239,7 +239,7 @@ def test_mount_point_unknown_rejection_maps_to_audit_backed_card_contract() -> N
     assert mapped.subject_status == "rejected"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-6"
     assert mapped.reason_code == MOUNT_POINT_UNKNOWN
     assert mapped.module_id == "mod-unknown-mount"
@@ -282,7 +282,7 @@ def test_module_attach_registered_event_maps_to_audit_backed_inactive_card_contr
     assert mapped.subject_status == "attached"
     assert mapped.status == "implemented"
     assert mapped.trust_status == "audit_backed"
-    assert mapped.source_type == "audit_event"
+    assert mapped.source_type == "audit"
     assert mapped.source_id == "audit-evt-2"
     assert mapped.module_id == "mod-ok"
     assert mapped.attempted_mount == "F07"

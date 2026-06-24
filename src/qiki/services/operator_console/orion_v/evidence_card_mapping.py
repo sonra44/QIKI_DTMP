@@ -26,7 +26,7 @@ BODY_MODULE_ATTACH_REJECTION = "BODY_MODULE_ATTACH_REJECTION"
 BODY_MODULE_ATTACH_REGISTERED = "BODY_MODULE_ATTACH_REGISTERED"
 ORION_SOURCE_MISSING = "ORION_SOURCE_MISSING"
 
-SOURCE_TYPE_AUDIT_EVENT = "audit_event"
+SOURCE_TYPE_AUDIT = "audit"  # canon QIKI Body v0.2.2 §17 source_type enum (04_CALCULATION_FRAME.md)
 SOURCE_TYPE_MISSING = "missing"
 TRUST_STATUS_AUDIT_BACKED = "audit_backed"
 TRUST_STATUS_MISSING = "missing"
@@ -121,16 +121,16 @@ def _is_genuine_audit_event(event: Any) -> bool:
 
 def source_type_for(event: Any) -> str:
     if _is_supported_module_attach_event(event) and _is_genuine_audit_event(event):
-        return SOURCE_TYPE_AUDIT_EVENT
+        return SOURCE_TYPE_AUDIT
     return SOURCE_TYPE_MISSING
 
 
 def trust_status_for(event: Any) -> str:
-    return TRUST_STATUS_AUDIT_BACKED if source_type_for(event) == SOURCE_TYPE_AUDIT_EVENT else TRUST_STATUS_MISSING
+    return TRUST_STATUS_AUDIT_BACKED if source_type_for(event) == SOURCE_TYPE_AUDIT else TRUST_STATUS_MISSING
 
 
 def evidence_status_for(event: Any) -> str:
-    if source_type_for(event) == SOURCE_TYPE_AUDIT_EVENT and not missing_fields_for(event):
+    if source_type_for(event) == SOURCE_TYPE_AUDIT and not missing_fields_for(event):
         return EVIDENCE_STATUS_IMPLEMENTED
     return EVIDENCE_STATUS_MISSING
 
@@ -182,7 +182,7 @@ def map_module_attach_rejection_event(event: Any) -> EvidenceCardMapping:
         status=evidence_status_for(event),
         trust_status=trust_status_for(event) if not missing else "missing",
         source_type=source_type,
-        source_id=str(getattr(event, "event_id", "") or "") if source_type == SOURCE_TYPE_AUDIT_EVENT else "",
+        source_id=str(getattr(event, "event_id", "") or "") if source_type == SOURCE_TYPE_AUDIT else "",
         reason_code=_reason_code_for(event),
         module_id=str(data.get("module_id") or ""),
         attempted_mount=str(data.get("attempted_mount") or ""),
@@ -205,7 +205,7 @@ def map_module_attach_registered_event(event: Any) -> EvidenceCardMapping:
         status=evidence_status_for(event),
         trust_status=trust_status_for(event) if not missing else TRUST_STATUS_MISSING,
         source_type=source_type,
-        source_id=str(getattr(event, "event_id", "") or "") if source_type == SOURCE_TYPE_AUDIT_EVENT else "",
+        source_id=str(getattr(event, "event_id", "") or "") if source_type == SOURCE_TYPE_AUDIT else "",
         reason_code=_reason_code_for(event),
         module_id=str(data.get("module_id") or ""),
         attempted_mount=str(data.get("attempted_mount") or data.get("mount_point") or ""),

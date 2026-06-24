@@ -75,7 +75,7 @@ def test_valid_passport_with_forbidden_mount_class_is_rejected_and_audited() -> 
     assert card.subject_id == "test_forbidden_module_001"
     assert card.subject_status == "rejected"
     assert card.reason_code == MODULE_MOUNT_CLASS_FORBIDDEN
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.trust_status == "audit_backed"
     assert card.status == "implemented"
     assert card.read_only is True

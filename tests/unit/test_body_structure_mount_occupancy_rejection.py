@@ -81,7 +81,7 @@ def test_attach_second_module_to_occupied_mount_is_rejected_and_audited() -> Non
     assert card.subject_id == "test_sensor_module_002"
     assert card.subject_status == "rejected"
     assert card.reason_code == MOUNT_POINT_OCCUPIED
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.trust_status == "audit_backed"
     # cross-review lesson: a fully audit-backed rejection must report "implemented".
     assert card.status == "implemented"

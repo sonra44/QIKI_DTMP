@@ -63,7 +63,7 @@ def test_present_but_invalid_passport_is_rejected_before_mount_validation() -> N
     assert card.subject_id == "test_sensor_module_001"
     assert card.subject_status == "rejected"
     assert card.reason_code == MODULE_PASSPORT_INVALID
-    assert card.source_type == "audit_event"
+    assert card.source_type == "audit"
     assert card.status == "implemented"
     assert card.read_only is True
     assert card.facts.get("validation_error") == "module_id_mismatch"
