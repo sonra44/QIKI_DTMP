@@ -66,9 +66,17 @@ def test_missing_value_not_presented_as_truth() -> None:
 
 
 def test_all_trusted_positive() -> None:
-    trusted = _sensor(sensor_id="imu", trust_status="trusted", value=1.0, source="imu")
+    trusted = _sensor(sensor_id="imu", trust_status="trusted", value=1.0, source="imu", reason_codes=())
     ev = sensor_to_evidence((trusted,))
     assert ev.operator_text == "sensors: all trusted"
+
+
+def test_trusted_with_blocking_reason_is_demoted() -> None:
+    # Audit #1: a trusted sensor carrying a blocking reason_code must not stay "trusted".
+    rec = _sensor(sensor_id="imu", trust_status="trusted", value=1.0, source="imu", reason_codes=("SENSOR_DEGRADED",))
+    ev = sensor_to_evidence((rec,))
+    assert ev.sensors[0].is_trusted is False
+    assert "all trusted" not in ev.operator_text
 
 
 def test_readonly() -> None:

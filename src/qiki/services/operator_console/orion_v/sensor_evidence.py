@@ -78,7 +78,8 @@ def _sensor_evidence(record: Any) -> SensorEvidence:
         source=source,
         freshness=_text(record.freshness),
         trust_status=trust,
-        is_trusted=trust == "trusted",
+        # A trusted claim carrying a blocking reason_code is not fully trusted (demote).
+        is_trusted=trust == "trusted" and not record.reason_codes,
         is_conflicting=trust == "conflicting",
         is_missing=trust in _MISSING_STATES,
         is_hypothesis=trust in _HYPOTHESIS_STATES,
@@ -98,7 +99,9 @@ def sensor_to_evidence(records: Any) -> SensorTelemetryEvidence:
         operator_text = "sensors: all trusted"
     else:
         operator_text = "sensors: attention — " + ", ".join(
-            f"{s.sensor_id}={s.trust_status}" for s in sensors if not s.is_trusted
+            f"{s.sensor_id}={s.trust_status}" + (f"({','.join(s.reason_codes)})" if s.reason_codes else "")
+            for s in sensors
+            if not s.is_trusted
         )
     return SensorTelemetryEvidence(
         claim_type="sensor_telemetry",

@@ -60,8 +60,17 @@ def _latency(value: Any) -> str:
 
 def _channel_evidence(record: Any) -> CommsChannelEvidence:
     delivery = _text(record.delivery_state, "not_implemented")
-    is_active = delivery == _ACTIVE_STATE
-    blocker = _BLOCKER_BY_STATE.get(delivery, "none" if is_active else "unknown")
+    reason_codes = tuple(record.reason_codes or ())
+    # An "online" channel carrying a blocking reason_code is not truly active (demote).
+    is_active = delivery == _ACTIVE_STATE and not reason_codes
+    if is_active:
+        blocker = "none"
+    elif delivery in _BLOCKER_BY_STATE:
+        blocker = _BLOCKER_BY_STATE[delivery]
+    elif reason_codes:
+        blocker = reason_codes[0]
+    else:
+        blocker = "unknown"
     return CommsChannelEvidence(
         channel_id=str(record.channel_id or "missing"),
         channel_class=_text(record.channel_class),
@@ -71,7 +80,7 @@ def _channel_evidence(record: Any) -> CommsChannelEvidence:
         is_active=is_active,
         is_blocked=not is_active,
         blocker=blocker,
-        reason_codes=tuple(record.reason_codes or ()),
+        reason_codes=reason_codes,
         trust_status=_text(record.trust_status),
     )
 
@@ -87,7 +96,9 @@ def comms_to_evidence(records: Any) -> CommsEvidence:
         operator_text = "comms: all channels online"
     else:
         operator_text = "comms: attention — " + ", ".join(
-            f"{c.channel_id}={c.delivery_state}" for c in channels if not c.is_active
+            f"{c.channel_id}={c.delivery_state}" + (f"({','.join(c.reason_codes)})" if c.reason_codes else "")
+            for c in channels
+            if not c.is_active
         )
     return CommsEvidence(
         claim_type="comms",

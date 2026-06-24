@@ -23,7 +23,7 @@ def _channel(**kw):
 
 
 def test_online_channel_is_active() -> None:
-    ev = comms_to_evidence((_channel(channel_id="main", delivery_state="online"),))
+    ev = comms_to_evidence((_channel(channel_id="main", delivery_state="online", reason_codes=()),))
     assert "main" in ev.active_channels
     assert ev.channels[0].is_active is True
     assert ev.operator_text == "comms: all channels online"
@@ -52,6 +52,14 @@ def test_mixed_not_summarized_as_all_online() -> None:
     ev = comms_to_evidence((online, blocked))
     assert "all channels online" not in ev.operator_text
     assert "relay" in ev.blocked_channels
+
+
+def test_online_with_blocking_reason_is_demoted() -> None:
+    # Audit #2: an online channel carrying a blocking reason_code must not stay active.
+    ev = comms_to_evidence((_channel(channel_id="main", delivery_state="online", reason_codes=("EMCON_BLOCK",)),))
+    assert ev.channels[0].is_active is False
+    assert "all channels online" not in ev.operator_text
+    assert ev.channels[0].blocker != "none"
 
 
 def test_readonly() -> None:

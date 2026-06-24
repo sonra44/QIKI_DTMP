@@ -7,6 +7,8 @@ Conservative: values surfaced from telemetry where present, else honest "missing
 
 from __future__ import annotations
 
+import dataclasses
+
 from qiki.services.q_sim_service.core.world_model import power_telemetry_from_power_state
 from qiki.services.operator_console.orion_v.power_evidence import power_to_evidence
 
@@ -40,6 +42,38 @@ def test_temp_state_missing_is_honest() -> None:
     ev = power_to_evidence(_rec({"soc_pct": 80.0}))
     assert ev.battery_temp_label == "missing"
     assert ev.supercap_temp_label == "missing"
+
+
+def test_untrusted_power_is_flagged() -> None:
+    # Audit #3: SoC must not be presented as clean fact when telemetry is untrusted/missing.
+    ev = power_to_evidence(_rec({}))
+    assert ev.is_trusted is False
+    assert "untrusted" in ev.operator_text.lower()
+
+
+def test_trusted_power_not_flagged() -> None:
+    rec = dataclasses.replace(
+        _rec({"soc_pct": 80.0, "supercap_soc_pct": 20.0}),
+        trust_status="trusted",
+        reason_codes=(),
+        freshness="fresh",
+    )
+    ev = power_to_evidence(rec)
+    assert ev.is_trusted is True
+    assert "untrusted" not in ev.operator_text.lower()
+
+
+def test_unknown_or_expired_freshness_not_trusted() -> None:
+    # Codex cross-check BLOCKER: only fresh telemetry is trusted; unknown/expired must demote.
+    for fr in ("unknown", "expired", ""):
+        rec = dataclasses.replace(
+            _rec({"soc_pct": 80.0, "supercap_soc_pct": 20.0}),
+            trust_status="trusted",
+            reason_codes=(),
+            freshness=fr,
+        )
+        ev = power_to_evidence(rec)
+        assert ev.is_trusted is False, f"freshness={fr!r} must not be trusted"
 
 
 def test_operator_text_names_both_sources() -> None:
