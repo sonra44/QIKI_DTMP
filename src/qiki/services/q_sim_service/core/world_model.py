@@ -633,8 +633,11 @@ def _pdu_reason_codes(
     load_id: str,
     *,
     peak_required: bool,
+    requested_power_W: float | None,
+    duration_s: float | None,
     power: dict[str, Any],
     thermal_blocked: tuple[str, ...],
+    thermal_clearance: str,
     allowance_state: str,
     safe_state: str,
 ) -> tuple[str, ...]:
@@ -651,13 +654,29 @@ def _pdu_reason_codes(
         reason_codes.append(LOAD_SHED_ACTIVE)
     if "thermal_overheat" in shed_reasons or load_id in thermal_blocked:
         reason_codes.append(THERMAL_BLOCK)
+    if peak_required and thermal_clearance != "clear":
+        reason_codes.append(THERMAL_BLOCK)
     if "BUS_V_ZERO" in faults or _num_or_none(power.get("bus_v")) == 0.0:
         reason_codes.append(BUS_UNSTABLE)
 
     soc_cap = _num_or_none(power.get("supercap_soc_pct"))
+    cap_capacity_wh = _num_or_none(power.get("supercap_capacity_wh"))
     if peak_required and soc_cap is not None and soc_cap <= 0.0:
         reason_codes.append(CAP_LOW)
         reason_codes.append(PDU_PEAK_DENIED)
+    elif (
+        peak_required
+        and requested_power_W is not None
+        and duration_s is not None
+        and duration_s > 0.0
+        and soc_cap is not None
+        and cap_capacity_wh is not None
+    ):
+        required_wh = requested_power_W * duration_s / 3600.0
+        available_wh = cap_capacity_wh * soc_cap / 100.0
+        if required_wh > available_wh:
+            reason_codes.append(CAP_LOW)
+            reason_codes.append(PDU_PEAK_DENIED)
 
     if allowance_state in {"load_rejected", "PDU_safe_mode"} and not reason_codes:
         reason_codes.append(PDU_DENIED)
@@ -725,12 +744,19 @@ def pdu_permissions_from_power_state(
         reason_codes = _pdu_reason_codes(
             load_id,
             peak_required=peak_required,
+            requested_power_W=requested_w,
+            duration_s=duration_s,
             power=power,
             thermal_blocked=thermal_blocked,
+            thermal_clearance=thermal_clearance,
             allowance_state=allowance_state,
             safe_state=safe_state,
         )
-        if peak_required and CAP_LOW in reason_codes and allowance_state == "load_allowed":
+        if (
+            peak_required
+            and (CAP_LOW in reason_codes or (THERMAL_BLOCK in reason_codes and thermal_clearance != "clear"))
+            and allowance_state in {"load_allowed", "load_allowed_limited"}
+        ):
             allowance_state = "load_rejected"
         records.append(
             PduPermissionRecord(

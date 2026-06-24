@@ -500,7 +500,7 @@ def test_if_pdu_power_mapper_marks_missing_power_degraded() -> None:
     assert record.reason_codes == ("PDU_DENIED",)
 
 
-def test_if_pdu_power_mapper_keeps_thermal_clearance_missing_without_source() -> None:
+def test_if_pdu_power_mapper_keeps_non_peak_thermal_clearance_missing_without_source() -> None:
     records = pdu_permissions_from_power_state(
         {
             "loads_w": {"radar": 10.0},
@@ -514,6 +514,103 @@ def test_if_pdu_power_mapper_keeps_thermal_clearance_missing_without_source() ->
 
     assert records[0].thermal_clearance == "missing"
     assert records[0].allowance_state == "load_allowed"
+
+
+@pytest.mark.parametrize("thermal_state", [None, {"nodes": []}])
+def test_if_pdu_power_rejects_peak_load_without_clear_thermal_source(thermal_state: dict | None) -> None:
+    records = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"rcs": 10.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 50.0,
+            "supercap_capacity_wh": 5.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal=thermal_state,
+        duration_s=1.0,
+    )
+
+    assert records[0].peak_required is True
+    assert records[0].thermal_clearance == "missing"
+    assert records[0].allowance_state == "load_rejected"
+    assert "THERMAL_BLOCK" in records[0].reason_codes
+
+
+def test_if_pdu_power_allows_peak_load_with_clear_thermal_and_sufficient_cap() -> None:
+    records = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"rcs": 10.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 50.0,
+            "supercap_capacity_wh": 5.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal={"nodes": [{"id": "rcs_cluster", "temp_c": 25.0, "warn_c": 70.0}]},
+        duration_s=1.0,
+    )
+
+    assert records[0].thermal_clearance == "clear"
+    assert records[0].allowance_state == "load_allowed"
+    assert "THERMAL_BLOCK" not in records[0].reason_codes
+    assert "CAP_LOW" not in records[0].reason_codes
+    assert "PDU_PEAK_DENIED" not in records[0].reason_codes
+
+
+def test_if_pdu_power_rejects_peak_load_when_cap_energy_is_insufficient() -> None:
+    records = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"motion": 3600.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 50.0,
+            "supercap_capacity_wh": 2.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal={"nodes": [{"id": "pdu", "temp_c": 25.0, "warn_c": 70.0}]},
+        duration_s=2.0,
+    )
+
+    assert records[0].peak_required is True
+    assert records[0].thermal_clearance == "clear"
+    assert records[0].allowance_state == "load_rejected"
+    assert "CAP_LOW" in records[0].reason_codes
+    assert "PDU_PEAK_DENIED" in records[0].reason_codes
+
+
+def test_if_pdu_power_keeps_cap_reason_clean_when_peak_energy_fits_or_duration_missing() -> None:
+    fits = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"motion": 900.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 50.0,
+            "supercap_capacity_wh": 2.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal={"nodes": [{"id": "pdu", "temp_c": 25.0, "warn_c": 70.0}]},
+        duration_s=2.0,
+    )[0]
+    no_duration = pdu_permissions_from_power_state(
+        {
+            "loads_w": {"motion": 3600.0},
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 1.0,
+            "supercap_capacity_wh": 2.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+        },
+        thermal={"nodes": [{"id": "pdu", "temp_c": 25.0, "warn_c": 70.0}]},
+        duration_s=None,
+    )[0]
+
+    assert fits.allowance_state == "load_allowed"
+    assert "CAP_LOW" not in fits.reason_codes
+    assert "PDU_PEAK_DENIED" not in fits.reason_codes
+    assert no_duration.allowance_state == "load_allowed"
+    assert "CAP_LOW" not in no_duration.reason_codes
+    assert "PDU_PEAK_DENIED" not in no_duration.reason_codes
 
 
 def test_telemetry_battery_is_legacy_alias_of_power_soc_pct() -> None:
