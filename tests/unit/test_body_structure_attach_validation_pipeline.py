@@ -186,3 +186,32 @@ def test_attach_pipeline_evidence_card_matches_audit_source() -> None:
     assert card.subject_id == audit_event.payload.get("module_id")
     assert card.operation == "module_attach"
     assert card.read_only is True
+
+
+@pytest.mark.parametrize(
+    "case_name, context_fields",
+    [
+        ("occupied", ("requested_module_id", "existing_module_id")),
+        ("invalid", ("requested_module_id", "validation_error", "passport_module_id")),
+        ("unknown", ("requested_module_id", "known_mount")),
+    ],
+)
+def test_attach_decision_preserves_registration_rejection_context(
+    case_name: str,
+    context_fields: tuple[str, ...],
+) -> None:
+    body, request, *_ = _CASES[case_name]()
+    direct_store = EventStore(backend="memory")
+    direct_result, _ = register_module(
+        body,
+        request,
+        audit_sink=EventStoreRegistrationSink(direct_store),
+    )
+
+    pipeline_store = EventStore(backend="memory")
+    decision, _ = run_attach_pipeline(body, request, store=pipeline_store)
+
+    assert decision.reason_code == direct_result.reason_code
+    assert decision.audit_event_id
+    for field in context_fields:
+        assert getattr(decision, field) == getattr(direct_result, field)

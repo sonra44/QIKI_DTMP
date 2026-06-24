@@ -872,6 +872,12 @@ class AttachDecision:
     capability_status: str
     audit_event_id: str  # required: every outcome is audit-backed
     evidence_card_id: str  # deterministic ORION card id for audit_event_id (card:<id>)
+    # Rejection context copied from RegistrationResult; empty/default on success.
+    requested_module_id: str = ""
+    existing_module_id: str = ""
+    validation_error: str = ""
+    passport_module_id: str = ""
+    known_mount: bool = True
 
 
 def run_attach_pipeline(
@@ -910,6 +916,11 @@ def run_attach_pipeline(
             # ORION evidence-card id convention (EvidenceCard.card_id == make_evidence_card_id(event_id)).
             # Shared id contract only — the card itself stays an ORION projection.
             evidence_card_id=make_evidence_card_id(audit_event_id),
+            requested_module_id=result.requested_module_id,
+            existing_module_id=result.existing_module_id,
+            validation_error=result.validation_error,
+            passport_module_id=result.passport_module_id,
+            known_mount=result.known_mount,
         ),
         updated,
     )
