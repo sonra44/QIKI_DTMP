@@ -45,6 +45,7 @@ _FACT_KEYS = (
     "module_class",
     "validation_error",
     "known_mount",
+    "source_owner",  # MEDIUM #9 — surface audit provenance owner (ADR-0014: "ORION must show source")
 )
 
 
