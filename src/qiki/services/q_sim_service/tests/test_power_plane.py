@@ -1,8 +1,14 @@
+from dataclasses import fields
+
 import pytest
 
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Unit as ProtoUnit
-from qiki.services.q_sim_service.core.world_model import WorldModel
+from qiki.services.q_sim_service.core.world_model import (
+    PowerTelemetryRecord,
+    WorldModel,
+    power_telemetry_from_power_state,
+)
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
 from qiki.shared.models.core import CommandMessage, MessageMetadata
@@ -38,6 +44,8 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "throttled_loads" in power
     assert "faults" in power
     assert "supercap_soc_pct" in power
+    assert "battery_capacity_wh" in power
+    assert "supercap_capacity_wh" in power
     assert "supercap_charge_w" in power
     assert "supercap_discharge_w" in power
     assert "dock_connected" in power
@@ -52,6 +60,81 @@ def test_power_telemetry_includes_power_plane_fields() -> None:
     assert "nbl_budget_w" in power
     assert isinstance(power.get("battery_1_voltage_v"), float)
     assert isinstance(power.get("battery_2_voltage_v"), float)
+
+
+def test_if_power_telem_record_exposes_canon_fields_separately() -> None:
+    record_fields = {field.name for field in fields(PowerTelemetryRecord)}
+
+    assert {
+        "battery_soc_pct",
+        "battery_capacity_Wh",
+        "battery_charge_W",
+        "battery_discharge_W",
+        "battery_temp_state",
+        "supercap_soc_pct",
+        "supercap_capacity_Wh",
+        "supercap_charge_W",
+        "supercap_discharge_W",
+        "supercap_temp_state",
+        "source_generation_W",
+        "bus_voltage_V",
+        "bus_current_A",
+        "loads_W",
+        "spill_W",
+        "unserved_W",
+        "timestamp",
+        "freshness",
+        "source",
+        "trust_status",
+        "reason_codes",
+    } <= record_fields
+
+
+def test_if_power_telem_mapper_keeps_battery_and_supercap_separate() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 42.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 28.0,
+                "base_power_in_w": 40.0,
+                "base_power_out_w": 10.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 70.0,
+                "supercap_max_charge_w": 120.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    wm.step(1.0)
+
+    record = power_telemetry_from_power_state(
+        wm.get_state()["power"],
+        timestamp=wm.sim_time_epoch_ts(),
+        freshness="fresh",
+    )
+
+    assert record.battery_soc_pct == pytest.approx(wm.battery_level)
+    assert record.supercap_soc_pct == pytest.approx(wm.supercap_soc_pct)
+    assert record.battery_soc_pct != pytest.approx(record.supercap_soc_pct)
+    assert record.battery_capacity_Wh == pytest.approx(100.0)
+    assert record.supercap_capacity_Wh == pytest.approx(5.0)
+    assert record.battery_temp_state == "missing"
+    assert record.supercap_temp_state == "missing"
+    assert record.trust_status == "trusted"
+    assert record.source == "q_sim_service.world_model.power"
+    assert "POWER_TELEM_MISSING" not in record.reason_codes
+
+
+def test_if_power_telem_mapper_marks_incomplete_power_state_missing() -> None:
+    record = power_telemetry_from_power_state({"soc_pct": 42.0}, freshness="unknown")
+
+    assert record.battery_soc_pct == pytest.approx(42.0)
+    assert record.supercap_soc_pct is None
+    assert record.trust_status == "missing"
+    assert record.reason_codes == ("POWER_TELEM_MISSING",)
+    assert record.freshness == "unknown"
 
 
 def test_telemetry_battery_is_legacy_alias_of_power_soc_pct() -> None:

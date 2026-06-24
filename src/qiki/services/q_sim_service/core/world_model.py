@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 from typing import Any, Dict, Sequence
@@ -13,6 +14,105 @@ from generated.common_types_pb2 import Vector3
 
 from qiki.services.q_sim_service.core.mcqpu_telemetry import MCQPUTelemetry
 from qiki.shared.config.loaders import ThrusterConfig, load_thrusters_config
+
+POWER_TELEM_MISSING = "POWER_TELEM_MISSING"
+
+
+@dataclass(frozen=True, slots=True)
+class PowerTelemetryRecord:
+    """IF-POWER-TELEM-001 target-only projection from q_sim power truth."""
+
+    battery_soc_pct: float | None
+    battery_capacity_Wh: float | None
+    battery_charge_W: float | None
+    battery_discharge_W: float | None
+    battery_temp_state: str
+    supercap_soc_pct: float | None
+    supercap_capacity_Wh: float | None
+    supercap_charge_W: float | None
+    supercap_discharge_W: float | None
+    supercap_temp_state: str
+    source_generation_W: float | None
+    bus_voltage_V: float | None
+    bus_current_A: float | None
+    loads_W: dict[str, float]
+    spill_W: float | None
+    unserved_W: float | None
+    timestamp: float | None
+    freshness: str
+    source: str
+    trust_status: str
+    reason_codes: tuple[str, ...]
+
+
+def _num_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _numeric_mapping(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, raw in value.items():
+        num = _num_or_none(raw)
+        if num is not None:
+            out[str(key)] = num
+    return out
+
+
+def power_telemetry_from_power_state(
+    power: dict[str, Any] | None,
+    *,
+    timestamp: float | None = None,
+    freshness: str = "fresh",
+    source: str = "q_sim_service.world_model.power",
+) -> PowerTelemetryRecord:
+    """Map WorldModel power state into IF-POWER-TELEM-001 without merging bat/cap."""
+    power = power if isinstance(power, dict) else {}
+    sources = _numeric_mapping(power.get("sources_w"))
+    source_generation_w = sum(
+        value for key, value in sources.items() if key != "supercap_discharge"
+    )
+    if not sources and "power_in_w" in power:
+        source_generation_w = _num_or_none(power.get("power_in_w"))
+
+    reason_codes: list[str] = []
+    required = (
+        "soc_pct",
+        "supercap_soc_pct",
+        "bus_v",
+        "bus_a",
+        "loads_w",
+    )
+    if any(key not in power for key in required):
+        reason_codes.append(POWER_TELEM_MISSING)
+
+    return PowerTelemetryRecord(
+        battery_soc_pct=_num_or_none(power.get("soc_pct")),
+        battery_capacity_Wh=_num_or_none(power.get("battery_capacity_wh")),
+        battery_charge_W=_num_or_none(power.get("battery_charge_w")),
+        battery_discharge_W=_num_or_none(power.get("battery_discharge_w")),
+        battery_temp_state=str(power.get("battery_temp_state") or "missing"),
+        supercap_soc_pct=_num_or_none(power.get("supercap_soc_pct")),
+        supercap_capacity_Wh=_num_or_none(power.get("supercap_capacity_wh")),
+        supercap_charge_W=_num_or_none(power.get("supercap_charge_w")),
+        supercap_discharge_W=_num_or_none(power.get("supercap_discharge_w")),
+        supercap_temp_state=str(power.get("supercap_temp_state") or "missing"),
+        source_generation_W=source_generation_w,
+        bus_voltage_V=_num_or_none(power.get("bus_v")),
+        bus_current_A=_num_or_none(power.get("bus_a")),
+        loads_W=_numeric_mapping(power.get("loads_w")),
+        spill_W=_num_or_none(power.get("battery_spill_w")),
+        unserved_W=_num_or_none(power.get("battery_unserved_w")),
+        timestamp=timestamp,
+        freshness=freshness,
+        source=source,
+        trust_status="trusted" if not reason_codes else "missing",
+        reason_codes=tuple(reason_codes),
+    )
 
 
 class WorldModel:
@@ -1594,6 +1694,7 @@ class WorldModel:
                 "loads_w": dict(self.power_loads_w),
                 "power_in_w": self.power_in_w,
                 "power_out_w": self.power_out_w,
+                "battery_capacity_wh": float(self._battery_capacity_wh),
                 "battery_charge_w": float(self.battery_charge_w),
                 "battery_discharge_w": float(self.battery_discharge_w),
                 "battery_spill_w": float(self.battery_spill_w),
@@ -1610,6 +1711,7 @@ class WorldModel:
                 "throttled_loads": list(self.power_throttled_loads),
                 "faults": list(self.power_faults),
                 "supercap_soc_pct": float(self.supercap_soc_pct),
+                "supercap_capacity_wh": float(self._supercap_capacity_wh),
                 "supercap_charge_w": float(self.supercap_charge_w),
                 "supercap_discharge_w": float(self.supercap_discharge_w),
                 "dock_connected": bool(self.dock_connected),

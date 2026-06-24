@@ -38,6 +38,7 @@ class PowerTelemetry(BaseModel):
     power_in_w: float = Field(ge=0.0)
     power_out_w: float = Field(ge=0.0)
     # Battery constraints and diagnostics (post-supercap, derived from net power).
+    battery_capacity_wh: float = Field(default=0.0, ge=0.0)
     battery_charge_w: float = Field(default=0.0, ge=0.0)
     battery_discharge_w: float = Field(default=0.0, ge=0.0)
     battery_spill_w: float = Field(default=0.0, ge=0.0)
@@ -59,6 +60,7 @@ class PowerTelemetry(BaseModel):
     # Faults and peak buffer (supercaps).
     faults: list[str] = Field(default_factory=list)
     supercap_soc_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    supercap_capacity_wh: float = Field(default=0.0, ge=0.0)
     supercap_charge_w: float = Field(default=0.0, ge=0.0)
     supercap_discharge_w: float = Field(default=0.0, ge=0.0)
 
