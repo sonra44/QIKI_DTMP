@@ -234,6 +234,101 @@ def test_if_power_telem_mapper_uses_low_soc_shed_reason_as_bat_low() -> None:
     assert "BAT_LOW" in record.reason_codes
 
 
+def test_if_power_telem_maps_battery_and_supercap_hot_from_thermal_nodes() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 80.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 22.0,
+                "max_bus_a": 5.0,
+                "base_power_in_w": 30.0,
+                "base_power_out_w": 20.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 80.0,
+            },
+            "thermal_plane": {
+                "enabled": True,
+                "nodes": [
+                    {"id": "battery", "heat_capacity_j_per_c": 1000.0, "cooling_w_per_c": 0.0, "t_init_c": 75.0, "t_max_c": 70.0},
+                    {"id": "supercap", "heat_capacity_j_per_c": 500.0, "cooling_w_per_c": 0.0, "t_init_c": 90.0, "t_max_c": 85.0},
+                ],
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+
+    record = power_telemetry_from_power_state(wm.get_state()["power"])
+
+    assert record.battery_temp_state in {"hot", "critical"}
+    assert record.supercap_temp_state in {"hot", "critical"}
+    assert "BAT_HOT" in record.reason_codes
+    assert "CAP_HOT" in record.reason_codes
+
+
+def test_if_power_telem_distinguishes_cool_thermal_nodes_from_missing_mapping() -> None:
+    with_battery_and_supercap = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 80.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 22.0,
+                "max_bus_a": 5.0,
+                "base_power_in_w": 30.0,
+                "base_power_out_w": 20.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 80.0,
+            },
+            "thermal_plane": {
+                "enabled": True,
+                "nodes": [
+                    {"id": "battery", "heat_capacity_j_per_c": 1000.0, "cooling_w_per_c": 0.0, "t_init_c": 25.0, "t_max_c": 70.0},
+                    {"id": "supercap", "heat_capacity_j_per_c": 500.0, "cooling_w_per_c": 0.0, "t_init_c": 25.0, "t_max_c": 85.0},
+                ],
+            },
+        }
+    }
+    wm = WorldModel(bot_config=with_battery_and_supercap)
+    record = power_telemetry_from_power_state(wm.get_state()["power"])
+
+    assert record.battery_temp_state == "nominal"
+    assert record.supercap_temp_state == "nominal"
+    assert "BAT_HOT" not in record.reason_codes
+    assert "CAP_HOT" not in record.reason_codes
+
+    without_battery_and_supercap = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 80.0,
+            "power_plane": {
+                "bus_v_nominal": 28.0,
+                "bus_v_min": 22.0,
+                "max_bus_a": 5.0,
+                "base_power_in_w": 30.0,
+                "base_power_out_w": 20.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 80.0,
+            },
+            "thermal_plane": {
+                "enabled": True,
+                "nodes": [
+                    {"id": "core", "heat_capacity_j_per_c": 1000.0, "cooling_w_per_c": 0.0, "t_init_c": 25.0, "t_max_c": 90.0},
+                ],
+            },
+        }
+    }
+    wm = WorldModel(bot_config=without_battery_and_supercap)
+
+    record = power_telemetry_from_power_state(wm.get_state()["power"])
+
+    assert record.battery_temp_state == "missing"
+    assert record.supercap_temp_state == "missing"
+    assert "BAT_HOT" not in record.reason_codes
+    assert "CAP_HOT" not in record.reason_codes
+
+
 def test_if_pdu_power_record_exposes_canon_fields() -> None:
     record_fields = {field.name for field in fields(PduPermissionRecord)}
 

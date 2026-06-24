@@ -17,6 +17,8 @@ from qiki.shared.config.loaders import ThrusterConfig, load_thrusters_config
 
 POWER_TELEM_MISSING = "POWER_TELEM_MISSING"
 SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+BAT_HOT = "BAT_HOT"
+CAP_HOT = "CAP_HOT"
 THERMAL_TELEM_MISSING = "THERMAL_TELEM_MISSING"
 THERMAL_NODE_HOT = "THERMAL_NODE_HOT"
 THERMAL_NODE_CRITICAL = "THERMAL_NODE_CRITICAL"
@@ -436,7 +438,28 @@ def _power_telemetry_reason_codes(
     if source_generation_W is not None and source_generation_W <= 0.0:
         reason_codes.append(SOURCE_UNAVAILABLE)
 
+    battery_temp_state = str(power.get("battery_temp_state") or "missing")
+    if battery_temp_state in {"hot", "critical"}:
+        reason_codes.append(BAT_HOT)
+    supercap_temp_state = str(power.get("supercap_temp_state") or "missing")
+    if supercap_temp_state in {"hot", "critical"}:
+        reason_codes.append(CAP_HOT)
+
     return tuple(dict.fromkeys(reason_codes))
+
+
+def _power_component_temp_states(thermal_nodes: Sequence[dict[str, Any]]) -> tuple[str, str]:
+    state_by_node: dict[str, str] = {}
+    for raw in thermal_nodes:
+        if not isinstance(raw, dict):
+            continue
+        node_id = str(raw.get("id") or "").strip().lower()
+        if node_id in {"battery", "supercap"}:
+            state_by_node[node_id] = _thermal_state_from_node(raw)
+    return (
+        state_by_node.get("battery", "missing"),
+        state_by_node.get("supercap", "missing"),
+    )
 
 
 def _thermal_state_from_node(node: dict[str, Any]) -> str:
@@ -3463,6 +3486,7 @@ class WorldModel:
                         "hys_c": float(node.get("hys_c", 0.0)),
                     }
                 )
+        battery_temp_state, supercap_temp_state = _power_component_temp_states(thermal_nodes)
         heading_rad = math.radians(float(self.heading))
         vel_x = float(self.speed) * math.sin(heading_rad)
         vel_y = float(self.speed) * math.cos(heading_rad)
@@ -3545,6 +3569,7 @@ class WorldModel:
                 "battery_capacity_wh": float(self._battery_capacity_wh),
                 "battery_charge_w": float(self.battery_charge_w),
                 "battery_discharge_w": float(self.battery_discharge_w),
+                "battery_temp_state": battery_temp_state,
                 "battery_spill_w": float(self.battery_spill_w),
                 "battery_unserved_w": float(self.battery_unserved_w),
                 "bus_v": self.power_bus_v,
@@ -3566,6 +3591,7 @@ class WorldModel:
                 "supercap_capacity_wh": float(self._supercap_capacity_wh),
                 "supercap_charge_w": float(self.supercap_charge_w),
                 "supercap_discharge_w": float(self.supercap_discharge_w),
+                "supercap_temp_state": supercap_temp_state,
                 "dock_connected": bool(self.dock_connected),
                 "dock_soft_start_pct": float(self.dock_soft_start_pct),
                 "dock_power_w": float(self.dock_power_w),

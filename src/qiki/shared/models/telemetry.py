@@ -41,6 +41,7 @@ class PowerTelemetry(BaseModel):
     battery_capacity_wh: float = Field(default=0.0, ge=0.0)
     battery_charge_w: float = Field(default=0.0, ge=0.0)
     battery_discharge_w: float = Field(default=0.0, ge=0.0)
+    battery_temp_state: str = Field(default="missing")
     battery_spill_w: float = Field(default=0.0, ge=0.0)
     battery_unserved_w: float = Field(default=0.0, ge=0.0)
     bus_v: float = Field(ge=0.0)
@@ -67,6 +68,7 @@ class PowerTelemetry(BaseModel):
     supercap_capacity_wh: float = Field(default=0.0, ge=0.0)
     supercap_charge_w: float = Field(default=0.0, ge=0.0)
     supercap_discharge_w: float = Field(default=0.0, ge=0.0)
+    supercap_temp_state: str = Field(default="missing")
 
     # Dock Power Bridge.
     dock_connected: bool = Field(default=False)
