@@ -35,6 +35,21 @@ def test_telemetry_payload_includes_comms_xpdr_block() -> None:
     assert comms.get("antenna_status") in {"lock", "unlock"}
 
 
+def test_telemetry_payload_does_not_export_fake_comms_age() -> None:
+    cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
+    qsim = QSimService(cfg)
+
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+    comms = payload.get("comms")
+
+    assert isinstance(comms, dict)
+    assert "age_s" not in comms
+    assert "last_seen_ts" not in comms
+    assert comms.get("available") in (True, False, "unknown")
+    assert isinstance(comms.get("reason_codes"), (list, tuple))
+    assert isinstance(comms.get("reason_text"), str)
+
+
 def test_sim_xpdr_mode_control_command() -> None:
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     qsim = QSimService(cfg)
@@ -88,7 +103,11 @@ def test_comms_disabled_forces_xpdr_off(monkeypatch, tmp_path) -> None:
     qsim = QSimService(cfg)
 
     payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+    comms_payload = payload.get("comms") or {}
     xpdr = (payload.get("comms") or {}).get("xpdr") or {}
+    assert comms_payload.get("available") is False
+    assert tuple(comms_payload.get("reason_codes") or ()) == ("COMMS_NOT_IMPLEMENTED",)
+    assert "not implemented" in str(comms_payload.get("reason_text", "")).lower()
     assert xpdr.get("mode") == "OFF"
     assert xpdr.get("active") is False
     assert xpdr.get("id") is None
@@ -157,6 +176,8 @@ def test_if_comms_mapper_surfaces_power_block_without_faking_delivery() -> None:
     records = comms_channels_from_comms_state(
         {
             "enabled": True,
+            "available": False,
+            "reason_codes": ("COMMS_POWER_BLOCK",),
             "xpdr": {"active": False, "allowed": False, "mode": "ON"},
             "link": "degraded",
             "latency_ms": 1600.0,
@@ -176,6 +197,8 @@ def test_if_comms_mapper_surfaces_thermal_block() -> None:
     records = comms_channels_from_comms_state(
         {
             "enabled": True,
+            "available": False,
+            "reason_codes": ("COMMS_THERMAL_BLOCK",),
             "xpdr": {"active": True, "allowed": True, "mode": "ON"},
             "link": "online",
             "latency_ms": 80.0,
@@ -195,6 +218,8 @@ def test_if_comms_mapper_surfaces_emcon_block() -> None:
     records = comms_channels_from_comms_state(
         {
             "enabled": True,
+            "available": False,
+            "reason_codes": ("EMCON_BLOCK",),
             "xpdr": {"active": True, "allowed": True, "mode": "ON"},
             "link": "online",
             "latency_ms": 80.0,
@@ -208,3 +233,81 @@ def test_if_comms_mapper_surfaces_emcon_block() -> None:
     assert record.delivery_state == "EMCON_block"
     assert record.EMCON_state == "EMCON_block"
     assert record.reason_codes == ("EMCON_BLOCK",)
+
+
+def test_if_comms_mapper_honors_availability_false_reason_codes() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "available": False,
+            "reason_codes": ("COMMS_POWER_BLOCK",),
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+        }
+    )
+
+    record = records[0]
+    assert record.delivery_state == "power_block"
+    assert record.trust_status == "degraded"
+    assert record.reason_codes == ("COMMS_POWER_BLOCK",)
+
+
+def test_if_comms_mapper_demotes_available_true_with_blocking_reason_codes() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "available": True,
+            "reason_codes": ("COMMS_POWER_BLOCK",),
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+        }
+    )
+
+    record = records[0]
+    assert record.delivery_state == "power_block"
+    assert record.trust_status == "degraded"
+    assert record.reason_codes == ("COMMS_POWER_BLOCK",)
+
+
+def test_if_comms_mapper_honors_availability_unknown() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "available": "unknown",
+            "reason_codes": ("COMMS_NOT_IMPLEMENTED",),
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+        }
+    )
+
+    record = records[0]
+    assert record.delivery_state == "not_implemented"
+    assert record.trust_status == "missing"
+    assert record.reason_codes == ("COMMS_NOT_IMPLEMENTED",)
+
+
+def test_if_comms_mapper_treats_missing_availability_as_unknown() -> None:
+    records = comms_channels_from_comms_state(
+        {
+            "enabled": True,
+            "xpdr": {"active": True, "allowed": True, "mode": "ON"},
+            "link": "online",
+            "latency_ms": 80.0,
+            "tx_power_w": 5.0,
+            "data_rate_kbps": 192.0,
+        }
+    )
+
+    record = records[0]
+    assert record.delivery_state == "not_implemented"
+    assert record.trust_status == "missing"
+    assert record.reason_codes == ("COMMS_NOT_IMPLEMENTED",)

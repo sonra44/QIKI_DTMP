@@ -189,6 +189,24 @@ def _section_freshness(
     return {"state": "fresh", "age_s": age_s, "source_ts": now - age_s}
 
 
+def _string_codes(value: Any) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple, set)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str) and value.strip():
+        return (value.strip(),)
+    return ()
+
+
+def _primary_comms_reason(comms: dict[str, Any], default: str) -> str:
+    reason_codes = _string_codes(comms.get("reason_codes"))
+    return reason_codes[0] if reason_codes else default
+
+
+def _comms_reason_text(comms: dict[str, Any], default: str) -> str:
+    text = str(comms.get("reason_text") or "").strip()
+    return text or default
+
+
 def _observation_route_role(*, observation_style: str, procedure_name: str) -> str:
     style = observation_style.strip().lower()
     procedure = procedure_name.strip().lower()
@@ -2668,12 +2686,6 @@ def _build_station_hail_response(
 ) -> QikiChatResponseV1:
     track = _best_station_track(world_snapshot)
     comms = world_snapshot.get("comms") if isinstance(world_snapshot, dict) else None
-    comms_freshness = _section_freshness(
-        world_snapshot if isinstance(world_snapshot, dict) else None,
-        section="comms",
-        stale_after_s=_COMMS_STALE_AFTER_S,
-        expire_after_s=_COMMS_EXPIRE_AFTER_S,
-    )
 
     if track is None:
         reason = BilingualText(
@@ -2779,11 +2791,13 @@ def _build_station_hail_response(
             error=None,
         )
 
-    if comms_freshness["state"] == "stale":
-        age_s = float(comms_freshness.get("age_s") or 0.0)
+    comms_available = comms.get("available")
+    comms_blocking_reasons = _string_codes(comms.get("reason_codes"))
+
+    if comms_available is None or str(comms_available).lower() == "unknown":
         reason = BilingualText(
-            en=f"Comms telemetry is stale ({age_s:.1f}s old), so QIKI cannot trust channel availability yet.",
-            ru=f"Телеметрия связи устарела ({age_s:.1f} с), поэтому QIKI пока не может доверять доступности канала.",
+            en=_comms_reason_text(comms, "Comms availability is unknown, so QIKI cannot assess channel readiness."),
+            ru="Доступность связи неизвестна, поэтому QIKI не может оценить готовность канала.",
         )
         return QikiChatResponseV1(
             request_id=req.request_id,
@@ -2792,27 +2806,27 @@ def _build_station_hail_response(
             reply=QikiReplyV1(
                 title=BilingualText(en="Channel deferred", ru="Канал отложен"),
                 body=BilingualText(
-                    en="QIKI sees the station, but the communications state is too old for a reliable hail decision.",
-                    ru="QIKI видит станцию, но состояние связи слишком старое для надёжного решения о вызове.",
+                    en="QIKI sees the station, but comms availability is not known.",
+                    ru="QIKI видит станцию, но доступность связи неизвестна.",
                 ),
             ),
             legality=QikiLegalityV1(
                 status="deferred",
                 domain="trust",
-                reason_code="COMMS_STATE_STALE",
+                reason_code=_primary_comms_reason(comms, "COMMS_STATE_UNKNOWN"),
                 reason=reason,
                 allowed_when=BilingualText(
-                    en="Retry after a fresh comms telemetry update arrives.",
-                    ru="Повторите попытку после прихода свежего обновления телеметрии связи.",
+                    en="Retry when comms availability has an explicit source state.",
+                    ru="Повторите попытку, когда у доступности связи появится явное состояние источника.",
                 ),
             ),
             trust_signals=[
                 QikiTrustSignalV1(
-                    label=BilingualText(en="Comms telemetry freshness", ru="Свежесть телеметрии связи"),
+                    label=BilingualText(en="Comms availability", ru="Доступность связи"),
                     state="degraded",
                     source="derived",
                     confidence=0.2,
-                    reason_code="COMMS_STATE_STALE",
+                    reason_code=_primary_comms_reason(comms, "COMMS_STATE_UNKNOWN"),
                     reason=reason,
                 ),
                 QikiTrustSignalV1(
@@ -2822,20 +2836,84 @@ def _build_station_hail_response(
                     confidence=max(0.0, min(1.0, float(track.get("quality", 0.0) or 0.0))),
                     reason_code="STATION_TRACK_TRUSTED",
                     reason=BilingualText(
-                        en=f"Station track is available while comms freshness catches up.",
-                        ru="Трек станции доступен, пока телеметрия связи догоняет по свежести.",
+                        en="Station track is available while comms availability remains unknown.",
+                        ru="Трек станции доступен, пока доступность связи остаётся неизвестной.",
                     ),
                 ),
             ],
             consequence=QikiConsequenceV1(
                 status="not_sent",
                 summary=BilingualText(
-                    en="The station hail was deferred until fresher comms telemetry arrives.",
-                    ru="Вызов станции отложен до прихода более свежей телеметрии связи.",
+                    en="The station hail was deferred until comms availability is known.",
+                    ru="Вызов станции отложен до выяснения доступности связи.",
                 ),
                 telemetry_confirmation=BilingualText(
-                    en="No communication request was emitted while comms freshness was insufficient.",
-                    ru="Пока свежесть телеметрии связи недостаточна, запрос в канал не отправлялся.",
+                    en="No communication request was emitted while comms availability was unknown.",
+                    ru="Пока доступность связи неизвестна, запрос в канал не отправлялся.",
+                ),
+            ),
+            proposals=[],
+            warnings=[reason],
+            error=None,
+        )
+
+    if comms_available is False or comms_blocking_reasons:
+        reason_code = _primary_comms_reason(comms, "COMMS_UNAVAILABLE")
+        reason = BilingualText(
+            en=_comms_reason_text(comms, "Comms are unavailable, so a station hail cannot be routed."),
+            ru="Связь недоступна, поэтому вызов станции не может быть маршрутизирован.",
+        )
+        return QikiChatResponseV1(
+            request_id=req.request_id,
+            ok=True,
+            mode=mode,
+            reply=QikiReplyV1(
+                title=BilingualText(en="Channel deferred", ru="Канал отложен"),
+                body=BilingualText(
+                    en="QIKI sees the station, but current comms availability blocks the hail.",
+                    ru="QIKI видит станцию, но текущая доступность связи блокирует вызов.",
+                ),
+            ),
+            legality=QikiLegalityV1(
+                status="deferred",
+                domain="resource",
+                reason_code=reason_code,
+                reason=reason,
+                allowed_when=BilingualText(
+                    en="Retry when comms availability is true.",
+                    ru="Повторите попытку, когда доступность связи станет true.",
+                ),
+            ),
+            trust_signals=[
+                QikiTrustSignalV1(
+                    label=BilingualText(en="Comms availability", ru="Доступность связи"),
+                    state="degraded",
+                    source="derived",
+                    confidence=0.25,
+                    reason_code=reason_code,
+                    reason=reason,
+                ),
+                QikiTrustSignalV1(
+                    label=BilingualText(en="Station radar track", ru="Радарный трек станции"),
+                    state="healthy",
+                    source="sensor",
+                    confidence=max(0.0, min(1.0, float(track.get("quality", 0.0) or 0.0))),
+                    reason_code="STATION_TRACK_TRUSTED",
+                    reason=BilingualText(
+                        en="Station track is available while comms are blocked.",
+                        ru="Трек станции доступен, пока связь заблокирована.",
+                    ),
+                ),
+            ],
+            consequence=QikiConsequenceV1(
+                status="not_sent",
+                summary=BilingualText(
+                    en="The station hail was not started.",
+                    ru="Вызов станции не был начат.",
+                ),
+                telemetry_confirmation=BilingualText(
+                    en="No communication request was emitted while comms were unavailable.",
+                    ru="Пока связь недоступна, запрос в канал не отправлялся.",
                 ),
             ),
             proposals=[],

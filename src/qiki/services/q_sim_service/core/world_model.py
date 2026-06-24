@@ -1026,6 +1026,22 @@ def _comms_reason_codes(delivery_state: str) -> tuple[str, ...]:
     return (mapping.get(delivery_state, COMMS_UNAVAILABLE),)
 
 
+def _comms_delivery_state_from_reason_codes(reason_codes: tuple[str, ...]) -> str:
+    if EMCON_BLOCK in reason_codes:
+        return "EMCON_block"
+    if COMMS_THERMAL_BLOCK in reason_codes:
+        return "thermal_block"
+    if COMMS_POWER_BLOCK in reason_codes:
+        return "power_block"
+    if COMMS_DEGRADED in reason_codes:
+        return "channel_degraded"
+    if COMMS_UNAUTHORIZED in reason_codes:
+        return "authorization_missing"
+    if COMMS_NOT_IMPLEMENTED in reason_codes:
+        return "not_implemented"
+    return "not_implemented"
+
+
 def _comms_trust_status(delivery_state: str) -> str:
     if delivery_state == "online":
         return "trusted"
@@ -1068,18 +1084,27 @@ def comms_channels_from_comms_state(
     xpdr_allowed = bool(xpdr.get("allowed", False))
     link = str(comms.get("link") or comms.get("link_state") or "").strip().lower()
     emcon_state = str(comms.get("EMCON_state") or comms.get("emcon_state") or "missing")
+    source_reason_codes = _string_tuple(comms.get("reason_codes"))
+    availability = comms.get("available")
+    availability_state = str(availability).strip().lower() if availability is not None else "unknown"
     power_blocked = _comms_power_blocked(power)
     thermal_blocked = _comms_thermal_blocked(thermal)
-    delivery_state = _comms_delivery_state(
-        comms_enabled=comms_enabled,
-        xpdr_allowed=xpdr_allowed,
-        link=link,
-        emcon_state=emcon_state,
-        power_blocked=power_blocked,
-        thermal_blocked=thermal_blocked,
+    if source_reason_codes:
+        delivery_state = _comms_delivery_state_from_reason_codes(source_reason_codes)
+    elif availability is False or availability_state == "unknown":
+        delivery_state = _comms_delivery_state_from_reason_codes(source_reason_codes)
+    else:
+        delivery_state = _comms_delivery_state(
+            comms_enabled=comms_enabled,
+            xpdr_allowed=xpdr_allowed,
+            link=link,
+            emcon_state=emcon_state,
+            power_blocked=power_blocked,
+            thermal_blocked=thermal_blocked,
     )
     data_rate = _num_or_none(comms.get("data_rate_kbps"))
     mode = str(xpdr.get("mode") or comms.get("plane_profile") or "missing").strip().lower() or "missing"
+    reason_codes = source_reason_codes if source_reason_codes else _comms_reason_codes(delivery_state)
 
     return (
         CommsChannelRecord(
@@ -1096,7 +1121,7 @@ def comms_channels_from_comms_state(
             timestamp=timestamp,
             freshness=freshness if comms_enabled else "unknown",
             trust_status=_comms_trust_status(delivery_state),
-            reason_codes=_comms_reason_codes(delivery_state),
+            reason_codes=reason_codes,
         ),
     )
 

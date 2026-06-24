@@ -22,7 +22,14 @@ from generated.common_types_pb2 import (
 )
 from generated.sensor_raw_in_pb2 import SensorReading
 
-from qiki.services.q_sim_service.core.world_model import WorldModel
+from qiki.services.q_sim_service.core.world_model import (
+    COMMS_DEGRADED,
+    COMMS_NOT_IMPLEMENTED,
+    COMMS_POWER_BLOCK,
+    COMMS_THERMAL_BLOCK,
+    EMCON_BLOCK,
+    WorldModel,
+)
 from qiki.services.q_sim_service.events_publisher import SimEventsNatsPublisher
 from qiki.services.q_sim_service.logger import logger
 from qiki.services.q_sim_service.radar_publisher import RadarNatsPublisher
@@ -727,14 +734,34 @@ class QSimService:
         xpdr_active = bool(xpdr.get("active"))
         xpdr_allowed = bool(xpdr.get("allowed"))
         mode = str(xpdr.get("mode") or "OFF").upper()
+        emcon_state = str(comms_plane.get("EMCON_state") or comms_plane.get("emcon_state") or "missing")
         soc_for_link = float(soc_pct)
         queue_penalty_ms = min(1800.0, float((len(self.sensor_data_queue) + len(self.actuator_command_queue)) * 10))
+        thermal_blocked = self._comms_thermal_blocked(state.get("thermal") if isinstance(state, dict) else None)
         if not comms_enabled:
             link = "offline"
             latency_ms = None
             packet_loss_pct = None
             rssi_dbm = -120.0
             snr_db = 0.0
+            tx_power_w = 0.0
+            data_rate_kbps = 0.0
+            antenna_status = "unlock"
+        elif emcon_state == "EMCON_block":
+            link = "offline"
+            latency_ms = None
+            packet_loss_pct = None
+            rssi_dbm = -120.0
+            snr_db = 0.0
+            tx_power_w = 0.0
+            data_rate_kbps = 0.0
+            antenna_status = "unlock"
+        elif thermal_blocked:
+            link = "degraded"
+            latency_ms = 1600.0 + queue_penalty_ms
+            packet_loss_pct = 35.0
+            rssi_dbm = -110.0
+            snr_db = 1.0
             tx_power_w = 0.0
             data_rate_kbps = 0.0
             antenna_status = "unlock"
@@ -765,6 +792,14 @@ class QSimService:
             tx_power_w = float(getattr(self.world_model, "_transponder_power_w", 0.0))
             data_rate_kbps = 192.0 if mode == "ON" else (96.0 if mode == "SPOOF" else 32.0)
             antenna_status = "lock"
+        available, reason_codes, reason_text = self._comms_availability(
+            comms_enabled=comms_enabled,
+            xpdr_allowed=xpdr_allowed,
+            xpdr_active=xpdr_active,
+            emcon_state=emcon_state,
+            thermal_blocked=thermal_blocked,
+            link=link,
+        )
         comms.update(
             {
                 "link": link,
@@ -778,8 +813,10 @@ class QSimService:
                 "antenna_status": antenna_status,
                 "plane_enabled": comms_enabled,
                 "plane_profile": mode,
-                "last_seen_ts": ts,
-                "age_s": 0.0,
+                "EMCON_state": emcon_state,
+                "available": available,
+                "reason_codes": reason_codes,
+                "reason_text": reason_text,
             }
         )
 
@@ -813,6 +850,9 @@ class QSimService:
         # No-mocks: if we cannot compute it (missing/bad config) -> omit.
         if self._hardware_profile_hash:
             out["hardware_profile_hash"] = self._hardware_profile_hash
+        if isinstance(out.get("comms"), dict):
+            out["comms"].pop("age_s", None)
+            out["comms"].pop("last_seen_ts", None)
         out["sim_state"] = self.get_sim_state()
         return out
 
@@ -840,3 +880,50 @@ class QSimService:
                 self._spoof_transponder_id = f"SPOOF-{uuid4().hex[:6].upper()}"
             return self._spoof_transponder_id
         return None
+
+    def _comms_thermal_blocked(self, thermal: object) -> bool:
+        if not isinstance(thermal, dict):
+            return False
+        nodes = thermal.get("nodes")
+        if not isinstance(nodes, list):
+            return False
+        for raw in nodes:
+            if not isinstance(raw, dict):
+                continue
+            node_id = str(raw.get("id") or "").lower()
+            if not ("comms" in node_id or "comm" in node_id or "transponder" in node_id):
+                continue
+            if bool(raw.get("tripped")) or bool(raw.get("warned")):
+                return True
+            try:
+                temp_c = float(raw.get("temp_c"))
+                warn_c = float(raw.get("warn_c"))
+            except (TypeError, ValueError):
+                continue
+            if temp_c >= warn_c:
+                return True
+        return False
+
+    def _comms_availability(
+        self,
+        *,
+        comms_enabled: bool,
+        xpdr_allowed: bool,
+        xpdr_active: bool,
+        emcon_state: str,
+        thermal_blocked: bool,
+        link: str,
+    ) -> tuple[bool | str, tuple[str, ...], str]:
+        if not comms_enabled:
+            return False, (COMMS_NOT_IMPLEMENTED,), "Comms unavailable: comms plane is not implemented or disabled."
+        if emcon_state == "EMCON_block":
+            return False, (EMCON_BLOCK,), "Comms unavailable: EMCON blocks transmission."
+        if thermal_blocked:
+            return False, (COMMS_THERMAL_BLOCK,), "Comms unavailable: comms thermal node blocks transmission."
+        if not xpdr_allowed:
+            return False, (COMMS_POWER_BLOCK,), "Comms unavailable: transponder power is blocked by PDU."
+        if not xpdr_active or link == "degraded":
+            return False, (COMMS_DEGRADED,), "Comms unavailable: channel is degraded."
+        if link != "online":
+            return "unknown", (COMMS_NOT_IMPLEMENTED,), "Comms availability unknown: no modeled online link source."
+        return True, (), "Comms available from current q-sim transponder state."

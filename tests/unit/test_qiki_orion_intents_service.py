@@ -1467,6 +1467,9 @@ def test_build_station_hail_response_blocks_offline_link_as_resource_issue() -> 
         world_snapshot={
             "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
             "comms": {
+                "available": False,
+                "reason_codes": ("COMMS_UNAVAILABLE",),
+                "reason_text": "The communications link is offline, so a station hail cannot be routed.",
                 "plane_enabled": True,
                 "link_state": "offline",
                 "data_rate_kbps": 0.0,
@@ -1476,16 +1479,16 @@ def test_build_station_hail_response_blocks_offline_link_as_resource_issue() -> 
     )
 
     assert response.legality is not None
-    assert response.legality.status == "blocked"
+    assert response.legality.status == "deferred"
     assert response.legality.domain == "resource"
-    assert response.legality.reason_code == "COMMS_LINK_OFFLINE"
-    assert response.trust_signals[0].state == "off"
+    assert response.legality.reason_code == "COMMS_UNAVAILABLE"
+    assert response.trust_signals[0].state == "degraded"
     assert response.trust_signals[0].source == "derived"
     assert response.consequence is not None
     assert response.consequence.status == "not_sent"
 
 
-def test_build_station_hail_response_defers_stale_comms_telemetry() -> None:
+def test_build_station_hail_response_ignores_frame_age_when_comms_available() -> None:
     req = QikiChatRequestV1(
         request_id=UUID(int=111),
         ts_epoch_ms=1,
@@ -1500,6 +1503,109 @@ def test_build_station_hail_response_defers_stale_comms_telemetry() -> None:
             "ts_unix_ms": 1,
             "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
             "comms": {
+                "available": True,
+                "plane_enabled": True,
+                "link_state": "online",
+                "data_rate_kbps": 128.0,
+                "antenna_status": "lock",
+            },
+        },
+    )
+
+    assert response.legality is not None
+    assert response.legality.status == "allowed"
+    assert response.legality.domain == "resource"
+    assert response.legality.reason_code == "COMMS_CHANNEL_READY"
+    assert response.trust_signals[0].state == "healthy"
+    assert response.consequence is not None
+    assert response.consequence.status == "confirmed"
+
+
+def test_build_station_hail_response_blocks_unavailable_comms_by_reason_code() -> None:
+    req = QikiChatRequestV1(
+        request_id=UUID(int=112),
+        ts_epoch_ms=1,
+        mode_hint=QikiMode.FACTORY,
+        input=QikiChatInput(text="hail station", lang_hint="auto"),
+    )
+
+    response = _build_station_hail_response(
+        req=req,
+        mode=QikiMode.FACTORY,
+        world_snapshot={
+            "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
+            "comms": {
+                "available": False,
+                "reason_codes": ("COMMS_POWER_BLOCK",),
+                "reason_text": "Comms unavailable: transponder power is blocked by PDU.",
+                "plane_enabled": True,
+                "link_state": "online",
+                "data_rate_kbps": 128.0,
+                "antenna_status": "lock",
+            },
+        },
+    )
+
+    assert response.legality is not None
+    assert response.legality.status == "deferred"
+    assert response.legality.domain == "resource"
+    assert response.legality.reason_code == "COMMS_POWER_BLOCK"
+    assert response.trust_signals[0].state == "degraded"
+    assert response.consequence is not None
+    assert response.consequence.status == "not_sent"
+
+
+def test_build_station_hail_response_demotes_available_with_blocking_reason_codes() -> None:
+    req = QikiChatRequestV1(
+        request_id=UUID(int=114),
+        ts_epoch_ms=1,
+        mode_hint=QikiMode.FACTORY,
+        input=QikiChatInput(text="hail station", lang_hint="auto"),
+    )
+
+    response = _build_station_hail_response(
+        req=req,
+        mode=QikiMode.FACTORY,
+        world_snapshot={
+            "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
+            "comms": {
+                "available": True,
+                "reason_codes": ("COMMS_POWER_BLOCK",),
+                "reason_text": "Comms unavailable: transponder power is blocked by PDU.",
+                "plane_enabled": True,
+                "link_state": "online",
+                "data_rate_kbps": 128.0,
+                "antenna_status": "lock",
+            },
+        },
+    )
+
+    assert response.legality is not None
+    assert response.legality.status == "deferred"
+    assert response.legality.domain == "resource"
+    assert response.legality.reason_code == "COMMS_POWER_BLOCK"
+    assert response.trust_signals[0].state == "degraded"
+    assert response.consequence is not None
+    assert response.consequence.status == "not_sent"
+
+
+def test_build_station_hail_response_defers_unknown_comms_availability() -> None:
+    req = QikiChatRequestV1(
+        request_id=UUID(int=113),
+        ts_epoch_ms=1,
+        mode_hint=QikiMode.FACTORY,
+        input=QikiChatInput(text="hail station", lang_hint="auto"),
+    )
+
+    response = _build_station_hail_response(
+        req=req,
+        mode=QikiMode.FACTORY,
+        world_snapshot={
+            "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
+            "comms": {
+                "available": "unknown",
+                "reason_codes": ("COMMS_NOT_IMPLEMENTED",),
+                "reason_text": "Comms availability unknown: no modeled online link source.",
                 "plane_enabled": True,
                 "link_state": "online",
                 "data_rate_kbps": 128.0,
@@ -1511,7 +1617,38 @@ def test_build_station_hail_response_defers_stale_comms_telemetry() -> None:
     assert response.legality is not None
     assert response.legality.status == "deferred"
     assert response.legality.domain == "trust"
-    assert response.legality.reason_code == "COMMS_STATE_STALE"
+    assert response.legality.reason_code == "COMMS_NOT_IMPLEMENTED"
+    assert response.trust_signals[0].state == "degraded"
+    assert response.consequence is not None
+    assert response.consequence.status == "not_sent"
+
+
+def test_build_station_hail_response_defers_missing_comms_availability() -> None:
+    req = QikiChatRequestV1(
+        request_id=UUID(int=115),
+        ts_epoch_ms=1,
+        mode_hint=QikiMode.FACTORY,
+        input=QikiChatInput(text="hail station", lang_hint="auto"),
+    )
+
+    response = _build_station_hail_response(
+        req=req,
+        mode=QikiMode.FACTORY,
+        world_snapshot={
+            "radar_tracks": [{"object_type": 3, "range_m": 900.0, "quality": 0.88, "age_s": 0.2}],
+            "comms": {
+                "plane_enabled": True,
+                "link_state": "online",
+                "data_rate_kbps": 128.0,
+                "antenna_status": "lock",
+            },
+        },
+    )
+
+    assert response.legality is not None
+    assert response.legality.status == "deferred"
+    assert response.legality.domain == "trust"
+    assert response.legality.reason_code == "COMMS_STATE_UNKNOWN"
     assert response.trust_signals[0].state == "degraded"
     assert response.consequence is not None
     assert response.consequence.status == "not_sent"
@@ -1531,6 +1668,7 @@ def test_build_station_hail_response_confirms_online_link_readiness() -> None:
         world_snapshot={
             "radar_tracks": [{"object_type": 3, "range_m": 640.0, "quality": 0.93, "age_s": 0.2}],
             "comms": {
+                "available": True,
                 "plane_enabled": True,
                 "link_state": "online",
                 "data_rate_kbps": 192.0,
@@ -1656,9 +1794,10 @@ def test_run_orion_intents_loop_station_hail_changes_after_fresh_telemetry(monke
         try:
             await asyncio.wait_for(fake_nc.ready.wait(), timeout=1.0)
 
-            stale_telemetry = {
+            old_frame_telemetry = {
                 "ts_unix_ms": 1,
                 "comms": {
+                    "available": True,
                     "plane_enabled": True,
                     "link_state": "online",
                     "data_rate_kbps": 192.0,
@@ -1669,6 +1808,7 @@ def test_run_orion_intents_loop_station_hail_changes_after_fresh_telemetry(monke
             fresh_telemetry = {
                 "ts_unix_ms": int(time.time() * 1000),
                 "comms": {
+                    "available": True,
                     "plane_enabled": True,
                     "link_state": "online",
                     "data_rate_kbps": 192.0,
@@ -1676,7 +1816,7 @@ def test_run_orion_intents_loop_station_hail_changes_after_fresh_telemetry(monke
                     "antenna_status": "lock",
                 },
             }
-            stale_req = QikiChatRequestV1(
+            old_frame_req = QikiChatRequestV1(
                 request_id=UUID(int=201),
                 ts_epoch_ms=1,
                 mode_hint=QikiMode.FACTORY,
@@ -1689,16 +1829,16 @@ def test_run_orion_intents_loop_station_hail_changes_after_fresh_telemetry(monke
                 input=QikiChatInput(text="hail station", lang_hint="auto"),
             )
 
-            await fake_nc.callbacks[SYSTEM_TELEMETRY](_FakeMsg(stale_telemetry))
-            await fake_nc.callbacks[QIKI_INTENTS](SimpleNamespace(data=stale_req.model_dump_json().encode("utf-8")))
-            stale_resp = fake_nc.published[-1][1]
+            await fake_nc.callbacks[SYSTEM_TELEMETRY](_FakeMsg(old_frame_telemetry))
+            await fake_nc.callbacks[QIKI_INTENTS](SimpleNamespace(data=old_frame_req.model_dump_json().encode("utf-8")))
+            old_frame_resp = fake_nc.published[-1][1]
 
             await fake_nc.callbacks[SYSTEM_TELEMETRY](_FakeMsg(fresh_telemetry))
             await fake_nc.callbacks[QIKI_INTENTS](SimpleNamespace(data=fresh_req.model_dump_json().encode("utf-8")))
             fresh_resp = fake_nc.published[-1][1]
 
             assert fake_nc.published[-2][0] == QIKI_RESPONSES
-            assert stale_resp["legality"]["reason_code"] == "COMMS_STATE_STALE"
+            assert old_frame_resp["legality"]["reason_code"] == "COMMS_CHANNEL_READY"
             assert fresh_resp["legality"]["reason_code"] == "COMMS_CHANNEL_READY"
         finally:
             loop_task.cancel()
