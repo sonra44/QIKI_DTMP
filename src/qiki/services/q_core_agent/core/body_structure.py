@@ -709,6 +709,122 @@ def _rejected_registration_result(
     )
 
 
+def _registration_rejection_outcome(
+    body: BodyConfigSnapshot,
+    request: ModuleAttachRequest,
+    *,
+    audit_sink: RegistrationAuditSink,
+    rejection: _RegistrationRejection,
+) -> tuple[RegistrationResult, BodyConfigSnapshot]:
+    append_audit = getattr(audit_sink, rejection.audit_method)
+    audit_event_id = append_audit(
+        request_id=request.request_id,
+        timestamp=time.time(),
+        **rejection.audit_payload,
+    )
+    return (
+        _rejected_registration_result(
+            request,
+            audit_event_id=audit_event_id,
+            reason_code=rejection.reason_code,
+            passport_status=rejection.passport_status,
+            result_context=rejection.result_context,
+        ),
+        body,
+    )
+
+
+def _registered_module_entry(
+    request: ModuleAttachRequest,
+    *,
+    passport_status: str,
+    capability_status: str,
+) -> dict[str, Any]:
+    return {
+        "module_id": request.module_id,
+        "mount_point": request.mount_point,
+        "status": MODULE_STATUS_ATTACHED,
+        "passport_status": passport_status,
+        "capability_status": capability_status,
+    }
+
+
+def _registered_body_snapshot(
+    body: BodyConfigSnapshot,
+    request: ModuleAttachRequest,
+    *,
+    entry: dict[str, Any],
+) -> BodyConfigSnapshot:
+    new_occupancy = dict(body.face_occupancy)
+    new_occupancy[request.mount_point] = request.module_id
+    # Build a fully de-aliased snapshot (remediation C2): a frozen dataclass does not
+    # prevent in-place mutation of nested mutable contents, so every nested structure is
+    # copied — pre-existing module entry dicts, the new entry, and each face's mount-class
+    # rule dict — so parent and child snapshots never share mutable state.
+    return BodyConfigSnapshot(
+        face_ids=body.face_ids,
+        face_map_status=body.face_map_status,
+        bayonet_states=dict(body.bayonet_states),
+        face_occupancy=new_occupancy,
+        modules=tuple(dict(m) for m in body.modules) + (dict(entry),),
+        face_mount_classes={k: dict(v) for k, v in body.face_mount_classes.items()},
+    )
+
+
+def _attached_registration_result(
+    request: ModuleAttachRequest,
+    *,
+    audit_event_id: str,
+    passport_status: str,
+    capability_status: str,
+) -> RegistrationResult:
+    return RegistrationResult(
+        status=MODULE_STATUS_ATTACHED,
+        audit_event_id=audit_event_id,
+        module_id=request.module_id,
+        mount_point=request.mount_point,
+        passport_status=passport_status,
+        body_config_updated=True,
+        runtime_ready=False,
+        capability_status=capability_status,
+        reason_code=None,
+    )
+
+
+def _registration_success_outcome(
+    body: BodyConfigSnapshot,
+    request: ModuleAttachRequest,
+    *,
+    audit_sink: RegistrationAuditSink,
+) -> tuple[RegistrationResult, BodyConfigSnapshot]:
+    passport_status = PASSPORT_STATUS_VALIDATED
+    capability_status = CAPABILITY_STATUS_INACTIVE  # registration does NOT activate capabilities
+    entry = _registered_module_entry(
+        request,
+        passport_status=passport_status,
+        capability_status=capability_status,
+    )
+    updated = _registered_body_snapshot(body, request, entry=entry)
+    audit_event_id = audit_sink.append_registration(
+        request_id=request.request_id,
+        module_id=request.module_id,
+        mount_point=request.mount_point,
+        passport_status=passport_status,
+        capability_status=capability_status,
+        runtime_ready=False,
+        timestamp=time.time(),
+    )
+    return (
+        _attached_registration_result(
+            request,
+            audit_event_id=audit_event_id,
+            passport_status=passport_status,
+            capability_status=capability_status,
+        ),
+        updated,
+    )
+
+
 def register_module(
     body: BodyConfigSnapshot,
     request: ModuleAttachRequest,
@@ -726,69 +842,13 @@ def register_module(
         rejection = _evaluate_registration_guard(body, request, guard)
         if rejection is None:
             continue
-        append_audit = getattr(audit_sink, rejection.audit_method)
-        audit_event_id = append_audit(
-            request_id=request.request_id,
-            timestamp=time.time(),
-            **rejection.audit_payload,
-        )
-        return (
-            _rejected_registration_result(
-                request,
-                audit_event_id=audit_event_id,
-                reason_code=rejection.reason_code,
-                passport_status=rejection.passport_status,
-                result_context=rejection.result_context,
-            ),
+        return _registration_rejection_outcome(
             body,
+            request,
+            audit_sink=audit_sink,
+            rejection=rejection,
         )
-
-    passport_status = PASSPORT_STATUS_VALIDATED
-    capability_status = CAPABILITY_STATUS_INACTIVE  # registration does NOT activate capabilities
-    entry: dict[str, Any] = {
-        "module_id": request.module_id,
-        "mount_point": request.mount_point,
-        "status": MODULE_STATUS_ATTACHED,
-        "passport_status": passport_status,
-        "capability_status": capability_status,
-    }
-    new_occupancy = dict(body.face_occupancy)
-    new_occupancy[request.mount_point] = request.module_id
-    # Build a fully de-aliased snapshot (remediation C2): a frozen dataclass does not
-    # prevent in-place mutation of nested mutable contents, so every nested structure is
-    # copied — pre-existing module entry dicts, the new entry, and each face's mount-class
-    # rule dict — so parent and child snapshots never share mutable state.
-    updated = BodyConfigSnapshot(
-        face_ids=body.face_ids,
-        face_map_status=body.face_map_status,
-        bayonet_states=dict(body.bayonet_states),
-        face_occupancy=new_occupancy,
-        modules=tuple(dict(m) for m in body.modules) + (dict(entry),),
-        face_mount_classes={k: dict(v) for k, v in body.face_mount_classes.items()},
-    )
-    audit_event_id = audit_sink.append_registration(
-        request_id=request.request_id,
-        module_id=request.module_id,
-        mount_point=request.mount_point,
-        passport_status=passport_status,
-        capability_status=capability_status,
-        runtime_ready=False,
-        timestamp=time.time(),
-    )
-    return (
-        RegistrationResult(
-            status=MODULE_STATUS_ATTACHED,
-            audit_event_id=audit_event_id,
-            module_id=request.module_id,
-            mount_point=request.mount_point,
-            passport_status=passport_status,
-            body_config_updated=True,
-            runtime_ready=False,
-            capability_status=capability_status,
-            reason_code=None,
-        ),
-        updated,
-    )
+    return _registration_success_outcome(body, request, audit_sink=audit_sink)
 
 
 # --- RUNTIME_SLICE_0008: module attach validation pipeline v1 (orchestrator) ---------
