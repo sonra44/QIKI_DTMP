@@ -215,6 +215,7 @@ class EventStore:
         self.maxlen = max(1, int(maxlen))
         self.enabled = bool(enabled)
         self._events: Deque[SystemEvent] = deque(maxlen=self.maxlen)
+        self._events_lock = threading.RLock()
 
         backend_raw = str(backend or "memory").strip().lower()
         if backend_raw not in {mode.value for mode in _BackendMode}:
@@ -282,11 +283,12 @@ class EventStore:
     def append(self, event: SystemEvent) -> Optional[SystemEvent]:
         if not self.enabled:
             return None
-        if not self._validate_event_contract(event):
-            return None
-        self._events.append(event)
-        self._append_sqlite(event)
-        self._maybe_run_retention(event.ts)
+        with self._events_lock:
+            if not self._validate_event_contract(event):
+                return None
+            self._events.append(event)
+            self._append_sqlite(event)
+            self._maybe_run_retention(event.ts)
         return event
 
     def append_new(
@@ -323,11 +325,13 @@ class EventStore:
         limit = max(0, int(n))
         if limit == 0:
             return []
-        return list(self._events)[-limit:]
+        with self._events_lock:
+            return list(self._events)[-limit:]
 
     def snapshot(self) -> list[SystemEvent]:
         """Return a stable in-memory copy for non-blocking readers."""
-        return list(self._events)
+        with self._events_lock:
+            return list(self._events)
 
     def query(
         self,
@@ -381,7 +385,9 @@ class EventStore:
         to_ts: Optional[float] = None,
     ) -> list[SystemEvent]:
         result: list[SystemEvent] = []
-        for event in self._events:
+        with self._events_lock:
+            events = list(self._events)
+        for event in events:
             if from_ts is not None and event.ts < float(from_ts):
                 continue
             if to_ts is not None and event.ts > float(to_ts):
@@ -400,7 +406,9 @@ class EventStore:
         if truth_state is not None:
             expected_truth = _truth_state_from_any(truth_state)
         result: list[SystemEvent] = []
-        for event in self._events:
+        with self._events_lock:
+            events = list(self._events)
+        for event in events:
             if subsystem is not None and event.subsystem != subsystem:
                 continue
             if event_type is not None and event.event_type != event_type:
@@ -419,7 +427,7 @@ class EventStore:
             oldest = float(row[1]) if row and row[1] is not None else None
             newest = float(row[2]) if row and row[2] is not None else None
             return EventStoreStats(rows=rows, db_size_bytes=db_size, oldest_ts=oldest, newest_ts=newest)
-        events = list(self._events)
+        events = self.snapshot()
         if not events:
             return EventStoreStats(rows=0, db_size_bytes=0, oldest_ts=None, newest_ts=None)
         return EventStoreStats(
@@ -456,7 +464,7 @@ class EventStore:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         count = 0
         with out_path.open("w", encoding="utf-8") as handle:
-            for event in self._events:
+            for event in self.snapshot():
                 handle.write(json.dumps(event.to_json_dict(), ensure_ascii=True))
                 handle.write("\n")
                 count += 1
@@ -584,7 +592,8 @@ class EventStore:
             truth_state=truth_state,
             reason=reason,
         )
-        self._events.append(event)
+        with self._events_lock:
+            self._events.append(event)
         # Best effort for durable audit trail.
         if self._sqlite_writer is not None:
             session_id = ""
