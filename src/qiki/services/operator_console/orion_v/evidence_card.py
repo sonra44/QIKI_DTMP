@@ -17,6 +17,8 @@ from typing import Any, Mapping
 
 from qiki.services.q_core_agent.core.evidence_card_id import make_evidence_card_id
 from qiki.services.operator_console.orion_v.evidence_card_mapping import (
+    ORION_SOURCE_MISSING,
+    SOURCE_TYPE_AUDIT,
     card_type_for,
     evidence_status_for,
     missing_fields_for,
@@ -68,6 +70,15 @@ class EvidenceCard:
     related_audit_event_id: str
     related_command_id: str | None
     operator_summary: str
+    # IF-ORION-EVIDENCE-001 / canon §17 evidence fields — conservative, audit-derived (no overclaim).
+    claim_id: str = ""
+    claim_text: str = ""
+    freshness: str = "unknown"
+    related_module_id: str = ""
+    reason_codes: tuple[str, ...] = ()
+    audit_link: str = ""
+    blackbox_relevance: bool = False
+    operator_action: str | None = None
 
 
 def evidence_card_from_audit_event(audit_event: Any) -> EvidenceCard:
@@ -85,8 +96,19 @@ def evidence_card_from_audit_event(audit_event: Any) -> EvidenceCard:
     # Facts are surfaced ONLY from the audit payload (no invention).
     facts: dict[str, Any] = {key: payload[key] for key in _FACT_KEYS if key in payload}
 
+    card_id = make_evidence_card_id(event_id)
+    source_type = source_type_for(audit_event)
+    missing_fields = tuple(missing_fields_for(audit_event))
+    operator_summary = operator_summary_for(audit_event)
+    # reason_codes: existing domain reason + ORION missing-source code when that path is active.
+    reason_codes = tuple(
+        code
+        for code in (reason_code, ORION_SOURCE_MISSING if ORION_SOURCE_MISSING in missing_fields else "")
+        if code
+    )
+
     return EvidenceCard(
-        card_id=make_evidence_card_id(event_id),
+        card_id=card_id,
         card_type=card_type_for(audit_event),
         title=f"Module attach: {subject_status}",
         subject_type="module",
@@ -95,15 +117,24 @@ def evidence_card_from_audit_event(audit_event: Any) -> EvidenceCard:
         subject_status=subject_status,
         status=evidence_status_for(audit_event),
         reason_code=reason_code,
-        source_type=source_type_for(audit_event),
+        source_type=source_type,
         source_id=event_id,
         source_timestamp=float(getattr(audit_event, "ts", 0.0) or 0.0),
         trust_status=trust_status_for(audit_event),
         read_only=True,
         runtime_ready=False,
         facts=facts,
-        missing_fields=tuple(missing_fields_for(audit_event)),
+        missing_fields=missing_fields,
         related_audit_event_id=event_id,
         related_command_id=payload.get("request_id"),
-        operator_summary=operator_summary_for(audit_event),
+        operator_summary=operator_summary,
+        # IF-ORION-EVIDENCE-001 conservative, audit-derived fields (no overclaim).
+        claim_id=card_id,
+        claim_text=operator_summary,
+        freshness="unknown",
+        related_module_id=module_id,
+        reason_codes=reason_codes,
+        audit_link=event_id if source_type == SOURCE_TYPE_AUDIT else "",
+        blackbox_relevance=bool(payload.get("blackbox_relevance", False)),
+        operator_action=None,
     )
