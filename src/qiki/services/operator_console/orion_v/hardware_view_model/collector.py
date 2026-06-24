@@ -942,6 +942,14 @@ class HardwareCollector:
                 "primary_keys": ("sensor_star_tracker.stars_tracked",),
                 "primary_unit": "",
                 "fallback_keys": ("sensor_star_tracker.locked", "sensor_plane.star_tracker.locked"),
+                "extra_fields": (
+                    {
+                        "suffix": "attitude_err",
+                        "label": "Ошибка ориентации",
+                        "keys": ("sensor_plane.star_tracker.attitude_err_deg",),
+                        "unit": "°",
+                    },
+                ),
             },
             {
                 "id": "spectrometer",
@@ -1052,6 +1060,22 @@ class HardwareCollector:
             )
             if age_s is not None:
                 any_data = True
+
+            # Additive per-sensor extra evidence fields (e.g. star tracker attitude error).
+            # Surfaced only from real keys; absent source degrades to NO_DATA, never fabricated.
+            for extra in item.get("extra_fields", ()):
+                extra_value = self._raw(snapshot, *extra["keys"])
+                fields.append(
+                    mk_field(
+                        f"sensors.{sensor_id}.{extra['suffix']}",
+                        f"{item['title']}: {extra['label']}",
+                        extra_value,
+                        extra.get("unit", ""),
+                        status=ViewStatus.OK if extra_value is not None else ViewStatus.NO_DATA,
+                    )
+                )
+                if extra_value is not None:
+                    any_data = True
 
         summary = (
             "Нет данных"

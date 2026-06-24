@@ -85,7 +85,10 @@ def normalize_sensor_status(value: Any) -> str:
         return "UNKNOWN"
     if normalized in {"true", "1", "online", "up", "ok", "active", "enabled", "locked"}:
         return "ONLINE"
-    if normalized in {"degraded", "warn", "warning"}:
+    if normalized in {"degraded", "warn", "warning", "crit", "critical"}:
+        # IF-SENSOR runtime maps both warn and crit to SENSOR_DEGRADED; a "crit" status must
+        # surface as a concern (DEGRADED -> WARN), never silently UNKNOWN/NO_DATA — nor, once an
+        # enabled sensor falls through to .enabled, a misleading OK.
         return "DEGRADED"
     if normalized in {"false", "0", "offline", "down", "lost", "disabled", "disconnected"}:
         return "OFFLINE"

@@ -458,6 +458,49 @@ def test_sensors_disabled_with_uninformative_status_stays_disabled_not_no_data()
     assert star_tracker.status == ViewStatus.OK
 
 
+def test_sensors_star_tracker_attitude_error_surfaced() -> None:
+    # D: star tracker attitude error is surfaced as its own additive field when present, so the
+    # operator sees orientation error (not only star count). Real-plane key attitude_err_deg.
+    model = HardwareCollector().update(
+        {
+            "sensor_plane.star_tracker.enabled": True,
+            "sensor_plane.star_tracker.status": "ok",
+            "sensor_plane.star_tracker.locked": True,
+            "sensor_plane.star_tracker.attitude_err_deg": 1.5,
+        }
+    )
+
+    sensors = model.subsystems["sensors"]
+    att_err = next(field for field in sensors.fields if field.key == "sensors.sensor_star_tracker.attitude_err")
+    assert att_err.value == 1.5
+    assert att_err.status == ViewStatus.OK
+
+
+def test_sensors_star_tracker_attitude_error_absent_is_no_data() -> None:
+    # Additive field must degrade honestly to NO_DATA when the source is absent, never fabricate.
+    model = HardwareCollector().update({"sensor_plane.star_tracker.enabled": True})
+
+    sensors = model.subsystems["sensors"]
+    att_err = next(field for field in sensors.fields if field.key == "sensors.sensor_star_tracker.attitude_err")
+    assert att_err.status == ViewStatus.NO_DATA
+
+
+def test_sensors_real_plane_crit_status_not_shown_as_no_data() -> None:
+    # F-min: a sensor reporting status="crit" must surface as a concern (WARN), aligned with the
+    # runtime mapper which already classes warn/crit as SENSOR_DEGRADED — never silently NO_DATA.
+    model = HardwareCollector().update(
+        {
+            "sensor_plane.imu.enabled": True,
+            "sensor_plane.imu.status": "crit",
+            "sensor_plane.imu.roll_rate_rps": 0.01,
+        }
+    )
+
+    sensors = model.subsystems["sensors"]
+    imu_status = next(field for field in sensors.fields if field.key == "sensors.imu_main.status")
+    assert imu_status.status == ViewStatus.WARN
+
+
 def test_hull_integrity_pct_critical_sets_critical_status() -> None:
     model = HardwareCollector().update({"hull.integrity_pct": 35})
 
