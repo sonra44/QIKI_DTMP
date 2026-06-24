@@ -58,6 +58,42 @@ PASSPORT_STATUS_VALIDATED = "validated"
 MODULE_STATUS_ATTACHED = "attached"
 CAPABILITY_STATUS_INACTIVE = "inactive"
 
+_AUDIT_STATE_ATTACH_REQUESTED = "attach_requested"
+_AUDIT_STATE_ATTACH_REJECTED = "attach_rejected"
+_AUDIT_STATE_MODULE_REGISTERED = "module_registered"
+_AUDIT_EFFECT_NOT_APPLIED = "not_applied"
+_AUDIT_EFFECT_REGISTRY_UPDATED = "registry_updated"
+_AUDIT_SEVERITY_WARNING = "warning"
+_AUDIT_SEVERITY_INFO = "info"
+
+
+def _if_audit_aliases(
+    *,
+    source: str,
+    command_id: str,
+    reason_code: str | None,
+    previous_state: str,
+    new_state: str,
+    effect_state: str,
+    severity: str,
+    blackbox_relevance: bool = False,
+) -> dict[str, Any]:
+    """IF-AUDIT aliases derived from the local attach audit event only.
+
+    These are audit-level transition labels, not full runtime/world-state
+    snapshots and not effect confirmation.
+    """
+    return {
+        "source": source,
+        "command_id": command_id,
+        "previous_state": previous_state,
+        "new_state": new_state,
+        "reason_codes": [reason_code] if reason_code else [],
+        "effect_state": effect_state,
+        "severity": severity,
+        "blackbox_relevance": bool(blackbox_relevance),
+    }
+
 
 @dataclass(frozen=True, slots=True)
 class BodyConfigSnapshot:
@@ -175,6 +211,15 @@ class EventStoreRejectionSink:
                 "attempted_mount": event.attempted_mount,
                 "reason_code": event.reason_code,
                 "source_owner": event.source_owner,
+                **_if_audit_aliases(
+                    source=event.source_owner,
+                    command_id=event.request_id,
+                    reason_code=event.reason_code,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=event.reason_code,
             ts=event.timestamp,
@@ -260,6 +305,7 @@ class RegistrationAuditSink(Protocol):
     def append_registration(
         self,
         *,
+        request_id: str,
         module_id: str,
         mount_point: str,
         passport_status: str,
@@ -329,6 +375,7 @@ class EventStoreRegistrationSink:
     def append_registration(
         self,
         *,
+        request_id: str,
         module_id: str,
         mount_point: str,
         passport_status: str,
@@ -347,6 +394,15 @@ class EventStoreRegistrationSink:
                 "runtime_ready": runtime_ready,
                 "body_config_updated": True,
                 "source_owner": SOURCE_OWNER,
+                **_if_audit_aliases(
+                    source=SOURCE_OWNER,
+                    command_id=request_id,
+                    reason_code=None,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_MODULE_REGISTERED,
+                    effect_state=_AUDIT_EFFECT_REGISTRY_UPDATED,
+                    severity=_AUDIT_SEVERITY_INFO,
+                ),
             },
             reason="",
             ts=timestamp,
@@ -377,6 +433,15 @@ class EventStoreRegistrationSink:
                 "mount_point": mount_point,
                 "body_config_updated": False,
                 "source_owner": SOURCE_OWNER,
+                **_if_audit_aliases(
+                    source=SOURCE_OWNER,
+                    command_id=request_id,
+                    reason_code=MOUNT_POINT_OCCUPIED,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=MOUNT_POINT_OCCUPIED,
             ts=timestamp,
@@ -405,6 +470,15 @@ class EventStoreRegistrationSink:
                 "mount_point": mount_point,
                 "body_config_updated": False,
                 "source_owner": SOURCE_OWNER,
+                **_if_audit_aliases(
+                    source=SOURCE_OWNER,
+                    command_id=request_id,
+                    reason_code=MODULE_MOUNT_CLASS_FORBIDDEN,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=MODULE_MOUNT_CLASS_FORBIDDEN,
             ts=timestamp,
@@ -435,6 +509,15 @@ class EventStoreRegistrationSink:
                 "validation_error": validation_error,
                 "body_config_updated": False,
                 "source_owner": PASSPORT_VALIDATOR_OWNER,
+                **_if_audit_aliases(
+                    source=PASSPORT_VALIDATOR_OWNER,
+                    command_id=request_id,
+                    reason_code=MODULE_PASSPORT_INVALID,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=MODULE_PASSPORT_INVALID,
             ts=timestamp,
@@ -462,6 +545,15 @@ class EventStoreRegistrationSink:
                 "known_mount": False,
                 "body_config_updated": False,
                 "source_owner": SOURCE_OWNER,
+                **_if_audit_aliases(
+                    source=SOURCE_OWNER,
+                    command_id=request_id,
+                    reason_code=MOUNT_POINT_UNKNOWN,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=MOUNT_POINT_UNKNOWN,
             ts=timestamp,
@@ -486,6 +578,15 @@ class EventStoreRegistrationSink:
                 "mount_point": mount_point,
                 "body_config_updated": False,
                 "source_owner": SOURCE_OWNER,
+                **_if_audit_aliases(
+                    source=SOURCE_OWNER,
+                    command_id=request_id,
+                    reason_code=MODULE_PASSPORT_MISSING,
+                    previous_state=_AUDIT_STATE_ATTACH_REQUESTED,
+                    new_state=_AUDIT_STATE_ATTACH_REJECTED,
+                    effect_state=_AUDIT_EFFECT_NOT_APPLIED,
+                    severity=_AUDIT_SEVERITY_WARNING,
+                ),
             },
             reason=MODULE_PASSPORT_MISSING,
             ts=timestamp,
@@ -679,6 +780,7 @@ def register_module(
         face_mount_classes={k: dict(v) for k, v in body.face_mount_classes.items()},
     )
     audit_event_id = audit_sink.append_registration(
+        request_id=request.request_id,
         module_id=request.module_id,
         mount_point=request.mount_point,
         passport_status=passport_status,
