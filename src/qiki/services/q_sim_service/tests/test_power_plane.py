@@ -141,6 +141,99 @@ def test_if_power_telem_mapper_marks_incomplete_power_state_missing() -> None:
     assert record.freshness == "unknown"
 
 
+def test_power_snapshot_exposes_config_backed_power_thresholds() -> None:
+    bot_config = {
+        "hardware_profile": {
+            "power_capacity_wh": 100.0,
+            "battery_soc_init_pct": 50.0,
+            "power_plane": {
+                "bus_v_nominal": 30.0,
+                "bus_v_min": 24.0,
+                "max_bus_a": 4.0,
+                "soc_shed_low_pct": 25.0,
+                "soc_shed_high_pct": 35.0,
+                "supercap_capacity_wh": 5.0,
+                "supercap_soc_pct_init": 80.0,
+            },
+        }
+    }
+    wm = WorldModel(bot_config=bot_config)
+    power = wm.get_state()["power"]
+
+    assert power["soc_shed_low_pct"] == pytest.approx(25.0)
+    assert power["soc_shed_high_pct"] == pytest.approx(35.0)
+    assert power["bus_v_min"] == pytest.approx(24.0)
+    assert power["max_bus_a"] == pytest.approx(4.0)
+
+
+def test_if_power_telem_mapper_surfaces_p2_2a_reason_codes_from_power_snapshot() -> None:
+    record = power_telemetry_from_power_state(
+        {
+            "soc_pct": 20.0,
+            "supercap_soc_pct": 70.0,
+            "bus_v": 21.5,
+            "bus_a": 6.0,
+            "loads_w": {"base": 10.0},
+            "sources_w": {"base": 0.0, "dock": 0.0},
+            "soc_shed_low_pct": 20.0,
+            "soc_shed_high_pct": 30.0,
+            "bus_v_min": 22.0,
+            "max_bus_a": 5.0,
+        }
+    )
+
+    assert "BAT_LOW" in record.reason_codes
+    assert "BUS_UNSTABLE" in record.reason_codes
+    assert "SOURCE_UNAVAILABLE" in record.reason_codes
+    assert "CAP_LOW" not in record.reason_codes
+    assert "POWER_TELEM_STALE" not in record.reason_codes
+    assert "EXTERNAL_POWER_UNSAFE" not in record.reason_codes
+    assert record.trust_status == "missing"
+
+
+def test_if_power_telem_mapper_keeps_p2_2a_reason_codes_negative_paths_clean() -> None:
+    record = power_telemetry_from_power_state(
+        {
+            "soc_pct": 21.0,
+            "supercap_soc_pct": 1.0,
+            "bus_v": 22.0,
+            "bus_a": 5.0,
+            "loads_w": {"base": 10.0},
+            "sources_w": {"base": 0.1},
+            "soc_shed_low_pct": 20.0,
+            "soc_shed_high_pct": 30.0,
+            "bus_v_min": 22.0,
+            "max_bus_a": 5.0,
+        }
+    )
+
+    assert "BAT_LOW" not in record.reason_codes
+    assert "BUS_UNSTABLE" not in record.reason_codes
+    assert "SOURCE_UNAVAILABLE" not in record.reason_codes
+    assert "CAP_LOW" not in record.reason_codes
+    assert record.trust_status == "trusted"
+
+
+def test_if_power_telem_mapper_uses_low_soc_shed_reason_as_bat_low() -> None:
+    record = power_telemetry_from_power_state(
+        {
+            "soc_pct": 80.0,
+            "supercap_soc_pct": 70.0,
+            "bus_v": 28.0,
+            "bus_a": 1.0,
+            "loads_w": {"base": 10.0},
+            "sources_w": {"base": 30.0},
+            "shed_reasons": ["low_soc"],
+            "soc_shed_low_pct": 20.0,
+            "soc_shed_high_pct": 30.0,
+            "bus_v_min": 22.0,
+            "max_bus_a": 5.0,
+        }
+    )
+
+    assert "BAT_LOW" in record.reason_codes
+
+
 def test_if_pdu_power_record_exposes_canon_fields() -> None:
     record_fields = {field.name for field in fields(PduPermissionRecord)}
 

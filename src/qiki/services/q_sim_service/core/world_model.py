@@ -16,6 +16,7 @@ from qiki.services.q_sim_service.core.mcqpu_telemetry import MCQPUTelemetry
 from qiki.shared.config.loaders import ThrusterConfig, load_thrusters_config
 
 POWER_TELEM_MISSING = "POWER_TELEM_MISSING"
+SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
 THERMAL_TELEM_MISSING = "THERMAL_TELEM_MISSING"
 THERMAL_NODE_HOT = "THERMAL_NODE_HOT"
 THERMAL_NODE_CRITICAL = "THERMAL_NODE_CRITICAL"
@@ -358,22 +359,18 @@ def power_telemetry_from_power_state(
     """Map WorldModel power state into IF-POWER-TELEM-001 without merging bat/cap."""
     power = power if isinstance(power, dict) else {}
     sources = _numeric_mapping(power.get("sources_w"))
-    source_generation_w = sum(
-        value for key, value in sources.items() if key != "supercap_discharge"
-    )
-    if not sources and "power_in_w" in power:
+    source_generation_w = None
+    if sources:
+        source_generation_w = sum(
+            value for key, value in sources.items() if key != "supercap_discharge"
+        )
+    elif "power_in_w" in power:
         source_generation_w = _num_or_none(power.get("power_in_w"))
 
-    reason_codes: list[str] = []
-    required = (
-        "soc_pct",
-        "supercap_soc_pct",
-        "bus_v",
-        "bus_a",
-        "loads_w",
+    reason_codes = _power_telemetry_reason_codes(
+        power,
+        source_generation_W=source_generation_w,
     )
-    if any(key not in power for key in required):
-        reason_codes.append(POWER_TELEM_MISSING)
 
     return PowerTelemetryRecord(
         battery_soc_pct=_num_or_none(power.get("soc_pct")),
@@ -398,6 +395,48 @@ def power_telemetry_from_power_state(
         trust_status="trusted" if not reason_codes else "missing",
         reason_codes=tuple(reason_codes),
     )
+
+
+def _power_telemetry_reason_codes(
+    power: dict[str, Any],
+    *,
+    source_generation_W: float | None,
+) -> tuple[str, ...]:
+    reason_codes: list[str] = []
+    required = (
+        "soc_pct",
+        "supercap_soc_pct",
+        "bus_v",
+        "bus_a",
+        "loads_w",
+    )
+    if any(key not in power for key in required):
+        reason_codes.append(POWER_TELEM_MISSING)
+
+    shed_reasons = set(_string_tuple(power.get("shed_reasons")))
+    soc = _num_or_none(power.get("soc_pct"))
+    soc_low = _num_or_none(power.get("soc_shed_low_pct"))
+    if "low_soc" in shed_reasons or (soc is not None and soc_low is not None and soc <= soc_low):
+        reason_codes.append(BAT_LOW)
+
+    faults = set(_string_tuple(power.get("faults")))
+    bus_v = _num_or_none(power.get("bus_v"))
+    bus_a = _num_or_none(power.get("bus_a"))
+    bus_v_min = _num_or_none(power.get("bus_v_min"))
+    max_bus_a = _num_or_none(power.get("max_bus_a"))
+    bus_fault = any(str(fault).startswith("BUS_") for fault in faults)
+    if (
+        bus_fault
+        or bus_v == 0.0
+        or (bus_v is not None and bus_v_min is not None and bus_v < bus_v_min)
+        or (bus_a is not None and max_bus_a is not None and max_bus_a > 0.0 and bus_a > max_bus_a)
+    ):
+        reason_codes.append(BUS_UNSTABLE)
+
+    if source_generation_W is not None and source_generation_W <= 0.0:
+        reason_codes.append(SOURCE_UNAVAILABLE)
+
+    return tuple(dict.fromkeys(reason_codes))
 
 
 def _thermal_state_from_node(node: dict[str, Any]) -> str:
@@ -3512,6 +3551,10 @@ class WorldModel:
                 "battery_1_voltage_v": battery_1_voltage_v,
                 "battery_2_voltage_v": battery_2_voltage_v,
                 "bus_a": self.power_bus_a,
+                "bus_v_min": float(self._bus_v_min),
+                "max_bus_a": float(self._max_bus_a),
+                "soc_shed_low_pct": float(self._eps_soc_shed_low_pct),
+                "soc_shed_high_pct": float(self._eps_soc_shed_high_pct),
                 "load_shedding": bool(self.power_load_shedding),
                 "shed_loads": list(self.power_shed_loads),
                 "shed_reasons": list(self.power_shed_reasons),

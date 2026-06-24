@@ -47,6 +47,10 @@ class PowerTelemetry(BaseModel):
     battery_1_voltage_v: float = Field(default=0.0, ge=0.0)
     battery_2_voltage_v: float = Field(default=0.0, ge=0.0)
     bus_a: float = Field(ge=0.0)
+    bus_v_min: float = Field(default=0.0, ge=0.0)
+    max_bus_a: float = Field(default=0.0, ge=0.0)
+    soc_shed_low_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    soc_shed_high_pct: float = Field(default=0.0, ge=0.0, le=100.0)
     # Power Supervisor state (virtual hardware, no-mocks).
     load_shedding: bool = Field(default=False)
     shed_loads: list[str] = Field(default_factory=list)
