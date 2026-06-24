@@ -66,3 +66,94 @@ def rejection_to_evidence(result: Any, audit_event: Any) -> RejectionEvidence:
         audit_request_id=audit_event.request_id,
         audit_attempted_mount=audit_event.attempted_mount,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CommandLifecycleEvidence:
+    """IF-CMD-BUS-001 (§18.7) read-only ORION surface of a command lifecycle.
+
+    ADR-0015: ACK is not effect confirmation. publish/ACK/effect are surfaced exactly
+    as the record reports them (missing / target-only in Stage 1); ORION never upgrades
+    an unproduced stage to a positive label.
+    """
+
+    claim_type: str  # "command_lifecycle"
+    source_type: str  # "audit"
+    read_only: bool
+    command_id: str
+    validation_label: str
+    published_label: str
+    ack_label: str
+    effect_label: str
+    audit_label: str
+    reason_codes: tuple[str, ...]
+    operator_text: str
+
+
+# §18.7 positive operator labels keyed by the raw lifecycle state. A stage only earns a
+# positive label if its raw state is an explicit positive value; everything else
+# (missing / target-only / unknown) is surfaced verbatim and never upgraded.
+_POSITIVE_PUBLISH = {"published": "published"}
+_POSITIVE_ACK = {"accepted": "ACK accepted", "ack_accepted": "ACK accepted"}
+_POSITIVE_EFFECT = {"confirmed": "effect confirmed", "effect_confirmed": "effect confirmed"}
+
+
+def _lifecycle_label(raw: str, positive: dict[str, str]) -> str:
+    return positive.get(str(raw or ""), str(raw or ""))
+
+
+def command_lifecycle_to_evidence(record: Any) -> CommandLifecycleEvidence:
+    """Read-only ORION projection of a CommandLifecycleRecord (IF-CMD-BUS-001).
+
+    Surfaces validation + audit (known from the attach path) and keeps publish/ACK/
+    effect exactly as reported. Never validates or executes; never claims a missing
+    effect as confirmed (ADR-0015).
+    """
+    validation = str(record.validation_state or "")
+    published = _lifecycle_label(record.publish_state, _POSITIVE_PUBLISH)
+    ack = _lifecycle_label(record.ACK_state, _POSITIVE_ACK)
+    effect = _lifecycle_label(record.effect_state, _POSITIVE_EFFECT)
+
+    if validation == "rejected":
+        operator_text = "command rejected at validation; downstream stages not observed"
+    else:
+        # Stage-aware honesty: report exactly which stages are observed vs not, never
+        # deny an observed stage and never claim an unobserved one (ADR-0015).
+        observed = [
+            lbl
+            for lbl, is_positive in (
+                (published, published == "published"),
+                (ack, ack == "ACK accepted"),
+                (effect, effect == "effect confirmed"),
+            )
+            if is_positive
+        ]
+        missing = [
+            name
+            for name, lbl, positive in (
+                ("publish", published, "published"),
+                ("ACK", ack, "ACK accepted"),
+                ("effect", effect, "effect confirmed"),
+            )
+            if lbl != positive
+        ]
+        parts = ["command validated (allowed)"]
+        if observed:
+            parts.append("observed: " + ", ".join(observed))
+        if missing:
+            parts.append("not yet observed: " + "/".join(missing) + " (target-only)")
+        operator_text = "; ".join(parts)
+
+    return CommandLifecycleEvidence(
+        claim_type="command_lifecycle",
+        source_type="audit",
+        read_only=True,
+        command_id=str(record.command_id or ""),
+        validation_label=validation,
+        published_label=published,
+        ack_label=ack,
+        effect_label=effect,
+        audit_label=str(record.audit_state or ""),
+        reason_codes=tuple(record.reason_codes),
+        operator_text=operator_text,
+    )

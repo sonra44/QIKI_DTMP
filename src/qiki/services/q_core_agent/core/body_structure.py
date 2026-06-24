@@ -66,6 +66,15 @@ _AUDIT_EFFECT_REGISTRY_UPDATED = "registry_updated"
 _AUDIT_SEVERITY_WARNING = "warning"
 _AUDIT_SEVERITY_INFO = "info"
 
+CMD_REJECTED = "CMD_REJECTED"
+AUDIT_UNAVAILABLE = "AUDIT_UNAVAILABLE"
+
+COMMAND_LIFECYCLE_STATE_ALLOWED = "allowed"
+COMMAND_LIFECYCLE_STATE_REJECTED = "rejected"
+COMMAND_LIFECYCLE_STATE_MISSING = "missing"
+COMMAND_LIFECYCLE_AUDIT_WRITTEN = "written"
+COMMAND_LIFECYCLE_TARGET_ONLY = "target-only"
+
 
 def _if_audit_aliases(
     *,
@@ -150,6 +159,33 @@ class ModuleAttachRequest:
     module_id: str
     mount_point: str
     passport: ModulePassport | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CommandLifecycleRecord:
+    """IF-CMD-BUS-001 target-only lifecycle projection for one attach request.
+
+    This is not a command bus implementation. It exposes the attach validation/audit
+    truth already owned by this layer and keeps publish, ACK and effect missing until
+    real producers exist.
+    """
+
+    command_id: str
+    command_type: str
+    source: str
+    target_subsystem: str
+    requested_mode: str
+    requested_intensity: str
+    duration_s: float | None
+    priority: str
+    expected_effect: str
+    risk_class: str
+    validation_state: str
+    publish_state: str
+    ACK_state: str
+    effect_state: str
+    audit_state: str
+    reason_codes: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -927,4 +963,49 @@ def run_attach_pipeline(
             known_mount=result.known_mount,
         ),
         updated,
+    )
+
+
+def command_lifecycle_from_attach_decision(
+    request: ModuleAttachRequest,
+    decision: AttachDecision,
+) -> CommandLifecycleRecord:
+    """Project an attach decision into IF-CMD-BUS-001 without faking command stages."""
+    validation_state = (
+        COMMAND_LIFECYCLE_STATE_ALLOWED
+        if decision.status == MODULE_STATUS_ATTACHED
+        else COMMAND_LIFECYCLE_STATE_REJECTED
+    )
+    audit_state = (
+        COMMAND_LIFECYCLE_AUDIT_WRITTEN
+        if decision.audit_event_id
+        else COMMAND_LIFECYCLE_STATE_MISSING
+    )
+    reason_codes: list[str] = []
+    if decision.reason_code:
+        reason_codes.extend((CMD_REJECTED, decision.reason_code))
+    if not decision.audit_event_id:
+        reason_codes.append(AUDIT_UNAVAILABLE)
+
+    return CommandLifecycleRecord(
+        command_id=request.request_id,
+        command_type="module_attach",
+        source=SOURCE_OWNER,
+        target_subsystem="module",
+        requested_mode="attach",
+        requested_intensity=COMMAND_LIFECYCLE_TARGET_ONLY,
+        duration_s=None,
+        priority=COMMAND_LIFECYCLE_TARGET_ONLY,
+        expected_effect=(
+            "module_attach_registered"
+            if decision.status == MODULE_STATUS_ATTACHED
+            else "module_attach_rejected"
+        ),
+        risk_class=COMMAND_LIFECYCLE_TARGET_ONLY,
+        validation_state=validation_state,
+        publish_state=COMMAND_LIFECYCLE_STATE_MISSING,
+        ACK_state=COMMAND_LIFECYCLE_STATE_MISSING,
+        effect_state=COMMAND_LIFECYCLE_STATE_MISSING,
+        audit_state=audit_state,
+        reason_codes=tuple(reason_codes),
     )
