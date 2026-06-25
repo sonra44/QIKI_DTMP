@@ -9,7 +9,9 @@ import pytest
 from qiki.services.operator_console.orion_v.app import OrionVApp, _parse_safe_mode_event, _trend_ascii
 from qiki.services.operator_console.orion_v.screens.cockpit import OrionVCockpitScreen
 from qiki.services.operator_console.orion_v.screens.deep_dive import OrionVDeepDiveScreen
+from qiki.services.operator_console.orion_v.screens.evidence_stream import OrionVEvidenceScreen
 from qiki.services.operator_console.orion_v.screens.systems import OrionVSystemsScreen
+from qiki.services.operator_console.orion_v.widgets.evidence_card_view import OrionVEvidenceCard
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import (
     OrionVAlertsOverlay,
     build_level0_alerts,
@@ -262,6 +264,41 @@ async def test_command_mode_opens_and_closes_without_persistent_cursor(monkeypat
         assert command_shell.has_class("hidden") is False
         assert command_open.has_class("hidden") is False
         assert app.focused is not command
+
+
+@pytest.mark.asyncio
+async def test_evidence_level_renders_nbl_card_from_live_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def no_nats(self: OrionVApp) -> None:
+        self._nats_state = "lost"
+
+    monkeypatch.setattr(OrionVApp, "_connect_and_subscribe", no_nats)
+    app = OrionVApp()
+    app._snapshot = {"power": {"nbl_active": True, "nbl_allowed": False, "nbl_budget_w": 0.0}}
+
+    async with app.run_test(size=(140, 44)) as pilot:
+        await pilot.pause()
+
+        app.action_show_level("f8")
+        await pilot.pause()
+
+        evidence = app.query_one("#orionv-evidence", OrionVEvidenceScreen)
+        assert evidence.has_class("hidden") is False
+        assert app.query_one("#orionv-cockpit").has_class("hidden") is True
+
+        cards = evidence.query(OrionVEvidenceCard)
+        assert len(cards) == 1
+        rendered = str(cards.first().render())
+        assert "NBL_NOT_IMPLEMENTED" in rendered
+        assert "NBL_RULES_ONLY" in rendered
+        assert "NBL_PDU_DENIED" in rendered
+
+        app._snapshot = {}
+        app._refresh_ui()
+        await pilot.pause()
+
+        cards = evidence.query(OrionVEvidenceCard)
+        assert len(cards) == 1
+        assert "NBL_PDU_DENIED" not in str(cards.first().render())
 
 
 @pytest.mark.asyncio

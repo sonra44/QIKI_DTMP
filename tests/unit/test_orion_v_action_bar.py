@@ -23,6 +23,7 @@ async def test_action_bar_uses_compact_labels_for_dense_console_layout() -> None
 
         assert app.query_one("#orionv-action-f1", Button).label.plain == "F1 Мостик"
         assert app.query_one("#orionv-action-f4", Button).label.plain == "F4 Консоль"
+        assert app.query_one("#orionv-action-f8", Button).label.plain == "F8 Evid"
         assert app.query_one("#orionv-action-ack", Button).label.plain == "Подтв."
         assert app.query_one("#orionv-action-page_next", Button).label.plain == "Стр >"
         assert app.query_one("#orionv-command-open", Button).label.plain == "Команда"

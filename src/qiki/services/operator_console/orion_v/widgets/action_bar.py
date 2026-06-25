@@ -68,6 +68,7 @@ class OrionVActionBar(Static):
         ("f4", "F4 Консоль"),
         ("f6", "F6 Журнал"),
         ("f7", "F7 Статус"),
+        ("f8", "F8 Evid"),
         ("incident_prev", "Инц <-"),
         ("incident_next", "Инц ->"),
         ("ack", "Подтв."),
@@ -139,7 +140,7 @@ class OrionVActionBar(Static):
 
         for action, _ in self._BUTTONS:
             button = self.query_one(f"#orionv-action-{action}", Button)
-            if action in {"f1", "f2", "f3", "f4", "f6", "f7"}:
+            if action in {"f1", "f2", "f3", "f4", "f6", "f7", "f8"}:
                 button.variant = "primary" if action == loop.current_level else "default"
                 button.disabled = False
                 continue

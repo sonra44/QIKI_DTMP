@@ -32,6 +32,7 @@ from qiki.services.operator_console.orion_v.procedure_engine import (
 )
 from qiki.services.operator_console.orion_v.screens.cockpit import OrionVCockpitScreen
 from qiki.services.operator_console.orion_v.screens.deep_dive import OrionVDeepDiveScreen
+from qiki.services.operator_console.orion_v.screens.evidence_stream import OrionVEvidenceScreen
 from qiki.services.operator_console.orion_v.screens.raw import OrionVRawScreen
 from qiki.services.operator_console.orion_v.screens.systems import OrionVSystemsScreen
 from qiki.services.operator_console.orion_v.screens.audit import OrionVAuditScreen
@@ -163,6 +164,7 @@ class OrionVApp(App[None]):
         ("f4", "show_level('f4')", "Консоль"),
         ("f6", "show_level('f6')", "Журнал"),
         ("f7", "show_level('f7')", "Система"),
+        ("f8", "show_level('f8')", "Evidence"),
         ("pagedown", "events_page_next", "Следующая страница"),
         ("pageup", "events_page_prev", "Предыдущая страница"),
         ("up", "incident_prev", "Предыдущий инцидент"),
@@ -182,6 +184,7 @@ class OrionVApp(App[None]):
         "f4": {"label": "F4 Консоль", "widget_id": "orionv-raw"},
         "f6": {"label": "F6 Журнал", "widget_id": "orionv-audit"},
         "f7": {"label": "F7 Состояние системы", "widget_id": "orionv-health"},
+        "f8": {"label": "F8 Evidence", "widget_id": "orionv-evidence"},
     }
 
     def __init__(self) -> None:
@@ -270,6 +273,7 @@ class OrionVApp(App[None]):
             yield OrionVSystemsScreen(id="orionv-systems", classes="orionv-level hidden")
             yield OrionVDeepDiveScreen(id="orionv-deep", classes="orionv-level hidden")
             yield OrionVRawScreen(id="orionv-raw", classes="orionv-level hidden")
+            yield OrionVEvidenceScreen(self._snapshot, id="orionv-evidence", classes="orionv-level hidden")
             yield OrionVAuditScreen(id="orionv-audit", classes="orionv-level hidden")
             yield OrionVSystemHealthScreen(id="orionv-health", classes="orionv-level hidden")
             yield OrionVActionBar(id="orionv-actions")
@@ -591,7 +595,7 @@ class OrionVApp(App[None]):
         self._handle_action_bar_action(action)
 
     def _handle_action_bar_action(self, action: str) -> None:
-        if action in {"f1", "f2", "f3", "f4", "f6", "f7"}:
+        if action in {"f1", "f2", "f3", "f4", "f6", "f7", "f8"}:
             self.action_show_level(action)
             return
         if action == "incident_next":
@@ -2903,6 +2907,7 @@ class OrionVApp(App[None]):
             ]
         )
         self.query_one("#orionv-raw", OrionVRawScreen).set_text("\n".join(console_lines))
+        self.query_one("#orionv-evidence", OrionVEvidenceScreen).update_snapshot(self._snapshot)
 
         audit_entries = self._audit_store.last(self._audit_store.count())
         if self._audit_filter_type:
@@ -2983,7 +2988,7 @@ class OrionVApp(App[None]):
             return "PgUp/PgDn pages | Up/Down incident focus"
         if self._selected_incident_id is not None:
             return "A ack selected incident | X clear acknowledged"
-        return "F1/F2/F3/F4/F6/F7 switch shells | '/' ':' open command"
+        return "F1/F2/F3/F4/F6/F7/F8 switch shells | '/' ':' open command"
 
     def _update_safe_mode_from_event(self, envelope: dict[str, Any]) -> None:
         subject = str(envelope.get("subject") or "")
