@@ -10287,6 +10287,19 @@ class OrionApp(App):
 
 
 def main() -> None:
+    # LEGACY GUARD (execution path only, NOT import — tests import OrionApp directly).
+    # This monolith is the legacy operator console; the live console is ORION V
+    # (main_orion_v.py). Refuse to start unless the operator explicitly opts in.
+    import os
+    import sys
+
+    if os.environ.get("ALLOW_LEGACY_OPERATOR_CONSOLE", "").strip().lower() not in ("1", "true", "yes"):
+        sys.stderr.write(
+            "LEGACY operator console (main_orion.py) is NOT for production.\n"
+            "The live console is ORION V — run main_orion_v.py.\n"
+            "Set ALLOW_LEGACY_OPERATOR_CONSOLE=1 only if you truly mean to run legacy.\n"
+        )
+        raise SystemExit(2)
     OrionApp().run()
 
 

@@ -1,6 +1,21 @@
+# LEGACY operator console overlay — NOT for production.
+# Renamed to `operator-console-legacy` with its own container_name so an overlay
+# merge can NEVER silently override the production `operator-console` service.
+# The live console is ORION V (operator-console / main_orion_v.py).
+# See src/qiki/services/operator_console/00_CONSOLE_MAP.md.
+# Run (explicit opt-in required by the runtime guard):
+#   ALLOW_LEGACY_OPERATOR_CONSOLE=1 docker compose \
+#     -f docker-compose.yml -f docker-compose.operator_legacy.yml \
+#     --profile legacy up operator-console-legacy
 services:
-  operator-console:
+  operator-console-legacy:
+    extends:
+      file: docker-compose.yml
+      service: operator-console
+    container_name: qiki-operator-console-legacy
     command: python -m qiki.services.operator_console.legacy.main_orion
     environment:
       - LEGACY_MODE=1
+      # Opt-in must reach the container, else the runtime guard in main() exits 2.
+      - ALLOW_LEGACY_OPERATOR_CONSOLE=${ALLOW_LEGACY_OPERATOR_CONSOLE:-0}
     profiles: ["legacy"]

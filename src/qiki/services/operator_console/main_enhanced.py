@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEAD PROTOTYPE -- NOT PRODUCTION -- live console is ORION V (main_orion_v.py); see 00_CONSOLE_MAP.md
 """
 QIKI Operator Console - Enhanced Version.
 
