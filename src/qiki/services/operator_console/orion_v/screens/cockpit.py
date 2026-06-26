@@ -10,6 +10,8 @@ from textual.css.query import NoMatches
 from textual.widgets import Button, Static
 
 from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.thermal_evidence import thermal_to_evidence
+from qiki.services.operator_console.orion_v.thermal_telemetry_adapter import thermal_records_from_snapshot
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
@@ -1623,7 +1625,39 @@ class OrionVCockpitScreen(Static):
             f"• Тренд: {trend}",
             f"• Advice: {recommendation}",
         ]
+        lines.append(self._thermal_evidence_line(tel))
         return severity, lines
+
+    def _thermal_evidence_line(self, tel: dict[str, Any]) -> str:
+        """ADR-0014 evidence line for thermal — per-node trust/source/reason via
+        the bounded-temp console adapter (equivalence-guarded mirror of q_sim);
+        staleness is derived console-side. Closes the F1 "confident state without
+        source" gap so the operator never sees a bare OK without provenance.
+        """
+        thermal = tel.get("thermal") if isinstance(tel, dict) else None
+        records = thermal_records_from_snapshot(thermal if isinstance(thermal, dict) else {})
+        evidence = thermal_to_evidence(records)
+        age_s = _pick_num(tel, ["thermal", "age_s"])
+        stale = age_s is not None and age_s > 30.0
+        trusts = [node.trust_status for node in evidence.nodes]
+        if "missing" in trusts:
+            trust = "missing"
+        elif stale or "degraded" in trusts:
+            trust = "degraded"
+        else:
+            trust = "trusted"
+        reasons = sorted({rc for node in evidence.nodes for rc in node.reason_codes})
+        if stale:
+            reasons = sorted(set(reasons) | {"THERMAL_TELEM_STALE"})
+        stale_mark = " [УСТАРЕЛО]" if stale else ""
+        miss_mark = " [НЕТ ИСТОЧНИКА]" if trust == "missing" else ""
+        line = (
+            f"• Доказательность тепла: {evidence.operator_text}{stale_mark}{miss_mark}"
+            f" | trust={trust} | src=thermal.nodes"
+        )
+        if reasons:
+            line += f" | reason={','.join(reasons)}"
+        return line
 
     def _incidents_block(self) -> tuple[str, list[str]]:
         total = self._active_incidents
