@@ -152,7 +152,11 @@ class HardwareCollector:
         # COMMS_AGE_CRIT_S keeps power staleness consistent with _data_freshness_state
         # (console-side threshold, no power-specific canon SLA).
         ts_ms = snapshot.get("ts_unix_ms")
-        telemetry_age_s = (time.time() - ts_ms / 1000.0) if isinstance(ts_ms, (int, float)) else None
+        telemetry_age_s = (
+            time.time() - ts_ms / 1000.0
+            if isinstance(ts_ms, (int, float)) and not isinstance(ts_ms, bool)
+            else None
+        )
         battery_ev = presence_evidence(soc, telemetry_age_s, COMMS_AGE_CRIT_S)
         supercap_ev = presence_evidence(supercap_soc, telemetry_age_s, COMMS_AGE_CRIT_S)
         bus_status = status_by_min(bus_v, POWER_BUS_WARN_V, POWER_BUS_CRIT_V)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
 from qiki.services.operator_console.orion_v.hardware_view_model.types import ViewStatus
 from qiki.services.operator_console.orion_v.hardware_view_model.utils import merge_status
@@ -555,3 +557,54 @@ def test_merge_status_picks_highest_severity() -> None:
     assert merge_status(ViewStatus.OK, ViewStatus.WARN) == ViewStatus.WARN
     assert merge_status(ViewStatus.WARN, ViewStatus.CRIT) == ViewStatus.CRIT
     assert merge_status(ViewStatus.NO_DATA, ViewStatus.OK) == ViewStatus.OK
+
+
+def _power_field(model, key):
+    for field in model.subsystems["power"].fields:
+        if field.key == key:
+            return field
+    return None
+
+
+def test_power_battery_and_supercap_are_separate_fields() -> None:
+    now_ms = int(time.time() * 1000)
+    model = HardwareCollector().update(
+        {"power.soc_pct": 80, "power.supercap_soc_pct": 70, "ts_unix_ms": now_ms}
+    )
+    battery = _power_field(model, "power.soc")
+    supercap = _power_field(model, "power.supercap_soc")
+    assert battery is not None and supercap is not None
+    assert battery.value == 80
+    assert supercap.value == 70
+
+
+def test_power_evidence_fresh_when_present_and_recent() -> None:
+    now_ms = int(time.time() * 1000)
+    model = HardwareCollector().update(
+        {"power.soc_pct": 80, "power.supercap_soc_pct": 70, "ts_unix_ms": now_ms}
+    )
+    for key in ("power.soc", "power.supercap_soc"):
+        field = _power_field(model, key)
+        assert field.freshness == "fresh"
+        assert field.trust_status == "trusted"
+        assert field.reason_codes == ()
+
+
+def test_power_supercap_missing_marks_source_missing() -> None:
+    now_ms = int(time.time() * 1000)
+    model = HardwareCollector().update({"power.soc_pct": 80, "ts_unix_ms": now_ms})
+    supercap = _power_field(model, "power.supercap_soc")
+    assert supercap is not None
+    assert supercap.trust_status == "missing"
+    assert supercap.reason_codes == ("POWER_TELEM_MISSING",)
+
+
+def test_power_stale_telemetry_marks_stale() -> None:
+    old_ms = int(time.time() * 1000) - 60_000
+    model = HardwareCollector().update(
+        {"power.soc_pct": 80, "power.supercap_soc_pct": 70, "ts_unix_ms": old_ms}
+    )
+    battery = _power_field(model, "power.soc")
+    assert battery.freshness == "stale"
+    assert battery.trust_status == "degraded"
+    assert battery.reason_codes == ("POWER_TELEM_STALE",)

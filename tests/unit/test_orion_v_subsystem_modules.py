@@ -17,7 +17,7 @@ def test_power_module_summary_uses_status() -> None:
     module = PowerSubsystemModule()
     summary = module.render_summary({"telemetry": {"power": {"soc_pct": 82.0, "bus_v": 28.1, "limit_mode": "nominal"}}})
     assert summary.startswith("НОРМА | ")
-    assert "Уровень заряда 82.0%" in summary
+    assert "Заряд батареи 82.0%" in summary
     assert "Причины сброса —" in summary
 
 
