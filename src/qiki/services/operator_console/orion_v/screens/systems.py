@@ -283,11 +283,15 @@ def _build_power_card(
         current_status = "self-powered stable"
         effect = "No immediate EPS gate is limiting the current operator flow."
         next_attention = "Watch runtime before any extended transit."
+    evidence_line = _power_evidence_line(subsystem)
+    summary = _summary_text(subsystem)
+    if evidence_line:
+        summary = f"{summary} | {evidence_line}"
     return _make_card(
         "power",
         status=status,
         current_status=current_status,
-        summary=_summary_text(subsystem),
+        summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
         quick_hint="F3 is the place for raw EPS traces if shedding or limits appear.",
@@ -647,6 +651,28 @@ def _field_value(field: TelemetryField | None) -> str:
     if not value_str or value_str.lower() in {"n/a", "none"}:
         return "Нет данных"
     return f"{value_str} {field.unit}".strip()
+
+
+def _field_evidence_suffix(field: TelemetryField | None) -> str:
+    """Compact ADR-0014 evidence marker for a field (empty when trusted/fresh)."""
+    if field is None:
+        return ""
+    if field.trust_status == "missing":
+        return " [НЕТ ИСТОЧНИКА]"
+    if field.freshness == "stale" or field.trust_status == "degraded":
+        return " [УСТАРЕЛО]"
+    return ""
+
+
+def _power_evidence_line(subsystem: SubsystemView | None) -> str:
+    """ADR-0014 evidence note for battery/supercap when not trusted (else empty)."""
+    field_map = _field_map(subsystem)
+    parts = []
+    for label, key in (("батарея", "power.soc"), ("суперкап", "power.supercap_soc")):
+        suffix = _field_evidence_suffix(field_map.get(key))
+        if suffix:
+            parts.append(f"{label}{suffix}")
+    return ("Источник ЭСП: " + ", ".join(parts)) if parts else ""
 
 
 def _field_text(subsystem: SubsystemView | None, key: str) -> str:
