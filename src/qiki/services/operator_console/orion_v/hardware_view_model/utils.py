@@ -75,15 +75,24 @@ def mk_field(
     )
 
 
-def presence_evidence(value: Any) -> dict[str, Any]:
-    """Console-side evidence (ADR-0014 / IF-POWER-TELEM) derived from field presence.
+def presence_evidence(
+    value: Any,
+    age_s: float | None = None,
+    stale_after_s: float | None = None,
+) -> dict[str, Any]:
+    """Console-side evidence (ADR-0014 / IF-POWER-TELEM) for a telemetry field.
 
-    Missing field -> source missing (POWER_TELEM_MISSING); present -> trusted/fresh.
-    Stale-from-age (POWER_TELEM_STALE) is layered in a later sub-step once telemetry
-    age is threaded into the collector.
+    - Missing field -> source missing (POWER_TELEM_MISSING).
+    - Present but telemetry older than stale_after_s -> degraded (POWER_TELEM_STALE).
+    - Present and fresh -> trusted.
+
+    stale_after_s is a console-side staleness threshold (no power-specific canon SLA);
+    the caller passes COMMS_AGE_CRIT_S to stay consistent with _data_freshness_state.
     """
     if value is None:
         return {"freshness": "unknown", "trust_status": "missing", "reason_codes": ("POWER_TELEM_MISSING",)}
+    if age_s is not None and stale_after_s is not None and age_s > stale_after_s:
+        return {"freshness": "stale", "trust_status": "degraded", "reason_codes": ("POWER_TELEM_STALE",)}
     return {"freshness": "fresh", "trust_status": "trusted", "reason_codes": ()}
 
 

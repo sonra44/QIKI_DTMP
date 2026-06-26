@@ -147,10 +147,14 @@ class HardwareCollector:
 
         soc_status = status_by_min(soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
         supercap_soc_status = status_by_min(supercap_soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
-        # Evidence metadata (ADR-0014 / IF-POWER-TELEM), presence-based for now.
-        # stale-from-age is a later sub-step; missing => POWER_TELEM_MISSING.
-        battery_ev = presence_evidence(soc)
-        supercap_ev = presence_evidence(supercap_soc)
+        # Evidence metadata (ADR-0014 / IF-POWER-TELEM): missing => POWER_TELEM_MISSING,
+        # present-but-old => POWER_TELEM_STALE. telemetry_age from snapshot ts vs wall clock;
+        # COMMS_AGE_CRIT_S keeps power staleness consistent with _data_freshness_state
+        # (console-side threshold, no power-specific canon SLA).
+        ts_ms = snapshot.get("ts_unix_ms")
+        telemetry_age_s = (time.time() - ts_ms / 1000.0) if isinstance(ts_ms, (int, float)) else None
+        battery_ev = presence_evidence(soc, telemetry_age_s, COMMS_AGE_CRIT_S)
+        supercap_ev = presence_evidence(supercap_soc, telemetry_age_s, COMMS_AGE_CRIT_S)
         bus_status = status_by_min(bus_v, POWER_BUS_WARN_V, POWER_BUS_CRIT_V)
         runtime_status = status_by_min(runtime_min, POWER_RUNTIME_WARN_MIN, POWER_RUNTIME_CRIT_MIN)
         load_status = self._load_shedding_status(load_shedding, soc_status)
