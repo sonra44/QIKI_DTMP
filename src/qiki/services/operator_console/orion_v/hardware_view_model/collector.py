@@ -68,7 +68,7 @@ from .thresholds import (
     status_by_min,
 )
 from .types import HardwareViewModel, SubsystemView, TelemetryField, ViewStatus
-from .utils import fmt_duration_seconds, merge_status, mk_field, normalize_sensor_status, safe_float
+from .utils import fmt_duration_seconds, merge_status, mk_field, normalize_sensor_status, presence_evidence, safe_float
 
 LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +147,10 @@ class HardwareCollector:
 
         soc_status = status_by_min(soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
         supercap_soc_status = status_by_min(supercap_soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
+        # Evidence metadata (ADR-0014 / IF-POWER-TELEM), presence-based for now.
+        # stale-from-age is a later sub-step; missing => POWER_TELEM_MISSING.
+        battery_ev = presence_evidence(soc)
+        supercap_ev = presence_evidence(supercap_soc)
         bus_status = status_by_min(bus_v, POWER_BUS_WARN_V, POWER_BUS_CRIT_V)
         runtime_status = status_by_min(runtime_min, POWER_RUNTIME_WARN_MIN, POWER_RUNTIME_CRIT_MIN)
         load_status = self._load_shedding_status(load_shedding, soc_status)
@@ -166,6 +170,7 @@ class HardwareCollector:
                 soc_status,
                 "battery, раздельно с supercap (ADR-0003); предупр < 20%, критично < 15%",
                 i18n_key="soc",
+                **battery_ev,
             ),
             mk_field(
                 "power.supercap_soc",
@@ -174,6 +179,7 @@ class HardwareCollector:
                 "%",
                 supercap_soc_status,
                 "supercap, раздельно с battery (ADR-0003)",
+                **supercap_ev,
             ),
             mk_field(
                 "power.bus_v",

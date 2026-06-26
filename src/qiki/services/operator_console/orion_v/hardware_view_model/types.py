@@ -29,6 +29,11 @@ class TelemetryField:
     status: ViewStatus
     hint: str
     ts: float | None = None
+    # Evidence metadata (ADR-0014 / IF-POWER-TELEM). Optional: subsystems that do
+    # not yet populate these leave defaults, so existing fields are unaffected.
+    freshness: str | None = None  # "fresh" | "stale" | "unknown"
+    trust_status: str | None = None  # "trusted" | "degraded" | "missing"
+    reason_codes: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)

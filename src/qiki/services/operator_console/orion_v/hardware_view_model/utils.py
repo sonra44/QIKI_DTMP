@@ -55,6 +55,9 @@ def mk_field(
     ts: float | None = None,
     *,
     i18n_key: str | None = None,
+    freshness: str | None = None,
+    trust_status: str | None = None,
+    reason_codes: tuple[str, ...] = (),
 ) -> TelemetryField:
     rendered_value = fmt_missing() if value is None else value
     rendered_label = tr(i18n_key) if i18n_key else label
@@ -66,7 +69,22 @@ def mk_field(
         status=status,
         hint=hint,
         ts=ts,
+        freshness=freshness,
+        trust_status=trust_status,
+        reason_codes=reason_codes,
     )
+
+
+def presence_evidence(value: Any) -> dict[str, Any]:
+    """Console-side evidence (ADR-0014 / IF-POWER-TELEM) derived from field presence.
+
+    Missing field -> source missing (POWER_TELEM_MISSING); present -> trusted/fresh.
+    Stale-from-age (POWER_TELEM_STALE) is layered in a later sub-step once telemetry
+    age is threaded into the collector.
+    """
+    if value is None:
+        return {"freshness": "unknown", "trust_status": "missing", "reason_codes": ("POWER_TELEM_MISSING",)}
+    return {"freshness": "fresh", "trust_status": "trusted", "reason_codes": ()}
 
 
 def merge_status(a: ViewStatus, b: ViewStatus) -> ViewStatus:
