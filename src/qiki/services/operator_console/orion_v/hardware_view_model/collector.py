@@ -125,6 +125,7 @@ class HardwareCollector:
 
     def build_power(self, snapshot: dict[str, Any]) -> SubsystemView:
         soc = self._v(snapshot, "power.soc", "power.soc_pct", "eps.soc")
+        supercap_soc = self._v(snapshot, "power.supercap_soc_pct", "power.supercap_soc")
         bus_v = self._v(snapshot, "power.bus_v", "power.bus_voltage_v", "eps.bus_v")
         bus_a = self._v(snapshot, "power.bus_a", "power.bus_current_a", "eps.bus_a")
         draw_w = self._v(snapshot, "power.draw_w", "power.power_w", "eps.draw_w")
@@ -145,6 +146,7 @@ class HardwareCollector:
         runtime_min, runtime_hint = self._runtime_minutes(soc=soc, power_w=draw_w, capacity_wh=capacity_wh)
 
         soc_status = status_by_min(soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
+        supercap_soc_status = status_by_min(supercap_soc, POWER_SOC_WARN_PCT, POWER_SOC_CRIT_PCT)
         bus_status = status_by_min(bus_v, POWER_BUS_WARN_V, POWER_BUS_CRIT_V)
         runtime_status = status_by_min(runtime_min, POWER_RUNTIME_WARN_MIN, POWER_RUNTIME_CRIT_MIN)
         load_status = self._load_shedding_status(load_shedding, soc_status)
@@ -158,12 +160,20 @@ class HardwareCollector:
         fields = [
             mk_field(
                 "power.soc",
-                "Уровень заряда",
+                "Заряд батареи",
                 soc,
                 "%",
                 soc_status,
-                "предупр < 20%, критично < 15%",
+                "battery, раздельно с supercap (ADR-0003); предупр < 20%, критично < 15%",
                 i18n_key="soc",
+            ),
+            mk_field(
+                "power.supercap_soc",
+                "Заряд суперкапа",
+                supercap_soc,
+                "%",
+                supercap_soc_status,
+                "supercap, раздельно с battery (ADR-0003)",
             ),
             mk_field(
                 "power.bus_v",
