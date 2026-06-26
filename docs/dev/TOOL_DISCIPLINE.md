@@ -24,11 +24,12 @@
 
 ## 2. Startup-ритуал (ПЕРВОЕ действие любой QIKI-сессии)
 0. Стартовая обзорная зона для обоих агентов — `/home/sonra44`, чтобы видеть весь рабочий контур host/projects/tools. Это НЕ значит, что все команды надо выполнять из `/home/sonra44`.
-1. `sovereign recall` (load_context / recall) — поднять состояние.
-2. Для QIKI repo-relative команд явно перейти в repo-root: `cd /home/sonra44/QIKI_DTMP && <command>` или выставить `workdir=/home/sonra44/QIKI_DTMP`.
-3. Прогнать `cd /home/sonra44/QIKI_DTMP && bash scripts/qiki_toolcheck.sh` — live-проверка, что инструменты запускаются.
-4. Один live-вызов каждого MCP: sovereign recall · serena find_symbol · herdr agent read · (ragflow rag_query если зареган).
-5. Прочитать этот файл + must-follow блок в CLAUDE.md/AGENTS.md.
+1. **ПЕРВЫЙ ХОД — память, не церемония.** Классифицировать режим задачи (ops / meta-audit / project). Для QIKI project/restore ПЕРВЫМ читать `~/MEMORI/ПРОЧТИ_ЭТО_QIKI_DTMP.md` (LIGHT): classify → `load_context(project="QIKI_DTMP", limit_per_topic=1)` → читать только нужные секции → итог 5-8 строк.
+2. `sovereign recall` (load_context / recall) — поднять состояние (часть LIGHT-шага 1).
+3. Для QIKI repo-relative команд явно перейти в repo-root: `cd /home/sonra44/QIKI_DTMP && <command>` или выставить `workdir=/home/sonra44/QIKI_DTMP`.
+4. **toolcheck/MCP — НЕ ритуал первого хода.** `bash scripts/qiki_toolcheck.sh` + один live-вызов каждого MCP (sovereign · serena · herdr · ragflow) запускать ТОЛЬКО когда задача реально требует проверки инструментария (ops/meta) или инструмент повёл себя странно. Не блокировать ответ на простой вопрос церемонией.
+5. **Execution-default:** read-only source-lookup (sovereign / LIGHT / repo / Serena / RAG) делать СРАЗУ, без запроса разрешения у оператора. Разрешение нужно только для мутаций (edit/revert/deploy/деструктив).
+6. Прочитать этот файл + must-follow блок в CLAUDE.md/AGENTS.md по мере необходимости.
 
 Рабочее правило cwd:
 - `/home/sonra44` — обзор, host/ops/tooling, поиск нужного проекта.

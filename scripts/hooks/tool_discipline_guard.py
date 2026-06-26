@@ -67,12 +67,11 @@ def main() -> int:
     if event == "SessionStart":
         emit(
             "SessionStart",
-            "TOOL DISCIPLINE ACTIVE (" + DOC + "). FIRST action this session: "
-            "`bash scripts/qiki_toolcheck.sh` + sovereign recall + one live call of each MCP "
-            "(serena/ragflow/herdr). CONTEXT BUDGET (measured: MCP tool-RESULTS are the top sink, not "
-            "file reads/hooks): rag_query is #1 — use small top=2-3 and do NOT re-query the same thing; "
-            "read files in targeted windows, not whole large files; keep herdr/grep/search reads bounded; "
-            "Serena find_symbol for the one symbol you need. RAG-gate (qiki-rag "
+            "TOOL DISCIPLINE ACTIVE (" + DOC + "). FIRST action this session: classify mode; "
+            "for QIKI project/restore read `~/MEMORI/ПРОЧТИ_ЭТО_QIKI_DTMP.md` (LIGHT) + sovereign recall FIRST. "
+            "Read-only source-lookup (sovereign/LIGHT/repo/Serena/RAG): do it immediately, no permission ask. "
+            "toolcheck/MCP (`bash scripts/qiki_toolcheck.sh` + one live call each) ONLY when the task needs it, not as the opening ritual. "
+            "Serena find_symbol for code. RAG-gate (qiki-rag "
             "-> repo-check -> verdict) before ANY canon/IF-ORION/IF-AUDIT/vocabulary/QIKI-Body claim. "
             "herdr send = `herdr pane run`. Tools do not fire themselves — choose the right one.",
         )
