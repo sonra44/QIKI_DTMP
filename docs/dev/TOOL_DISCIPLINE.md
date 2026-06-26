@@ -46,7 +46,7 @@
 - **RAGFlow / qiki-rag** — canon retrieval по QIKI Body v0.2.2.
 - **repo-docs** (`docs/design/hardware_and_physics/qiki_body_v0_2_2/*`) — финальная верификация; RAG↔repo расходятся → **repo выигрывает**, RAG-индекс = stale.
 - **Docker/tests** — истина реализации (Docker-first).
-- **herdr** — координация/панели. Отправка агенту: **`herdr pane run <pane> "<text>"`** (текст+Enter); чтение `herdr agent read`; статус `herdr agent get`. НЕ `send-text`+`send-keys` (хрупко, не сабмитит).
+- **herdr** — **менеджер терминального рабочего пространства / кокпит для AI-агентов (Claude/Codex). Это НЕ tmux.** Управляет workspaces/tabs/панелями и agent-сессиями; координация агентов идёт ЧЕРЕЗ HERDR, а НЕ через tmux (herdr-панели tmux НЕ видит). Назначение: live-наблюдение статуса агентов, отправка им команд/сообщений, чтение вывода, ACK доставки. Отправка агенту: **`herdr pane run <pane> "<text>"`** (текст+Enter); чтение `herdr_read_pane_recent` / `herdr agent read`; статус `herdr agent get`. НЕ `send-text`+`send-keys` (хрупко, не сабмитит).
 - **coderabbit / субагенты** — review/поиск дефектов, НЕ источник истины.
 
 ### 3.1 HERDR-first coordination
