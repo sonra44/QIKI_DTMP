@@ -41,6 +41,15 @@ class OrionVStatusBars(Static):
         min-width: 14;
         margin: 0 1 0 0;
     }
+
+    OrionVStatusBars #orionv-status-chip-row Button:hover {
+        text-style: bold;
+        background: $boost;
+    }
+
+    OrionVStatusBars #orionv-status-chip-row Button:focus {
+        text-style: bold;
+    }
     """
 
     class MetricActionTriggered(Message):
@@ -103,5 +112,12 @@ class OrionVStatusBars(Static):
                 details.append("stale")
             elif chip.severity != "normal" and isinstance(chip.numeric_anchor, (int, float)):
                 details.append(f"{chip.numeric_anchor:.1f}")
-            button.label = " | ".join(part for part in details if part)
+            # Leading marker + tooltip make the chip read as an actionable control
+            # (the strip was clickable but gave no affordance — operator didn't know to click).
+            button.label = "▸ " + " | ".join(part for part in details if part)
             button.variant = _STATUS_VARIANT[chip.severity]
+            button.tooltip = (
+                f"Клик → {chip.action}: {chip.target}"
+                if getattr(chip, "action", "")
+                else f"{chip.label}: открыть подсистему"
+            )

@@ -53,6 +53,11 @@ async def test_status_bars_render_compact_chips_from_hardware_model() -> None:
         assert "Compute | WARN" in compute_chip
         assert "Уровень заряда" not in power_chip
 
+        # Affordance: chips read as actionable controls (leading marker + hover tooltip).
+        power_button = app.query_one("#orionv-status-power-action", Button)
+        assert power_button.label.plain.startswith("▸")
+        assert power_button.tooltip
+
 
 @pytest.mark.asyncio
 async def test_status_bars_qiki_chip_reflects_pending_action() -> None:
