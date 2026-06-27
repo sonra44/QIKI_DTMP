@@ -524,11 +524,15 @@ def _build_comms_card(
             else "No immediate comms gate is limiting the current operator flow."
         )
         next_attention = "Monitor latency if the contour becomes time-sensitive."
+    evidence_line = _comms_evidence_line(subsystem)
+    summary = _summary_text(subsystem)
+    if evidence_line:
+        summary = f"{summary} | {evidence_line}"
     return _make_card(
         "comms",
         status=status,
         current_status=current_status,
-        summary=_summary_text(subsystem),
+        summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
         quick_hint="If comms freshness slips, trust the live contour less aggressively.",
@@ -673,6 +677,33 @@ def _power_evidence_line(subsystem: SubsystemView | None) -> str:
         if suffix:
             parts.append(f"{label}{suffix}")
     return ("Источник ЭСП: " + ", ".join(parts)) if parts else ""
+
+
+def _comms_evidence_line(subsystem: SubsystemView | None) -> str:
+    """ADR-0014 / IF-COMMS-001 §16.7 evidence note for the comms channel.
+
+    delivery reason_codes (canon §16.6) and freshness/missing are SEPARATE evidence
+    dimensions (canon 05§17): a blocked/degraded channel shows its reason_code; only a
+    truly stale link gets [УСТАРЕЛО]; an absent source gets [НЕТ ИСТОЧНИКА]. Quiet (empty)
+    when the channel is online / trusted / fresh.
+    """
+    field = _field_map(subsystem).get("comms.link_state")
+    if field is None:
+        return ""
+    marks: list[str] = []
+    if field.trust_status == "missing":
+        marks.append("[НЕТ ИСТОЧНИКА]")
+    elif field.freshness == "stale":
+        marks.append("[УСТАРЕЛО]")
+    reasons = ",".join(field.reason_codes) if field.reason_codes else ""
+    if not marks and not reasons:
+        return ""
+    line = "Источник связи: канал"
+    if marks:
+        line += " " + " ".join(marks)
+    if reasons:
+        line += f"; причина {reasons}"
+    return line
 
 
 def _field_text(subsystem: SubsystemView | None, key: str) -> str:

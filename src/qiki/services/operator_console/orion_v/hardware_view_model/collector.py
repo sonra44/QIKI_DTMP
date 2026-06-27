@@ -14,6 +14,9 @@ from .diagnostics import (
     format_missing_line,
 )
 from .key_aliases import SUBSYSTEM_KEYSETS, canonicalize_snapshot
+from qiki.services.operator_console.orion_v.comms_telemetry_adapter import (
+    comms_channels_from_snapshot,
+)
 from .thresholds import (
     COMMS_AGE_CRIT_S,
     COMMS_AGE_WARN_S,
@@ -418,6 +421,22 @@ class HardwareCollector:
         antenna_status_text = self._state_text(self._raw(snapshot, "comms.antenna_status"))
         age = self._comms_age_seconds(snapshot=snapshot, now_ts=now)
 
+        # IF-COMMS-001 §16.7 console-side evidence (bounded-temp mirror of q_sim mapper,
+        # equivalence-guarded). delivery_state/reason_codes come from canon §16.6; staleness is a
+        # SEPARATE freshness dimension (canon 05§17 "данные устарели -> stale"), never a reason code.
+        comms_record = comms_channels_from_snapshot(
+            snapshot.get("comms") if isinstance(snapshot.get("comms"), dict) else None,
+            power=snapshot.get("power") if isinstance(snapshot.get("power"), dict) else None,
+            thermal=snapshot.get("thermal") if isinstance(snapshot.get("thermal"), dict) else None,
+            timestamp=now,
+            freshness="fresh",
+        )[0]
+        comms_stale = age is not None and age > COMMS_AGE_CRIT_S
+        comms_ev_trust = (
+            "degraded" if (comms_stale and comms_record.trust_status == "trusted") else comms_record.trust_status
+        )
+        comms_ev_freshness = "stale" if comms_stale else comms_record.freshness
+
         plane_enabled = self._bool(snapshot, "comms.plane_enabled")
         plane_profile = self._state_text(self._raw(snapshot, "comms.plane_profile"))
 
@@ -438,6 +457,9 @@ class HardwareCollector:
                 link_state_text,
                 "",
                 link_state_status,
+                trust_status=comms_ev_trust,
+                reason_codes=comms_record.reason_codes,
+                freshness=comms_ev_freshness,
             ),
             mk_field(
                 "comms.latency_ms",
