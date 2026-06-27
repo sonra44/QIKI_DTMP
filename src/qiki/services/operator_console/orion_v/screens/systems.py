@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from rich.markup import escape
 from textual.widgets import Static
 
 from qiki.services.operator_console.orion_v.hardware_view_model.types import (
@@ -86,6 +87,27 @@ _SEVERITY_LABELS: dict[ViewStatus, str] = {
     ViewStatus.NO_DATA: "unknown",
 }
 
+_STATUS_BADGES: dict[ViewStatus, str] = {
+    ViewStatus.OK: "OK",
+    ViewStatus.WARN: "WARN",
+    ViewStatus.CRIT: "CRIT",
+    ViewStatus.NO_DATA: "NO DATA",
+}
+
+_STATUS_BADGE_STYLES: dict[ViewStatus, str] = {
+    ViewStatus.OK: "",
+    ViewStatus.WARN: "bold #f2b84b",
+    ViewStatus.CRIT: "bold #ff5f56",
+    ViewStatus.NO_DATA: "dim",
+}
+
+_STATUS_RAIL_STYLES: dict[ViewStatus, str] = {
+    ViewStatus.OK: "dim",
+    ViewStatus.WARN: "bold #f2b84b",
+    ViewStatus.CRIT: "bold #ff5f56",
+    ViewStatus.NO_DATA: "dim",
+}
+
 
 @dataclass(slots=True)
 class SystemCard:
@@ -139,6 +161,27 @@ def render_system_cards(cards: list[SystemCard], *, selected_subsystem: str | No
     return render_system_cards_with_safety(cards, safe_mode=None, selected_subsystem=selected_subsystem)
 
 
+def _styled(text: str, style: str) -> str:
+    escaped = escape(text)
+    return f"[{style}]{escaped}[/]" if style else escaped
+
+
+def _status_badge(status: ViewStatus) -> str:
+    label = _STATUS_BADGES[status]
+    style = _STATUS_BADGE_STYLES[status]
+    return _styled(f"[{label}]", style)
+
+
+def _card_title_line(card: SystemCard, *, selected: bool, select_action: str) -> str:
+    rail = _styled("▌", _STATUS_RAIL_STYLES[card.status])
+    marker = "[reverse bold cyan] SELECTED [/]" if selected else "[dim]        [/]"
+    severity = _styled(card.severity.upper(), _STATUS_BADGE_STYLES[card.status])
+    title = escape(card.title)
+    # Keep the legacy plain "[severity]" token for existing text assertions and search,
+    # then add a stronger state badge/rail for the operator scan path.
+    return f"{rail} {marker} {title} [{card.severity}] {_status_badge(card.status)} [dim]{severity}[/] {select_action}"
+
+
 def render_system_cards_with_safety(
     cards: list[SystemCard],
     *,
@@ -156,15 +199,15 @@ def render_system_cards_with_safety(
         lines.append(authority)
     lines.append("")
     for card in cards:
-        marker = ">" if selected_subsystem == card.subsystem_id else " "
+        selected = selected_subsystem == card.subsystem_id
         select_action = _action_link("select_subsystem", card.subsystem_id)
-        lines.append(f"{marker} {card.title} [{card.severity}] {select_action}")
-        lines.append(f"   Status: {card.current_status}")
-        lines.append(f"   Summary: {card.summary}")
-        lines.append(f"   Effect: {card.operational_effect}")
-        lines.append(f"   Next: {card.next_attention}")
+        lines.append(_card_title_line(card, selected=selected, select_action=select_action))
+        lines.append(f"   Status: {escape(card.current_status)} {_status_badge(card.status)}")
+        lines.append(f"   Summary: {escape(card.summary)}")
+        lines.append(f"   Effect: {escape(card.operational_effect)}")
+        lines.append(f"   Next: {escape(card.next_attention)}")
         if card.quick_hint:
-            lines.append(f"   Hint: {card.quick_hint}")
+            lines.append(f"   Hint: [dim]{escape(card.quick_hint)}[/]")
         lines.append("")
     return "\n".join(lines).rstrip()
 

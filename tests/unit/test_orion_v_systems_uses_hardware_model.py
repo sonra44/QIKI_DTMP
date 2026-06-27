@@ -64,6 +64,39 @@ def test_missing_truth_is_rendered_as_unknown() -> None:
     assert "Summary: Нет данных" in text
 
 
+def test_system_cards_render_severity_badges_and_selected_marker() -> None:
+    model = HardwareViewModel(
+        system_status=ViewStatus.CRIT,
+        subsystems={
+            "power": SubsystemView(
+                id="power",
+                title="Энергия",
+                status=ViewStatus.CRIT,
+                fields=[_field("power.soc", "Уровень заряда", 10, "%", ViewStatus.CRIT)],
+                summary="Заряд 10%",
+            ),
+            "comms": SubsystemView(
+                id="comms",
+                title="Связь",
+                status=ViewStatus.WARN,
+                fields=[_field("comms.link_state", "Link", "DEGRADED", "", ViewStatus.WARN)],
+                summary="Связь деградирует",
+            ),
+        },
+        generated_at=0.0,
+    )
+
+    text = render_system_cards(build_system_cards(model), selected_subsystem="comms")
+
+    assert "Power / Charge [critical]" in text
+    assert "Comms / Link / Protocol [degraded]" in text
+    assert "#ff5f56" in text
+    assert "#f2b84b" in text
+    assert "CRIT" in text
+    assert "WARN" in text
+    assert "SELECTED" in text
+
+
 def test_docked_power_card_changes_meaning_with_charging_context() -> None:
     model = HardwareViewModel(
         system_status=ViewStatus.OK,
