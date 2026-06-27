@@ -10,7 +10,7 @@ from qiki.services.operator_console.orion_v.app import OrionVApp, _parse_safe_mo
 from qiki.services.operator_console.orion_v.screens.cockpit import OrionVCockpitScreen
 from qiki.services.operator_console.orion_v.screens.deep_dive import OrionVDeepDiveScreen
 from qiki.services.operator_console.orion_v.screens.evidence_stream import OrionVEvidenceScreen
-from qiki.services.operator_console.orion_v.screens.systems import OrionVSystemsScreen
+from qiki.services.operator_console.orion_v.screens.systems import OrionVSystemsScreen, SystemCardWidget
 from qiki.services.operator_console.orion_v.widgets.evidence_card_view import OrionVEvidenceCard
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import (
     OrionVAlertsOverlay,
@@ -1178,21 +1178,15 @@ async def test_telemetry_shed_reasons_visible_in_f1_and_f2_runtime_path(monkeypa
     async def no_nats(self: OrionVApp) -> None:
         self._nats_state = "lost"
 
-    systems_updates: list[str] = []
+    systems_card_texts: list[str] = []
     cockpit_updates: list[str] = []
-    original_systems_update = OrionVSystemsScreen.update
     original_cockpit_set_body_text = OrionVCockpitScreen._set_body_text
-
-    def capture_systems(self: OrionVSystemsScreen, renderable) -> None:  # noqa: ANN001
-        systems_updates.append(str(renderable))
-        original_systems_update(self, renderable)
 
     def capture_cockpit_body(self: OrionVCockpitScreen, text: str) -> None:
         cockpit_updates.append(text)
         original_cockpit_set_body_text(self, text)
 
     monkeypatch.setattr(OrionVApp, "_connect_and_subscribe", no_nats)
-    monkeypatch.setattr(OrionVSystemsScreen, "update", capture_systems)
     monkeypatch.setattr(OrionVCockpitScreen, "_set_body_text", capture_cockpit_body)
 
     app = OrionVApp()
@@ -1217,13 +1211,14 @@ async def test_telemetry_shed_reasons_visible_in_f1_and_f2_runtime_path(monkeypa
         await pilot.pause()
         systems_widget = app.query_one("#orionv-systems", OrionVSystemsScreen)
         assert not systems_widget.has_class("hidden")
+        systems_card_texts = [str(card.render()) for card in systems_widget.query(SystemCardWidget)]
 
         app.action_show_level("f1")
         await pilot.pause()
         cockpit_widget = app.query_one("#orionv-cockpit", OrionVCockpitScreen)
         assert not cockpit_widget.has_class("hidden")
 
-    assert any("Track shed reasons: low_soc, pdu_overcurrent." in text for text in systems_updates)
+    assert any("Track shed reasons: low_soc, pdu_overcurrent." in text for text in systems_card_texts)
     assert any("Причины сброса: low_soc, pdu_overcurrent" in text for text in cockpit_updates)
 
 
@@ -1234,21 +1229,15 @@ async def test_telemetry_thermal_warn_trip_visible_in_f1_and_f2_runtime_path(mon
     async def no_nats(self: OrionVApp) -> None:
         self._nats_state = "lost"
 
-    systems_updates: list[str] = []
+    systems_card_texts: list[str] = []
     cockpit_updates: list[str] = []
-    original_systems_update = OrionVSystemsScreen.update
     original_cockpit_set_body_text = OrionVCockpitScreen._set_body_text
-
-    def capture_systems(self: OrionVSystemsScreen, renderable) -> None:  # noqa: ANN001
-        systems_updates.append(str(renderable))
-        original_systems_update(self, renderable)
 
     def capture_cockpit_body(self: OrionVCockpitScreen, text: str) -> None:
         cockpit_updates.append(text)
         original_cockpit_set_body_text(self, text)
 
     monkeypatch.setattr(OrionVApp, "_connect_and_subscribe", no_nats)
-    monkeypatch.setattr(OrionVSystemsScreen, "update", capture_systems)
     monkeypatch.setattr(OrionVCockpitScreen, "_set_body_text", capture_cockpit_body)
 
     app = OrionVApp()
@@ -1290,14 +1279,14 @@ async def test_telemetry_thermal_warn_trip_visible_in_f1_and_f2_runtime_path(mon
         await pilot.pause()
         systems_widget = app.query_one("#orionv-systems", OrionVSystemsScreen)
         assert not systems_widget.has_class("hidden")
+        systems_card_texts = [str(card.render()) for card in systems_widget.query(SystemCardWidget)]
 
         app.action_show_level("f1")
         await pilot.pause()
         cockpit_widget = app.query_one("#orionv-cockpit", OrionVCockpitScreen)
         assert not cockpit_widget.has_class("hidden")
 
-    assert any("[F2] Systems Overview" in text for text in systems_updates)
-    assert any("Safety / Integrity / Hazard [unknown]" in text for text in systems_updates)
+    assert any("Safety / Integrity / Hazard [unknown]" in text for text in systems_card_texts)
     assert any("Core: 86.0 °C | limit 90°C | state=WARN" in text for text in cockpit_updates)
     assert any("TRIP nodes: pdu" in text for text in cockpit_updates)
 

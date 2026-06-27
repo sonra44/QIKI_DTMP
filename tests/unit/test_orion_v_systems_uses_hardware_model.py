@@ -7,6 +7,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model.types import (
     ViewStatus,
 )
 from qiki.services.operator_console.orion_v.screens.systems import (
+    SystemCardWidget,
     build_system_cards,
     render_system_cards,
     render_system_cards_with_safety,
@@ -95,6 +96,58 @@ def test_system_cards_render_severity_badges_and_selected_marker() -> None:
     assert "CRIT" in text
     assert "WARN" in text
     assert "SELECTED" in text
+
+
+def test_system_card_widget_sets_css_status_and_selected_classes() -> None:
+    model = HardwareViewModel(
+        system_status=ViewStatus.CRIT,
+        subsystems={
+            "power": SubsystemView(
+                id="power",
+                title="Энергия",
+                status=ViewStatus.CRIT,
+                fields=[_field("power.soc", "Уровень заряда", 10, "%", ViewStatus.CRIT)],
+                summary="Источник ЭСП: батарея [УСТАРЕЛО]",
+            )
+        },
+        generated_at=0.0,
+    )
+    card = next(card for card in build_system_cards(model) if card.subsystem_id == "power")
+
+    widget = SystemCardWidget(card, selected=True)
+    widget._refresh()
+
+    assert widget.has_class("system-card")
+    assert widget.has_class("status-crit")
+    assert widget.has_class("selected")
+    rendered = str(widget.render())
+    assert "[CRIT]" in rendered
+    assert "Источник ЭСП: батарея [УСТАРЕЛО]" in rendered
+
+
+def test_system_card_widget_sets_warn_css_class() -> None:
+    model = HardwareViewModel(
+        system_status=ViewStatus.WARN,
+        subsystems={
+            "comms": SubsystemView(
+                id="comms",
+                title="Связь",
+                status=ViewStatus.WARN,
+                fields=[_field("comms.link_state", "Link", "DEGRADED", "", ViewStatus.WARN)],
+                summary="Источник связи: [УСТАРЕЛО]",
+            )
+        },
+        generated_at=0.0,
+    )
+    card = next(card for card in build_system_cards(model) if card.subsystem_id == "comms")
+
+    widget = SystemCardWidget(card)
+    widget._refresh()
+
+    assert widget.has_class("status-warn")
+    rendered = str(widget.render())
+    assert "[WARN]" in rendered
+    assert "Источник связи: [УСТАРЕЛО]" in rendered
 
 
 def test_docked_power_card_changes_meaning_with_charging_context() -> None:

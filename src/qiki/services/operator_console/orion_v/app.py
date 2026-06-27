@@ -73,6 +73,7 @@ class OrionVApp(App[None]):
     """ORION V operator console running in parallel with legacy ORION."""
 
     ENABLE_COMMAND_PALETTE = False
+    CSS_PATH = "orion_v.tcss"
 
     CSS = """
     Screen {

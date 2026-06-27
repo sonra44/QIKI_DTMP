@@ -1,0 +1,59 @@
+OrionVSystemsScreen {
+    height: 1fr;
+    layout: vertical;
+}
+
+OrionVSystemsScreen #orionv-systems-title {
+    height: auto;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+OrionVSystemsScreen #orionv-systems-intro {
+    height: auto;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+OrionVSystemsScreen #orionv-systems-authority {
+    height: auto;
+    color: $warning;
+    padding: 0 1;
+}
+
+OrionVSystemsScreen #orionv-system-card-stream {
+    height: 1fr;
+}
+
+SystemCardWidget {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 1;
+    border-left: thick $surface-lighten-2;
+}
+
+SystemCardWidget:focus {
+    background: $boost;
+}
+
+SystemCardWidget.status-ok {
+    border-left: thick $surface-lighten-2;
+}
+
+SystemCardWidget.status-warn {
+    border-left: thick #f2b84b;
+}
+
+SystemCardWidget.status-crit {
+    border-left: thick #ff5f56;
+    text-style: bold;
+}
+
+SystemCardWidget.status-unknown {
+    border-left: thick $surface-lighten-2;
+}
+
+SystemCardWidget.selected {
+    border-left: thick cyan;
+    background: $boost;
+}

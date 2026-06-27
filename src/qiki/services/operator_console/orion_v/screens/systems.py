@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from rich.markup import escape
+from textual.app import ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from qiki.services.operator_console.orion_v.hardware_view_model.types import (
@@ -123,6 +125,38 @@ class SystemCard:
     order_index: int = 0
 
 
+_STATUS_CLASSES: dict[ViewStatus, str] = {
+    ViewStatus.OK: "status-ok",
+    ViewStatus.WARN: "status-warn",
+    ViewStatus.CRIT: "status-crit",
+    ViewStatus.NO_DATA: "status-unknown",
+}
+
+
+class SystemCardWidget(Static):
+    """F2 card presenter. Visual severity comes from CSS classes, not inline Rich styles."""
+
+    can_focus = True
+
+    def __init__(self, card: SystemCard, *, selected: bool = False, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._card = card
+        self._selected = selected
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self.set_classes(self._class_string())
+        self.update(_card_widget_text(self._card, selected=self._selected))
+
+    def _class_string(self) -> str:
+        classes = ["system-card", _STATUS_CLASSES[self._card.status]]
+        if self._selected:
+            classes.append("selected")
+        return " ".join(classes)
+
+
 def build_system_cards(
     hardware_model: HardwareViewModel | None,
     *,
@@ -180,6 +214,27 @@ def _card_title_line(card: SystemCard, *, selected: bool, select_action: str) ->
     # Keep the legacy plain "[severity]" token for existing text assertions and search,
     # then add a stronger state badge/rail for the operator scan path.
     return f"{rail} {marker} {title} [{card.severity}] {_status_badge(card.status)} [dim]{severity}[/] {select_action}"
+
+
+def _card_widget_text(card: SystemCard, *, selected: bool) -> str:
+    select_action = _action_link("select_subsystem", card.subsystem_id)
+    marker = "SELECTED" if selected else "       "
+    severity_token = _literal_bracketed(card.severity)
+    badge_token = _literal_bracketed(_STATUS_BADGES[card.status])
+    lines = [
+        f"{marker} {escape(card.title)} {severity_token} {badge_token} {select_action}",
+        f"Status: {escape(card.current_status)}",
+        f"Summary: {escape(card.summary)}",
+        f"Effect: {escape(card.operational_effect)}",
+        f"Next: {escape(card.next_attention)}",
+    ]
+    if card.quick_hint:
+        lines.append(f"Hint: {escape(card.quick_hint)}")
+    return "\n".join(lines)
+
+
+def _literal_bracketed(value: str) -> str:
+    return f"\\[{escape(value)}]"
 
 
 def render_system_cards_with_safety(
@@ -879,6 +934,13 @@ class OrionVSystemsScreen(Static):
         self._incidents: list[dict[str, Any]] = []
         self._radar_tracks: dict[str, dict[str, Any]] = {}
 
+    def compose(self) -> ComposeResult:
+        yield Static("", id="orionv-systems-title")
+        yield Static("", id="orionv-systems-intro")
+        yield Static("", id="orionv-systems-authority")
+        with VerticalScroll(id="orionv-system-card-stream"):
+            pass
+
     def on_mount(self) -> None:
         self._refresh_text()
 
@@ -915,10 +977,20 @@ class OrionVSystemsScreen(Static):
             incidents=self._incidents,
             radar_tracks=self._radar_tracks,
         )
-        self.update(
-            render_system_cards_with_safety(
-                cards,
-                safe_mode=self._safe_mode,
-                selected_subsystem=self._selected_subsystem,
+        self.query_one("#orionv-systems-title", Static).update("[F2] Systems Overview")
+        self.query_one("#orionv-systems-intro", Static).update(
+            "Operator view: health -> effect on actions -> next attention\n"
+            "Truth: hardware_view_model + telemetry/objective/events already present in ORION V"
+        )
+        self.query_one("#orionv-systems-authority", Static).update(_safe_mode_header_line(self._safe_mode) or "")
+        stream = self.query_one("#orionv-system-card-stream", VerticalScroll)
+        stream.remove_children()
+        stream.mount(
+            *(
+                SystemCardWidget(
+                    card,
+                    selected=self._selected_subsystem == card.subsystem_id,
+                )
+                for card in cards
             )
         )
