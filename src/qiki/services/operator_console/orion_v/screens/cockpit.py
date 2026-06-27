@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,22 @@ from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
     from qiki.services.operator_console.orion_v.operator_state import OperatorShellState
+
+
+@dataclass(frozen=True, slots=True)
+class QikiLoopProjection:
+    """Single derivation of the G1 operator loop (Наблюдение->Команда->Legality/Trust->
+    Consequence) from the last QikiChatResponseV1 + pending state. Built ONCE: the verbose
+    [QIKI LOOP] bullets (rendered by _qiki_block) and the compact F1 loop rows (rendered by
+    _qiki_recommendation_rows) both come from here, so legality/trust/effect are never derived
+    twice nor parsed back out of rendered strings. ADR-0014: honest missing/unknown/no-action,
+    never invented.
+    """
+
+    severity: str
+    active: bool
+    bullets: tuple[str, ...]
+    rows: tuple[tuple[str, str, str], ...]
 
 
 class OrionVCockpitScreen(Static):
@@ -1073,96 +1090,152 @@ class OrionVCockpitScreen(Static):
             return qiki_severity, qiki_lines[:2]
         return qiki_severity, qiki_lines[:10]
 
-    def _qiki_block(self) -> tuple[str, list[str]]:
-        # [QIKI LOOP] — canonical operator loop (G1_QIKI_OPERATOR_LOOP):
-        # Наблюдение -> Команда -> Legality/Trust -> Consequence. Data is projected from the
-        # last QikiChatResponseV1; ADR-0014: never invent — honest missing/unknown/no-action.
+    def _qiki_loop_projection(self) -> QikiLoopProjection:
+        # Single derivation of the G1 operator loop from the last QikiChatResponseV1 + pending
+        # state. Produces BOTH the verbose [QIKI LOOP] bullets and the compact F1 rows so the
+        # two never drift. ADR-0014: honest missing/unknown/no-action, never invented.
         resp = self._qiki_response
-        lines: list[str] = ["[QIKI LOOP] — операторский контур"]
-        severity = "ok"
-
         pending_title = self._qiki_pending_action_title
         if pending_title is None and resp is not None:
             for proposal in resp.proposals[:1]:
                 pending_title = proposal.title.ru or proposal.title.en
+        active = resp is not None or bool(pending_title)
+        severity = "ok"
 
-        # Намерение/Intent — no invention: unknown | derived:<source> | —
+        # Намерение/Intent — no invention
         if resp is None:
             intent = "—"
         elif pending_title:
             intent = f"derived: {pending_title}"
         else:
             intent = "unknown"
-        lines.append(f"• Намерение/Intent: {intent}")
+
+        # QIKI head row
+        if pending_title:
+            qiki_state, qiki_detail = "HOLD", "confirm required"
+        elif resp is None:
+            qiki_state, qiki_detail = "READY", "q: <команда>"
+        else:
+            head_legality = resp.legality
+            qiki_state = (head_legality.status if head_legality is not None else "READY").strip().upper()
+            qiki_detail = (
+                head_legality.reason_code if head_legality is not None and head_legality.reason_code else "review"
+            ).strip().lower() or "review"
 
         # Допуск/Legality (+ domain) — §1
-        if resp is None or resp.legality is None:
-            lines.append("• Допуск/Legality: нет данных/missing")
-        else:
-            legality = resp.legality
-            lines.append(
-                f"• Допуск/Legality: {legality.status} [{legality.domain}] {legality.reason_code} — {legality.reason.ru}"
+        legality = resp.legality if resp is not None else None
+        if legality is not None:
+            legality_bullet = (
+                f"{legality.status} [{legality.domain}] {legality.reason_code} — {legality.reason.ru}"
             )
+            legality_state_row = legality.status.strip().upper()
+            legality_detail_row = f"[{legality.domain}] {legality.reason_code}".strip()
             if legality.status in {"blocked", "unsafe"}:
                 severity = "warn"
             elif legality.status == "deferred":
                 severity = "degraded"
+        else:
+            legality_bullet = "нет данных/missing"
+            legality_state_row, legality_detail_row = "MISSING", "нет данных"
 
-        # Доверие/Trust — §2
+        # Доверие/Trust — §2 (verbose [:2]; primary signal for the compact row)
+        trust_bullets: list[str] = []
         if resp is not None and resp.trust_signals:
             for signal in resp.trust_signals[:2]:
-                lines.append(
-                    "• Доверие/Trust: "
-                    f"{signal.state} | {signal.label.ru}/{signal.label.en} | conf={signal.confidence:.2f} | src={signal.source}"
+                trust_bullets.append(
+                    f"{signal.state} | {signal.label.ru}/{signal.label.en} | "
+                    f"conf={signal.confidence:.2f} | src={signal.source}"
                 )
+            primary = resp.trust_signals[0]
+            trust_state_row = (primary.state or "PARTIAL").strip().upper()
+            trust_detail_row = f"{primary.label.ru} conf={primary.confidence:.2f}"
         else:
-            lines.append("• Доверие/Trust: явных сигналов нет/missing")
+            trust_state_row, trust_detail_row = "PARTIAL", "явных сигналов нет"
 
         # Ожидает/Pending
         if pending_title:
-            lines.append(f"• Ожидает/Pending: confirm needed — {pending_title}")
+            pending_bullet = f"confirm needed — {pending_title}"
+            pending_state_row, pending_detail_row = "CONFIRM", pending_title
         else:
-            lines.append("• Ожидает/Pending: no action")
+            pending_bullet = "no action"
+            pending_state_row, pending_detail_row = "NONE", "no action"
 
         # Эффект/Last — §3 (ACK != effect confirmation)
-        if resp is not None and resp.consequence is not None:
-            consequence = resp.consequence
-            effect = f"{consequence.status} | {consequence.summary.ru}"
+        consequence = resp.consequence if resp is not None else None
+        if consequence is not None:
+            effect_bullet = f"{consequence.status} | {consequence.summary.ru}"
             if consequence.telemetry_confirmation is not None:
-                effect += f" | подтв: {consequence.telemetry_confirmation.ru}"
-            lines.append(f"• Эффект/Last: {effect}")
+                effect_bullet += f" | подтв: {consequence.telemetry_confirmation.ru}"
+            effect_state_row = consequence.status.strip().upper()
+            effect_detail_row = consequence.summary.ru
         else:
-            lines.append("• Эффект/Last: no effect yet")
+            effect_bullet = "no effect yet"
+            effect_state_row, effect_detail_row = "NONE", "no effect yet"
 
         # Дальше/Next
         if pending_title:
-            next_step = "подтвердить (кнопка / q confirm)"
-        elif resp is not None and resp.legality is not None and resp.legality.allowed_when is not None:
-            next_step = resp.legality.allowed_when.ru
+            next_text, next_state_row = "подтвердить (кнопка / q confirm)", "CONFIRM"
+        elif legality is not None and legality.allowed_when is not None:
+            next_text, next_state_row = legality.allowed_when.ru, "WAIT"
         elif resp is None:
-            next_step = "введите q: <команда>"
+            next_text, next_state_row = "введите q: <команда>", "INPUT"
         else:
-            next_step = "уточните команду / inspect F2 / open F3"
-        lines.append(f"• Дальше/Next: {next_step}")
+            next_text, next_state_row = "уточните команду / inspect F2 / open F3", "REVIEW"
 
-        # --- detail below the loop (preserved behaviour) ---
+        # Verbose [QIKI LOOP] bullets
+        bullets = [
+            "[QIKI LOOP] — операторский контур",
+            f"• Намерение/Intent: {intent}",
+            f"• Допуск/Legality: {legality_bullet}",
+        ]
+        if trust_bullets:
+            bullets.extend(f"• Доверие/Trust: {body}" for body in trust_bullets)
+        else:
+            bullets.append("• Доверие/Trust: явных сигналов нет/missing")
+        bullets.append(f"• Ожидает/Pending: {pending_bullet}")
+        bullets.append(f"• Эффект/Last: {effect_bullet}")
+        bullets.append(f"• Дальше/Next: {next_text}")
         if resp is not None and resp.reply is not None:
-            lines.append(f"Ответ/Reply: {resp.reply.body.ru}")
+            bullets.append(f"Ответ/Reply: {resp.reply.body.ru}")
         if self._qiki_plan_preview_lines:
-            lines.append("План/Plan:")
-            lines.extend(f"  {item}" for item in self._qiki_plan_preview_lines)
+            bullets.append("План/Plan:")
+            bullets.extend(f"  {item}" for item in self._qiki_plan_preview_lines)
         if self._qiki_procedure_status is not None:
-            lines.append(f"Исполнение/Execution: {self._qiki_procedure_status}")
+            bullets.append(f"Исполнение/Execution: {self._qiki_procedure_status}")
         if resp is not None:
             for proposal in resp.proposals[:1]:
                 for action in proposal.proposed_actions[:1]:
                     action_target = action.name
                     if action.kind == "ORION_PROCEDURE":
                         action_target = f"proc run {action.name}"
-                    lines.append(
+                    bullets.append(
                         f"Действие/Action: {proposal.title.ru}/{proposal.title.en} -> {action_target}"
                     )
-        return severity, lines
+
+        # Compact loop rows for the PRIMARY F1 panel: QIKI head always; full loop when active.
+        # PENDING and EFFECT are shown ALWAYS when active (honest NONE / "no effect yet"), not
+        # conditionally — G1 §3 requires the consequence state / absence of silent failure to be
+        # visible on the main panel, not hidden when consequence is None.
+        rows: list[tuple[str, str, str]] = [("QIKI", qiki_state, qiki_detail)]
+        if active:
+            rows.append(("LEGALITY", legality_state_row, legality_detail_row))
+            rows.append(("TRUST", trust_state_row, trust_detail_row))
+            rows.append(("PENDING", pending_state_row, pending_detail_row))
+            rows.append(("EFFECT", effect_state_row, effect_detail_row))
+            rows.append(("NEXT", next_state_row, next_text))
+
+        return QikiLoopProjection(
+            severity=severity,
+            active=active,
+            bullets=tuple(bullets),
+            rows=tuple(rows),
+        )
+
+    def _qiki_block(self) -> tuple[str, list[str]]:
+        # [QIKI LOOP] verbose view — bullets from the single loop projection. The compact F1
+        # rows come from the SAME projection (_qiki_recommendation_rows), so they never drift.
+        projection = self._qiki_loop_projection()
+        return projection.severity, list(projection.bullets)
 
     def _procedure_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
         lines: list[str] = []
@@ -1916,29 +1989,15 @@ class OrionVCockpitScreen(Static):
         qiki_severity: str,
         qiki_lines: list[str],
     ) -> list[tuple[str, str, str]]:
-        state = self._operator_shell_state
-        always_on = getattr(state, "always_on", None)
-        if self._qiki_pending_action_title:
-            qiki_state = "HOLD"
-            detail = "confirm required"
-        elif self._qiki_response is None:
-            qiki_state = "READY"
-            detail = "q: <команда>"
-        else:
-            legality = getattr(self._qiki_response, "legality", None)
-            qiki_state = str(getattr(legality, "status", None) or "READY").strip().upper()
-            detail = str(getattr(legality, "reason_code", None) or "review").strip().lower() or "review"
-        # Trust state from the data directly (not by parsing _qiki_block's rendered lines —
-        # that coupling silently broke when the loop block was reformatted).
-        trust = "PARTIAL"
-        resp = self._qiki_response
-        if resp is not None and resp.trust_signals:
-            trust = str(resp.trust_signals[0].state or "PARTIAL").strip().upper()
-        ack_state = "OPEN" if getattr(always_on, "human_ack_required", False) else "CLEAR"
-        rows = [("QIKI", qiki_state, detail)]
-        if self._qiki_response is not None or self._qiki_pending_action_title:
-            rows.append(("TRUST", trust, f"assist={getattr(always_on, 'qiki_assist_status', None) or 'partial'}"))
-            rows.append(("ACK", ack_state, "human acknowledgement"))
+        # Compact loop rows for the PRIMARY "QIKI / Решение" F1 panel — from the SAME loop
+        # projection as the verbose [QIKI LOOP] block. No second derivation, no parsing of
+        # rendered strings (the coupling that silently broke trust before). ACK is app-state.
+        projection = self._qiki_loop_projection()
+        rows = list(projection.rows)
+        if projection.active:
+            always_on = getattr(self._operator_shell_state, "always_on", None)
+            ack_state = "OPEN" if getattr(always_on, "human_ack_required", False) else "CLEAR"
+            rows.append(("ACK", ack_state, f"assist={getattr(always_on, 'qiki_assist_status', None) or 'partial'}"))
         return rows
 
     def _operator_intervention_rows(self, *, intervention_lines: list[str]) -> list[tuple[str, str, str]]:

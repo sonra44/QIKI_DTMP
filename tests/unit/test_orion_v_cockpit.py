@@ -576,6 +576,10 @@ def test_qiki_recommendation_trust_row_reflects_signal_state() -> None:
     trust_rows = [row for row in rows if row[0] == "TRUST"]
     assert trust_rows, "TRUST row must be present when a QIKI response exists"
     assert trust_rows[0][1] == "DEGRADED"  # real signal state, not the PARTIAL fallback
+    # G1 §3 (no silent failure): consequence state stays visible on the main panel even when
+    # this response has no consequence — EFFECT row is shown always-when-active, honest NONE.
+    effect_rows = [row for row in rows if row[0] == "EFFECT"]
+    assert effect_rows and effect_rows[0][1] == "NONE"
 
 
 def test_cockpit_renders_qiki_data_trust_deferred_state() -> None:
