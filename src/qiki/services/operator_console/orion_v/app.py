@@ -165,6 +165,12 @@ class OrionVApp(App[None]):
         ("f6", "show_level('f6')", "Журнал"),
         ("f7", "show_level('f7')", "Система"),
         ("f8", "show_level('f8')", "Evidence"),
+        ("alt+1", "status_chip('power')", "Чип: Питание"),
+        ("alt+2", "status_chip('thermal')", "Чип: Тепло"),
+        ("alt+3", "status_chip('propulsion')", "Чип: Двигатели"),
+        ("alt+4", "status_chip('hull')", "Чип: Корпус"),
+        ("alt+5", "status_chip('compute')", "Чип: Вычисления"),
+        ("alt+6", "status_chip('qiki')", "Чип: QIKI"),
         ("pagedown", "events_page_next", "Следующая страница"),
         ("pageup", "events_page_prev", "Предыдущая страница"),
         ("up", "incident_prev", "Предыдущий инцидент"),
@@ -536,13 +542,21 @@ class OrionVApp(App[None]):
     def on_orion_v_action_bar_action_triggered(self, message: OrionVActionBar.ActionTriggered) -> None:
         self._handle_action_bar_action(message.action)
 
+    def _route_metric_action(self, action: str, target: str) -> None:
+        if action == "select_subsystem":
+            self.action_select_subsystem(target)
+        elif action == "show_level":
+            self.action_show_level(target)
+
     def on_orion_v_status_bars_metric_action_triggered(self, message: OrionVStatusBars.MetricActionTriggered) -> None:
-        if message.action == "select_subsystem":
-            self.action_select_subsystem(message.target)
-            return
-        if message.action == "show_level":
-            self.action_show_level(message.target)
-            return
+        self._route_metric_action(message.action, message.target)
+
+    def action_status_chip(self, slug: str) -> None:
+        # Keyboard parity (Alt+1..6) for the clickable status-bar chips: trigger the chip's
+        # own action/target by slug — identical to clicking it, no index/order coupling.
+        chip = next((item for item in self._operator_shell_state.chips if item.slug == slug), None)
+        if chip is not None:
+            self._route_metric_action(chip.action, chip.target)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id or ""
