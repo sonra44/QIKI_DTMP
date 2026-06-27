@@ -534,10 +534,48 @@ def test_cockpit_renders_qiki_legality_trust_and_consequence_block() -> None:
     text = _render_text(screen)
 
     assert "QIKI:" in text
-    assert "Статус/Status: blocked [protocol] MVP_NO_AUTO_ACTIONS" in text
-    assert "Доверие/Trust: healthy | Политика исполнения/Execution policy | conf=1.00 | src=policy" in text
-    assert "Последствие/Consequence: not_sent | Команда не была отправлена на control bus." in text
+    assert "• Допуск/Legality: blocked [protocol] MVP_NO_AUTO_ACTIONS" in text
+    assert "• Доверие/Trust: healthy | Политика исполнения/Execution policy | conf=1.00 | src=policy" in text
+    assert "• Эффект/Last: not_sent | Команда не была отправлена на control bus." in text
     assert "QIKI, действие, контур." in text
+
+
+def test_qiki_recommendation_trust_row_reflects_signal_state() -> None:
+    # Regression: the compact QIKI recommendation TRUST row must read the trust state
+    # from the response data, not by parsing the [QIKI LOOP] rendered lines (that coupling
+    # silently fell back to PARTIAL when the block was reformatted with a "• " bullet).
+    screen = _CaptureCockpit()
+    screen.set_state(
+        telemetry={},
+        nats_connected=True,
+        active_incidents=0,
+        incidents=[],
+        qiki_response=QikiChatResponseV1(
+            request_id="00000000-0000-0000-0000-000000000009",
+            ok=True,
+            mode=QikiMode.FACTORY,
+            legality=QikiLegalityV1(
+                status="deferred",
+                domain="trust",
+                reason_code="STATION_TRACK_LOW_QUALITY",
+                reason=BilingualText(en="low quality", ru="низкое качество"),
+            ),
+            trust_signals=[
+                QikiTrustSignalV1(
+                    label=BilingualText(en="Station radar track", ru="Радарный трек станции"),
+                    state="degraded",
+                    source="sensor",
+                    confidence=0.32,
+                    reason_code="STATION_TRACK_LOW_QUALITY",
+                    reason=BilingualText(en="noisy", ru="зашумлён"),
+                )
+            ],
+        ),
+    )
+    rows = screen._qiki_recommendation_rows(qiki_severity="warn", qiki_lines=[])
+    trust_rows = [row for row in rows if row[0] == "TRUST"]
+    assert trust_rows, "TRUST row must be present when a QIKI response exists"
+    assert trust_rows[0][1] == "DEGRADED"  # real signal state, not the PARTIAL fallback
 
 
 def test_cockpit_renders_qiki_data_trust_deferred_state() -> None:
@@ -602,9 +640,9 @@ def test_cockpit_renders_qiki_data_trust_deferred_state() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: deferred [trust] STATION_TRACK_LOW_QUALITY" in text
-    assert "Доверие/Trust: degraded | Радарный трек станции/Station radar track | conf=0.32 | src=sensor" in text
-    assert "Последствие/Consequence: not_sent | Исполнение сближения не начато" in text
+    assert "• Допуск/Legality: deferred [trust] STATION_TRACK_LOW_QUALITY" in text
+    assert "• Доверие/Trust: degraded | Радарный трек станции/Station radar track | conf=0.32 | src=sensor" in text
+    assert "• Эффект/Last: not_sent | Исполнение сближения не начато" in text
 
 
 def test_cockpit_renders_qiki_resource_blocked_state() -> None:
@@ -669,9 +707,9 @@ def test_cockpit_renders_qiki_resource_blocked_state() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: blocked [resource] COMMS_LINK_OFFLINE" in text
-    assert "Доверие/Trust: off | Состояние канала связи/Comms link state | conf=1.00 | src=derived" in text
-    assert "Последствие/Consequence: not_sent | Вызов станции не был начат." in text
+    assert "• Допуск/Legality: blocked [resource] COMMS_LINK_OFFLINE" in text
+    assert "• Доверие/Trust: off | Состояние канала связи/Comms link state | conf=1.00 | src=derived" in text
+    assert "• Эффект/Last: not_sent | Вызов станции не был начат." in text
 
 
 def test_cockpit_renders_qiki_hostile_resource_blocked_state() -> None:
@@ -747,9 +785,9 @@ def test_cockpit_renders_qiki_hostile_resource_blocked_state() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: blocked [resource] COMBAT_ENTRY_RCS_RESOURCE_LOW" in text
+    assert "• Допуск/Legality: blocked [resource] COMBAT_ENTRY_RCS_RESOURCE_LOW" in text
     assert "RCS ресурсный контур/RCS resource contour" in text
-    assert "Последствие/Consequence: not_sent | Продолжение combat-entry не запускалось" in text
+    assert "• Эффект/Last: not_sent | Продолжение combat-entry не запускалось" in text
 
 
 def test_cockpit_renders_qiki_zone_blocked_state() -> None:
@@ -820,9 +858,9 @@ def test_cockpit_renders_qiki_zone_blocked_state() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: blocked [zone] DOCKING_ZONE_TOO_FAR" in text
-    assert "Доверие/Trust: healthy | Радарный трек станции/Station radar track | conf=0.92 | src=sensor" in text
-    assert "Последствие/Consequence: not_sent | Вход в коридор стыковки не был начат." in text
+    assert "• Допуск/Legality: blocked [zone] DOCKING_ZONE_TOO_FAR" in text
+    assert "• Доверие/Trust: healthy | Радарный трек станции/Station radar track | conf=0.92 | src=sensor" in text
+    assert "• Эффект/Last: not_sent | Вход в коридор стыковки не был начат." in text
 
 
 def test_cockpit_renders_qiki_failed_trust_state() -> None:
@@ -887,9 +925,9 @@ def test_cockpit_renders_qiki_failed_trust_state() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: blocked [trust] IMU_FAILED" in text
-    assert "Доверие/Trust: failed | Телеметрия IMU/IMU telemetry | conf=0.00 | src=sensor" in text
-    assert "Последствие/Consequence: not_sent | Стабилизация ориентации не была начата." in text
+    assert "• Допуск/Legality: blocked [trust] IMU_FAILED" in text
+    assert "• Доверие/Trust: failed | Телеметрия IMU/IMU telemetry | conf=0.00 | src=sensor" in text
+    assert "• Эффект/Last: not_sent | Стабилизация ориентации не была начата." in text
 
 
 def test_cockpit_renders_confirmable_qiki_action() -> None:
@@ -966,9 +1004,9 @@ def test_cockpit_renders_confirmable_qiki_action() -> None:
     )
     text = _render_text(screen)
 
-    assert "Последствие/Consequence: pending | Команда отстыковки подготовлена" in text
-    assert "Подготовлено/Prepared: Подтвердить отстыковку" in text
-    assert "Следующий шаг/Next: подтвердить действие кнопкой или командой q confirm" in text
+    assert "• Эффект/Last: pending | Команда отстыковки подготовлена" in text
+    assert "• Ожидает/Pending: confirm needed — Подтвердить отстыковку" in text
+    assert "• Дальше/Next: подтвердить (кнопка / q confirm)" in text
     assert "Действие/Action: Подтвердить отстыковку/Confirm undock -> sim.dock.release" in text
 
 
@@ -1052,7 +1090,7 @@ def test_cockpit_renders_qiki_procedure_plan_preview_and_execution_state() -> No
     text = _render_text(screen)
 
     assert "Подготовлено/Prepared: Запустить безопасное наблюдение" in text
-    assert "Следующий шаг/Next: подтвердить действие кнопкой или командой q confirm" in text
+    assert "• Дальше/Next: подтвердить (кнопка / q confirm)" in text
     assert "План/Plan:" in text
     assert "1. sim.pause -> ack sim.pause" in text
     assert "2. sim.start -> ack sim.start" in text
@@ -1610,6 +1648,6 @@ def test_cockpit_renders_tactical_shift_after_active_intercept() -> None:
     )
     text = _render_text(screen)
 
-    assert "Статус/Status: deferred [protocol] TACTICAL_STATE_INTERCEPT_ACTIVE" in text
+    assert "• Допуск/Legality: deferred [protocol] TACTICAL_STATE_INTERCEPT_ACTIVE" in text
     assert "Тактическое состояние/Tactical state" in text
-    assert "Следующий шаг/Next: Дождитесь завершения активного перехватного импульса" in text
+    assert "• Дальше/Next: Дождитесь завершения активного перехватного импульса" in text

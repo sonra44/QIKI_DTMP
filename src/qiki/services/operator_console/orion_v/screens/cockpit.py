@@ -1074,84 +1074,94 @@ class OrionVCockpitScreen(Static):
         return qiki_severity, qiki_lines[:10]
 
     def _qiki_block(self) -> tuple[str, list[str]]:
+        # [QIKI LOOP] — canonical operator loop (G1_QIKI_OPERATOR_LOOP):
+        # Наблюдение -> Команда -> Legality/Trust -> Consequence. Data is projected from the
+        # last QikiChatResponseV1; ADR-0014: never invent — honest missing/unknown/no-action.
         resp = self._qiki_response
-        if resp is None:
-            return "ok", ["Статус/Status: нет активной команды QIKI", "Следующий шаг/Next: введите q: <команда>"]
-
-        lines: list[str] = []
+        lines: list[str] = ["[QIKI LOOP] — операторский контур"]
         severity = "ok"
 
-        if resp.legality is None:
-            lines.append("Статус/Status: нет данных о допуске")
+        pending_title = self._qiki_pending_action_title
+        if pending_title is None and resp is not None:
+            for proposal in resp.proposals[:1]:
+                pending_title = proposal.title.ru or proposal.title.en
+
+        # Намерение/Intent — no invention: unknown | derived:<source> | —
+        if resp is None:
+            intent = "—"
+        elif pending_title:
+            intent = f"derived: {pending_title}"
+        else:
+            intent = "unknown"
+        lines.append(f"• Намерение/Intent: {intent}")
+
+        # Допуск/Legality (+ domain) — §1
+        if resp is None or resp.legality is None:
+            lines.append("• Допуск/Legality: нет данных/missing")
         else:
             legality = resp.legality
             lines.append(
-                "Статус/Status: "
-                f"{legality.status} [{legality.domain}] {legality.reason_code}"
+                f"• Допуск/Legality: {legality.status} [{legality.domain}] {legality.reason_code} — {legality.reason.ru}"
             )
-            lines.append(f"Причина/Reason: {legality.reason.ru}")
             if legality.status in {"blocked", "unsafe"}:
                 severity = "warn"
             elif legality.status == "deferred":
                 severity = "degraded"
 
-        if resp.trust_signals:
+        # Доверие/Trust — §2
+        if resp is not None and resp.trust_signals:
             for signal in resp.trust_signals[:2]:
                 lines.append(
-                    "Доверие/Trust: "
-                    f"{signal.state} | {signal.label.ru}/{signal.label.en} | "
-                    f"conf={signal.confidence:.2f} | src={signal.source}"
+                    "• Доверие/Trust: "
+                    f"{signal.state} | {signal.label.ru}/{signal.label.en} | conf={signal.confidence:.2f} | src={signal.source}"
                 )
         else:
-            lines.append("Доверие/Trust: явных сигналов нет")
+            lines.append("• Доверие/Trust: явных сигналов нет/missing")
 
-        if resp.consequence is None:
-            lines.append("Последствие/Consequence: нет данных")
+        # Ожидает/Pending
+        if pending_title:
+            lines.append(f"• Ожидает/Pending: confirm needed — {pending_title}")
         else:
+            lines.append("• Ожидает/Pending: no action")
+
+        # Эффект/Last — §3 (ACK != effect confirmation)
+        if resp is not None and resp.consequence is not None:
             consequence = resp.consequence
-            lines.append(
-                "Последствие/Consequence: "
-                f"{consequence.status} | {consequence.summary.ru}"
-            )
+            effect = f"{consequence.status} | {consequence.summary.ru}"
             if consequence.telemetry_confirmation is not None:
-                lines.append(
-                    "Подтверждение/Confirmation: "
-                    f"{consequence.telemetry_confirmation.ru}"
-                )
+                effect += f" | подтв: {consequence.telemetry_confirmation.ru}"
+            lines.append(f"• Эффект/Last: {effect}")
+        else:
+            lines.append("• Эффект/Last: no effect yet")
 
-        if resp.reply is not None:
+        # Дальше/Next
+        if pending_title:
+            next_step = "подтвердить (кнопка / q confirm)"
+        elif resp is not None and resp.legality is not None and resp.legality.allowed_when is not None:
+            next_step = resp.legality.allowed_when.ru
+        elif resp is None:
+            next_step = "введите q: <команда>"
+        else:
+            next_step = "уточните команду / inspect F2 / open F3"
+        lines.append(f"• Дальше/Next: {next_step}")
+
+        # --- detail below the loop (preserved behaviour) ---
+        if resp is not None and resp.reply is not None:
             lines.append(f"Ответ/Reply: {resp.reply.body.ru}")
-
-        pending_title = self._qiki_pending_action_title
-        if pending_title is None:
-            for proposal in resp.proposals[:1]:
-                pending_title = proposal.title.ru or proposal.title.en
-                if pending_title:
-                    break
-
-        if pending_title is not None:
-            lines.append(f"Подготовлено/Prepared: {pending_title}")
-            lines.append("Следующий шаг/Next: подтвердить действие кнопкой или командой q confirm")
-        elif resp.legality is not None and resp.legality.allowed_when is not None:
-            lines.append(f"Следующий шаг/Next: {resp.legality.allowed_when.ru}")
-        elif resp.reply is not None:
-            lines.append("Следующий шаг/Next: уточните команду или проверьте контекст выполнения")
         if self._qiki_plan_preview_lines:
             lines.append("План/Plan:")
             lines.extend(f"  {item}" for item in self._qiki_plan_preview_lines)
         if self._qiki_procedure_status is not None:
             lines.append(f"Исполнение/Execution: {self._qiki_procedure_status}")
-
-        for proposal in resp.proposals[:1]:
-            for action in proposal.proposed_actions[:1]:
-                action_target = action.name
-                if action.kind == "ORION_PROCEDURE":
-                    action_target = f"proc run {action.name}"
-                lines.append(
-                    "Действие/Action: "
-                    f"{proposal.title.ru}/{proposal.title.en} -> {action_target}"
-                )
-
+        if resp is not None:
+            for proposal in resp.proposals[:1]:
+                for action in proposal.proposed_actions[:1]:
+                    action_target = action.name
+                    if action.kind == "ORION_PROCEDURE":
+                        action_target = f"proc run {action.name}"
+                    lines.append(
+                        f"Действие/Action: {proposal.title.ru}/{proposal.title.en} -> {action_target}"
+                    )
         return severity, lines
 
     def _procedure_block(self, tel: dict[str, Any]) -> tuple[str, list[str]]:
@@ -1918,11 +1928,12 @@ class OrionVCockpitScreen(Static):
             legality = getattr(self._qiki_response, "legality", None)
             qiki_state = str(getattr(legality, "status", None) or "READY").strip().upper()
             detail = str(getattr(legality, "reason_code", None) or "review").strip().lower() or "review"
+        # Trust state from the data directly (not by parsing _qiki_block's rendered lines —
+        # that coupling silently broke when the loop block was reformatted).
         trust = "PARTIAL"
-        for line in qiki_lines:
-            if line.startswith("Доверие/Trust: "):
-                trust = line.removeprefix("Доверие/Trust: ").split("|", 1)[0].strip().upper()
-                break
+        resp = self._qiki_response
+        if resp is not None and resp.trust_signals:
+            trust = str(resp.trust_signals[0].state or "PARTIAL").strip().upper()
         ack_state = "OPEN" if getattr(always_on, "human_ack_required", False) else "CLEAR"
         rows = [("QIKI", qiki_state, detail)]
         if self._qiki_response is not None or self._qiki_pending_action_title:
