@@ -647,6 +647,17 @@ class OrionVApp(App[None]):
             ),
         )
 
+    def action_ack_incident(self, incident_id: str) -> None:
+        if self._replay_mode:
+            self.action_ack_selected_incident()
+            return
+        selected = incident_id.strip()
+        if not selected:
+            self._set_help_text("Инцидент не выбран")
+            return
+        self._selected_incident_id = selected
+        self.action_ack_selected_incident()
+
     def action_clear_acknowledged_incidents(self) -> None:
         if self._replay_mode:
             self._set_help_text("РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО")

@@ -39,7 +39,7 @@ class OrionVDeepDiveScreen(Static):
         body: list[str] = [
             "[F3] Глубокий анализ",
             "",
-            "Инциденты (Вверх/Вниз, A=подтвердить, X=снять, click=выбрать):",
+            "Инциденты (Вверх/Вниз, A=подтвердить, X=снять, click=выбрать/ACK):",
         ]
         if not self._incidents:
             body.append("Нет активных C/A инцидентов")
@@ -47,9 +47,11 @@ class OrionVDeepDiveScreen(Static):
             for incident in self._incidents:
                 incident_id = incident["id"]
                 marker = ">" if incident_id == self._selected_incident_id else " "
-                select_action = _action_link("select_incident", incident_id)
+                select_action = _action_link("select_incident", incident_id, "выбрать")
+                ack_action = _action_link("ack_incident", incident_id, "ACK")
                 body.append(
-                    f"{marker} [{incident['severity']}] {incident_id} - {incident['description']} {select_action}"
+                    f"{marker} [{incident['severity']}] {incident_id} - {incident['description']} "
+                    f"{select_action} {ack_action}"
                 )
 
         body.extend(["", "Безопасность (Q-Core authority):"])
@@ -76,6 +78,6 @@ def _safe_mode_lines(safe_mode: dict[str, Any]) -> list[str]:
     ]
 
 
-def _action_link(action: str, value: str) -> str:
+def _action_link(action: str, value: str, label: str) -> str:
     safe_value = value.replace("\\", "\\\\").replace("'", "\\'")
-    return f"[@click={action}('{safe_value}')]select/click[/]"
+    return f"[@click={action}('{safe_value}')]{label}[/]"

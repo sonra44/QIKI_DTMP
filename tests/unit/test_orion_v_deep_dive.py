@@ -31,6 +31,9 @@ def test_deep_dive_renders_safe_mode_block_active_with_reason() -> None:
     )
     text = _render_text(screen)
     assert "[F3] Глубокий анализ" in text
+    assert "> [C] INC-1 - critical alarm" in text
+    assert "[@click=select_incident('INC-1')]выбрать[/]" in text
+    assert "[@click=ack_incident('INC-1')]ACK[/]" in text
     assert "Безопасность (Q-Core authority):" in text
     assert "SAFE MODE: ВКЛЮЧЕН" in text
     assert "Причина: SAFE_MODE_ENTER_TEST" in text

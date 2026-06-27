@@ -950,6 +950,41 @@ def test_replay_guardrails_block_controls(monkeypatch) -> None:
     assert app._procedure_task is None
 
 
+def test_action_ack_incident_selects_then_uses_confirm_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = OrionVApp()
+    callbacks = []
+    acked: list[str] = []
+
+    monkeypatch.setattr(app, "push_screen", lambda _dialog, callback: callbacks.append(callback))
+    monkeypatch.setattr(app, "_ack_incident", lambda incident_id: acked.append(incident_id))
+
+    app.action_ack_incident(" inc-click ")
+
+    assert app._selected_incident_id == "inc-click"
+    assert callbacks
+    assert acked == []
+
+    callbacks[0](True)
+
+    assert acked == ["inc-click"]
+
+
+def test_action_ack_incident_replay_guard_blocks_without_selection_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = OrionVApp()
+    app._replay_mode = True
+    app._selected_incident_id = "inc-old"
+    messages: list[str] = []
+
+    monkeypatch.setattr(app, "_set_help_text", lambda text: messages.append(text))
+
+    app.action_ack_incident("inc-new")
+
+    assert app._selected_incident_id == "inc-old"
+    assert messages[-1] == "РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО"
+
+
 def test_audit_publish_routes_by_subject() -> None:
     app = OrionVApp()
     published: list[tuple[str, dict]] = []
