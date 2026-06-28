@@ -23,6 +23,9 @@ from qiki.services.operator_console.orion_v.sensor_evidence import (
 from qiki.services.operator_console.orion_v.pdu_evidence import (
     pdu_evidence_from_snapshot,
 )
+from qiki.services.operator_console.orion_v.rcs_evidence import (
+    rcs_evidence_from_snapshot,
+)
 from .thresholds import (
     COMMS_AGE_CRIT_S,
     COMMS_AGE_WARN_S,
@@ -1405,6 +1408,62 @@ class HardwareCollector:
         summary = self._shields_summary(level=level, draw_w=draw_w)
         return self._subsystem("shields", fields, "защитный контур", summary=summary)
 
+    _RCS_REASON_RU = {
+        "RCS_UNAVAILABLE": "RCS недоступен",
+        "THRUST_MAP_MISSING": "нет карты тяги",
+        "TORQUE_MAP_MISSING": "нет карты момента",
+        "RCS_CLUSTER_HOT": "кластер перегрет",
+        "WORKING_MASS_LOW": "мало рабочего тела",
+        "BAYONET_SOFT_CAPTURE_ONLY": "только мягкий захват",
+        "BRIDGE_ACTIVE_RESTRICTED_MOTION": "мост активен — движение ограничено",
+        "CAP_LOW": "суперкап разряжен",
+        "SAFE_LOCKED": "SAFE-блокировка",
+    }
+
+    def _rcs_if_evidence_field(self, snapshot: dict[str, Any]) -> TelemetryField:
+        """§14 RCS command-validation evidence field from the EMITTED IF record.
+
+        Carries trust_status/freshness/reason_codes for the §19 inspector; the visible value
+        is plain Russian. Read-only consume of body_if_records.rcs_commands — never re-derives
+        §14 evidence from raw propulsion. Absent record -> explicit "no telemetry" (never
+        dropped). ADR-0015: validation/allowed is NOT effect confirmation. Decision B: neutral
+        status — it does not escalate the operational propulsion-card chip severity.
+        """
+        evidence = rcs_evidence_from_snapshot(snapshot)
+        if evidence is None:
+            return mk_field(
+                "propulsion.if_rcs_cmd.evidence",
+                "RCS — доказательство команды",
+                "нет данных — записи не передаются",
+                "",
+                ViewStatus.NO_DATA,
+                freshness="unknown",
+                trust_status="missing",
+                reason_codes=(),
+            )
+        if evidence.is_allowed:
+            return mk_field(
+                "propulsion.if_rcs_cmd.evidence",
+                "RCS — доказательство команды",
+                "команда разрешена (валидация, не подтверждение эффекта)",
+                "",
+                ViewStatus.NO_DATA,
+                freshness="fresh",
+                trust_status="trusted",
+                reason_codes=(),
+            )
+        blockers = ", ".join(self._RCS_REASON_RU.get(code, code) for code in evidence.reason_codes)
+        return mk_field(
+            "propulsion.if_rcs_cmd.evidence",
+            "RCS — доказательство команды",
+            "внимание — " + (blockers or "команда не разрешена"),
+            "",
+            ViewStatus.NO_DATA,
+            freshness="fresh",
+            trust_status="degraded",
+            reason_codes=evidence.reason_codes,
+        )
+
     def build_propulsion(self, snapshot: dict[str, Any]) -> SubsystemView:
         fuel_pct = self._v(snapshot, "propulsion.fuel_pct", "propulsion.fuel_percent", "rcs.fuel_pct", "fuel.pct")
         fuel_total_g = self._v(snapshot, "propulsion.fuel_total_g", "fuel.total_g", "fuel.capacity_g")
@@ -1582,6 +1641,10 @@ class HardwareCollector:
                 ),
             ]
         )
+
+        # RCS §14 evidence consumed from the EMITTED IF record (additive; the raw operational
+        # propulsion summary/status below is unchanged). Decision B: neutral status, no chip escalation.
+        fields.append(self._rcs_if_evidence_field(snapshot))
 
         summary = self._propulsion_summary(
             fuel_pct=fuel_pct, total_thrust_n=total_thrust_n, left_rpm=left_rpm, right_rpm=right_rpm

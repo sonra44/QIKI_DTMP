@@ -436,11 +436,15 @@ def _build_propulsion_card(
         current_status = "maneuver authority available"
         effect = "No immediate propulsion gate is blocking the present contour."
         next_attention = "Keep fuel and motor temperatures under watch during sustained burns."
+    summary = _summary_text(subsystem)
+    rcs_evidence = _rcs_evidence_line(subsystem)
+    if rcs_evidence:
+        summary = f"{summary} | {rcs_evidence}"
     return _make_card(
         "propulsion",
         status=status,
         current_status=current_status,
-        summary=_summary_text(subsystem),
+        summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
         quick_hint="Use F3 only if you need per-thruster or motor detail.",
@@ -802,6 +806,16 @@ def _pdu_evidence_line(subsystem: SubsystemView | None) -> str:
     if field is None:
         return ""
     return f"PDU·доказательство: {field.value}"
+
+
+def _rcs_evidence_line(subsystem: SubsystemView | None) -> str:
+    """IF-RCS-CMD §14 evidence — CONSUMED from the emitted record (collector field
+    propulsion.if_rcs_cmd.evidence). Always shown, including honest "нет данных" when the
+    producer does not emit the record; never silently dropped."""
+    field = _field_map(subsystem).get("propulsion.if_rcs_cmd.evidence")
+    if field is None:
+        return ""
+    return f"RCS·доказательство: {field.value}"
 
 
 def _comms_evidence_line(subsystem: SubsystemView | None) -> str:
