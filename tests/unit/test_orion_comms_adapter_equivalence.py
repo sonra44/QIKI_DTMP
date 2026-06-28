@@ -1,10 +1,13 @@
-"""Equivalence guard for the BOUNDED-TEMP console comms mirror.
+"""Equivalence guard for the shared §16 comms mapper (post DEFERRED-A).
 
-Asserts orion_v.comms_telemetry_adapter.comms_channels_from_snapshot stays
-field-by-field equivalent to the canonical q_sim mapper
-world_model.comms_channels_from_comms_state. If this fails, the console mirror
-has drifted and must be re-synced (or DEFERRED-A extraction done).
+The former console BOUNDED-TEMP mirror is gone: both the console alias
+(orion_v.comms_telemetry_adapter.comms_channels_from_snapshot) and the q_sim
+re-export (world_model.comms_channels_from_comms_state) now resolve to the one
+qiki.shared.models.comms mapper. This asserts they stay field-by-field equal —
+a drift means a re-export was rewired wrong or the shared contract changed.
 """
+
+# ruff: noqa: E501  (parametrized comms snapshots are intentionally one-line per case)
 
 from __future__ import annotations
 

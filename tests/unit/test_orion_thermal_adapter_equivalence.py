@@ -1,9 +1,10 @@
-"""Equivalence guard for the BOUNDED-TEMP console thermal mirror.
+"""Equivalence guard for the shared §13.7 thermal mapper (post DEFERRED-A).
 
-Asserts orion_v.thermal_telemetry_adapter.thermal_records_from_snapshot stays
-byte-for-byte equivalent (field-by-field) to the canonical q_sim mapper
-world_model.thermal_telemetry_from_thermal_state. If this test fails, the
-console mirror has drifted and must be re-synced (or DEFERRED-A extraction done).
+The former console BOUNDED-TEMP mirror is gone: both the console alias
+(orion_v.thermal_telemetry_adapter.thermal_records_from_snapshot) and the q_sim
+re-export (world_model.thermal_telemetry_from_thermal_state) now resolve to the one
+qiki.shared.models.thermal mapper. This asserts they stay field-by-field equal —
+a drift here means a re-export was rewired wrong or the shared contract changed.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from qiki.services.q_sim_service.core.world_model import (
 )
 
 THERMALS = [
-    {"nodes": [{"id": "core", "temp_c": 25.0, "tripped": False, "warned": False, "warn_c": 80.0, "trip_c": 90.0, "hys_c": 5.0}]},
+    {"nodes": [{"id": "core", "temp_c": 25.0, "tripped": False, "warned": False, "warn_c": 80.0, "trip_c": 90.0, "hys_c": 5.0}]},  # noqa: E501
     {"nodes": [{"id": "core", "temp_c": 85.0, "warned": True, "warn_c": 80.0, "trip_c": 90.0}]},
     {"nodes": [{"id": "pdu", "temp_c": 95.0, "tripped": True, "warn_c": 80.0, "trip_c": 90.0}]},
     {"nodes": [{"id": "rcs_left", "temp_c": 82.0, "warn_c": 80.0}]},
@@ -35,7 +36,7 @@ THERMALS = [
     {"nodes": [{"id": "core", "temp_c": 50.0, "warn_c": -5.0}]},  # negative warn_c -> nominal
     {"nodes": [{"id": "core", "tripped": True}]},  # core critical -> blocked ("nbl",)
     {"nodes": [{"id": "rcs_left", "tripped": True}]},  # rcs critical -> blocked ("rcs",)
-    {"nodes": [{"id": "core", "temp_c": 70.0, "warn_c": 80.0, "heat_active_w": 12.5, "cooldown_state": "active"}]},  # heat/cooldown mirror through
+    {"nodes": [{"id": "core", "temp_c": 70.0, "warn_c": 80.0, "heat_active_w": 12.5, "cooldown_state": "active"}]},  # noqa: E501
     {"nodes": [{"id": "", "temp_c": 50}]},  # empty id -> skipped
     {"nodes": [42, "bad", None]},  # non-dict nodes -> skipped
     {"nodes": "bad"},  # non-list nodes -> treated as empty
