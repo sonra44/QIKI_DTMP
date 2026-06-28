@@ -141,6 +141,29 @@ def test_comms_plane_enabled_is_not_warning() -> None:
     assert comms.status == ViewStatus.OK
 
 
+def test_comms_flat_aliases_feed_evidence_record() -> None:
+    collector = HardwareCollector()
+    model = collector.update(
+        {
+            "comms.link": "online",
+            "comms.available": True,
+            "comms.plane_enabled": True,
+            "comms.xpdr.allowed": True,
+            "comms.xpdr.mode": "normal",
+            "comms.latency_ms": 90.0,
+            "comms.packet_loss_pct": 0.0,
+            "comms.age_s": 0.0,
+        },
+        now_ts=1000.0,
+    )
+    index = {field.key: field for field in model.subsystems["comms"].fields}
+    link = index["comms.link_state"]
+
+    assert link.trust_status == "trusted"
+    assert link.freshness == "fresh"
+    assert link.reason_codes == ()
+
+
 def test_compute_coverage_reports_filled_and_total_fields() -> None:
     collector = HardwareCollector()
     model = collector.update({"comms.latency_ms": 45.0}, now_ts=1000.0)

@@ -425,7 +425,7 @@ class HardwareCollector:
         # equivalence-guarded). delivery_state/reason_codes come from canon §16.6; staleness is a
         # SEPARATE freshness dimension (canon 05§17 "данные устарели -> stale"), never a reason code.
         comms_record = comms_channels_from_snapshot(
-            snapshot.get("comms") if isinstance(snapshot.get("comms"), dict) else None,
+            self._comms_snapshot_for_evidence(snapshot),
             power=snapshot.get("power") if isinstance(snapshot.get("power"), dict) else None,
             thermal=snapshot.get("thermal") if isinstance(snapshot.get("thermal"), dict) else None,
             timestamp=now,
@@ -539,7 +539,13 @@ class HardwareCollector:
                 "Comms plane",
                 self._on_off_text(plane_enabled),
                 "",
-                ViewStatus.OK if plane_enabled is True else ViewStatus.WARN if plane_enabled is False else ViewStatus.NO_DATA,
+                (
+                    ViewStatus.OK
+                    if plane_enabled is True
+                    else ViewStatus.WARN
+                    if plane_enabled is False
+                    else ViewStatus.NO_DATA
+                ),
             ),
             mk_field(
                 "comms.plane_profile",
@@ -1725,6 +1731,48 @@ class HardwareCollector:
             if value is not None:
                 return value
         return None
+
+    def _comms_snapshot_for_evidence(self, snapshot: dict[str, Any]) -> dict[str, Any] | None:
+        nested = snapshot.get("comms")
+        comms: dict[str, Any] = dict(nested) if isinstance(nested, dict) else {}
+        aliases: dict[str, tuple[str, ...]] = {
+            "link_state": ("comms.link_state", "comms.link"),
+            "latency_ms": ("comms.latency_ms",),
+            "packet_loss_pct": ("comms.packet_loss_pct",),
+            "rssi_dbm": ("comms.rssi_dbm",),
+            "snr_db": ("comms.snr_db",),
+            "tx_power_w": ("comms.tx_power_w",),
+            "data_rate_kbps": ("comms.data_rate_kbps",),
+            "antenna_status": ("comms.antenna_status",),
+            "plane_enabled": ("comms.plane_enabled",),
+            "plane_profile": ("comms.plane_profile",),
+            "available": ("comms.available",),
+            "enabled": ("comms.enabled",),
+            "EMCON_state": ("comms.EMCON_state", "comms.emcon_state"),
+            "reason_codes": ("comms.reason_codes",),
+        }
+        for target, keys in aliases.items():
+            if target in comms:
+                continue
+            value = self._raw(snapshot, *keys)
+            if value is not None:
+                comms[target] = value
+
+        xpdr = comms.get("xpdr") if isinstance(comms.get("xpdr"), dict) else {}
+        xpdr = dict(xpdr)
+        for target, keys in {
+            "allowed": ("comms.xpdr.allowed", "xpdr.allowed"),
+            "mode": ("comms.xpdr.mode", "xpdr.mode"),
+        }.items():
+            if target in xpdr:
+                continue
+            value = self._raw(snapshot, *keys)
+            if value is not None:
+                xpdr[target] = value
+        if xpdr:
+            comms["xpdr"] = xpdr
+
+        return comms or None
 
     def _bool(self, snapshot: dict[str, Any], *keys: str) -> bool | None:
         value = self._raw(snapshot, *keys)
