@@ -105,6 +105,8 @@ def test_power_fields_keep_no_data_values_when_snapshot_empty() -> None:
         "power.dock_bridge_state",
         "power_budgeter.state",
         "pdu.state",
+        "power.battery_1_voltage_v",
+        "power.battery_2_voltage_v",
     }
     index = {field.key: field for field in power.fields}
 
@@ -569,13 +571,24 @@ def _power_field(model, key):
 def test_power_battery_and_supercap_are_separate_fields() -> None:
     now_ms = int(time.time() * 1000)
     model = HardwareCollector().update(
-        {"power.soc_pct": 80, "power.supercap_soc_pct": 70, "ts_unix_ms": now_ms}
+        {
+            "power.soc_pct": 80,
+            "power.supercap_soc_pct": 70,
+            "power.battery_1_voltage_v": 28.4,
+            "power.battery_2_voltage_v": 27.9,
+            "ts_unix_ms": now_ms,
+        }
     )
     battery = _power_field(model, "power.soc")
     supercap = _power_field(model, "power.supercap_soc")
+    batt_1 = _power_field(model, "power.battery_1_voltage_v")
+    batt_2 = _power_field(model, "power.battery_2_voltage_v")
     assert battery is not None and supercap is not None
+    assert batt_1 is not None and batt_2 is not None
     assert battery.value == 80
     assert supercap.value == 70
+    assert batt_1.value == 28.4
+    assert batt_2.value == 27.9
 
 
 def test_power_evidence_fresh_when_present_and_recent() -> None:

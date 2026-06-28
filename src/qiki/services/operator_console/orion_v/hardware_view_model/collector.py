@@ -190,6 +190,8 @@ class HardwareCollector:
     def build_power(self, snapshot: dict[str, Any]) -> SubsystemView:
         soc = self._v(snapshot, "power.soc", "power.soc_pct", "eps.soc")
         supercap_soc = self._v(snapshot, "power.supercap_soc_pct", "power.supercap_soc")
+        battery_1_voltage_v = self._v(snapshot, "power.battery_1_voltage_v")
+        battery_2_voltage_v = self._v(snapshot, "power.battery_2_voltage_v")
         bus_v = self._v(snapshot, "power.bus_v", "power.bus_voltage_v", "eps.bus_v")
         bus_a = self._v(snapshot, "power.bus_a", "power.bus_current_a", "eps.bus_a")
         draw_w = self._v(snapshot, "power.draw_w", "power.power_w", "eps.draw_w")
@@ -252,6 +254,20 @@ class HardwareCollector:
                 supercap_soc_status,
                 "supercap, раздельно с battery (ADR-0003)",
                 **supercap_ev,
+            ),
+            mk_field(
+                "power.battery_1_voltage_v",
+                "Батарея 1 напряжение",
+                battery_1_voltage_v,
+                "В",
+                ViewStatus.OK if battery_1_voltage_v is not None else ViewStatus.NO_DATA,
+            ),
+            mk_field(
+                "power.battery_2_voltage_v",
+                "Батарея 2 напряжение",
+                battery_2_voltage_v,
+                "В",
+                ViewStatus.OK if battery_2_voltage_v is not None else ViewStatus.NO_DATA,
             ),
             mk_field(
                 "power.bus_v",
