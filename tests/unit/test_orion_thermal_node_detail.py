@@ -16,10 +16,21 @@ def test_per_node_detail_shows_each_node_state_reason_blocked() -> None:
     text = "\n".join(lines)
     assert "Узлы/Nodes (§13.7)" in lines[0]
     assert "core: 25°C | nominal" in text
+    # §13.7 requires cooldown shown per node — honest "missing" when none active
+    assert "core: 25°C | nominal | cooldown: missing" in text
     # critical node shows §13.7 reason codes + blocked commands
     assert "pdu: 95°C | critical" in text
     assert "PDU_THERMAL_BLOCK" in text
     assert "блок/blocked: radar,transponder,nbl" in text
+
+
+def test_per_node_detail_shows_active_cooldown() -> None:
+    # §13.7: "what cooldown is needed" — an active cooldown_state must be surfaced.
+    tel = {"thermal": {"nodes": [
+        {"id": "pdu", "temp_c": 95.0, "tripped": True, "cooldown_state": "active"},
+    ]}}
+    text = "\n".join(_detail(None, tel))
+    assert "cooldown: active" in text
 
 
 def test_no_thermal_yields_no_node_block() -> None:

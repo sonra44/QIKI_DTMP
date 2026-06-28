@@ -1731,7 +1731,7 @@ class OrionVCockpitScreen(Static):
         for node in evidence.nodes[:8]:
             if node.node_id == "missing":
                 continue
-            detail = f"  ▪ {node.node_id}: {node.temp_label} | {node.state_label}"
+            detail = f"  ▪ {node.node_id}: {node.temp_label} | {node.state_label} | cooldown: {node.cooldown_label}"
             if node.reason_codes:
                 detail += f" | {','.join(node.reason_codes)}"
             if node.blocked_commands:
