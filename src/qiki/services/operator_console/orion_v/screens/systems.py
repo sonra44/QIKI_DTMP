@@ -386,6 +386,9 @@ def _build_power_card(
     summary = _summary_text(subsystem)
     if evidence_line:
         summary = f"{summary} | {evidence_line}"
+    pdu_evidence = _pdu_evidence_line(subsystem)
+    if pdu_evidence:
+        summary = f"{summary} | {pdu_evidence}"
     return _make_card(
         "power",
         status=status,
@@ -789,6 +792,16 @@ def _sensors_evidence_line(subsystem: SubsystemView | None) -> str:
     if field is None:
         return ""
     return f"датчики·доказательство: {field.value}"
+
+
+def _pdu_evidence_line(subsystem: SubsystemView | None) -> str:
+    """IF-PDU-POWER §11 evidence — CONSUMED from emitted records (collector field
+    power.if_pdu_power.evidence). Always shown, including honest "нет данных" when the
+    producer does not emit the block; never silently dropped."""
+    field = _field_map(subsystem).get("power.if_pdu_power.evidence")
+    if field is None:
+        return ""
+    return f"PDU·доказательство: {field.value}"
 
 
 def _comms_evidence_line(subsystem: SubsystemView | None) -> str:

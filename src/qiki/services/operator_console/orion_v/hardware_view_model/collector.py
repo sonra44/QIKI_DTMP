@@ -20,6 +20,9 @@ from qiki.services.operator_console.orion_v.comms_telemetry_adapter import (
 from qiki.services.operator_console.orion_v.sensor_evidence import (
     sensor_evidence_from_snapshot,
 )
+from qiki.services.operator_console.orion_v.pdu_evidence import (
+    pdu_evidence_from_snapshot,
+)
 from .thresholds import (
     COMMS_AGE_CRIT_S,
     COMMS_AGE_WARN_S,
@@ -128,6 +131,58 @@ class HardwareCollector:
         model = HardwareViewModel(system_status=system_status, subsystems=subsystems, generated_at=now)
         self._log_diagnostics_if_enabled(model=model, snapshot_canon=snap)
         return model
+
+    def _pdu_if_evidence_field(self, snapshot: dict[str, Any]) -> TelemetryField:
+        """§11 PDU load-permission evidence field built from the EMITTED IF records.
+
+        Carries trust_status/freshness/reason_codes for the §19 inspector; the visible value
+        is plain Russian. Read-only consume of body_if_records.pdu_permissions — never
+        re-derives §11 evidence from raw power. Absent block -> explicit "no telemetry"
+        (never dropped). Decision B: field.status is NEUTRAL — it does not escalate the
+        operational power-card chip severity (evidence escalation is a separate task).
+        """
+        evidence = pdu_evidence_from_snapshot(snapshot)
+        loads = evidence.loads
+        if not loads:
+            # Absent block is "no telemetry", NOT a §11 denial — do not invent a §11.7 reason
+            # (PDU_DENIED means the PDU actually denied a load). Honest: missing/unknown, no reason.
+            return mk_field(
+                "power.if_pdu_power.evidence",
+                "PDU — доказательство нагрузок",
+                "нет данных — записи не передаются",
+                "",
+                ViewStatus.NO_DATA,
+                freshness="unknown",
+                trust_status="missing",
+                reason_codes=(),
+            )
+        reasons = tuple(dict.fromkeys(code for load in loads for code in load.reason_codes))
+        if not evidence.rejected_loads and not evidence.blocked_peak_loads:
+            return mk_field(
+                "power.if_pdu_power.evidence",
+                "PDU — доказательство нагрузок",
+                "все нагрузки разрешены",
+                "",
+                ViewStatus.NO_DATA,
+                freshness="fresh",
+                trust_status="trusted",
+                reason_codes=reasons,
+            )
+        parts: list[str] = []
+        if evidence.rejected_loads:
+            parts.append("отклонено: " + ", ".join(evidence.rejected_loads))
+        if evidence.blocked_peak_loads:
+            parts.append("пик заблокирован: " + ", ".join(evidence.blocked_peak_loads))
+        return mk_field(
+            "power.if_pdu_power.evidence",
+            "PDU — доказательство нагрузок",
+            "внимание — " + "; ".join(parts),
+            "",
+            ViewStatus.NO_DATA,
+            freshness="fresh",
+            trust_status="degraded",
+            reason_codes=reasons,
+        )
 
     def build_power(self, snapshot: dict[str, Any]) -> SubsystemView:
         soc = self._v(snapshot, "power.soc", "power.soc_pct", "eps.soc")
@@ -262,6 +317,10 @@ class HardwareCollector:
                 status=ViewStatus.OK if available_w is not None else ViewStatus.NO_DATA,
             ),
         ]
+
+        # PDU §11 evidence consumed from EMITTED IF records (additive; raw operational power
+        # summary/status below is unchanged). Decision B: neutral status, no chip escalation.
+        fields.append(self._pdu_if_evidence_field(snapshot))
 
         summary = self._power_summary(soc=soc, bus_v=bus_v, runtime_min=runtime_min)
         return self._subsystem("power", fields, "энергетический контур", summary=summary)
