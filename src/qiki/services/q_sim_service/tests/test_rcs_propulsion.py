@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 from generated.actuator_raw_out_pb2 import ActuatorCommand
 from generated.common_types_pb2 import Unit
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config.loaders import load_thrusters_config, thruster_allocation_rank
 from qiki.shared.config_models import QSimServiceConfig
+from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.models.core import CommandMessage, MessageMetadata
 
 
@@ -164,3 +167,52 @@ def test_rcs_telemetry_exposes_fuel_cost_fields_after_burst() -> None:
     assert float(propulsion.get("remaining_fuel_g", 0.0)) < 2050.0
     assert float(propulsion.get("fuel_rate_gs", 0.0)) > 0.0
     assert float(rcs.get("propellant_kg", 0.0)) < 2.05
+
+
+def test_if_rcs_command_emitted_in_payload_body_if_block() -> None:
+    # RCS Slice step 2: the producer EMITS the IF-RCS-CMD §14 validation record (one record,
+    # emitted as a one-item list) in body_if_records; raw propulsion is kept untouched. RCS
+    # source is out["propulsion"]["rcs"] (NOT top-level), so an active RCS must NOT be reported
+    # as unavailable / maps-missing.
+    qsim = QSimService(QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO"))
+    cmd = ActuatorCommand()
+    cmd.actuator_id.value = RCS_PORT_ID
+    cmd.command_type = ActuatorCommand.CommandType.SET_VELOCITY
+    cmd.float_value = 60.0
+    cmd.unit = Unit.PERCENT
+    cmd.timeout_ms = 2000
+    qsim.receive_actuator_command(cmd)
+    qsim.step()
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+
+    # raw operational propulsion still present (not replaced)
+    assert isinstance(payload.get("propulsion"), dict)
+
+    if_block = payload.get("body_if_records")
+    assert isinstance(if_block, dict)
+    rcs_records = if_block.get("rcs_commands")
+    assert isinstance(rcs_records, list) and len(rcs_records) == 1
+    record = rcs_records[0]
+
+    # active RCS (enabled + thrusters) read from propulsion.rcs -> not unavailable, maps available
+    assert record["RCS_mode"] != "missing"
+    assert record["required_thrusters"]
+    assert record["Thrust_Map_status"] == "available"
+    assert record["Torque_Map_status"] == "available"
+    assert "RCS_UNAVAILABLE" not in record["reason_codes"]
+    assert "THRUST_MAP_MISSING" not in record["reason_codes"]
+    assert "TORQUE_MAP_MISSING" not in record["reason_codes"]
+
+    # §14.4 required field set present
+    required = {
+        "command_id", "RCS_mode", "requested_delta_v", "requested_torque", "duration_s",
+        "active_clusters", "required_thrusters", "SoC_cap_required", "thermal_nodes",
+        "working_mass_required", "CoM_class", "inertia_class", "bayonet_state", "bridge_state",
+        "Thrust_Map_status", "Torque_Map_status", "validation_status", "reason_codes",
+    }
+    assert required <= set(record)
+
+    # JSON transport + ORION normalize path both preserve the emitted block
+    json.dumps(payload)
+    normalized = TelemetrySnapshotModel.normalize_payload(payload)
+    assert normalized["body_if_records"]["rcs_commands"]

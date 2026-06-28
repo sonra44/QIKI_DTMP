@@ -47,6 +47,7 @@ from qiki.shared.models.radar import (
 )
 from qiki.shared.models.core import CommandMessage
 from qiki.shared.models.pdu import pdu_permissions_from_power_state
+from qiki.shared.models.rcs import rcs_command_from_runtime_state
 from qiki.shared.models.sensors import sensor_telemetry_from_sensor_plane
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_POWER_PDU, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
@@ -873,9 +874,21 @@ class QSimService:
         # wiring is a separate concern).
         _power_block = out.get("power") if isinstance(out.get("power"), dict) else {}
         _pdu_records = pdu_permissions_from_power_state(_power_block, thermal=_thermal, safe_state="unknown")
+        # IF-RCS-CMD §14: command-validation projection. The mapper returns ONE record; it is
+        # emitted as a one-item list for uniform ORION consume. RCS runtime lives under
+        # `out["propulsion"]["rcs"]`, docking in `out`. No authoritative command/SAFE owner here
+        # -> command-context defaults and safe_state="unknown" (honest, not invented). Raw
+        # propulsion/power/thermal/docking are kept untouched.
+        _propulsion = out.get("propulsion") if isinstance(out.get("propulsion"), dict) else {}
+        _rcs = _propulsion.get("rcs") if isinstance(_propulsion.get("rcs"), dict) else {}
+        _docking = out.get("docking") if isinstance(out.get("docking"), dict) else {}
+        _rcs_record = rcs_command_from_runtime_state(
+            _rcs, power=_power_block, thermal=_thermal, docking=_docking, safe_state="unknown"
+        )
         out["body_if_records"] = {
             "sensor_telemetry": [asdict(record) for record in _sensor_records],
             "pdu_permissions": [asdict(record) for record in _pdu_records],
+            "rcs_commands": [asdict(_rcs_record)],
         }
         return out
 
