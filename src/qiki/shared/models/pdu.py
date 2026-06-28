@@ -10,7 +10,7 @@ Reuses the shared thermal mapper for the per-load thermal-block gate.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from qiki.shared.models.thermal import thermal_telemetry_from_thermal_state
@@ -257,3 +257,18 @@ def pdu_permissions_from_power_state(
             )
         )
     return tuple(records)
+
+
+_RECORD_FIELD_NAMES = frozenset(f.name for f in fields(PduPermissionRecord))
+
+
+def pdu_record_from_mapping(mapping: dict[str, Any]) -> PduPermissionRecord:
+    """Reconstruct a PduPermissionRecord from an emitted/transported payload dict.
+
+    Only the known §11.5 fields are read; unknown/extra keys are ignored (forward-compatible)
+    and reason_codes survives the JSON list round-trip (list -> tuple).
+    """
+    data = {name: mapping.get(name) for name in _RECORD_FIELD_NAMES}
+    reason_codes = data.get("reason_codes")
+    data["reason_codes"] = tuple(reason_codes) if isinstance(reason_codes, (list, tuple)) else ()
+    return PduPermissionRecord(**data)

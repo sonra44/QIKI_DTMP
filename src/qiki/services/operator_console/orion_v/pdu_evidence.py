@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from qiki.shared.models.pdu import pdu_record_from_mapping
+
 # §11.6 allowance states grouped by what ORION may assert.
 _ALLOWED_STATES = ("load_allowed", "load_allowed_limited")
 _REJECTED_STATES = ("load_rejected", "load_shed", "PDU_safe_mode")
@@ -104,7 +106,9 @@ def pdu_to_evidence(records: Any) -> PduEvidence:
         # (ADR-0003: allowance without thermal clearance is not a full authorization).
         operator_text = "PDU: all requested loads allowed"
     else:
-        operator_text = "PDU: attention — " + ", ".join(_attention_label(load) for load in loads if not _is_fully_cleared(load))
+        operator_text = "PDU: attention — " + ", ".join(
+            _attention_label(load) for load in loads if not _is_fully_cleared(load)
+        )
     return PduEvidence(
         claim_type="pdu_permission",
         source_type="telemetry",
@@ -114,3 +118,21 @@ def pdu_to_evidence(records: Any) -> PduEvidence:
         blocked_peak_loads=blocked_peak_loads,
         operator_text=operator_text,
     )
+
+
+def pdu_evidence_from_snapshot(snapshot: Any) -> PduEvidence:
+    """Project §11 PDU evidence from the EMITTED IF records (PDU Slice consume path).
+
+    Reads ONLY body_if_records.pdu_permissions (the records the producer emitted) and never
+    re-derives §11 evidence from raw power state. An absent/empty block is honest "no load
+    permission telemetry" — never an allowed/cleared claim. The raw operational power picture
+    remains a separate concern (it is not produced here).
+    """
+    body = snapshot.get("body_if_records") if isinstance(snapshot, dict) else None
+    records_raw = body.get("pdu_permissions") if isinstance(body, dict) else None
+    if not isinstance(records_raw, list) or not records_raw:
+        return pdu_to_evidence(())
+    records = tuple(
+        pdu_record_from_mapping(item) for item in records_raw if isinstance(item, dict)
+    )
+    return pdu_to_evidence(records)
