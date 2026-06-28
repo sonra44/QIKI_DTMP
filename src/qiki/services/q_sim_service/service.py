@@ -46,6 +46,7 @@ from qiki.shared.models.radar import (
     TransponderModeEnum,
 )
 from qiki.shared.models.core import CommandMessage
+from qiki.shared.models.pdu import pdu_permissions_from_power_state
 from qiki.shared.models.sensors import sensor_telemetry_from_sensor_plane
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_POWER_PDU, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
@@ -865,8 +866,16 @@ class QSimService:
         _sensor_records = sensor_telemetry_from_sensor_plane(
             _sensor_plane, thermal=_thermal, timestamp=ts_unix_ms / 1000.0
         )
+        # IF-PDU-POWER §11: per-load permission records emitted alongside sensor telemetry in
+        # the same domain-IF block. Raw `power`/`thermal` in `out` are kept untouched. The
+        # payload has no authoritative SAFE_state owner and no per-load command duration here,
+        # so emit safe_state="unknown" / duration_s=None (honest, not invented — SAFE->PDU
+        # wiring is a separate concern).
+        _power_block = out.get("power") if isinstance(out.get("power"), dict) else {}
+        _pdu_records = pdu_permissions_from_power_state(_power_block, thermal=_thermal, safe_state="unknown")
         out["body_if_records"] = {
             "sensor_telemetry": [asdict(record) for record in _sensor_records],
+            "pdu_permissions": [asdict(record) for record in _pdu_records],
         }
         return out
 

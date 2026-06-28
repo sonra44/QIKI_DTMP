@@ -1,3 +1,4 @@
+import json
 from dataclasses import fields
 
 import pytest
@@ -1159,3 +1160,46 @@ def test_control_commands_toggle_dock_and_nbl() -> None:
     assert qsim.world_model.nbl_active is True
     assert qsim.world_model.nbl_allowed is True
     assert qsim.world_model.nbl_power_w > 0.0
+
+
+def test_if_pdu_permissions_emitted_in_payload_body_if_block() -> None:
+    # PDU Slice step 2: the producer EMITS IF-PDU-POWER §11 records in the same body_if_records
+    # block as sensor telemetry, while keeping raw power untouched (ORION consumes records).
+    qsim = QSimService(QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO"))
+    qsim.world_model.step(1.0)
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+
+    # raw operational power still present (not replaced)
+    assert isinstance(payload.get("power"), dict)
+
+    if_block = payload.get("body_if_records")
+    assert isinstance(if_block, dict)
+    # both domain-IF record lists coexist (sensor_telemetry not lost)
+    assert isinstance(if_block.get("sensor_telemetry"), list) and if_block["sensor_telemetry"]
+    pdu = if_block.get("pdu_permissions")
+    assert isinstance(pdu, list) and pdu
+    record = pdu[0]
+    # §11.5 required field set (14) must be present in the emitted record
+    required = {
+        "load_id", "load_class", "requested_power_W", "peak_required", "duration_s",
+        "SoC_bat", "SoC_cap", "bus_voltage_V", "bus_current_A", "PDU_state",
+        "thermal_clearance", "SAFE_state", "allowance_state", "reason_codes",
+    }
+    assert required <= set(record)
+    # honest producer decision (no authoritative SAFE owner / per-load duration in payload)
+    assert record["SAFE_state"] == "unknown"
+    assert record["duration_s"] is None
+
+    # JSON transport + ORION normalize path both preserve the emitted block
+    json.dumps(payload)
+    normalized = TelemetrySnapshotModel.normalize_payload(payload)
+    assert normalized["body_if_records"]["pdu_permissions"]
+
+
+def test_pdu_permissions_missing_load_emits_honest_missing_record() -> None:
+    records = pdu_permissions_from_power_state({"loads_w": {}}, safe_state="unknown")
+    assert len(records) == 1
+    record = records[0]
+    assert record.load_id == "missing"
+    assert record.allowance_state == "load_degraded"
+    assert record.reason_codes == ("PDU_DENIED",)
