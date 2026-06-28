@@ -17,6 +17,9 @@ from .key_aliases import SUBSYSTEM_KEYSETS, canonicalize_snapshot
 from qiki.services.operator_console.orion_v.comms_telemetry_adapter import (
     comms_channels_from_snapshot,
 )
+from qiki.services.operator_console.orion_v.sensor_evidence import (
+    sensor_evidence_from_snapshot,
+)
 from .thresholds import (
     COMMS_AGE_CRIT_S,
     COMMS_AGE_WARN_S,
@@ -904,6 +907,79 @@ class HardwareCollector:
             subsystem.status = merge_status(subsystem.status, heartbeat_status)
         return subsystem
 
+    _SENSOR_TRUST_RU = {
+        "trusted": "доверять",
+        "degraded": "снижено",
+        "stale": "устарело",
+        "blind": "слепой",
+        "conflicting": "конфликт",
+        "missing": "нет данных",
+        "hypothesis": "гипотеза",
+        "local_reconstruction": "реконструкция",
+    }
+    _SENSOR_TRUST_RANK = {
+        "trusted": 0, "stale": 1, "blind": 2, "hypothesis": 2,
+        "degraded": 2, "missing": 3, "conflicting": 4,
+    }
+
+    def _sensor_if_evidence_field(self, snapshot: dict[str, Any]) -> TelemetryField:
+        """§15 sensor evidence field built from the EMITTED IF records (Slice A consume path).
+
+        Carries machine-readable trust_status/freshness/reason_codes for the §19 inspector;
+        the visible value is plain Russian. Read-only consume of body_if_records — it never
+        re-derives §15 evidence from raw sensor_plane. Absent block -> explicit "no telemetry"
+        (never dropped), so the F2 line stays honest instead of silently green.
+        """
+        evidence = sensor_evidence_from_snapshot(snapshot)
+        sensors = evidence.sensors
+        if not sensors:
+            # Decision B: the §15 field stays ALWAYS present and visible (F2 line + inspector
+            # metadata: trust=missing / freshness=unknown / reason=SENSOR_MISSING), but its
+            # status is NO_DATA (neutral) so it does NOT change the operational subsystem
+            # severity. Evidence-driven chip escalation is a separate explicit design task.
+            return mk_field(
+                "sensors.if_sensor_telem.evidence",
+                "Сенсоры — доказательство",
+                "нет данных — записи не передаются",
+                "",
+                ViewStatus.NO_DATA,
+                freshness="unknown",
+                trust_status="missing",
+                reason_codes=("SENSOR_MISSING",),
+            )
+        if all(sensor.is_trusted for sensor in sensors):
+            return mk_field(
+                "sensors.if_sensor_telem.evidence",
+                "Сенсоры — доказательство",
+                "все датчики — данным можно доверять",
+                "",
+                ViewStatus.OK,
+                freshness="fresh",
+                trust_status="trusted",
+                reason_codes=(),
+            )
+        worst = max((sensor.trust_status for sensor in sensors), key=lambda t: self._SENSOR_TRUST_RANK.get(t, 2))
+        reasons = tuple(dict.fromkeys(code for sensor in sensors for code in sensor.reason_codes))
+        stale = any(sensor.freshness == "stale" for sensor in sensors)
+        attention = ", ".join(
+            f"{sensor.sensor_id}={self._SENSOR_TRUST_RU.get(sensor.trust_status, sensor.trust_status)}"
+            for sensor in sensors
+            if not sensor.is_trusted
+        )
+        # Decision B: the field carries the real worst trust + reasons (inspector) and the
+        # attention value/line, but its status is NEUTRAL (NO_DATA) — it must not escalate the
+        # operational chip severity in this patch. Evidence-driven escalation is a later task.
+        return mk_field(
+            "sensors.if_sensor_telem.evidence",
+            "Сенсоры — доказательство",
+            f"внимание — {attention}",
+            "",
+            ViewStatus.NO_DATA,
+            freshness="stale" if stale else "fresh",
+            trust_status=worst,
+            reason_codes=reasons,
+        )
+
     def build_sensors(self, snapshot: dict[str, Any]) -> SubsystemView:
         registry: list[dict[str, Any]] = [
             {
@@ -1128,6 +1204,10 @@ class HardwareCollector:
                 )
                 if extra_value is not None:
                     any_data = True
+
+        # Slice A step 4: §15 evidence consumed from EMITTED IF records (additive; the raw
+        # operational summary/status below is unchanged — kept as the operational picture).
+        fields.append(self._sensor_if_evidence_field(snapshot))
 
         summary = (
             "Нет данных"

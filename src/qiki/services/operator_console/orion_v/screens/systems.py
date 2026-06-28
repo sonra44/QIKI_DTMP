@@ -577,6 +577,9 @@ def _build_sensors_card(
         effect = "No current contact is shaping the contour, but the sensor stack is not blocking operations."
         next_attention = "Use F1 when a track or target becomes relevant."
     summary_parts = [_summary_text(subsystem)]
+    sensors_evidence = _sensors_evidence_line(subsystem)
+    if sensors_evidence:
+        summary_parts.append(sensors_evidence)
     if track_count:
         summary_parts.append(f"tracks {track_count}")
     if target_label:
@@ -776,6 +779,16 @@ def _power_evidence_line(subsystem: SubsystemView | None) -> str:
         if suffix:
             parts.append(f"{label}{suffix}")
     return ("Источник ЭСП: " + ", ".join(parts)) if parts else ""
+
+
+def _sensors_evidence_line(subsystem: SubsystemView | None) -> str:
+    """IF-SENSOR-TELEM §15 evidence — CONSUMED from emitted records (collector field
+    sensors.if_sensor_telem.evidence). Always shown, including honest "нет данных" when the
+    producer does not emit the block; never silently dropped."""
+    field = _field_map(subsystem).get("sensors.if_sensor_telem.evidence")
+    if field is None:
+        return ""
+    return f"датчики·доказательство: {field.value}"
 
 
 def _comms_evidence_line(subsystem: SubsystemView | None) -> str:
