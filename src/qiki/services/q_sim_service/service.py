@@ -6,6 +6,7 @@ import math
 import os
 import time
 from collections import deque
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -45,6 +46,7 @@ from qiki.shared.models.radar import (
     TransponderModeEnum,
 )
 from qiki.shared.models.core import CommandMessage
+from qiki.shared.models.sensors import sensor_telemetry_from_sensor_plane
 from qiki.shared.models.telemetry import TelemetrySnapshotModel
 from qiki.shared.nats_subjects import SIM_POWER_BUS, SIM_POWER_PDU, SIM_SENSOR_THERMAL, SIM_SENSOR_THERMAL_TRIP
 
@@ -854,6 +856,18 @@ class QSimService:
             out["comms"].pop("age_s", None)
             out["comms"].pop("last_seen_ts", None)
         out["sim_state"] = self.get_sim_state()
+        # Slice A — IF-SENSOR-TELEM §15: the producer EMITS per-sensor evidence records so
+        # ORION CONSUMES them (it must not re-derive §15 evidence from raw sensor_plane).
+        # Separate domain-IF block (NOT §19 OrionEvidenceClaim); raw sensor_plane/thermal in
+        # `out` above are kept untouched. TelemetrySnapshot v1 allows extras.
+        _sensor_plane = out.get("sensor_plane") if isinstance(out.get("sensor_plane"), dict) else {}
+        _thermal = out.get("thermal") if isinstance(out.get("thermal"), dict) else {"nodes": []}
+        _sensor_records = sensor_telemetry_from_sensor_plane(
+            _sensor_plane, thermal=_thermal, timestamp=ts_unix_ms / 1000.0
+        )
+        out["body_if_records"] = {
+            "sensor_telemetry": [asdict(record) for record in _sensor_records],
+        }
         return out
 
     def _parse_transponder_mode(self, raw: str) -> TransponderModeEnum:

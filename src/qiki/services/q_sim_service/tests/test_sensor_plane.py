@@ -1,3 +1,4 @@
+import json
 from dataclasses import fields
 
 from qiki.services.q_sim_service.core.world_model import (
@@ -6,6 +7,7 @@ from qiki.services.q_sim_service.core.world_model import (
 )
 from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig
+from qiki.shared.models.telemetry import TelemetrySnapshotModel
 
 
 def test_sensor_plane_included_in_telemetry_payload() -> None:
@@ -115,3 +117,37 @@ def test_if_sensor_telem_mapper_does_not_trust_value_without_source() -> None:
     assert solar.source == "missing"
     assert solar.trust_status == "missing"
     assert "SENSOR_MISSING" in solar.reason_codes
+
+
+def test_if_sensor_records_emitted_in_payload_body_if_block() -> None:
+    # Slice A: the producer must EMIT IF-SENSOR-TELEM §15 records in a separate
+    # body_if_records block so ORION can CONSUME them (not re-derive from raw).
+    # Raw sensor_plane must stay untouched (backward compatible).
+    qsim = QSimService(QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO"))
+    qsim.world_model.step(1.0)
+    payload = qsim._build_telemetry_payload(qsim.world_model.get_state())
+
+    # raw operational sensor_plane still present (not replaced)
+    assert isinstance(payload.get("sensor_plane"), dict)
+
+    # emitted IF block: list of per-sensor record dicts carrying §15 evidence fields
+    if_block = payload.get("body_if_records")
+    assert isinstance(if_block, dict)
+    records = if_block.get("sensor_telemetry")
+    assert isinstance(records, list) and records
+    by_id = {record["sensor_id"]: record for record in records}
+    assert {"imu", "radiation", "proximity", "solar", "star_tracker", "magnetometer"} <= set(by_id)
+
+    imu = by_id["imu"]
+    assert imu["source"] == "q_sim_service.world_model.sensor_plane"
+    assert imu["trust_status"] == "trusted"
+    for field_name in ("value", "freshness", "trust_status", "source", "reason_codes"):
+        assert field_name in imu
+
+    # whole payload (with the emitted block) must stay JSON-serializable for NATS transport
+    json.dumps(payload)
+
+    # ORION consumes via TelemetrySnapshotModel.normalize_payload — the emitted IF block
+    # must survive normalization (this is the exact path ORION reads). Regression lock.
+    normalized = TelemetrySnapshotModel.normalize_payload(payload)
+    assert normalized["body_if_records"]["sensor_telemetry"]
