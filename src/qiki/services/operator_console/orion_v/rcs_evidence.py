@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from qiki.shared.models.rcs import rcs_record_from_mapping
+
 # Reason codes that denote a thermal blocker for the burn (§14.6).
 _THERMAL_REASONS = ("RCS_CLUSTER_HOT",)
 
@@ -93,3 +95,20 @@ def rcs_to_evidence(record: Any) -> RcsCommandEvidence:
         read_only=True,
         operator_text=operator_text,
     )
+
+
+def rcs_evidence_from_snapshot(snapshot: Any) -> RcsCommandEvidence | None:
+    """Project §14 RCS command evidence from the EMITTED IF record (RCS Slice consume path).
+
+    Reads ONLY body_if_records.rcs_commands (the one-item list the producer emitted) and never
+    re-derives §14 evidence from raw propulsion/rcs state. Returns None when no record is
+    emitted — honest "no telemetry" (the caller renders that explicitly, never an allowed claim).
+    """
+    body = snapshot.get("body_if_records") if isinstance(snapshot, dict) else None
+    records_raw = body.get("rcs_commands") if isinstance(body, dict) else None
+    if not isinstance(records_raw, list) or not records_raw:
+        return None
+    first = records_raw[0]
+    if not isinstance(first, dict):
+        return None
+    return rcs_to_evidence(rcs_record_from_mapping(first))

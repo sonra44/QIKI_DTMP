@@ -13,7 +13,7 @@ them — adding that validation is a separate explicit behavior task, not this e
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from qiki.shared.models.thermal import _thermal_state_from_node
@@ -223,3 +223,20 @@ def rcs_command_from_runtime_state(
         validation_status="rejected" if reason_codes else "allowed",
         reason_codes=reason_codes,
     )
+
+
+_RECORD_FIELD_NAMES = frozenset(f.name for f in fields(RcsCommandRecord))
+
+
+def rcs_record_from_mapping(mapping: dict[str, Any]) -> RcsCommandRecord:
+    """Reconstruct an RcsCommandRecord from an emitted/transported payload dict.
+
+    Only the known §14.4 fields are read; unknown/extra keys are ignored (forward-compatible).
+    Tuple fields (active_clusters / required_thrusters / thermal_nodes / reason_codes) survive
+    the JSON list round-trip (list -> tuple).
+    """
+    data = {name: mapping.get(name) for name in _RECORD_FIELD_NAMES}
+    for name in ("active_clusters", "required_thrusters", "thermal_nodes", "reason_codes"):
+        value = data.get(name)
+        data[name] = tuple(value) if isinstance(value, (list, tuple)) else ()
+    return RcsCommandRecord(**data)
