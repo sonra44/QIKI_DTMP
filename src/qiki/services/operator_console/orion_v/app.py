@@ -2821,6 +2821,7 @@ class OrionVApp(App[None]):
             ack_pending=self._pending_ack_command_id is not None,
             last_command_status=self._last_command_status,
             last_command_summary=self._last_command_summary,
+            console_lines=tuple(list(self._console_history)[-5:]),
         )
         self.query_one("#orionv-overlay", OrionVAlertsOverlay).set_state(self._operator_shell_state)
         self.query_one("#orionv-actions", OrionVActionBar).set_state(self._operator_shell_state)

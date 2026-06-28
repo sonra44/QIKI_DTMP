@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.message import Message
@@ -22,6 +23,12 @@ class OrionVActionBar(Static):
     OrionVActionBar #orionv-help {
         height: auto;
         color: $text;
+    }
+
+    OrionVActionBar #orionv-console-strip {
+        height: auto;
+        color: $text-muted;
+        padding: 0 1;
     }
 
     OrionVActionBar #orionv-command-strip,
@@ -83,6 +90,7 @@ class OrionVActionBar(Static):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="orionv-help")
+        yield Static("", id="orionv-console-strip")
         with Horizontal(id="orionv-command-strip"):
             yield Static("", id="orionv-command-shell")
             yield Button("Команда", id="orionv-command-open", compact=True)
@@ -128,6 +136,15 @@ class OrionVActionBar(Static):
                 )
             )
         )
+
+        console = self.query_one("#orionv-console-strip", Static)
+        console_lines = self._state.console_lines[-5:]
+        if console_lines:
+            rendered_lines = ["КОНСОЛЬ/CONSOLE"]
+            rendered_lines.extend(f"- {escape(line)}" for line in console_lines)
+            console.update("\n".join(rendered_lines))
+        else:
+            console.update("КОНСОЛЬ/CONSOLE: история пуста")
 
         shell = self.query_one("#orionv-command-shell", Static)
         shell.update(

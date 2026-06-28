@@ -117,3 +117,27 @@ async def test_action_bar_switches_inline_command_mode() -> None:
 
         assert command.has_class("hidden") is False
         assert shell.has_class("hidden") is True
+
+
+@pytest.mark.asyncio
+async def test_action_bar_renders_last_five_console_lines() -> None:
+    pytest.importorskip("textual")
+
+    app = _ActionBarApp()
+    async with app.run_test(size=(180, 24)) as pilot:
+        await pilot.pause()
+
+        actions = app.query_one("#orionv-actions", OrionVActionBar)
+        actions.set_state(
+            build_operator_shell_state(
+                hardware_model=None,
+                console_lines=tuple(f"message {index}" for index in range(7)),
+            )
+        )
+        await pilot.pause()
+
+        strip = app.query_one("#orionv-console-strip", Static).render().plain
+        assert "КОНСОЛЬ/CONSOLE" in strip
+        assert "message 1" not in strip
+        assert "message 2" in strip
+        assert "message 6" in strip

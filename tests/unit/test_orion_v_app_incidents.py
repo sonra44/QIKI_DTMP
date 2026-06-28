@@ -1700,6 +1700,34 @@ async def test_f4_console_shows_operator_history(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+async def test_console_strip_is_visible_across_levels(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("textual")
+
+    async def no_nats(self: OrionVApp) -> None:
+        self._nats_state = "lost"
+
+    monkeypatch.setattr(OrionVApp, "_connect_and_subscribe", no_nats)
+
+    app = OrionVApp()
+    async with app.run_test(size=(160, 48)) as pilot:
+        await pilot.pause()
+        for index in range(7):
+            app._set_help_text(f"QIKI: сообщение {index}")
+        await pilot.pause()
+
+        strip = app.query_one("#orionv-console-strip").render().plain
+        assert "КОНСОЛЬ/CONSOLE" in strip
+        assert "QIKI: сообщение 1" not in strip
+        assert "QIKI: сообщение 2" in strip
+        assert "QIKI: сообщение 6" in strip
+
+        app.action_show_level("f2")
+        await pilot.pause()
+        strip_f2 = app.query_one("#orionv-console-strip").render().plain
+        assert "QIKI: сообщение 6" in strip_f2
+
+
+@pytest.mark.asyncio
 async def test_cockpit_docking_click_opens_f2_and_selects_docking(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("textual")
 

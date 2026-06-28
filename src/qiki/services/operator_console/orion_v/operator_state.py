@@ -186,6 +186,7 @@ class OperatorShellState:
     alerts: tuple[OperatorAlert, ...] = ()
     chips: tuple[SubsystemChip, ...] = ()
     operator_loop: OperatorLoopState = OperatorLoopState()
+    console_lines: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> OperatorShellState:
@@ -218,6 +219,7 @@ def build_operator_shell_state(
     ack_pending: bool = False,
     last_command_status: str | None = None,
     last_command_summary: str | None = None,
+    console_lines: tuple[str, ...] = (),
 ) -> OperatorShellState:
     telemetry = telemetry or {}
     safe_mode = safe_mode or {}
@@ -295,6 +297,7 @@ def build_operator_shell_state(
         alerts=alerts,
         chips=chips,
         operator_loop=operator_loop,
+        console_lines=tuple(str(line).strip() for line in console_lines if str(line).strip()),
     )
 
 
