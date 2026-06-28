@@ -10,7 +10,7 @@ shared thermal state helper for the sensor thermal-state gate.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from qiki.shared.models.thermal import _thermal_state_from_node
@@ -319,3 +319,19 @@ def sensor_telemetry_from_sensor_plane(
     )
 
     return tuple(records)
+
+
+_RECORD_FIELD_NAMES = frozenset(f.name for f in fields(SensorTelemetryRecord))
+
+
+def sensor_record_from_mapping(mapping: dict[str, Any]) -> SensorTelemetryRecord:
+    """Reconstruct a SensorTelemetryRecord from an emitted/transported payload dict.
+
+    Only the known §15.4 fields are read; unknown/extra keys are ignored, so a future
+    producer that adds fields cannot break a consumer (forward-compatible). reason_codes
+    survives the JSON list round-trip (list -> tuple).
+    """
+    data = {name: mapping.get(name) for name in _RECORD_FIELD_NAMES}
+    reason_codes = data.get("reason_codes")
+    data["reason_codes"] = tuple(reason_codes) if isinstance(reason_codes, (list, tuple)) else ()
+    return SensorTelemetryRecord(**data)

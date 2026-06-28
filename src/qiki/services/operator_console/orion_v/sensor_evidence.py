@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from qiki.shared.models.sensors import sensor_record_from_mapping
+
 # §15.5 trust states grouped by how ORION must flag them.
 _MISSING_STATES = ("missing", "blind", "stale")
 _HYPOTHESIS_STATES = ("hypothesis", "local_reconstruction")
@@ -113,3 +115,21 @@ def sensor_to_evidence(records: Any) -> SensorTelemetryEvidence:
         hypothesis_sensors=hypothesis,
         operator_text=operator_text,
     )
+
+
+def sensor_evidence_from_snapshot(snapshot: Any) -> SensorTelemetryEvidence:
+    """Project §15 sensor evidence from the EMITTED IF records (Slice A consume path).
+
+    Reads ONLY body_if_records.sensor_telemetry (the records the producer emitted) and never
+    re-derives §15 evidence from raw sensor_plane. An absent/empty block is honest "no
+    telemetry" (target not emitted) — never a trusted/green claim. The raw operational sensor
+    status remains a separate concern (it is not produced here).
+    """
+    body = snapshot.get("body_if_records") if isinstance(snapshot, dict) else None
+    records_raw = body.get("sensor_telemetry") if isinstance(body, dict) else None
+    if not isinstance(records_raw, list) or not records_raw:
+        return sensor_to_evidence(())
+    records = tuple(
+        sensor_record_from_mapping(item) for item in records_raw if isinstance(item, dict)
+    )
+    return sensor_to_evidence(records)
