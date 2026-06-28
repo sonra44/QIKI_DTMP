@@ -8,6 +8,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from qiki.services.operator_console.orion_v.evidence_inspector import format_subsystem_inspector
 from qiki.services.operator_console.orion_v.hardware_view_model.types import (
     HardwareViewModel,
     SubsystemView,
@@ -940,6 +941,7 @@ class OrionVSystemsScreen(Static):
         yield Static("", id="orionv-systems-authority")
         with VerticalScroll(id="orionv-system-card-stream"):
             pass
+        yield Static("", id="orionv-systems-inspector")
 
     def on_mount(self) -> None:
         self._refresh_text()
@@ -993,4 +995,13 @@ class OrionVSystemsScreen(Static):
                 )
                 for card in cards
             )
+        )
+        # Unified §19 evidence Inspector for the selected subsystem (one render contract).
+        selected_view = (
+            _subsystem(self._hardware_model, self._selected_subsystem)
+            if self._selected_subsystem
+            else None
+        )
+        self.query_one("#orionv-systems-inspector", Static).update(
+            "\n".join(format_subsystem_inspector(selected_view))
         )
