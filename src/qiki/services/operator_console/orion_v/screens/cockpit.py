@@ -364,6 +364,11 @@ class OrionVCockpitScreen(Static):
                         self._compact_fact_detail(
                             next((ln for ln in thermal_lines if ln.startswith("• TRIP nodes:")), "")
                         ),
+                        *(
+                            self._compact_fact_detail(ln)
+                            for ln in thermal_lines
+                            if ln.startswith("• Узлы/Nodes") or ln.lstrip().startswith("▪")
+                        ),
                         self._compact_fact_detail(
                             next((ln for ln in energy_lines if ln.startswith("• Причины сброса:")), "")
                         ),
@@ -1708,8 +1713,31 @@ class OrionVCockpitScreen(Static):
             f"• Тренд: {trend}",
             f"• Advice: {recommendation}",
         ]
+        lines.extend(self._thermal_node_detail_lines(tel))
         lines.append(self._thermal_evidence_line(tel))
         return severity, lines
+
+    def _thermal_node_detail_lines(self, tel: dict[str, Any]) -> list[str]:
+        """§13.7 per-node thermal evidence (id / temp / state / reason / blocked commands).
+
+        Makes the per-node surface visible — not just the aggregate Core/WARN/TRIP summary
+        above. Honest: absent node temp stays "missing", absent state stays "unknown".
+        """
+        thermal = tel.get("thermal") if isinstance(tel, dict) else None
+        evidence = thermal_to_evidence(
+            thermal_records_from_snapshot(thermal if isinstance(thermal, dict) else {})
+        )
+        rows: list[str] = []
+        for node in evidence.nodes[:8]:
+            if node.node_id == "missing":
+                continue
+            detail = f"  ▪ {node.node_id}: {node.temp_label} | {node.state_label}"
+            if node.reason_codes:
+                detail += f" | {','.join(node.reason_codes)}"
+            if node.blocked_commands:
+                detail += f" | блок/blocked: {','.join(node.blocked_commands)}"
+            rows.append(detail)
+        return ["• Узлы/Nodes (§13.7):", *rows] if rows else []
 
     def _thermal_evidence_line(self, tel: dict[str, Any]) -> str:
         """ADR-0014 evidence line for thermal — per-node trust/source/reason via
