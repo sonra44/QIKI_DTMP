@@ -2,7 +2,7 @@
 
 Canon §12.6 + ADR-0003: ORION must show battery and supercap SEPARATELY; one common
 energy bar must not replace power evidence (a charged battery is not peak permission).
-Conservative: values surfaced from telemetry where present, else honest "missing".
+Conservative: values surfaced from telemetry where present, else honest "unknown".
 """
 
 from __future__ import annotations
@@ -34,14 +34,14 @@ def test_no_combined_energy_bar() -> None:
 
 def test_missing_soc_is_honest() -> None:
     ev = power_to_evidence(_rec({}))
-    assert ev.battery_soc_label == "missing"
-    assert ev.supercap_soc_label == "missing"
+    assert ev.battery_soc_label == "unknown"
+    assert ev.supercap_soc_label == "unknown"
 
 
 def test_temp_state_missing_is_honest() -> None:
     ev = power_to_evidence(_rec({"soc_pct": 80.0}))
-    assert ev.battery_temp_label == "missing"
-    assert ev.supercap_temp_label == "missing"
+    assert ev.battery_temp_label == "unknown"
+    assert ev.supercap_temp_label == "unknown"
 
 
 def test_untrusted_power_is_flagged() -> None:
@@ -79,5 +79,5 @@ def test_unknown_or_expired_freshness_not_trusted() -> None:
 def test_operator_text_names_both_sources() -> None:
     ev = power_to_evidence(_rec({"soc_pct": 80.0, "supercap_soc_pct": 20.0}))
     text = ev.operator_text.lower()
-    assert "battery" in text and "supercap" in text
+    assert "soc_bat" in text and "soc_cap" in text
     assert ev.read_only is True

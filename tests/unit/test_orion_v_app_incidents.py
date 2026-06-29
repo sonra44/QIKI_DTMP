@@ -286,8 +286,9 @@ async def test_evidence_level_renders_nbl_card_from_live_snapshot(monkeypatch: p
         assert app.query_one("#orionv-cockpit").has_class("hidden") is True
 
         cards = evidence.query(OrionVEvidenceCard)
-        assert len(cards) == 1
-        rendered = str(cards.first().render())
+        assert len(cards) >= 1
+        rendered_cards = [str(card.render()) for card in cards]
+        rendered = "\n".join(rendered_cards)
         assert "NBL_NOT_IMPLEMENTED" in rendered
         assert "NBL_RULES_ONLY" in rendered
         assert "NBL_PDU_DENIED" in rendered
@@ -297,8 +298,8 @@ async def test_evidence_level_renders_nbl_card_from_live_snapshot(monkeypatch: p
         await pilot.pause()
 
         cards = evidence.query(OrionVEvidenceCard)
-        assert len(cards) == 1
-        assert "NBL_PDU_DENIED" not in str(cards.first().render())
+        assert len(cards) >= 1
+        assert "NBL_PDU_DENIED" not in "\n".join(str(card.render()) for card in cards)
 
 
 @pytest.mark.asyncio

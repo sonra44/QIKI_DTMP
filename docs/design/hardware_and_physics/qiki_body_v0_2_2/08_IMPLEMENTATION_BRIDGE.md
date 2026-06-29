@@ -70,6 +70,52 @@ Related source files:
 
 ---
 
+## 1.1. Текущий runtime evidence snapshot
+
+Этот документ описывает исходную дисциплину первого documentation-only внедрения QIKI Body v0.2.2. В текущем repo snapshot обнаружен и сохранён отдельный узкий runtime-контур:
+
+`body_structure / module attach lifecycle / ORION evidence projection`.
+
+Его статус:
+
+`implemented / unit-verified narrow runtime seed`.
+
+Он покрывает только attach lifecycle 0001-0008: missing passport, invalid passport, unknown mount, occupied mount, forbidden class, valid registration, ordered `run_attach_pipeline`, audit-backed Evidence Card, no-mutation on rejection and success-only mutation.
+
+Это не меняет главный статус пакета:
+
+`Full QIKI Body runtime compliance: not claimed`.
+
+Это не доказывает PDU, thermal clearance, real module catalog, capability activation, bayonet power/data bridge, full ORION UI, MFD, proto / NATS / gRPC / telemetry integration, RCS physics, Thrust Map, Torque Map, NBL, RTG, reactor or field-drive runtime.
+
+Status source:
+
+`docs/runtime_slices/ATTACH_LIFECYCLE_EVIDENCE.md`
+
+Runtime owner:
+
+`src/qiki/services/q_core_agent/core/body_structure.py`
+
+Current attach lifecycle entrypoint:
+
+`run_attach_pipeline()`
+
+Legacy Slice 0001 helper:
+
+`attach_module()`
+
+API boundary constants:
+
+`CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT == "run_attach_pipeline"`
+
+`LEGACY_ATTACH_LIFECYCLE_HELPER == "attach_module"`
+
+Agent rule:
+
+Do not re-implement slices 0002-0008 blindly. First read `ATTACH_LIFECYCLE_EVIDENCE.md` and preserve the existing targeted tests. A shaped passport returning `MODULE_ATTACH_NOT_IMPLEMENTED` from legacy `attach_module()` is not evidence that the current lifecycle is missing; use `run_attach_pipeline()` for the full attach lifecycle seed.
+
+---
+
 ## 2. Что именно внедряется
 
 Внедряется документационный пакет:

@@ -1,19 +1,28 @@
-"""RUNTIME_SLICE_0001 — Body Structure Evidence Seed (runtime/policy layer).
+"""QIKI Body attach-lifecycle evidence seed (runtime/policy layer).
 
-Minimal, honest body-structure contour that owns ONE negative causal loop:
+This module contains a narrow, unit-verified runtime seed for QIKI Body
+module-attach validation. It is NOT full QIKI Body v0.2.2 runtime compliance.
 
-    module attach request without a passport
-      -> rejected (this layer owns the decision)
-      -> reason_code MODULE_PASSPORT_MISSING
-      -> audit event recorded via an injected sink (real EventStore in production)
+Implemented / unit-verified in this file:
+- legacy Slice 0001 negative path through ``attach_module``:
+  missing or shape-invalid passport -> MODULE_PASSPORT_MISSING -> audit.
+- current attach lifecycle seed through ``register_module`` / ``run_attach_pipeline``:
+  passport missing, passport invalid, mount unknown, mount occupied, forbidden
+  mount class and valid registration.
+- audit-backed ORION Evidence Card projection for attach decisions.
 
-Discipline (QIKI Body v0.2.2, target canon; Canon != implemented):
-- Face Map is a *skeleton* (F00-F11) with no geometry / normals / adjacency claimed.
-- Bayonet state is *represented*, not "hard lock works".
-- Module Passport is a minimal shape contract; the valid-attach happy path is out
-  of scope for slice 0001 and is NOT claimed implemented.
-- A module never becomes runtime-ready in this slice.
-- ORION does not validate the passport; it only displays what this layer decided.
+Discipline (QIKI Body v0.2.2; Canon != implemented):
+- Face Map is a skeleton / test fixture (F00-F11), with no geometry, normals,
+  adjacency, Thrust Map or Torque Map claimed.
+- Bayonet state is represented only; no hard-lock, bridge or power/data physics
+  is claimed here.
+- A validated passport can register occupancy, but it never makes a module
+  powered, thermally cleared, capability-active, mission-ready or runtime-ready.
+- ORION evidence is a read-only projection of runtime/audit facts. It does not
+  validate passports, create body state or execute commands.
+- PDU, thermal clearance, capability activation, real module catalog, proto,
+  NATS, gRPC, telemetry paths, full ORION UI/MFD, RCS physics, NBL/RTG/reactor
+  and field-drive runtime are out of scope for this seed.
 """
 
 from __future__ import annotations
@@ -48,6 +57,26 @@ _FIXTURE_FORBIDDEN_MOUNT_CLASSES: tuple[str, ...] = ("reactor-class", "heavy-pow
 
 # Honest source owner of the rejection (runtime/policy, not the operator console).
 SOURCE_OWNER = "q_core_agent.core.body_structure.attach_policy"
+
+# Public attach lifecycle API boundary (hardening; behavior unchanged).
+# ``run_attach_pipeline`` is the current full 0001-0008 lifecycle seed entrypoint.
+# ``attach_module`` is preserved as a legacy Slice 0001 negative-path helper.
+CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT = "run_attach_pipeline"
+LEGACY_ATTACH_LIFECYCLE_HELPER = "attach_module"
+
+# Legacy helper fallback when a shaped passport is passed to the Slice 0001-only path.
+# This is deliberately not a claim that the current lifecycle is missing: the full
+# lifecycle lives in ``run_attach_pipeline``.
+MODULE_ATTACH_NOT_IMPLEMENTED = "MODULE_ATTACH_NOT_IMPLEMENTED"
+
+
+def attach_lifecycle_entrypoint_name() -> str:
+    """Return the current full attach lifecycle API name for agents/tests/docs.
+
+    This tiny accessor makes the current API boundary machine-checkable without
+    changing runtime behavior.
+    """
+    return CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT
 
 # Face Map skeleton F00..F11 (structural placeholder only; status: skeleton).
 FACE_IDS: tuple[str, ...] = tuple(f"F{i:02d}" for i in range(12))
@@ -268,11 +297,18 @@ def attach_module(
     *,
     audit_sink: RejectionAuditSink,
 ) -> AttachResult:
-    """Validate a module attach request (runtime/policy owner of the decision).
+    """Legacy Slice 0001 attach entrypoint.
 
-    Slice 0001 implements only the negative path: a missing or shape-invalid
-    passport is rejected with MODULE_PASSPORT_MISSING and recorded to ``audit_sink``.
-    No module becomes runtime-ready here.
+    This function intentionally owns only the original negative path:
+    a missing or shape-invalid passport is rejected with
+    MODULE_PASSPORT_MISSING and recorded to ``audit_sink``.
+
+    Do not treat this helper as the current full attach lifecycle API.
+    The explicit API boundary is ``CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT`` ==
+    ``"run_attach_pipeline"`` and ``LEGACY_ATTACH_LIFECYCLE_HELPER`` ==
+    ``"attach_module"``. Valid-passport registration and the ordered 0001-0008
+    validation pipeline live in ``register_module`` / ``run_attach_pipeline`` below.
+    No module becomes runtime-ready through this helper.
     """
     if not _passport_has_required_shape(request.passport):
         event = RejectionAuditEvent(
@@ -283,7 +319,7 @@ def attach_module(
             source_owner=SOURCE_OWNER,
             timestamp=time.time(),
         )
-        audit_event_id = audit_sink.append_rejection(event)
+        audit_sink.append_rejection(event)
         return AttachResult(
             rejected=True,
             reason_code=MODULE_PASSPORT_MISSING,
@@ -299,7 +335,7 @@ def attach_module(
     # a module runtime-ready (no overclaim).
     return AttachResult(
         rejected=True,
-        reason_code="MODULE_ATTACH_NOT_IMPLEMENTED",
+        reason_code=MODULE_ATTACH_NOT_IMPLEMENTED,
         runtime_ready=False,
         request_id=request.request_id,
         module_id=request.module_id,

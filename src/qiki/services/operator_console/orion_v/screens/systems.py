@@ -5,10 +5,37 @@ from typing import Any
 
 from rich.markup import escape
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
-from textual.widgets import Static
+from textual.containers import Container, VerticalScroll
+from textual.widgets import Button, Static
 
+from qiki.services.operator_console.orion_v.body_physics_view_model import get_body_physics_console_view_model
 from qiki.services.operator_console.orion_v.evidence_inspector import format_subsystem_inspector
+from qiki.services.operator_console.orion_v.screens.body_structure_textual import BodyStructureTextualDashboard
+from qiki.services.operator_console.orion_v.power_thermal_view_model import (
+    build_power_thermal_console_view_model_from_telemetry,
+    format_soc_bat,
+    format_soc_cap,
+)
+from qiki.services.operator_console.orion_v.screens.power_thermal_textual import PowerThermalTextualDashboard
+from qiki.services.operator_console.orion_v.widgets.body_physics_panel import BodyPhysicsPanel
+from qiki.services.operator_console.orion_v.body_structure_view_model import (
+    format_body_structure_system_summary,
+    get_body_structure_console_view_model,
+)
+from qiki.services.operator_console.orion_v.mfd_page_content import (
+    render_left_mfd_page,
+    render_right_mfd_page,
+)
+from qiki.services.operator_console.orion_v.ui_rich import semantic_update
+from qiki.services.operator_console.orion_v.mfd_layout import (
+    MFD_DEFAULT_LEFT_PAGE,
+    MFD_DEFAULT_RIGHT_PAGE,
+    mfd_button_class,
+    mfd_button_specs,
+    mfd_page_label,
+    normalize_mfd_page,
+    softkey_bar,
+)
 from qiki.services.operator_console.orion_v.hardware_view_model.types import (
     HardwareViewModel,
     SubsystemView,
@@ -17,6 +44,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model.types import (
 )
 
 F2_CARD_ORDER: tuple[str, ...] = (
+    "body_structure",
     "docking",
     "power",
     "propulsion",
@@ -26,7 +54,23 @@ F2_CARD_ORDER: tuple[str, ...] = (
     "safety",
 )
 
+
+def _mfd_visual_domain(selector: str) -> str:
+    if "left" in selector:
+        return "left"
+    if "right" in selector:
+        return "right"
+    if "power" in selector:
+        return "power"
+    if "thermal" in selector:
+        return "thermal"
+    if "evidence" in selector:
+        return "evidence"
+    return "status"
+
+
 F2_CARD_TITLES: dict[str, str] = {
+    "body_structure": "Body / Structure / Modules",
     "docking": "Docking / Dock Interface",
     "power": "Power / Charge",
     "propulsion": "Propulsion / Motion",
@@ -37,6 +81,11 @@ F2_CARD_TITLES: dict[str, str] = {
 }
 
 F2_CARD_SOURCE_MAP: dict[str, dict[str, tuple[str, ...] | str]] = {
+    "body_structure": {
+        "raw_sources": ("run_attach_pipeline", "EventStore audit", "ORION Evidence Card"),
+        "derived": ("body_structure_view_model", "local self-check", "direct in-process"),
+        "operator_text": "visible body-structure attach lifecycle seed status",
+    },
     "docking": {
         "raw_sources": (
             "hardware_view_model.docking",
@@ -176,6 +225,7 @@ def build_system_cards(
     scene_profile = _resolve_scene_profile(telemetry, objective)
 
     cards = [
+        _build_body_structure_card(),
         _build_docking_card(hardware_model, telemetry=telemetry, scene_profile=scene_profile),
         _build_power_card(hardware_model, telemetry=telemetry, scene_profile=scene_profile),
         _build_propulsion_card(hardware_model, telemetry=telemetry, scene_profile=scene_profile),
@@ -266,6 +316,52 @@ def render_system_cards_with_safety(
             lines.append(f"   Hint: [dim]{escape(card.quick_hint)}[/]")
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def _build_body_structure_card() -> SystemCard:
+    vm = get_body_structure_console_view_model()
+    status = ViewStatus.OK if vm.seed_status == "online" else ViewStatus.NO_DATA
+    if vm.last_decision == "waiting":
+        summary = (
+            f"interactive seed ready; modules={vm.attached_modules_count}; "
+            f"F06={vm.after_mount_state}; action=press B"
+        )
+        effect = "Waiting for operator action: press B to run attach self-check."
+        next_attention = "F8 Evidence is empty until the self-check produces an audit-backed card."
+        current_status = "online: waiting for B"
+    elif vm.interaction_state == "already_attached":
+        summary = (
+            f"already attached; modules={vm.attached_modules_count}; "
+            f"F06={vm.after_mount_state}; press R to reset"
+        )
+        effect = "The positive attach seed has already run; reset to replay the visible loop."
+        next_attention = f"F8 Evidence: {vm.evidence_card_type} / {vm.evidence_card_id}."
+        current_status = "online: already attached"
+    else:
+        summary = (
+            f"Before modules={vm.before_modules_count}, F06={vm.before_mount_state}; "
+            f"After modules={vm.after_modules_count}, F06={vm.after_mount_state}; "
+            f"module={vm.module_id}; ready={str(vm.runtime_ready).lower()}; "
+            f"capability={vm.capability_status}; evidence={vm.trust_status}"
+        )
+        effect = (
+            "Interactive attach lifecycle seed is visible: operator action -> "
+            "run_attach_pipeline -> audit -> Evidence Card -> ORION F1/F2/F8."
+        )
+        next_attention = (
+            f"F8 Evidence: {vm.evidence_card_type} / {vm.evidence_card_id}. "
+            "This is local self-check telemetry, not NATS flight telemetry."
+        )
+        current_status = f"online: {vm.last_decision} on {vm.mount_point}"
+    return _make_card(
+        "body_structure",
+        status=status,
+        current_status=current_status,
+        summary=summary,
+        operational_effect=effect,
+        next_attention=next_attention,
+        quick_hint=format_body_structure_system_summary(vm),
+    )
 
 
 def _build_docking_card(
@@ -384,6 +480,7 @@ def _build_power_card(
         next_attention = "Watch runtime before any extended transit."
     evidence_line = _power_evidence_line(subsystem)
     summary = _summary_text(subsystem)
+    summary = f"{summary} | source: hardware_view_model / telemetry"
     if evidence_line:
         summary = f"{summary} | {evidence_line}"
     pdu_evidence = _pdu_evidence_line(subsystem)
@@ -961,6 +1058,95 @@ def _action_link(action: str, value: str) -> str:
     return f"[@click={action}('{safe_value}')]select/click[/]"
 
 
+def _render_systems_mfd_status(
+    body_vm: Any,
+    body_physics_vm: Any,
+    power_vm: Any,
+    *,
+    active_left_page: str,
+    active_right_page: str,
+) -> str:
+    return (
+        "ORION V / F2 SYSTEMS MFD | "
+        f"LEFT={mfd_page_label('left', active_left_page)}:{normalize_mfd_page('left', active_left_page)} | "
+        f"RIGHT={mfd_page_label('right', active_right_page)}:{normalize_mfd_page('right', active_right_page)} | "
+        f"BODY={body_vm.seed_status} | modules={body_vm.attached_modules_count} | "
+        f"selected={body_vm.selected_face_id} | "
+        f"POWER({str(getattr(power_vm, 'source', None) or 'unknown')}) "
+        f"SoC_bat={format_soc_bat(getattr(power_vm, 'battery_soc_pct', None))} "
+        f"SoC_cap={format_soc_cap(getattr(power_vm, 'supercap_soc_pct', None))} | "
+        f"PHYSICS={body_physics_vm.evidence_card_type} | runtime={body_physics_vm.runtime_conformance}"
+    )
+
+
+def _render_systems_left_mfd(
+    body_vm: Any,
+    *,
+    telemetry: dict[str, Any],
+    observation_objective: dict[str, Any] | None,
+    radar_tracks: dict[str, dict[str, Any]],
+    incidents: list[dict[str, Any]],
+    safe_mode: dict[str, Any],
+    active_left_page: str,
+) -> str:
+    return render_left_mfd_page(
+        page=active_left_page,
+        body_vm=body_vm,
+        telemetry=telemetry,
+        observation_objective=observation_objective,
+        radar_tracks=radar_tracks,
+        incidents=incidents,
+        safe_mode=safe_mode,
+    )
+
+
+def _render_systems_right_mfd(
+    cards: list[SystemCard],
+    *,
+    body_structure_vm: Any,
+    body_physics_vm: Any,
+    power_thermal_vm: Any,
+    selected_subsystem: str | None,
+    hardware_model: HardwareViewModel | None,
+    active_right_page: str,
+    radar_tracks: dict[str, dict[str, Any]],
+    incidents: list[dict[str, Any]],
+    safe_mode: dict[str, Any],
+) -> str:
+    page_to_subsystem = {
+        "systems": "body_structure",
+        "sensors": "sensors",
+        "power": "power",
+        "thermal": "power",
+        "comms": "comms",
+        "propulsion": "propulsion",
+        "docking": "docking",
+        "journal": "safety",
+        "procedures": "safety",
+    }
+    normalized_page = normalize_mfd_page("right", active_right_page)
+    subsystem_key = selected_subsystem or page_to_subsystem.get(normalized_page)
+    selected_view = _subsystem(hardware_model, subsystem_key) if subsystem_key else None
+    return render_right_mfd_page(
+        page=normalized_page,
+        cards=cards,
+        body_structure_vm=body_structure_vm,
+        body_physics_vm=body_physics_vm,
+        power_thermal_vm=power_thermal_vm,
+        selected_subsystem=selected_subsystem,
+        radar_tracks=radar_tracks,
+        incidents=incidents,
+        safe_mode=safe_mode,
+        inspector_lines=format_subsystem_inspector(selected_view),
+    )
+
+
+def _mfd_pct_text(value: int | float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value}%"
+
+
 class OrionVSystemsScreen(Static):
     """Operator-first F2 systems overview powered by existing truth sources."""
 
@@ -974,14 +1160,129 @@ class OrionVSystemsScreen(Static):
         self._active_incidents = 0
         self._incidents: list[dict[str, Any]] = []
         self._radar_tracks: dict[str, dict[str, Any]] = {}
+        self._active_left_mfd_page = MFD_DEFAULT_LEFT_PAGE
+        self._active_right_mfd_page = MFD_DEFAULT_RIGHT_PAGE
+
+    DEFAULT_CSS = """
+    OrionVSystemsScreen {
+        height: 1fr;
+        layout: vertical;
+    }
+
+    #orionv-systems-title {
+        height: auto;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
+    #orionv-systems-mfd-root {
+        height: 1fr;
+        layout: vertical;
+    }
+
+    #orionv-systems-mfd-status {
+        height: auto;
+        max-height: 5;
+        border: round #4f747c;
+        border-title-color: #7de3f2;
+        background: #10181b;
+        color: #dce4dc;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+
+    #orionv-systems-mfd-main {
+        height: 1fr;
+        layout: horizontal;
+    }
+
+    #orionv-systems-mfd-left-buttons,
+    #orionv-systems-mfd-right-buttons {
+        width: 12;
+        height: 1fr;
+        layout: vertical;
+        background: #070d10;
+        padding: 0 1;
+    }
+
+    #orionv-systems-mfd-left-buttons { margin: 0 1 0 0; }
+    #orionv-systems-mfd-right-buttons { margin: 0 0 0 1; }
+
+    #orionv-systems-mfd-left-buttons Button,
+    #orionv-systems-mfd-right-buttons Button {
+        width: 10;
+        min-width: 10;
+        height: 1;
+        min-height: 1;
+        padding: 0;
+        margin: 0;
+        border: none;
+        background: #0d1518;
+        color: #aebabb;
+        text-style: bold;
+    }
+
+    #orionv-systems-mfd-left-screen,
+    #orionv-systems-mfd-right-screen {
+        width: 1fr;
+        height: 1fr;
+        border: round #3a8294;
+        border-title-color: #64c7d8;
+        background: #0d1417;
+        color: #d8ded8;
+        padding: 0 1;
+        margin: 0 1 0 0;
+    }
+
+    #orionv-systems-mfd-right-screen {
+        border: round #5f8a4a;
+        border-title-color: #8fbf78;
+    }
+
+    #orionv-systems-mfd-left-buttons Button.mfd-active,
+    #orionv-systems-mfd-right-buttons Button.mfd-active {
+        border: heavy #f2b84b;
+        color: #f6e7b4;
+    }
+
+    #orionv-systems-mfd-softkeys {
+        height: auto;
+        border: round #617078;
+        background: #0f1518;
+        color: #d8ded8;
+        padding: 0 1;
+        margin: 1 0 0 0;
+    }
+
+    #orionv-systems-compat {
+        display: none;
+        height: 0;
+    }
+    """
 
     def compose(self) -> ComposeResult:
         yield Static("", id="orionv-systems-title")
-        yield Static("", id="orionv-systems-intro")
-        yield Static("", id="orionv-systems-authority")
-        with VerticalScroll(id="orionv-system-card-stream"):
-            pass
-        yield Static("", id="orionv-systems-inspector")
+        with Container(id="orionv-systems-mfd-root"):
+            yield Static("", id="orionv-systems-mfd-status")
+            with Container(id="orionv-systems-mfd-main"):
+                with Container(id="orionv-systems-mfd-left-buttons"):
+                    for button in mfd_button_specs("left"):
+                        yield Button(button.label, id=f"systems-{button.button_id}", compact=True)
+                yield Static("", id="orionv-systems-mfd-left-screen")
+                yield Static("", id="orionv-systems-mfd-right-screen")
+                with Container(id="orionv-systems-mfd-right-buttons"):
+                    for button in mfd_button_specs("right"):
+                        yield Button(button.label, id=f"systems-{button.button_id}", compact=True)
+            yield Static("", id="orionv-systems-mfd-softkeys")
+        with Container(id="orionv-systems-compat"):
+            yield Static("", id="orionv-systems-intro")
+            yield Static("", id="orionv-systems-authority")
+            yield BodyStructureTextualDashboard(id="orionv-body-structure-dashboard")
+            yield BodyPhysicsPanel(get_body_physics_console_view_model(), id="orionv-body-physics-panel")
+            yield PowerThermalTextualDashboard(id="orionv-power-thermal-dashboard")
+            with VerticalScroll(id="orionv-system-card-stream"):
+                pass
+            yield Static("", id="orionv-systems-inspector")
 
     def on_mount(self) -> None:
         self._refresh_text()
@@ -997,6 +1298,8 @@ class OrionVSystemsScreen(Static):
         active_incidents: int = 0,
         incidents: list[dict[str, Any]] | None = None,
         radar_tracks: dict[str, dict[str, Any]] | None = None,
+        active_left_mfd_page: str | None = None,
+        active_right_mfd_page: str | None = None,
     ) -> None:
         self._hardware_model = hardware_model
         self._telemetry = dict(telemetry or {})
@@ -1007,7 +1310,31 @@ class OrionVSystemsScreen(Static):
         self._active_incidents = active_incidents
         self._incidents = list(incidents or [])
         self._radar_tracks = dict(radar_tracks or {})
+        self._active_left_mfd_page = normalize_mfd_page("left", active_left_mfd_page or self._active_left_mfd_page)
+        self._active_right_mfd_page = normalize_mfd_page("right", active_right_mfd_page or self._active_right_mfd_page)
         self._refresh_text()
+
+    def _semantic_static_update(self, selector: str, text: str) -> None:
+        semantic_update(
+            self.query_one(selector, Static),
+            text,
+            domain=_mfd_visual_domain(selector),
+        )
+
+    def _set_mfd_button_classes(self) -> None:
+        for spec in (*mfd_button_specs("left"), *mfd_button_specs("right")):
+            selector = f"#systems-{spec.button_id}"
+            try:
+                button = self.query_one(selector, Button)
+            except Exception:
+                continue
+            button.set_classes(
+                mfd_button_class(
+                    spec,
+                    active_left=self._active_left_mfd_page,
+                    active_right=self._active_right_mfd_page,
+                )
+            )
 
     def _refresh_text(self) -> None:
         cards = build_system_cards(
@@ -1019,12 +1346,67 @@ class OrionVSystemsScreen(Static):
             incidents=self._incidents,
             radar_tracks=self._radar_tracks,
         )
-        self.query_one("#orionv-systems-title", Static).update("[F2] Systems Overview")
-        self.query_one("#orionv-systems-intro", Static).update(
+        self._semantic_static_update("#orionv-systems-title", "[F2] Systems Overview")
+        self._semantic_static_update(
+            "#orionv-systems-intro",
             "Operator view: health -> effect on actions -> next attention\n"
-            "Truth: hardware_view_model + telemetry/objective/events already present in ORION V"
+            "Truth: hardware_view_model + telemetry/objective/events already present in ORION V",
         )
-        self.query_one("#orionv-systems-authority", Static).update(_safe_mode_header_line(self._safe_mode) or "")
+        self._semantic_static_update(
+            "#orionv-systems-authority",
+            _safe_mode_header_line(self._safe_mode) or "",
+        )
+        body_structure_vm = get_body_structure_console_view_model()
+        self.query_one("#orionv-body-structure-dashboard", BodyStructureTextualDashboard).update_view_model(
+            body_structure_vm
+        )
+        body_physics_vm = get_body_physics_console_view_model(body_structure_vm)
+        self.query_one("#orionv-body-physics-panel", BodyPhysicsPanel).update_view_model(
+            body_physics_vm
+        )
+        power_thermal_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
+        self.query_one("#orionv-power-thermal-dashboard", PowerThermalTextualDashboard).update_view_model(
+            power_thermal_vm
+        )
+        self._semantic_static_update(
+            "#orionv-systems-mfd-status",
+            _render_systems_mfd_status(
+                body_structure_vm,
+                body_physics_vm,
+                power_thermal_vm,
+                active_left_page=self._active_left_mfd_page,
+                active_right_page=self._active_right_mfd_page,
+            ),
+        )
+        self._semantic_static_update(
+            "#orionv-systems-mfd-left-screen",
+            _render_systems_left_mfd(
+                body_structure_vm,
+                telemetry=self._telemetry,
+                observation_objective=self._observation_objective,
+                radar_tracks=self._radar_tracks,
+                incidents=self._incidents,
+                safe_mode=self._safe_mode,
+                active_left_page=self._active_left_mfd_page,
+            ),
+        )
+        self._semantic_static_update(
+            "#orionv-systems-mfd-right-screen",
+            _render_systems_right_mfd(
+                cards,
+                body_structure_vm=body_structure_vm,
+                body_physics_vm=body_physics_vm,
+                power_thermal_vm=power_thermal_vm,
+                selected_subsystem=self._selected_subsystem,
+                hardware_model=self._hardware_model,
+                active_right_page=self._active_right_mfd_page,
+                radar_tracks=self._radar_tracks,
+                incidents=self._incidents,
+                safe_mode=self._safe_mode,
+            ),
+        )
+        self._semantic_static_update("#orionv-systems-mfd-softkeys", softkey_bar(("F3 deep",)))
+        self._set_mfd_button_classes()
         stream = self.query_one("#orionv-system-card-stream", VerticalScroll)
         stream.remove_children()
         stream.mount(
@@ -1042,6 +1424,7 @@ class OrionVSystemsScreen(Static):
             if self._selected_subsystem
             else None
         )
-        self.query_one("#orionv-systems-inspector", Static).update(
-            "\n".join(format_subsystem_inspector(selected_view))
+        self._semantic_static_update(
+            "#orionv-systems-inspector",
+            "\n".join(format_subsystem_inspector(selected_view)),
         )

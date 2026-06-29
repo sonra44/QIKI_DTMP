@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
+from textual.widgets import Static
 
 from qiki.services.operator_console.orion_v.screens.evidence_stream import OrionVEvidenceScreen
 from qiki.services.operator_console.orion_v.widgets.evidence_card_view import OrionVEvidenceCard
@@ -23,20 +24,31 @@ class _Host(App):
         yield OrionVEvidenceScreen(self._snapshot)
 
 
+def _rendered_nbl_cards(cards) -> list[tuple[OrionVEvidenceCard, str]]:
+    rendered: list[tuple[OrionVEvidenceCard, str]] = []
+    for card in cards:
+        text = str(card.render())
+        if "NBL_NOT_IMPLEMENTED" in text:
+            rendered.append((card, text))
+    return rendered
+
+
 @pytest.mark.asyncio
 async def test_evidence_screen_mounts_and_renders_nbl_card() -> None:
     app = _Host({"power": {"nbl_active": True, "nbl_allowed": False, "nbl_budget_w": 0.0}})
     async with app.run_test(size=(90, 22)) as pilot:
         await pilot.pause()
         cards = app.query(OrionVEvidenceCard)
-        assert len(cards) == 1                      # NBL card mounted
-        card = cards.first()
+        nbl_cards = _rendered_nbl_cards(cards)
+        assert len(nbl_cards) == 1                  # one NBL card mounted among F8 cards
+        card, text = nbl_cards[0]
         assert card.has_class("state-target")       # CSS parsed; target-only accent applied
-        assert card.region.area > 0                 # card actually laid out on screen
-        text = str(card.render())                   # honest content really rendered
         assert "NBL_NOT_IMPLEMENTED" in text
         assert "NBL_RULES_ONLY" in text
         assert "NBL_PDU_DENIED" in text             # nbl_allowed False -> power-denied reason
+        visible_list = str(app.query_one("#orionv-evidence-mfd-left-screen", Static).render())
+        assert "NBL_NOT_IMPLEMENTED" in visible_list
+        assert "NBL_PDU_DENIED" in visible_list
 
 
 @pytest.mark.asyncio
@@ -50,5 +62,8 @@ async def test_screen_update_snapshot_rebuilds_single_card() -> None:
         )
         await pilot.pause()
         cards = app.query(OrionVEvidenceCard)
-        assert len(cards) == 1                       # rebuilt to exactly one card (no leak)
-        assert "NBL_PDU_DENIED" in str(cards.first().render())  # new reason now present
+        nbl_cards = _rendered_nbl_cards(cards)
+        assert len(nbl_cards) == 1                   # one NBL card after rebuild (no leak)
+        assert "NBL_PDU_DENIED" in nbl_cards[0][1]   # new reason now present
+        visible_list = str(app.query_one("#orionv-evidence-mfd-left-screen", Static).render())
+        assert "NBL_PDU_DENIED" in visible_list

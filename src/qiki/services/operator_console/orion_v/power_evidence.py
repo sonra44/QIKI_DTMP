@@ -2,7 +2,7 @@
 
 ADR-0003: battery and supercap are shown SEPARATELY; ORION never collapses them into a
 single energy bar (a charged battery is not peak permission). Values are surfaced from the
-PowerTelemetryRecord where present; absent numerics / states are shown as honest "missing".
+PowerTelemetryRecord where present; absent numerics / states are shown as honest "unknown".
 This module does not compute power, validate loads, or invoke the PDU.
 """
 
@@ -19,6 +19,8 @@ class PowerEvidence:
     read_only: bool
     battery_soc_label: str
     supercap_soc_label: str
+    soc_bat_label: str
+    soc_cap_label: str
     battery_temp_label: str
     supercap_temp_label: str
     bus_label: str
@@ -30,20 +32,20 @@ class PowerEvidence:
 
 
 def _pct(value: Any) -> str:
-    return "missing" if value is None else f"{float(value):.0f}%"
+    return "unknown" if value is None else f"{float(value):.0f}%"
 
 
 def _state(value: Any) -> str:
     text = str(value or "").strip()
-    return text if text else "missing"
+    return text if text and text.lower() != "missing" else "unknown"
 
 
 def _bus(record: Any) -> str:
     volts, amps = record.bus_voltage_V, record.bus_current_A
     if volts is None and amps is None:
-        return "missing"
-    v_label = "missing" if volts is None else f"{float(volts):.1f}V"
-    a_label = "missing" if amps is None else f"{float(amps):.1f}A"
+        return "unknown"
+    v_label = "unknown" if volts is None else f"{float(volts):.1f}V"
+    a_label = "unknown" if amps is None else f"{float(amps):.1f}A"
     return f"{v_label} {a_label}"
 
 
@@ -58,13 +60,13 @@ def power_to_evidence(record: Any) -> PowerEvidence:
     # unknown/expired/stale must not pass as trusted).
     is_trusted = trust_status == "trusted" and not reason_codes and freshness == "fresh"
     base = (
-        f"battery: SoC {battery_soc}; supercap: SoC {supercap_soc} "
+        f"SoC_bat {battery_soc}; SoC_cap {supercap_soc} "
         "(shown separately — battery charge is not peak permission)"
     )
     if is_trusted:
         operator_text = base
     else:
-        parts = [f"trust={trust_status or 'missing'}", f"freshness={freshness or 'unknown'}"]
+        parts = [f"trust={trust_status or 'unknown'}", f"freshness={freshness or 'unknown'}"]
         if reason_codes:
             parts.append(",".join(reason_codes))
         operator_text = base + " [UNTRUSTED: " + "; ".join(parts) + "]"
@@ -74,6 +76,8 @@ def power_to_evidence(record: Any) -> PowerEvidence:
         read_only=True,
         battery_soc_label=battery_soc,
         supercap_soc_label=supercap_soc,
+        soc_bat_label=battery_soc,
+        soc_cap_label=supercap_soc,
         battery_temp_label=_state(record.battery_temp_state),
         supercap_temp_label=_state(record.supercap_temp_state),
         bus_label=_bus(record),

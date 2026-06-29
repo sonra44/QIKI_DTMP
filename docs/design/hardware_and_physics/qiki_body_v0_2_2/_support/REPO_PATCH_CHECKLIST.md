@@ -109,6 +109,41 @@ M  telemetry/...
 
 Если такие изменения появились — остановиться.
 
+
+## 5.1. Runtime evidence status exception
+
+После принятия документационного пакета обнаружен узкий runtime seed:
+
+`body_structure / module attach lifecycle / ORION evidence projection`.
+
+Если патч является status-correction patch, допустимы:
+
+```text
+A  docs/runtime_slices/INDEX.md
+A  docs/runtime_slices/ATTACH_LIFECYCLE_EVIDENCE.md
+A  docs/runtime_slices/SLICE_0002_PLAN.md ... SLICE_0008_PLAN.md
+M  docs/runtime_slices/SLICE_0001_PLAN.md
+M  docs/design/hardware_and_physics/qiki_body_v0_2_2/08_IMPLEMENTATION_BRIDGE.md
+M  docs/design/hardware_and_physics/qiki_body_v0_2_2/09_ACCEPTANCE_CHECKS.md
+M  src/qiki/services/q_core_agent/core/body_structure.py  # docstring only
+```
+
+Недопустимо в этом patch:
+
+runtime logic changes;
+
+new PDU / thermal / bayonet bridge behavior;
+
+capability activation;
+
+full ORION UI / MFD work;
+
+proto / NATS / gRPC / telemetry path changes;
+
+full QIKI Body runtime compliance claim.
+
+Run targeted attach lifecycle tests if `body_structure.py` is touched, even docstring-only.
+
 ## 6. Alignment note
 
 Если есть старый bot GDD, добавить в начало или рядом:
@@ -183,3 +218,9 @@ git commit -m "docs: add QIKI Body v0.2.2 documentation and JSON companion"
 - conforms;
 
 нужно остановиться и потребовать evidence.
+
+## Attach lifecycle API hardening check
+
+Confirm `CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT == "run_attach_pipeline"` and keep legacy `attach_module()` as Slice 0001-only unless a later ADR changes the boundary.
+
+Confirm `EvidenceCard.status == "implemented"` is read as evidence-card conformance only, not module runtime readiness.

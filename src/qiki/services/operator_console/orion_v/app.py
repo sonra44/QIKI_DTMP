@@ -21,9 +21,21 @@ from qiki.services.operator_console.orion_v.events_store import BoundedEventsSto
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
 from qiki.services.operator_console.orion_v.hardware_view_model.types import HardwareViewModel
 from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
+    reset_body_structure_interactive_state,
+    run_body_structure_interactive_self_check,
+    select_next_body_structure_face,
+    select_previous_body_structure_face,
+)
 from qiki.services.operator_console.orion_v.operator_state import (
     OperatorShellState,
     build_operator_shell_state,
+)
+from qiki.services.operator_console.orion_v.mfd_layout import (
+    MFD_DEFAULT_LEFT_PAGE,
+    MFD_DEFAULT_RIGHT_PAGE,
+    mfd_button_selection_from_id,
+    normalize_mfd_page,
 )
 from qiki.services.operator_console.orion_v.procedure_engine import (
     ProcedureDefinition,
@@ -166,6 +178,11 @@ class OrionVApp(App[None]):
         ("f6", "show_level('f6')", "Журнал"),
         ("f7", "show_level('f7')", "Система"),
         ("f8", "show_level('f8')", "Evidence"),
+        ("b", "run_body_structure_self_check", "BODY attach"),
+        ("n", "select_next_body_structure_face", "BODY face next"),
+        ("p", "select_previous_body_structure_face", "BODY face prev"),
+        ("e", "show_level('f8')", "BODY evidence"),
+        ("r", "reset_body_structure_self_check", "BODY reset"),
         ("alt+1", "status_chip('power')", "Чип: Питание"),
         ("alt+2", "status_chip('thermal')", "Чип: Тепло"),
         ("alt+3", "status_chip('propulsion')", "Чип: Двигатели"),
@@ -200,6 +217,8 @@ class OrionVApp(App[None]):
         self._ui_profile = os.getenv("ORIONV_UI_PROFILE", "clean").strip().lower() or "clean"
         self._nats_state = "lost"
         self._current_level = "f1"
+        self._active_mfd_left_page = MFD_DEFAULT_LEFT_PAGE
+        self._active_mfd_right_page = MFD_DEFAULT_RIGHT_PAGE
         self._telemetry: dict[str, Any] = {}
         self._snapshot: dict[str, Any] = {}
         self._latest_radar_tracks: dict[str, dict[str, Any]] = {}
@@ -454,6 +473,53 @@ class OrionVApp(App[None]):
             self._control_acks.append(envelope)
         self._request_refresh_ui()
 
+    def action_run_body_structure_self_check(self) -> None:
+        """Run the visible local body-structure attach loop and refresh F1/F2/F8."""
+        snapshot = run_body_structure_interactive_self_check()
+        decision = snapshot.decision
+        if decision is None:
+            summary = "BODY STRUCTURE self-check waiting"
+        elif snapshot.interaction_state == "already_attached":
+            summary = "BODY STRUCTURE already attached; press R to reset"
+        else:
+            summary = (
+                f"BODY STRUCTURE self-check: {decision.status} @ {decision.mount_point}; "
+                f"audit={decision.audit_event_id}"
+            )
+        self._console_history.append(summary)
+        self._last_command_status = "ok"
+        self._last_command_summary = summary
+        self._refresh_ui()
+
+
+    def action_select_next_body_structure_face(self) -> None:
+        """Cycle the visible Face Map selection without mutating body_config."""
+        snapshot = select_next_body_structure_face()
+        summary = f"BODY STRUCTURE selected face: {snapshot.selected_face_id}"
+        self._console_history.append(summary)
+        self._last_command_status = "ok"
+        self._last_command_summary = summary
+        self._refresh_ui()
+
+
+    def action_select_previous_body_structure_face(self) -> None:
+        """Cycle the visible Face Map selection backwards without mutating body_config."""
+        snapshot = select_previous_body_structure_face()
+        summary = f"BODY STRUCTURE selected face: {snapshot.selected_face_id}"
+        self._console_history.append(summary)
+        self._last_command_status = "ok"
+        self._last_command_summary = summary
+        self._refresh_ui()
+
+    def action_reset_body_structure_self_check(self) -> None:
+        """Reset the visible local body-structure loop to modules=0/F06=free."""
+        reset_body_structure_interactive_state()
+        summary = "BODY STRUCTURE self-check reset: modules=0; F06=free"
+        self._console_history.append(summary)
+        self._last_command_status = "ok"
+        self._last_command_summary = summary
+        self._refresh_ui()
+
     def action_show_level(self, level: str) -> None:
         key = level.strip().lower()
         if key not in self.LEVEL_META:
@@ -462,6 +528,8 @@ class OrionVApp(App[None]):
         self._events_page = 0
         self._audit_page = 0
         self._refresh_visible_level()
+        if key == "f8":
+            self._prefer_f8_evidence_card_for_current_context()
         asyncio.create_task(
             self._publish_audit_event(
                 OPERATOR_ACTIONS,
@@ -475,11 +543,51 @@ class OrionVApp(App[None]):
         )
         self._request_refresh_ui()
 
+    def _preferred_f8_evidence_subsystem(self) -> str:
+        """Return the preferred read-only evidence detail for the current ORION context."""
+        subsystem = (self._selected_system_module_slug or "").strip().lower()
+        right_page = (self._active_mfd_right_page or "").strip().lower()
+        if subsystem in {"power", "thermal"} or right_page in {"power", "thermal"}:
+            return "POWER/ACCUMULATOR"
+        return "BODY"
+
+    def _prefer_f8_evidence_card_for_current_context(self) -> None:
+        """When entering F8, pick the evidence detail matching the current MFD context."""
+        try:
+            evidence = self.query_one("#orionv-evidence", OrionVEvidenceScreen)
+        except Exception:
+            return
+        evidence.prefer_evidence_card(self._preferred_f8_evidence_subsystem())
+
+    def action_evidence_select_next(self) -> None:
+        """Keyboard parity for F8 evidence detail selection; no command execution."""
+        if self._current_level != "f8":
+            return
+        self.query_one("#orionv-evidence", OrionVEvidenceScreen).select_next_evidence_card()
+
+    def action_evidence_select_previous(self) -> None:
+        """Keyboard parity for F8 evidence detail selection; no command execution."""
+        if self._current_level != "f8":
+            return
+        self.query_one("#orionv-evidence", OrionVEvidenceScreen).select_previous_evidence_card()
+
     def action_select_subsystem(self, subsystem_slug: str) -> None:
         slug = subsystem_slug.strip().lower()
         if not slug:
             return
         self._selected_system_module_slug = slug
+        page_by_subsystem = {
+            "body_structure": "systems",
+            "power": "power",
+            "thermal": "thermal",
+            "sensors": "sensors",
+            "comms": "comms",
+            "propulsion": "propulsion",
+            "docking": "docking",
+            "safety": "journal",
+        }
+        if slug in page_by_subsystem:
+            self._active_mfd_right_page = normalize_mfd_page("right", page_by_subsystem[slug])
         if self._current_level != "f2":
             self._current_level = "f2"
             self._events_page = 0
@@ -519,9 +627,15 @@ class OrionVApp(App[None]):
         self._request_refresh_ui()
 
     def action_incident_next(self) -> None:
+        if self._current_level == "f8":
+            self.action_evidence_select_next()
+            return
         self._shift_incident_selection(step=1)
 
     def action_incident_prev(self) -> None:
+        if self._current_level == "f8":
+            self.action_evidence_select_previous()
+            return
         self._shift_incident_selection(step=-1)
 
     def on_orion_v_alerts_overlay_incident_selected(self, message: OrionVAlertsOverlay.IncidentSelected) -> None:
@@ -561,6 +675,11 @@ class OrionVApp(App[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id or ""
+        mfd_selection = mfd_button_selection_from_id(button_id)
+        if mfd_selection is not None:
+            side, page = mfd_selection
+            self._select_mfd_page(side=side, page=page)
+            return
         if button_id == "orionv-command-open":
             self.action_open_command_mode()
             return
@@ -608,6 +727,37 @@ class OrionVApp(App[None]):
         if not action:
             return
         self._handle_action_bar_action(action)
+
+
+    def _select_mfd_page(self, *, side: str, page: str) -> None:
+        normalized_side = str(side or "").strip().lower()
+        if normalized_side == "left":
+            self._active_mfd_left_page = normalize_mfd_page("left", page)
+            label = f"LEFT MFD page selected: {self._active_mfd_left_page}"
+        elif normalized_side == "right":
+            self._active_mfd_right_page = normalize_mfd_page("right", page)
+            label = f"RIGHT MFD page selected: {self._active_mfd_right_page}"
+            subsystem_by_page = {
+                "systems": "body_structure",
+                "sensors": "sensors",
+                "power": "power",
+                "thermal": "power",
+                "comms": "comms",
+                "propulsion": "propulsion",
+                "docking": "docking",
+                "journal": "safety",
+                "procedures": "safety",
+            }
+            self._selected_system_module_slug = subsystem_by_page.get(
+                self._active_mfd_right_page,
+                self._selected_system_module_slug,
+            )
+        else:
+            return
+        self._console_history.append(label)
+        self._last_command_status = "ok"
+        self._last_command_summary = label
+        self._refresh_ui()
 
     def _handle_action_bar_action(self, action: str) -> None:
         if action in {"f1", "f2", "f3", "f4", "f6", "f7", "f8"}:
@@ -2853,6 +3003,8 @@ class OrionVApp(App[None]):
                 else None
             ),
             operator_shell_state=self._operator_shell_state,
+            active_left_mfd_page=self._active_mfd_left_page,
+            active_right_mfd_page=self._active_mfd_right_page,
         )
 
         self.query_one("#orionv-systems", OrionVSystemsScreen).set_state(
@@ -2864,6 +3016,8 @@ class OrionVApp(App[None]):
             active_incidents=len(active_incidents),
             incidents=active_incidents,
             radar_tracks=self._latest_radar_tracks,
+            active_left_mfd_page=self._active_mfd_left_page,
+            active_right_mfd_page=self._active_mfd_right_page,
         )
 
         since_epoch_s = (
@@ -2934,7 +3088,8 @@ class OrionVApp(App[None]):
             ]
         )
         self.query_one("#orionv-raw", OrionVRawScreen).set_text("\n".join(console_lines))
-        self.query_one("#orionv-evidence", OrionVEvidenceScreen).update_snapshot(self._snapshot)
+        evidence_screen = self.query_one("#orionv-evidence", OrionVEvidenceScreen)
+        evidence_screen.update_snapshot(self._snapshot)
 
         audit_entries = self._audit_store.last(self._audit_store.count())
         if self._audit_filter_type:

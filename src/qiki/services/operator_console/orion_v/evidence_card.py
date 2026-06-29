@@ -42,6 +42,7 @@ _FACT_KEYS = (
     "requested_module_id",
     "existing_module_id",
     "body_config_updated",
+    "runtime_ready",
     "module_class",
     "validation_error",
     "known_mount",
@@ -58,9 +59,11 @@ class EvidenceCard:
     subject_id: str
     operation: str
     subject_status: str  # domain outcome, e.g. "rejected"
+    # Evidence conformance only: "implemented" means the card projection is
+    # audit-backed and complete. It never means module runtime-ready.
     status: str  # §17 evidence-conformance, e.g. "implemented" / "missing"
     reason_code: str
-    source_type: str  # "audit_event"
+    source_type: str  # "audit" for trusted audit-backed source
     source_id: str
     source_timestamp: float
     trust_status: str  # canon §17: "trusted" / "missing"

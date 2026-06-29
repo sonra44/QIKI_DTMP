@@ -1,6 +1,12 @@
 # RUNTIME_SLICE_0001 — Body Structure Evidence Seed — PLAN
 
-> Status: **plan only** (first commit of branch `runtime/body-structure-evidence-seed-0001`).
+> Current repo snapshot status: **implemented / unit-verified as part of the narrow attach-lifecycle seed**.
+>
+> This file is preserved as the historical Slice 0001 plan. The current evidence map is maintained in `docs/runtime_slices/ATTACH_LIFECYCLE_EVIDENCE.md`; later slices 0002-0008 are also represented as status-alignment documents in this directory.
+>
+> Full QIKI Body v0.2.2 runtime compliance remains **not claimed**.
+>
+> Historical status: **plan only** (first commit of branch `runtime/body-structure-evidence-seed-0001`).
 > No runtime code in this commit. Code starts only after this plan is reviewed (operator + Codex).
 > Tracks GitHub Issue #2. Follows merged QIKI Body v0.2.2 documentation package (`main` @ `68e2c03`).
 

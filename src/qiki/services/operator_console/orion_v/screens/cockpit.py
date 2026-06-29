@@ -10,9 +10,35 @@ from textual.containers import Container
 from textual.css.query import NoMatches
 from textual.widgets import Button, Static
 
+from qiki.services.operator_console.orion_v.body_physics_view_model import (
+    format_body_physics_cockpit_line,
+    get_body_physics_console_view_model,
+)
+from qiki.services.operator_console.orion_v.body_structure_view_model import (
+    format_body_structure_cockpit_line,
+    get_body_structure_console_view_model,
+)
+from qiki.services.operator_console.orion_v.power_thermal_view_model import (
+    build_power_thermal_console_view_model_from_telemetry,
+    format_power_thermal_cockpit_line,
+    format_soc_bat,
+    format_soc_cap,
+)
 from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.mfd_layout import (
+    MFD_DEFAULT_LEFT_PAGE,
+    MFD_DEFAULT_RIGHT_PAGE,
+    mfd_button_class,
+    mfd_button_specs,
+    mfd_page_label,
+    normalize_mfd_page,
+    render_status_strip,
+    section_lines,
+    softkey_bar,
+)
 from qiki.services.operator_console.orion_v.thermal_evidence import thermal_to_evidence
 from qiki.services.operator_console.orion_v.thermal_telemetry_adapter import thermal_records_from_snapshot
+from qiki.services.operator_console.orion_v.ui_rich import semantic_update
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
@@ -35,41 +61,130 @@ class QikiLoopProjection:
     rows: tuple[tuple[str, str, str], ...]
 
 
+
+def _extract_mfd_sections(
+    lines: list[str],
+    markers: tuple[str, ...],
+    *,
+    chunk: int,
+    limit: int,
+) -> list[str]:
+    wanted: list[str] = []
+    normalized_markers = tuple(marker.lower() for marker in markers if marker)
+    for idx, line in enumerate(lines):
+        lower = line.lower()
+        if any(marker in lower for marker in normalized_markers):
+            wanted.extend(lines[idx : idx + chunk])
+        if len(wanted) >= limit:
+            break
+    return wanted[:limit]
+
+
+def _left_mfd_page_title(page: str) -> str:
+    return {
+        "radar": "Radar / Situation",
+        "nav": "Navigation",
+        "target": "Target / Objective",
+        "sector": "Sector / Hazards",
+        "mission": "Mission / Process",
+    }.get(page, "Mission / Navigation")
+
+
 class OrionVCockpitScreen(Static):
     """Operator cockpit (F1): status-first layout for 3-5s situation awareness."""
 
     DEFAULT_CSS = """
     OrionVCockpitScreen {
         layout: vertical;
+        height: 1fr;
     }
 
-    #orionv-cockpit-layout {
+    #orionv-mfd-root {
+        height: 1fr;
+        layout: vertical;
+    }
+
+    #orionv-mfd-status {
+        height: auto;
+        max-height: 5;
+        border: round #4f747c;
+        border-title-color: #7de3f2;
+        background: #10181b;
+        color: #dce4dc;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+
+    #orionv-mfd-main {
         height: 1fr;
         layout: horizontal;
     }
 
-    #orionv-cockpit-body {
-        width: 2fr;
+    #orionv-mfd-left-buttons,
+    #orionv-mfd-right-buttons {
+        width: 12;
         height: 1fr;
-        margin: 0 1 0 0;
-        border: round $surface-lighten-1 15%;
-        background: $panel-darken-1 4%;
+        layout: vertical;
+        background: #070d10;
         padding: 0 1;
     }
 
-    #orionv-cockpit-right {
+    #orionv-mfd-left-buttons {
+        margin: 0 1 0 0;
+    }
+
+    #orionv-mfd-right-buttons {
+        margin: 0 0 0 1;
+    }
+
+    #orionv-mfd-left-buttons Button,
+    #orionv-mfd-right-buttons Button {
+        width: 10;
+        min-width: 10;
+        height: 1;
+        min-height: 1;
+        padding: 0;
+        margin: 0;
+        border: none;
+        background: #0d1518;
+        color: #aebabb;
+        text-style: bold;
+    }
+
+    #orionv-mfd-left-buttons Button.mfd-active,
+    #orionv-mfd-right-buttons Button.mfd-active {
+        text-style: bold;
+        border: none;
+        background: #16343a;
+        color: #f0f7f2;
+    }
+
+    #orionv-mfd-left-screen,
+    #orionv-mfd-right-screen {
         width: 1fr;
         height: 1fr;
-        layout: vertical;
+        border: round #3a8294;
+        border-title-color: #64c7d8;
+        background: #0d1417;
+        color: #d8ded8;
+        padding: 0 1;
+        margin: 0 1 0 0;
+    }
+
+    #orionv-mfd-right-screen {
+        border: round #5f8a4a;
+        border-title-color: #8fbf78;
     }
 
     #orionv-cockpit-actions {
         height: auto;
+        max-height: 6;
         layout: vertical;
-        margin: 0 0 1 0;
-        border: round $surface-lighten-1 20%;
-        background: $panel 4%;
+        border: round #617078;
+        background: #0f1518;
+        color: #d8ded8;
         padding: 0 1;
+        margin: 1 0 0 0;
     }
 
     OrionVCockpitScreen .orionv-cockpit-action-row {
@@ -78,15 +193,28 @@ class OrionVCockpitScreen(Static):
     }
 
     OrionVCockpitScreen Button {
-        min-width: 12;
+        min-width: 10;
         margin: 0 1 0 0;
+        background: #121a1e;
+        color: #d8ded8;
     }
 
-    #orionv-cockpit-intervention {
-        height: 1fr;
-        border: round $surface-lighten-1 15%;
-        background: $panel-darken-1 4%;
+    #orionv-mfd-qiki {
+        height: auto;
+        min-height: 5;
+        max-height: 12;
+        border: round #9a7c3f;
+        border-title-color: #d6b35f;
+        background: #12140f;
+        color: #ded9c8;
         padding: 0 1;
+        margin: 1 0 0 0;
+    }
+
+    #orionv-cockpit-body,
+    #orionv-cockpit-intervention {
+        display: none;
+        height: 0;
     }
     """
 
@@ -107,47 +235,67 @@ class OrionVCockpitScreen(Static):
         self._operator_shell_state: Any | None = None
         self._fallback_body_text = ""
         self._fallback_intervention_text = ""
+        self._active_left_mfd_page = MFD_DEFAULT_LEFT_PAGE
+        self._active_right_mfd_page = MFD_DEFAULT_RIGHT_PAGE
 
     def compose(self) -> ComposeResult:
-        with Container(id="orionv-cockpit-layout"):
+        with Container(id="orionv-mfd-root"):
+            yield Static("", id="orionv-mfd-status")
+            with Container(id="orionv-mfd-main"):
+                with Container(id="orionv-mfd-left-buttons"):
+                    for spec in mfd_button_specs("left"):
+                        yield Button(spec.label, id=spec.button_id, compact=True)
+                yield Static("", id="orionv-mfd-left-screen")
+                yield Static("", id="orionv-mfd-right-screen")
+                with Container(id="orionv-mfd-right-buttons"):
+                    for spec in mfd_button_specs("right"):
+                        yield Button(spec.label, id=spec.button_id, compact=True)
+            with Container(id="orionv-cockpit-actions"):
+                with Container(classes="orionv-cockpit-action-row"):
+                    yield Button("", id="orionv-cockpit-jump-navigation", compact=True)
+                    yield Button("", id="orionv-cockpit-jump-docking", compact=True)
+                    yield Button("", id="orionv-cockpit-jump-power", compact=True)
+                    yield Button("", id="orionv-cockpit-jump-thermal", compact=True)
+                with Container(classes="orionv-cockpit-action-row"):
+                    yield Button("", id="orionv-cockpit-jump-comms", compact=True)
+                    yield Button("", id="orionv-cockpit-jump-incidents", compact=True)
+                    yield Button("", id="orionv-cockpit-jump-procedures", compact=True)
+                    yield Button("", id="orionv-cockpit-qiki-confirm", variant="primary", compact=True)
+                    yield Button("", id="orionv-cockpit-qiki-cancel", compact=True)
+            yield Static("", id="orionv-mfd-qiki")
             yield Static("", id="orionv-cockpit-body")
-            with Container(id="orionv-cockpit-right"):
-                with Container(id="orionv-cockpit-actions"):
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-navigation")
-                        yield Button("", id="orionv-cockpit-jump-docking")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-power")
-                        yield Button("", id="orionv-cockpit-jump-comms")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-thermal")
-                        yield Button("", id="orionv-cockpit-jump-incidents")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-jump-procedures")
-                    with Container(classes="orionv-cockpit-action-row"):
-                        yield Button("", id="orionv-cockpit-qiki-confirm", variant="primary")
-                        yield Button("", id="orionv-cockpit-qiki-cancel")
-                yield Static("", id="orionv-cockpit-intervention")
+            yield Static("", id="orionv-cockpit-intervention")
 
     def on_mount(self) -> None:
+        for selector, title, subtitle in (
+            ("#orionv-mfd-status", "ORION MFD / ГЛАВНЫЙ ЭКРАН", "truth | context | action readiness"),
+            ("#orionv-mfd-left-screen", "ЛЕВЫЙ MFD", "внешний мир | радар | навигация"),
+            ("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "тело QIKI | системы | evidence"),
+            ("#orionv-mfd-qiki", "QIKI / ОПЕРАТОР", "решение | подтверждение | доказательства"),
+        ):
+            try:
+                panel = self.query_one(selector, Static)
+                panel.border_title = title
+                panel.border_subtitle = subtitle
+            except NoMatches:
+                pass
         try:
             actions = self.query_one("#orionv-cockpit-actions", Container)
-            actions.border_title = "ПЕРЕХОДЫ"
-            actions.border_subtitle = "F2 | F3 | F6"
+            actions.border_title = "SOFTKEYS / ПЕРЕХОДЫ"
+            actions.border_subtitle = "left/right MFD restored"
         except NoMatches:
             pass
-        try:
-            body = self.query_one("#orionv-cockpit-body", Static)
-            body.border_title = "F1 КОКПИТ"
-            body.border_subtitle = "3-секундная картина"
-        except NoMatches:
-            pass
-        try:
-            intervention = self.query_one("#orionv-cockpit-intervention", Static)
-            intervention.border_title = "QIKI / ОПЕРАТОР"
-            intervention.border_subtitle = "решение | действие | процесс"
-        except NoMatches:
-            pass
+        for selector, title, subtitle in (
+            ("#orionv-cockpit-body", "LEGACY F1 ANCHOR", "hidden compatibility surface"),
+            ("#orionv-cockpit-intervention", "LEGACY QIKI ANCHOR", "hidden compatibility surface"),
+        ):
+            try:
+                panel = self.query_one(selector, Static)
+                panel.border_title = title
+                panel.border_subtitle = subtitle
+            except NoMatches:
+                pass
+        self._set_mfd_button_classes()
         self._refresh_text()
 
     def set_state(
@@ -165,6 +313,8 @@ class OrionVCockpitScreen(Static):
         qiki_plan_preview_lines: list[str] | None = None,
         qiki_procedure_status: str | None = None,
         operator_shell_state: "OperatorShellState | None" = None,
+        active_left_mfd_page: str | None = None,
+        active_right_mfd_page: str | None = None,
     ) -> None:
         self._prev_core_temp_c = self._pick_core_temp_c(self._telemetry)
         self._telemetry = telemetry
@@ -179,6 +329,8 @@ class OrionVCockpitScreen(Static):
         self._qiki_plan_preview_lines = list(qiki_plan_preview_lines or [])
         self._qiki_procedure_status = qiki_procedure_status
         self._operator_shell_state = operator_shell_state
+        self._active_left_mfd_page = normalize_mfd_page("left", active_left_mfd_page or self._active_left_mfd_page)
+        self._active_right_mfd_page = normalize_mfd_page("right", active_right_mfd_page or self._active_right_mfd_page)
         self._refresh_text()
 
     def _refresh_text(self) -> None:
@@ -274,6 +426,12 @@ class OrionVCockpitScreen(Static):
             objective_facts_severity=objective_facts_sev,
             objective_facts_lines=objective_facts_lines,
         )
+        body_structure_vm = get_body_structure_console_view_model()
+        body_structure_line = format_body_structure_cockpit_line(body_structure_vm)
+        body_physics_vm = get_body_physics_console_view_model(body_structure_vm)
+        body_physics_line = format_body_physics_cockpit_line(body_physics_vm)
+        power_thermal_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
+        power_thermal_line = format_power_thermal_cockpit_line(power_thermal_vm)
         qiki_reco_sev, qiki_reco_lines = self._qiki_recommendation_block(
             qiki_severity=qiki_sev,
             qiki_lines=qiki_lines,
@@ -290,6 +448,9 @@ class OrionVCockpitScreen(Static):
         body_text = "\n".join(
             [
                 self._overview_line(global_sev, global_reason),
+                body_structure_line,
+                body_physics_line,
+                power_thermal_line,
                 self._section_divider(),
                 *self._panel_block(
                     "Общий статус",
@@ -386,6 +547,12 @@ class OrionVCockpitScreen(Static):
                         _merge_severity(objective_sev, support_sev),
                     ),
                     [
+                        "Body Structure:",
+                        body_structure_line,
+                        "Body Physics:",
+                        body_physics_line,
+                        "Power / Thermal:",
+                        power_thermal_line,
                         "Цель наблюдения:",
                         *objective_lines,
                         "Связанные факты:",
@@ -478,20 +645,207 @@ class OrionVCockpitScreen(Static):
     ) -> None:
         self._fallback_body_text = fallback_body_text or body_text
         self._fallback_intervention_text = fallback_intervention_text or intervention_text
+
+        # Hidden legacy anchors are kept for app/test compatibility, but the visible
+        # cockpit is again a left/right MFD shell.  The MFD panes are display-only
+        # projections of already-derived view-model text; they do not create state.
         self._set_body_text(body_text)
+        self._set_static_text("#orionv-cockpit-intervention", intervention_text)
+        self._set_static_text("#orionv-mfd-status", self._compose_mfd_status_text(body_text))
+        self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
+        self._set_static_text("#orionv-mfd-right-screen", self._compose_right_mfd_text(body_text))
+        self._set_static_text("#orionv-mfd-qiki", self._compose_mfd_qiki_text(intervention_text))
+
+    def _set_static_text(self, selector: str, text: str) -> None:
         try:
-            self.query_one("#orionv-cockpit-intervention", Static).update(intervention_text)
+            semantic_update(
+                self.query_one(selector, Static),
+                text,
+                domain=self._visual_domain(selector),
+            )
         except NoMatches:
-            pass
+            if selector == "#orionv-cockpit-body":
+                combined = "\n\n".join(
+                    part for part in [self._fallback_body_text or text, self._fallback_intervention_text] if part
+                )
+                self.update(combined)
+
+    @staticmethod
+    def _visual_domain(selector: str) -> str:
+        if "left" in selector:
+            return "left"
+        if "right" in selector:
+            return "right"
+        if "qiki" in selector or "intervention" in selector:
+            return "qiki"
+        return "status"
 
     def _set_body_text(self, text: str) -> None:
-        try:
-            self.query_one("#orionv-cockpit-body", Static).update(text)
-        except NoMatches:
-            combined = "\n\n".join(
-                part for part in [self._fallback_body_text or text, self._fallback_intervention_text] if part
+        self._set_static_text("#orionv-cockpit-body", text)
+
+    def _compose_mfd_status_text(self, body_text: str) -> str:
+        body_vm = get_body_structure_console_view_model()
+        physics_vm = get_body_physics_console_view_model(body_vm)
+        power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
+        status = render_status_strip(
+            mode="COCKPIT",
+            body=f"{body_vm.seed_status} modules={body_vm.attached_modules_count}",
+            evidence=body_vm.trust_status or "missing",
+            source="audit/local seed",
+        )
+        return "\n".join(
+            [
+                status,
+                format_body_structure_cockpit_line(body_vm),
+                format_body_physics_cockpit_line(physics_vm),
+                format_power_thermal_cockpit_line(power_vm),
+            ]
+        )
+
+    def _compose_left_mfd_text(self, body_text: str) -> str:
+        page = normalize_mfd_page("left", self._active_left_mfd_page)
+        page_label = mfd_page_label("left", page)
+        lines = body_text.splitlines()
+        marker_map: dict[str, tuple[str, ...]] = {
+            "radar": ("Общий статус", "Сенсоры", "Инциденты"),
+            "nav": ("Наведение", "Маршрут и цель", "Текущий процесс"),
+            "target": ("Маршрут и цель", "Контекст миссии", "Цель"),
+            "sector": ("Контекст миссии", "Поддержка миссии", "Инциденты"),
+            "mission": ("Контекст миссии", "Текущий процесс", "Доступные действия"),
+        }
+        wanted = _extract_mfd_sections(lines, marker_map.get(page, ()), chunk=6, limit=18)
+        if not wanted:
+            wanted = lines[:18]
+        return "\n".join(
+            [
+                f"LEFT MFD / {page_label} / page={page}",
+                "source: telemetry/objective/shell state; no invented facts",
+                *section_lines(_left_mfd_page_title(page), wanted, limit=18),
+            ]
+        )
+
+    def _compose_right_mfd_text(self, body_text: str) -> str:
+        page = normalize_mfd_page("right", self._active_right_mfd_page)
+        page_label = mfd_page_label("right", page)
+        body_vm = get_body_structure_console_view_model()
+        physics_vm = get_body_physics_console_view_model(body_vm)
+        power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
+        module = body_vm.module_id or "none"
+        body_rows = [
+            f"Body: {body_vm.seed_status} | faces={body_vm.faces_total} | selected={body_vm.selected_face_id}",
+            f"Module: {module} | mount={body_vm.mount_point} | decision={body_vm.last_decision}",
+            f"Passport: {body_vm.passport_status} | capability={body_vm.capability_status} | "
+            f"ready={str(body_vm.runtime_ready).lower()}",
+            f"Evidence: {body_vm.evidence_card_type or 'none'} | trust={body_vm.trust_status}",
+        ]
+        physics_rows = [
+            f"Physics: {physics_vm.evidence_card_type}",
+            f"mass={physics_vm.mass_state} | CoM={physics_vm.com_delta_class} | inertia={physics_vm.inertia_class}",
+            f"Thrust Map={physics_vm.thrust_map_status} | Torque Map={physics_vm.torque_map_status}",
+            f"trust={physics_vm.trust_status} | runtime={physics_vm.runtime_conformance}",
+        ]
+        power_rows = [
+            f"Power({power_vm.source}): SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
+            f"SoC_cap={format_soc_cap(power_vm.supercap_soc_pct)} | bus={power_vm.bus_state}",
+            f"Peak={power_vm.peak_readiness} | thermal={power_vm.thermal_status}",
+            f"Blocked: {', '.join(power_vm.blocked_commands) if power_vm.blocked_commands else 'none'}",
+            f"Runtime: {power_vm.runtime_conformance} | source={power_vm.source}",
+        ]
+        thermal_rows = [
+            f"Thermal status: {power_vm.thermal_status}",
+            *(
+                f"{node.node_id}: {node.thermal_class} | "
+                f"blocked={', '.join(node.blocked_commands) if node.blocked_commands else 'none'}"
+                for node in power_vm.thermal_nodes
+            ),
+            f"Runtime: {power_vm.runtime_conformance}",
+        ]
+        body_lines = body_text.splitlines()
+        subsystem_sections: dict[str, list[str]] = {
+            "systems": [
+                *section_lines("Body / Structure", body_rows, limit=8),
+                "",
+                *section_lines("Physical Consequence", physics_rows, limit=8),
+                "",
+                *section_lines("Power / Thermal", power_rows, limit=8),
+            ],
+            "sensors": [
+                *section_lines(
+                    "Sensors / Trust",
+                    _extract_mfd_sections(body_lines, ("Сенсоры", "sensor", "Observation"), chunk=5, limit=14),
+                    limit=14,
+                ),
+                "sensor page is a projection; no sensor truth is invented by MFD",
+            ],
+            "power": [*section_lines("Power", power_rows, limit=10)],
+            "thermal": [*section_lines("Thermal", thermal_rows, limit=12)],
+            "comms": [
+                *section_lines(
+                    "Comms",
+                    _extract_mfd_sections(body_lines, ("Связь", "comms", "link"), chunk=5, limit=14),
+                    limit=14,
+                ),
+                "normal comms and NBL remain separate evidence domains",
+            ],
+            "propulsion": [
+                *section_lines(
+                    "Propulsion / Motion",
+                    _extract_mfd_sections(body_lines, ("Движение", "Наведение", "motion"), chunk=5, limit=14),
+                    limit=14,
+                ),
+                *section_lines("Body Physics Pending", physics_rows, limit=6),
+            ],
+            "docking": [
+                *section_lines(
+                    "Docking",
+                    _extract_mfd_sections(body_lines, ("Стыков", "Dock", "док"), chunk=5, limit=14),
+                    limit=14,
+                ),
+                "bridge/power/data remain gated; MFD does not enable docking runtime",
+            ],
+            "journal": [
+                "Journal / Audit",
+                "audit/evidence detail lives on F8",
+                "ACK is not effect confirmation",
+                "current page is read-only cockpit projection",
+            ],
+            "procedures": [
+                "Procedures",
+                "procedure execution remains command-lifecycle gated",
+                "use F6/F8 for audit/evidence history",
+                "MFD page selection does not execute procedures",
+            ],
+        }
+        return "\n".join(
+            [
+                f"RIGHT MFD / {page_label} / page={page}",
+                "evidence station: read-only projection, not source of truth",
+                *subsystem_sections.get(page, subsystem_sections["systems"]),
+            ]
+        )
+
+    def _compose_mfd_qiki_text(self, intervention_text: str) -> str:
+        return "\n".join(
+            [
+                softkey_bar(),
+                "─" * 48,
+                *intervention_text.splitlines()[:12],
+            ]
+        )
+
+    def _set_mfd_button_classes(self) -> None:
+        for spec in (*mfd_button_specs("left"), *mfd_button_specs("right")):
+            try:
+                button = self.query_one(f"#{spec.button_id}", Button)
+            except NoMatches:
+                continue
+            button.set_classes(
+                mfd_button_class(
+                    spec,
+                    active_left=self._active_left_mfd_page,
+                    active_right=self._active_right_mfd_page,
+                )
             )
-            self.update(combined)
 
     def _refresh_actions(
         self,
@@ -544,6 +898,8 @@ class OrionVCockpitScreen(Static):
             button.disabled = not confirm_enabled
             button.variant = self._button_variant(qiki_sev) if confirm_enabled else "default"
             button.label = enabled_label if confirm_enabled else disabled_label
+
+        self._set_mfd_button_classes()
 
     def _mission_context_block(
         self,
@@ -2176,6 +2532,12 @@ def _fmt_pct(value: float | None) -> str:
     if value is None:
         return "Нет данных"
     return f"{value:.1f}%"
+
+
+def _mfd_pct_text(value: int | float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value}%"
 
 
 def _bool_on_off_text(value: bool | None) -> str:

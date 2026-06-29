@@ -30,6 +30,9 @@ SOURCE_TYPE_AUDIT = "audit"  # canon QIKI Body v0.2.2 §17 source_type enum (04_
 SOURCE_TYPE_MISSING = "missing"
 TRUST_STATUS_TRUSTED = "trusted"  # canon QIKI Body v0.2.2 §17 trust_status enum (04_CALCULATION_FRAME.md)
 TRUST_STATUS_MISSING = "missing"
+# Evidence status vocabulary. ``implemented`` here means the ORION card mapping
+# for this audit-backed fact is implemented/evidence-complete. It is NOT a module
+# runtime readiness or QIKI Body runtime-compliance status.
 EVIDENCE_STATUS_IMPLEMENTED = "implemented"
 EVIDENCE_STATUS_MISSING = "missing"
 SUBJECT_STATUS_REJECTED = "rejected"

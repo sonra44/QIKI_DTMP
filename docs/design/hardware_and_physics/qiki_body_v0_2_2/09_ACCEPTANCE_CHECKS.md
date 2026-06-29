@@ -132,6 +132,56 @@ documentation-only boundary;
 
 ---
 
+## 2.1. Runtime evidence exception: attach lifecycle seed
+
+The original QIKI Body v0.2.2 documentation package remains documentation-first and does not claim full runtime conformance.
+
+Current repo snapshot exception:
+
+`body_structure / module attach lifecycle / ORION evidence projection` is a narrow implemented / unit-verified runtime seed.
+
+Accepted evidence file:
+
+`docs/runtime_slices/ATTACH_LIFECYCLE_EVIDENCE.md`
+
+Accepted runtime owner:
+
+`src/qiki/services/q_core_agent/core/body_structure.py`
+
+Accepted evidence scope:
+
+missing passport rejection;
+
+invalid passport rejection;
+
+unknown mount rejection;
+
+occupied mount rejection;
+
+forbidden / not explicitly allowed mount-class rejection;
+
+valid passport registration / occupancy;
+
+ordered `run_attach_pipeline` decision;
+
+explicit API boundary constants (`CURRENT_ATTACH_LIFECYCLE_ENTRYPOINT`, `LEGACY_ATTACH_LIFECYCLE_HELPER`);
+
+audit-backed read-only Evidence Card projection;
+
+no body_config mutation on rejection;
+
+success-only mutation on valid registration.
+
+This exception does not permit a full `QIKI Body runtime implemented` claim.
+
+It does not prove PDU, thermal clearance, capability activation, bayonet bridge, full ORION UI/MFD, proto, NATS, gRPC, telemetry paths, RCS physics, Thrust Map, Torque Map, NBL, RTG, reactor or field-drive runtime.
+
+Review rule:
+
+If a patch touches this contour, run the targeted attach lifecycle tests listed in `ATTACH_LIFECYCLE_EVIDENCE.md` and preserve the distinction between `passport_validated`, `attached`, `capability_status`, `runtime_ready`, `implemented` and `verified`. Future patches must not treat legacy `attach_module()` as the full lifecycle entrypoint unless a later ADR explicitly changes the API boundary.
+
+---
+
 ## 3. Expected package tree
 
 Пакет считается структурно собранным, если существует следующее дерево:
