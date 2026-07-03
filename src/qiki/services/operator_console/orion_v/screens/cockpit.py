@@ -2387,7 +2387,9 @@ class OrionVCockpitScreen(Static):
     ) -> list[tuple[str, str, str]]:
         phase = str(getattr(always_on, "mission_phase", None) or "UNKNOWN").strip()
         intent = str(objective.get("follow_up_status") or objective.get("status") or "none").strip().upper() or "NONE"
-        docking_state = _pick_text(self._telemetry, ["docking", "state"]).strip().upper() or scene_profile.upper()
+        # honest: no docking telemetry → mark partial; do not present the scene
+        # profile as if it were a real docking state (scene stays in the detail).
+        docking_state = _pick_text(self._telemetry, ["docking", "state"]).strip().upper() or "PARTIAL"
         return [
             ("ФАЗА", phase, f"scene={scene_profile}"),
             ("НАМЕРЕНИЕ", intent, f"scene={scene_profile}"),
@@ -2401,16 +2403,19 @@ class OrionVCockpitScreen(Static):
         guidance_severity: str,
         derived_state: Any,
     ) -> list[tuple[str, str, str]]:
+        # compact must not read more confident than the verbose _guidance_context_block:
+        # when guidance telemetry/derived state is absent, mark it "partial" (the same
+        # honest marker the verbose block uses), never a healthy default.
         guidance_state = (
             _pick_text(telemetry, ["guidance", "state"])
             or _pick_text(telemetry, ["docking", "state"])
-            or "holding"
+            or "partial"
         )
-        route_dev = str(getattr(derived_state, "trajectory_deviation", None) or "none").strip()
-        maneuver = str(getattr(derived_state, "maneuver_feasibility", None) or "available").strip()
+        route_dev = str(getattr(derived_state, "trajectory_deviation", None) or "partial").strip()
+        maneuver = str(getattr(derived_state, "maneuver_feasibility", None) or "partial").strip()
         return [
             ("НАВЕДЕНИЕ", self._compact_severity(guidance_severity), guidance_state),
-            ("ОТКЛОН", route_dev.upper(), str(getattr(derived_state, "commandability_state", None) or "commandable")),
+            ("ОТКЛОН", route_dev.upper(), str(getattr(derived_state, "commandability_state", None) or "partial")),
             ("МАНЁВР", maneuver.upper(), str(getattr(derived_state, "attitude_stability", None) or "partial")),
         ]
 

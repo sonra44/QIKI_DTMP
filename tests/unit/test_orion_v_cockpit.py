@@ -459,6 +459,24 @@ def test_cockpit_energy_thermal_not_green_without_source() -> None:
     assert "THERMAL      | NOMINAL" not in text
 
 
+def test_cockpit_guidance_compact_marks_partial_without_source() -> None:
+    # F-3: with no guidance telemetry/derived state, the compact guidance/docking
+    # rows must read "partial" (the same honest marker the verbose block uses),
+    # never confident defaults, and must not present the scene profile as a real
+    # docking state.
+    screen = _CaptureCockpit()
+    screen.set_state(
+        telemetry={},
+        nats_connected=True,
+        active_incidents=0,
+        incidents=[],
+    )
+    text = _render_text(screen)
+    assert "ОТКЛОН       | PARTIAL" in text
+    assert "МАНЁВР       | PARTIAL" in text
+    assert "СТЫКОВКА     | PARTIAL" in text
+
+
 def test_cockpit_energy_block_renders_shed_reasons() -> None:
     screen = _CaptureCockpit()
     screen.set_state(
