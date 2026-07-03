@@ -1219,7 +1219,7 @@ async def test_telemetry_shed_reasons_visible_in_f1_and_f2_runtime_path(monkeypa
         cockpit_widget = app.query_one("#orionv-cockpit", OrionVCockpitScreen)
         assert not cockpit_widget.has_class("hidden")
 
-    assert any("Track shed reasons: low_soc, pdu_overcurrent." in text for text in systems_card_texts)
+    assert any("Следите за причинами сброса: low_soc, pdu_overcurrent." in text for text in systems_card_texts)
     assert any("Причины сброса: low_soc, pdu_overcurrent" in text for text in cockpit_updates)
 
 
@@ -1471,7 +1471,7 @@ def test_build_level0_alerts_includes_system_driven_card_alert() -> None:
     assert any(
         alert.title == "Питание / Заряд"
         and alert.severity == "critical"
-        and alert.short_meaning == "power constrained"
+        and alert.short_meaning == "питание ограничено"
         for alert in alerts
     )
 

@@ -47,8 +47,8 @@ def test_systems_screen_reads_power_status_from_hardware_model() -> None:
     text = render_system_cards(build_system_cards(model))
 
     assert "Питание / Заряд [critical]" in text
-    assert "Status: power constrained" in text
-    assert "Summary: Заряд 10%, 19В" in text
+    assert "Статус: питание ограничено" in text
+    assert "Сводка: Заряд 10%, 19В" in text
 
 
 def test_missing_truth_is_rendered_as_unknown() -> None:
@@ -61,8 +61,8 @@ def test_missing_truth_is_rendered_as_unknown() -> None:
     text = render_system_cards(build_system_cards(model))
 
     assert "Питание / Заряд [unknown]" in text
-    assert "Status: truth incomplete" in text
-    assert "Summary: Нет данных" in text
+    assert "Статус: правда неполна" in text
+    assert "Сводка: Нет данных" in text
 
 
 def test_system_cards_render_severity_badges_and_selected_marker() -> None:
@@ -95,7 +95,7 @@ def test_system_cards_render_severity_badges_and_selected_marker() -> None:
     assert "#f2b84b" in text
     assert "CRIT" in text
     assert "WARN" in text
-    assert "SELECTED" in text
+    assert "ВЫБРАНО" in text
 
 
 def test_system_card_widget_sets_css_status_and_selected_classes() -> None:
@@ -177,8 +177,8 @@ def test_docked_power_card_changes_meaning_with_charging_context() -> None:
     )
 
     assert "Питание / Заряд [stable]" in text
-    assert "Status: charging supported" in text
-    assert "Effect: Dockside power supports the current station contour and reduces route pressure." in text
+    assert "Статус: зарядка доступна" in text
+    assert "Эффект: Питание от дока поддерживает станционный контур и снижает нагрузку на маршрут." in text
 
 
 def test_route_transit_card_uses_objective_follow_up_as_action_gate() -> None:
@@ -214,9 +214,9 @@ def test_route_transit_card_uses_objective_follow_up_as_action_gate() -> None:
 
     assert cards[0].subsystem_id == "navigation"
     assert "Навигация / Маршрут [critical]" in text
-    assert "Status: review gate active" in text
-    assert "Effect: F1 action flow is constrained until the observation review is acknowledged and closed." in text
-    assert "Next: Продолжение разрешено только после review confirm." in text
+    assert "Статус: гейт review активен" in text
+    assert "Эффект: Поток действий F1 ограничен, пока review наблюдения не подтверждён и не закрыт." in text
+    assert "Дальше: Продолжение разрешено только после review confirm." in text
 
 
 def test_sensors_card_uses_live_target_track() -> None:
@@ -251,8 +251,8 @@ def test_sensors_card_uses_live_target_track() -> None:
     )
 
     assert "Сенсоры / Радар / Наблюдение [stable]" in text
-    assert "Status: observation target live" in text
-    assert "Summary: Сенсоры: 3 в работе, 0 деградации, 0 отключены | tracks 1 | target ALLY-62FD23" in text
+    assert "Статус: цель наблюдения в захвате" in text
+    assert "Сводка: Сенсоры: 3 в работе, 0 деградации, 0 отключены | треков 1 | цель ALLY-62FD23" in text
 
 
 def test_systems_screen_renders_safe_mode_authority_header_and_card() -> None:
@@ -278,6 +278,6 @@ def test_systems_screen_renders_safe_mode_authority_header_and_card() -> None:
         },
     )
 
-    assert "Safety authority: SAFE MODE active (SAFE_MODE_ENTER_SENSORS_STALE)" in text
+    assert "Санкция безопасности: SAFE MODE активен (SAFE_MODE_ENTER_SENSORS_STALE)" in text
     assert "Безопасность / Целостность / Угрозы [critical]" in text
-    assert "Status: safe mode active" in text
+    assert "Статус: SAFE MODE активен" in text

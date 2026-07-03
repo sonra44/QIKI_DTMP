@@ -259,7 +259,7 @@ def _status_badge(status: ViewStatus) -> str:
 
 def _card_title_line(card: SystemCard, *, selected: bool, select_action: str) -> str:
     rail = _styled("▌", _STATUS_RAIL_STYLES[card.status])
-    marker = "[reverse bold cyan] SELECTED [/]" if selected else "[dim]        [/]"
+    marker = "[reverse bold cyan] ВЫБРАНО [/]" if selected else "[dim]        [/]"
     severity = _styled(card.severity.upper(), _STATUS_BADGE_STYLES[card.status])
     title = escape(card.title)
     # Keep the legacy plain "[severity]" token for existing text assertions and search,
@@ -269,18 +269,18 @@ def _card_title_line(card: SystemCard, *, selected: bool, select_action: str) ->
 
 def _card_widget_text(card: SystemCard, *, selected: bool) -> str:
     select_action = _action_link("select_subsystem", card.subsystem_id)
-    marker = "SELECTED" if selected else "       "
+    marker = "ВЫБРАНО" if selected else "       "
     severity_token = _literal_bracketed(card.severity)
     badge_token = _literal_bracketed(_STATUS_BADGES[card.status])
     lines = [
         f"{marker} {escape(card.title)} {severity_token} {badge_token} {select_action}",
-        f"Status: {escape(card.current_status)}",
-        f"Summary: {escape(card.summary)}",
-        f"Effect: {escape(card.operational_effect)}",
-        f"Next: {escape(card.next_attention)}",
+        f"Статус: {escape(card.current_status)}",
+        f"Сводка: {escape(card.summary)}",
+        f"Эффект: {escape(card.operational_effect)}",
+        f"Дальше: {escape(card.next_attention)}",
     ]
     if card.quick_hint:
-        lines.append(f"Hint: {escape(card.quick_hint)}")
+        lines.append(f"Подсказка: {escape(card.quick_hint)}")
     return "\n".join(lines)
 
 
@@ -295,7 +295,7 @@ def render_system_cards_with_safety(
     selected_subsystem: str | None = None,
 ) -> str:
     lines = [
-        "[F2] Systems Overview",
+        "[F2] Обзор систем",
         "",
         "Обзор оператора: состояние → влияние на действия → куда смотреть дальше",
         "Правда: hardware_view_model + телеметрия/цель/события — уже в ORION V",
@@ -308,12 +308,12 @@ def render_system_cards_with_safety(
         selected = selected_subsystem == card.subsystem_id
         select_action = _action_link("select_subsystem", card.subsystem_id)
         lines.append(_card_title_line(card, selected=selected, select_action=select_action))
-        lines.append(f"   Status: {escape(card.current_status)} {_status_badge(card.status)}")
-        lines.append(f"   Summary: {escape(card.summary)}")
-        lines.append(f"   Effect: {escape(card.operational_effect)}")
-        lines.append(f"   Next: {escape(card.next_attention)}")
+        lines.append(f"   Статус: {escape(card.current_status)} {_status_badge(card.status)}")
+        lines.append(f"   Сводка: {escape(card.summary)}")
+        lines.append(f"   Эффект: {escape(card.operational_effect)}")
+        lines.append(f"   Дальше: {escape(card.next_attention)}")
         if card.quick_hint:
-            lines.append(f"   Hint: [dim]{escape(card.quick_hint)}[/]")
+            lines.append(f"   Подсказка: [dim]{escape(card.quick_hint)}[/]")
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -323,36 +323,36 @@ def _build_body_structure_card() -> SystemCard:
     status = ViewStatus.OK if vm.seed_status == "online" else ViewStatus.NO_DATA
     if vm.last_decision == "waiting":
         summary = (
-            f"interactive seed ready; modules={vm.attached_modules_count}; "
-            f"F06={vm.after_mount_state}; action=press B"
+            f"посев готов; modules={vm.attached_modules_count}; "
+            f"F06={vm.after_mount_state}; действие: B"
         )
-        effect = "Waiting for operator action: press B to run attach self-check."
-        next_attention = "F8 Evidence is empty until the self-check produces an audit-backed card."
-        current_status = "online: waiting for B"
+        effect = "Ожидается действие оператора: B — запустить самопроверку установки."
+        next_attention = "F8 Улики пусты, пока самопроверка не создаст карточку с аудитом."
+        current_status = "каркас (посев): ожидается B"
     elif vm.interaction_state == "already_attached":
         summary = (
-            f"already attached; modules={vm.attached_modules_count}; "
-            f"F06={vm.after_mount_state}; press R to reset"
+            f"модуль уже установлен; modules={vm.attached_modules_count}; "
+            f"F06={vm.after_mount_state}; R — сброс"
         )
-        effect = "The positive attach seed has already run; reset to replay the visible loop."
-        next_attention = f"F8 Evidence: {vm.evidence_card_type} / {vm.evidence_card_id}."
-        current_status = "online: already attached"
+        effect = "Позитивный посев установки уже отработал; сброс повторит видимый цикл."
+        next_attention = f"F8 Улики: {vm.evidence_card_type} / {vm.evidence_card_id}."
+        current_status = "каркас (посев): модуль уже установлен"
     else:
         summary = (
-            f"Before modules={vm.before_modules_count}, F06={vm.before_mount_state}; "
-            f"After modules={vm.after_modules_count}, F06={vm.after_mount_state}; "
+            f"до: modules={vm.before_modules_count}, F06={vm.before_mount_state}; "
+            f"после: modules={vm.after_modules_count}, F06={vm.after_mount_state}; "
             f"module={vm.module_id}; ready={str(vm.runtime_ready).lower()}; "
             f"capability={vm.capability_status}; evidence={vm.trust_status}"
         )
         effect = (
-            "Interactive attach lifecycle seed is visible: operator action -> "
-            "run_attach_pipeline -> audit -> Evidence Card -> ORION F1/F2/F8."
+            "Видим интерактивный цикл установки: действие оператора -> "
+            "run_attach_pipeline -> аудит -> карточка улики -> ORION F1/F2/F8."
         )
         next_attention = (
-            f"F8 Evidence: {vm.evidence_card_type} / {vm.evidence_card_id}. "
-            "This is local self-check telemetry, not NATS flight telemetry."
+            f"F8 Улики: {vm.evidence_card_type} / {vm.evidence_card_id}. "
+            "Это локальная самопроверка, не полётная телеметрия NATS."
         )
-        current_status = f"online: {vm.last_decision} on {vm.mount_point}"
+        current_status = f"каркас (посев): {vm.last_decision} @ {vm.mount_point}"
     return _make_card(
         "body_structure",
         status=status,
@@ -388,36 +388,36 @@ def _build_docking_card(
     active_sequence = any(token in state_norm for token in ("approach", "align", "capture"))
     summary_parts = [_summary_text(subsystem)]
     if dock_bridge != "Нет данных":
-        summary_parts.append(f"dock bridge {dock_bridge}")
+        summary_parts.append(f"док-мост {dock_bridge}")
     summary = _join_summary(summary_parts)
     if docked:
-        current_status = "station interface engaged"
-        effect = "Station services and release flow are the main action gate right now."
-        next_attention = "Verify release or charge intent before leaving station."
+        current_status = "стыковочный узел занят"
+        effect = "Службы станции и процедура расстыковки — главный гейт действий сейчас."
+        next_attention = "Проверьте намерение расстыковки или зарядки до ухода со станции."
     elif active_sequence:
-        current_status = "docking sequence active"
-        effect = "Alignment and closure speed limit safe operator actions until capture settles."
+        current_status = "идёт стыковка"
+        effect = "Выравнивание и скорость сближения ограничивают действия до устойчивого захвата."
         attention_parts = [
-            f"distance {distance}" if distance != "Нет данных" else "",
-            f"approach {approach}" if approach != "Нет данных" else "",
-            f"alignment {alignment}" if alignment != "Нет данных" else "",
+            f"дальность {distance}" if distance != "Нет данных" else "",
+            f"сближение {approach}" if approach != "Нет данных" else "",
+            f"выравнивание {alignment}" if alignment != "Нет данных" else "",
         ]
         next_attention = _join_summary([part for part in attention_parts if part])
         if next_attention == "Нет данных":
-            next_attention = "Settle alignment and closure speed before capture."
+            next_attention = "Стабилизируйте выравнивание и скорость сближения до захвата."
     elif scene_profile == "docked":
-        current_status = "dock state unresolved"
-        effect = "Dock contour is still active, but truth is not yet coherent enough to trust release steps."
-        next_attention = "Confirm docking state and lock path before changing contour."
+        current_status = "состояние дока не согласовано"
+        effect = "Контур дока ещё активен, но правда несвязна — шагам расстыковки доверять рано."
+        next_attention = "Подтвердите состояние стыковки и замков до смены контура."
         status = _merge_status(status, ViewStatus.WARN)
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "There is no honest docking truth to interpret yet, so this card should not drive decisions."
-        next_attention = "Wait for docking telemetry before treating this as a live contour."
+        current_status = "правда неполна"
+        effect = "Честной правды о стыковке пока нет — эта карточка не должна вести решения."
+        next_attention = "Дождитесь телеметрии стыковки, прежде чем считать контур живым."
     else:
-        current_status = "not in docking contour"
-        effect = "Docking does not currently constrain route or maneuver decisions."
-        next_attention = "No immediate docking follow-up."
+        current_status = "вне контура стыковки"
+        effect = "Стыковка сейчас не ограничивает решения по маршруту и манёвру."
+        next_attention = "Ближайших действий по стыковке нет."
     return _make_card(
         "docking",
         status=status,
@@ -425,7 +425,7 @@ def _build_docking_card(
         summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="F1 keeps the active scene; F3 is for deeper docking detail.",
+        quick_hint="F1 держит активную сцену; F3 — детальный разбор стыковки.",
     )
 
 
@@ -448,39 +448,39 @@ def _build_power_card(
         and any(token in dock_bridge.lower() for token in ("on", "active", "online", "enabled", "locked", "док"))
     )
     if _looks_enabled(load_shedding) or status is ViewStatus.CRIT:
-        current_status = "power constrained"
-        effect = "Available actions can be reduced by EPS limits or shed loads."
+        current_status = "питание ограничено"
+        effect = "Доступные действия могут быть урезаны лимитами ЭСП или сбросом нагрузок."
         next_attention = (
-            f"Track shed reasons: {shed_reasons}."
+            f"Следите за причинами сброса: {shed_reasons}."
             if shed_reasons != "Нет данных"
-            else "Resolve EPS shedding before long procedures."
+            else "Устраните сброс нагрузок ЭСП до длинных процедур."
         )
     elif charging_supported:
-        current_status = "charging supported"
-        effect = "Dockside power supports the current station contour and reduces route pressure."
-        next_attention = "Use station time to recover margin before undock."
+        current_status = "зарядка доступна"
+        effect = "Питание от дока поддерживает станционный контур и снижает нагрузку на маршрут."
+        next_attention = "Используйте время у станции, чтобы восстановить запас до расстыковки."
     elif _looks_enabled(limit_mode) or status is ViewStatus.WARN:
-        current_status = "power margin reduced"
+        current_status = "запас питания снижен"
         effect = (
-            "The contour is still live, but higher-load actions should be checked "
-            "against runtime and bus stability."
+            "Контур жив, но действия с высокой нагрузкой стоит сверять "
+            "с оставшимся временем работы и стабильностью шины."
         )
         next_attention = (
-            f"Remaining runtime is about {runtime_min:.0f} min."
+            f"Оставшееся время работы ~{runtime_min:.0f} мин."
             if runtime_min is not None
-            else "Watch runtime and bus voltage before extending the contour."
+            else "Следите за временем работы и напряжением шины до продления контура."
         )
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "Power truth is not established yet, so F2 should not invent a stability claim."
-        next_attention = "Wait for EPS telemetry before trusting power margin."
+        current_status = "правда неполна"
+        effect = "Правда о питании не установлена — F2 не должен выдумывать заявление о стабильности."
+        next_attention = "Дождитесь телеметрии ЭСП, прежде чем доверять запасу питания."
     else:
-        current_status = "self-powered stable"
-        effect = "No immediate EPS gate is limiting the current operator flow."
-        next_attention = "Watch runtime before any extended transit."
+        current_status = "автономное питание стабильно"
+        effect = "Гейт ЭСП сейчас не ограничивает операторский контур."
+        next_attention = "Проверяйте время работы перед длинным перелётом."
     evidence_line = _power_evidence_line(subsystem)
     summary = _summary_text(subsystem)
-    summary = f"{summary} | source: hardware_view_model / telemetry"
+    summary = f"{summary} | источник: hardware_view_model / телеметрия"
     if evidence_line:
         summary = f"{summary} | {evidence_line}"
     pdu_evidence = _pdu_evidence_line(subsystem)
@@ -493,7 +493,7 @@ def _build_power_card(
         summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="F3 is the place for raw EPS traces if shedding or limits appear.",
+        quick_hint="F3 — сырые трассы ЭСП, если появился сброс или лимиты.",
     )
 
 
@@ -510,29 +510,29 @@ def _build_propulsion_card(
     active_thrusters = _field_text(subsystem, "propulsion.rcs_active_count")
     thrust = _field_text(subsystem, "propulsion.total_thrust_n")
     if status is ViewStatus.CRIT:
-        current_status = "maneuver authority constrained"
-        effect = "Translation and procedure execution may fail or require immediate operator caution."
-        next_attention = "Resolve propulsion faults or fuel exhaustion before committing to motion changes."
+        current_status = "манёвр ограничен"
+        effect = "Перемещение и процедуры могут сорваться или требуют немедленной осторожности."
+        next_attention = "Устраните отказы двигателей или дефицит топлива до смены движения."
     elif status is ViewStatus.WARN:
-        current_status = "maneuver margin reduced"
-        effect = "Propulsion still responds, but burn margin or actuator health can limit the next action."
+        current_status = "запас манёвра снижен"
+        effect = "Двигатели отвечают, но запас импульса или здоровье приводов могут ограничить следующее действие."
         next_attention = (
-            f"Remaining burn margin is about {burn_time:.0f} min."
+            f"Оставшийся запас импульса ~{burn_time:.0f} мин."
             if burn_time is not None
-            else "Track fuel and actuator health during the next maneuver."
+            else "Следите за топливом и приводами во время следующего манёвра."
         )
     elif active_thrusters != "Нет данных" and active_thrusters not in {"0", "0.0"}:
-        current_status = "thrust active"
-        effect = "Motion is being actively generated, so propulsion cost should be watched alongside power and thermal."
-        next_attention = f"Current thrust context: {thrust}."
+        current_status = "тяга активна"
+        effect = "Идёт активная выработка движения — расход двигателей смотрите вместе с питанием и теплом."
+        next_attention = f"Текущий контекст тяги: {thrust}."
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "Propulsion health is not available yet, so motion authority should be treated as unknown."
-        next_attention = "Wait for propulsion telemetry before leaning on maneuver assumptions."
+        current_status = "правда неполна"
+        effect = "Здоровье двигателей недоступно — право на движение считайте неизвестным."
+        next_attention = "Дождитесь телеметрии двигателей, прежде чем опираться на манёвренные допущения."
     else:
-        current_status = "maneuver authority available"
-        effect = "No immediate propulsion gate is blocking the present contour."
-        next_attention = "Keep fuel and motor temperatures under watch during sustained burns."
+        current_status = "манёвр доступен"
+        effect = "Гейт двигателей сейчас не блокирует текущий контур."
+        next_attention = "Держите топливо и температуру моторов под контролем при длительных импульсах."
     summary = _summary_text(subsystem)
     rcs_evidence = _rcs_evidence_line(subsystem)
     if rcs_evidence:
@@ -544,7 +544,7 @@ def _build_propulsion_card(
         summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="Use F3 only if you need per-thruster or motor detail.",
+        quick_hint="F3 — только если нужна детализация по соплам и моторам.",
     )
 
 
@@ -570,53 +570,53 @@ def _build_navigation_card(
     if scene_profile == "orbital_hold":
         status = _merge_status(status, ViewStatus.WARN)
     if follow_up is not None and follow_up["status"] == "review_required":
-        current_status = "review gate active"
-        effect = "F1 action flow is constrained until the observation review is acknowledged and closed."
-        next_attention = follow_up.get("allowed_when_ru") or "Close the review gate before continuing the contour."
+        current_status = "гейт review активен"
+        effect = "Поток действий F1 ограничен, пока review наблюдения не подтверждён и не закрыт."
+        next_attention = follow_up.get("allowed_when_ru") or "Закройте гейт review до продолжения контура."
     elif follow_up is not None and follow_up["status"] == "hold_for_recheck":
-        current_status = "route paused for recheck"
-        effect = "The same contour remains active, but only cautious recheck actions are allowed next."
-        next_attention = follow_up.get("allowed_when_ru") or "Proceed only through the recheck path."
+        current_status = "маршрут на паузе: recheck"
+        effect = "Тот же контур активен, но дальше разрешены только осторожные recheck-действия."
+        next_attention = follow_up.get("allowed_when_ru") or "Продолжайте только через recheck-путь."
     elif follow_up is not None and follow_up["status"] == "resume_observation":
-        current_status = "same contour reopened"
-        effect = "One safe observation step is available on the same route contour."
-        next_attention = follow_up.get("allowed_when_ru") or "Use the reopened observation window while it stays valid."
+        current_status = "контур переоткрыт"
+        effect = "На том же маршрутном контуре доступен один безопасный шаг наблюдения."
+        next_attention = follow_up.get("allowed_when_ru") or "Используйте переоткрытое окно наблюдения, пока оно действительно."
     elif result is not None and result["status"] == "signature_changed":
-        current_status = "signature changed on contour"
+        current_status = "сигнатура цели изменилась"
         effect = (
-            "The contour remains truthful, but the observed target identity changed "
-            "and should reshape next decisions."
+            "Контур остаётся честным, но идентичность наблюдаемой цели изменилась "
+            "и должна перестроить следующие решения."
         )
         next_attention = (
-            result.get("summary_ru") or "Carry the changed signature into the next observation step."
+            result.get("summary_ru") or "Перенесите изменённую сигнатуру в следующий шаг наблюдения."
         )
     elif result is not None and result["status"] == "reconfirmed":
-        current_status = "continuation result recorded"
-        effect = "The same contour is closed honestly; the next step can move on with reconfirmed truth."
-        next_attention = result.get("summary_ru") or "Advance to the next observation objective when ready."
+        current_status = "результат продолжения записан"
+        effect = "Контур закрыт честно; следующий шаг может опираться на переподтверждённую правду."
+        next_attention = result.get("summary_ru") or "Переходите к следующей цели наблюдения, когда будете готовы."
     elif route_role == "official":
-        current_status = "official route active"
-        effect = "F1 should be read as a route-transit contour, not as a station routine."
-        next_attention = "Keep route truth and objective timeline aligned while transit is active."
+        current_status = "официальный маршрут активен"
+        effect = "F1 читайте как контур перелёта по маршруту, а не как станционную рутину."
+        next_attention = "Держите правду маршрута и таймлайн цели согласованными, пока идёт перелёт."
     elif route_role == "deviation":
-        current_status = "deviation route active"
-        effect = "Current actions are shaped by a deviation contour and may unlock different consequences."
-        next_attention = "Track follow-up facts closely; deviation changes what safe continuation means."
+        current_status = "маршрут-отклонение активен"
+        effect = "Действия задаёт контур отклонения — он может открыть другие последствия."
+        next_attention = "Следите за follow-up-фактами: отклонение меняет смысл безопасного продолжения."
     elif scene_profile == "docked":
-        current_status = "station reference active"
-        effect = "Navigation exists, but docking geometry is the dominant action gate."
-        next_attention = "Confirm undock intent before treating navigation as the primary contour."
+        current_status = "станционный контур активен"
+        effect = "Навигация есть, но главный гейт действий — геометрия стыковки."
+        next_attention = "Подтвердите намерение расстыковки, прежде чем считать навигацию главным контуром."
     elif scene_profile == "orbital_hold":
-        current_status = "orbital hold truth limited"
-        effect = "This contour stays honest as an upstream runtime gap and should not drive new deep-screen logic yet."
-        next_attention = "Do not overread orbital-hold semantics until runtime truth is upgraded upstream."
+        current_status = "orbital hold: правда ограничена"
+        effect = "Контур честно помечен как runtime-пробел выше по потоку — новую логику экранов на нём не строить."
+        next_attention = "Не перечитывайте семантику orbital-hold, пока runtime-правда не обновлена выше."
     else:
-        current_status = "free-flight reference"
-        effect = "Navigation is currently advisory and does not add a separate route gate."
-        next_attention = "Watch confidence and heading if the contour shifts into transit."
+        current_status = "свободный полёт"
+        effect = "Навигация сейчас советующая и отдельного маршрутного гейта не добавляет."
+        next_attention = "Следите за достоверностью и курсом, если контур перейдёт в перелёт."
     summary_parts = [_summary_text(subsystem)]
     if route_role:
-        summary_parts.append(f"route role={route_role}")
+        summary_parts.append(f"роль маршрута={route_role}")
     if follow_up is not None and follow_up.get("summary_ru"):
         summary_parts.append(follow_up["summary_ru"])
     if result is not None and result.get("summary_ru"):
@@ -628,7 +628,7 @@ def _build_navigation_card(
         summary=_join_summary(summary_parts),
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="F1 shows the live scene; F6 keeps the objective/event timeline.",
+        quick_hint="F1 показывает живую сцену; F6 хранит таймлайн цели и событий.",
     )
 
 
@@ -647,49 +647,49 @@ def _build_sensors_card(
     target_track = radar_tracks.get(objective_track_id) if objective_track_id else None
     target_label = str((target_track or {}).get("track_label") or objective.get("track_label") or "").strip()
     if result is not None:
-        current_status = "continuation result visible"
+        current_status = "результат продолжения на экране"
         effect = (
-            "Observation truth already changed the contour, so sensors now support "
-            "confirmation rather than discovery."
+            "Правда наблюдения уже изменила контур — сенсоры теперь работают "
+            "на подтверждение, а не на поиск."
         )
         next_attention = (
-            result.get("summary_ru") or "Carry the recorded observation result into the next operator step."
+            result.get("summary_ru") or "Перенесите записанный результат наблюдения в следующий шаг оператора."
         )
     elif target_designator and target_track is not None:
-        current_status = "observation target live"
-        effect = "Sensor picture is actively supporting the current observation contour."
-        next_attention = f"Keep {target_label or target_designator} in view while the contour is active."
+        current_status = "цель наблюдения в захвате"
+        effect = "Сенсорная картина активно поддерживает текущий контур наблюдения."
+        next_attention = f"Держите {target_label or target_designator} в поле зрения, пока контур активен."
     elif target_designator and objective_track_id:
         status = _merge_status(status, ViewStatus.WARN)
-        current_status = "target reacquire needed"
-        effect = "Observation flow depends on recovering the target in live radar truth."
-        next_attention = f"Reacquire {target_designator} before assuming the contour is still valid."
+        current_status = "нужен повторный захват цели"
+        effect = "Поток наблюдения зависит от восстановления цели в живой радар-правде."
+        next_attention = f"Повторно захватите {target_designator}, прежде чем считать контур действительным."
     elif status in {ViewStatus.WARN, ViewStatus.CRIT}:
-        current_status = "sensor confidence reduced"
-        effect = "Observation truth is degraded; identifications and route judgments need extra caution."
-        next_attention = "Watch critical sensor status before leaning on observation-heavy actions."
+        current_status = "доверие сенсоров снижено"
+        effect = "Правда наблюдения деградирована; опознавания и маршрутные суждения требуют осторожности."
+        next_attention = "Проверяйте критичный статус сенсоров до действий, завязанных на наблюдение."
     elif track_count > 0:
-        current_status = "radar picture live"
-        effect = "Live contacts are available and can inform the next operator decision."
-        next_attention = f"{track_count} live track(s) available for scene drill-down."
+        current_status = "радар-картина живая"
+        effect = "Живые контакты доступны и могут подкрепить следующее решение оператора."
+        next_attention = f"Живых треков: {track_count} — доступны для разбора сцены."
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "No honest sensor picture is available yet, so this card should remain informationally conservative."
-        next_attention = "Wait for sensor or radar truth before treating observation as grounded."
+        current_status = "правда неполна"
+        effect = "Честной сенсорной картины пока нет — карточка остаётся информационно сдержанной."
+        next_attention = "Дождитесь правды сенсоров или радара, прежде чем считать наблюдение обоснованным."
     else:
-        current_status = "sensor picture available"
-        effect = "No current contact is shaping the contour, but the sensor stack is not blocking operations."
-        next_attention = "Use F1 when a track or target becomes relevant."
+        current_status = "сенсорная картина доступна"
+        effect = "Контур сейчас не формируется контактом, но сенсорный стек операций не блокирует."
+        next_attention = "Откройте F1, когда трек или цель станут значимыми."
     summary_parts = [_summary_text(subsystem)]
     sensors_evidence = _sensors_evidence_line(subsystem)
     if sensors_evidence:
         summary_parts.append(sensors_evidence)
     if track_count:
-        summary_parts.append(f"tracks {track_count}")
+        summary_parts.append(f"треков {track_count}")
     if target_label:
-        summary_parts.append(f"target {target_label}")
+        summary_parts.append(f"цель {target_label}")
     elif target_designator:
-        summary_parts.append(f"target {target_designator}")
+        summary_parts.append(f"цель {target_designator}")
     return _make_card(
         "sensors",
         status=status,
@@ -697,7 +697,7 @@ def _build_sensors_card(
         summary=_join_summary(summary_parts),
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="F1 keeps the radar scene; F3 is for incidents, not for raw sensor dumps.",
+        quick_hint="F1 держит радар-сцену; F3 — для инцидентов, не для сырых сенсорных дампов.",
     )
 
 
@@ -711,25 +711,25 @@ def _build_comms_card(
     plane_enabled = _field_text(subsystem, "comms.plane_enabled")
     age_s = _field_text(subsystem, "comms.age_s")
     if status is ViewStatus.CRIT or plane_enabled.lower() == "off":
-        current_status = "link unavailable"
-        effect = "Telemetry freshness and protocol confidence are compromised for the current loop."
-        next_attention = "Restore the comms plane before relying on remote acknowledgements."
+        current_status = "канал недоступен"
+        effect = "Свежесть телеметрии и доверие к протоколу для текущего контура подорваны."
+        next_attention = "Восстановите плоскость связи, прежде чем полагаться на удалённые подтверждения."
     elif status is ViewStatus.WARN:
-        current_status = "link degraded"
-        effect = "Commands and telemetry may still flow, but latency, loss, or stale data are shaping operator trust."
-        next_attention = f"Watch freshness and loss; current age is {age_s}."
+        current_status = "канал деградирован"
+        effect = "Команды и телеметрия ещё идут, но задержка, потери или устаревание подтачивают доверие."
+        next_attention = f"Следите за свежестью и потерями; текущий возраст {age_s}."
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "Comms truth is not available yet, so protocol confidence should stay unresolved."
-        next_attention = "Wait for live link telemetry before assuming the channel is available."
+        current_status = "правда неполна"
+        effect = "Правда о связи недоступна — доверие к протоколу остаётся неразрешённым."
+        next_attention = "Дождитесь живой телеметрии канала, прежде чем считать его доступным."
     else:
-        current_status = "link available"
+        current_status = "канал доступен"
         effect = (
-            "Station dialogue and acknowledgements remain available."
+            "Диалог со станцией и подтверждения остаются доступны."
             if scene_profile == "docked"
-            else "No immediate comms gate is limiting the current operator flow."
+            else "Гейт связи сейчас не ограничивает операторский контур."
         )
-        next_attention = "Monitor latency if the contour becomes time-sensitive."
+        next_attention = "Следите за задержкой, если контур станет чувствительным ко времени."
     evidence_line = _comms_evidence_line(subsystem)
     summary = _summary_text(subsystem)
     if evidence_line:
@@ -741,7 +741,7 @@ def _build_comms_card(
         summary=summary,
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="If comms freshness slips, trust the live contour less aggressively.",
+        quick_hint="Если свежесть связи проседает — доверяйте живому контуру осторожнее.",
     )
 
 
@@ -764,31 +764,31 @@ def _build_safety_card(
     elif active_incidents > 0:
         status = _merge_status(status, ViewStatus.WARN)
     if safe_mode_active:
-        current_status = "safe mode active"
-        effect = "Q-Core safety authority overrides aggressive actions until the condition clears."
-        next_attention = safe_mode_reason or "Clear the safe-mode reason before escalating actions."
+        current_status = "SAFE MODE активен"
+        effect = "Санкция безопасности Q-Core блокирует агрессивные действия, пока условие не снято."
+        next_attention = safe_mode_reason or "Снимите причину safe-mode до эскалации действий."
     elif crit_incidents:
         latest = crit_incidents[0]
-        current_status = "critical hazard open"
-        effect = "Current contour should be incident-led; resolve or acknowledge the hazard before deeper system work."
+        current_status = "критическая угроза открыта"
+        effect = "Контур должен вести инцидент: устраните или квитируйте угрозу до глубокой работы с системами."
         next_attention = _incident_text(latest)
     elif status in {ViewStatus.WARN, ViewStatus.CRIT}:
-        current_status = "hazard watch"
-        effect = "Integrity or incident state is already shaping what the operator should risk next."
-        next_attention = "Keep hazard and integrity state ahead of route ambition."
+        current_status = "наблюдение за угрозой"
+        effect = "Состояние целостности или инцидентов уже определяет, чем оператору рисковать дальше."
+        next_attention = "Ставьте угрозы и целостность выше маршрутных амбиций."
     elif status is ViewStatus.NO_DATA:
-        current_status = "truth incomplete"
-        effect = "There is no honest integrity or hazard truth yet, so safety posture stays unresolved."
-        next_attention = "Wait for hull or safety events before assuming a clear posture."
+        current_status = "правда неполна"
+        effect = "Честной правды о целостности и угрозах пока нет — поза безопасности не разрешена."
+        next_attention = "Дождитесь событий корпуса или безопасности, прежде чем считать позу чистой."
     else:
-        current_status = "integrity stable"
-        effect = "No safety authority override is currently constraining the operator loop."
-        next_attention = "Maintain incident watch as the contour changes."
+        current_status = "целостность стабильна"
+        effect = "Санкция безопасности сейчас не ограничивает операторский контур."
+        next_attention = "Сохраняйте наблюдение за инцидентами при смене контура."
     summary_parts = [_summary_text(subsystem)]
     if safe_mode_reason:
         summary_parts.append(f"SAFE MODE: {safe_mode_reason}")
     if active_incidents:
-        summary_parts.append(f"incidents {active_incidents}")
+        summary_parts.append(f"инцидентов {active_incidents}")
     return _make_card(
         "safety",
         status=status,
@@ -796,7 +796,7 @@ def _build_safety_card(
         summary=_join_summary(summary_parts),
         operational_effect=effect,
         next_attention=next_attention,
-        quick_hint="F3 is the right place for incident drill-down after this overview flags the risk.",
+        quick_hint="F3 — разбор инцидентов после того, как обзор пометил риск.",
     )
 
 
@@ -1050,7 +1050,7 @@ def _safe_mode_header_line(safe_mode: dict[str, Any] | None) -> str | None:
         return None
     reason = str(safe_mode.get("reason") or "").strip()
     reason_text = f" ({reason})" if reason else ""
-    return f"Safety authority: SAFE MODE active{reason_text}"
+    return f"Санкция безопасности: SAFE MODE активен{reason_text}"
 
 
 def _action_link(action: str, value: str) -> str:
