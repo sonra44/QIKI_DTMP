@@ -9,6 +9,14 @@ from textual.widgets import Button, Static
 
 from qiki.services.operator_console.orion_v.operator_state import OperatorShellState
 
+# SAFETY_HEALTH_STRIP_CANON / ADR-0016: safe_envelope_state → primary SAFE code.
+_SAFE_ENVELOPE_CODE = {
+    "nominal": "OK",
+    "constrained": "CONSTR",
+    "breach": "BREACH",
+    "safe-mode": "SMODE",
+}
+
 _STATUS_VARIANT = {
     "normal": "success",
     "warning": "warning",
@@ -98,12 +106,20 @@ class OrionVStatusBars(Static):
         self._last_rendered_states = rendered_states
 
         alert_summary = self._state.always_on.alert_summary
-        safe_mode = self._state.always_on.safe_envelope_state or "nominal"
+        envelope_raw = self._state.always_on.safe_envelope_state
+        # SAFETY_HEALTH_STRIP_CANON / ADR-0016: primary row = engineering codes.
+        safe_code = _SAFE_ENVELOPE_CODE.get(envelope_raw or "nominal", "UNKNOWN")
         title = self.query_one("#orionv-status-title", Static)
         title.update(
-            f"КР{alert_summary.critical_count}/ПР{alert_summary.warning_count}/ВН{alert_summary.attention_count}"
-            f" | контур {safe_mode}"
-            f" | риск {self._state.derived.mission_risk_state or 'unknown'}"
+            f"ALRT C{alert_summary.critical_count} "
+            f"W{alert_summary.warning_count} "
+            f"A{alert_summary.attention_count} · SAFE {safe_code}"
+        )
+        # риск is the most-derived state (from counters + envelope); canon cuts it
+        # from the primary row to the tooltip (single-owner; primary shows codes).
+        title.tooltip = (
+            f"риск/risk: {self._state.derived.mission_risk_state or 'unknown'} | "
+            f"контур/envelope: {envelope_raw or 'unknown'}"
         )
         for chip in self._state.chips:
             button = self.query_one(f"#orionv-status-{chip.slug}-action", Button)

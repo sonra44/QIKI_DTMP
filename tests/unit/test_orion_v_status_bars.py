@@ -47,8 +47,9 @@ async def test_status_bars_render_compact_chips_from_hardware_model() -> None:
         power_chip = app.query_one("#orionv-status-power-action", Button).label.plain
         compute_chip = app.query_one("#orionv-status-compute-action", Button).label.plain
 
-        assert "КР0/ПР0/ВН0" in title
-        assert "риск nominal" in title
+        assert "ALRT C0 W0 A0" in title
+        assert "SAFE OK" in title
+        assert "риск" not in title  # ADR-0016: риск cut from primary row to tooltip
         assert "Power | OK" in power_chip
         assert "Compute | WARN" in compute_chip
         assert "Уровень заряда" not in power_chip
@@ -81,7 +82,7 @@ async def test_status_bars_qiki_chip_reflects_pending_action() -> None:
         title = app.query_one("#orionv-status-title", Static).render().plain
         qiki_chip = app.query_one("#orionv-status-qiki-action", Button)
 
-        assert "контур safe-mode" in title
+        assert "SAFE SMODE" in title
         assert "pending confirm" in qiki_chip.label.plain
         assert qiki_chip.variant == "warning"
 
