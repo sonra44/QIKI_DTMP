@@ -47,7 +47,10 @@ class OrionVAlertsOverlay(Static):
         summary_state = self._state.always_on.alert_summary
         focus_alert = summary_state.focus_alert
         if focus_alert is None:
-            summary = "Алерты: чисто | контур готов"
+            # SAFETY_HEALTH_STRIP_CANON / ADR-0016: the nominal overlay duplicates
+            # the ALRT C0 W0 A0 counters in the title; show the overlay only on an
+            # actionable non-nominal alert, nothing on nominal.
+            summary = ""
         else:
             next_hint = f" | дальше {focus_alert.next_action_hint}" if focus_alert.next_action_hint else ""
             stale = " | stale" if summary_state.stale else ""

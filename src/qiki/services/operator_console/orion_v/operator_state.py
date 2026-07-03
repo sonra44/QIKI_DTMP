@@ -710,7 +710,7 @@ def _build_subsystem_chips(
         _subsystem_chip(
             hardware_model=hardware_model,
             subsystem_id="power",
-            label="Power",
+            label="PWR",
             action="select_subsystem",
             target="power",
             summary_fallback="no power truth",
@@ -720,7 +720,7 @@ def _build_subsystem_chips(
         _subsystem_chip(
             hardware_model=hardware_model,
             subsystem_id="thermal",
-            label="Thermal",
+            label="THRM",
             action="select_subsystem",
             target="thermal",
             summary_fallback="no thermal truth",
@@ -730,7 +730,7 @@ def _build_subsystem_chips(
         _subsystem_chip(
             hardware_model=hardware_model,
             subsystem_id="propulsion",
-            label="Propulsion",
+            label="PROP",
             action="select_subsystem",
             target="propulsion",
             summary_fallback="no propulsion truth",
@@ -740,7 +740,7 @@ def _build_subsystem_chips(
         _subsystem_chip(
             hardware_model=hardware_model,
             subsystem_id="hull",
-            label="Hull",
+            label="HULL",
             action="select_subsystem",
             target="hull",
             summary_fallback="no hull truth",
@@ -750,7 +750,7 @@ def _build_subsystem_chips(
         _subsystem_chip(
             hardware_model=hardware_model,
             subsystem_id="compute",
-            label="Compute",
+            label="CPU",
             action="select_subsystem",
             target="compute",
             summary_fallback="no compute truth",
