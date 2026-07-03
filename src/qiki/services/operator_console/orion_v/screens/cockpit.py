@@ -293,9 +293,9 @@ class OrionVCockpitScreen(Static):
 
     def on_mount(self) -> None:
         for selector, title, subtitle in (
-            ("#orionv-mfd-status", "ORION MFD / ГЛАВНЫЙ ЭКРАН", "truth | context | action readiness"),
+            ("#orionv-mfd-status", "ORION MFD / ГЛАВНЫЙ ЭКРАН", "правда | контекст | готовность"),
             ("#orionv-mfd-left-screen", "ЛЕВЫЙ MFD", "внешний мир | радар | навигация"),
-            ("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "тело QIKI | системы | evidence"),
+            ("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "тело QIKI | системы | улики"),
             ("#orionv-mfd-qiki", "QIKI / ОПЕРАТОР", "решение | подтверждение | доказательства"),
         ):
             try:
