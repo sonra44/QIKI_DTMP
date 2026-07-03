@@ -2506,7 +2506,9 @@ class OrionVCockpitScreen(Static):
 
     @staticmethod
     def _section_divider() -> str:
-        return "[dim]·[/dim] [dim]·[/dim] [dim]·[/dim]"
+        # plain text: this string also flows into plain-rendered MFD panes,
+        # where rich markup would leak to the operator as literal [dim] tags
+        return "· · ·"
 
     def _severity_markup(self, severity: str) -> str:
         label = _severity_label(severity)

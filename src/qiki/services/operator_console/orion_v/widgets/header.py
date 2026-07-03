@@ -69,8 +69,10 @@ class OrionVHeader(Static):
             f" | M: [b]{mode_value}[/b]"
             f" | A: [b]{authority_value}[/b]"
         )
+        # avoid "СВЯЗЬ Связь отсутствует": the status value may already start with the word
+        status_text = status[6:].lstrip() if status.lower().startswith("связь ") else status
         line_2 = (
-            f"СВЯЗЬ [{status_color}]{status}[/{status_color}]"
+            f"СВЯЗЬ [{status_color}]{status_text}[/{status_color}]"
             f" | СВЕЖ [b]{freshness}[/b]"
             f" | ЗАДЕРЖ [b]{latency}[/b]"
             f" | ПОТЕРИ [b]{loss}[/b]"

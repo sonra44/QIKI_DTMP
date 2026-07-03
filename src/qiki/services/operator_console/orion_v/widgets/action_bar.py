@@ -127,7 +127,9 @@ class OrionVActionBar(Static):
                 (
                     f"M {mode_text}",
                     f"L {loop.current_level.upper()}",
-                    f"LOOP {loop.last_command_status}",
+                    # CMD, not LOOP: this is the last-command status; "LOOP" collided
+                    # with the F1 playable-loop phase and read as a contradiction
+                    f"CMD {loop.last_command_status}",
                     f"P {loop.pending_command_count}",
                     f"ACT {required_text}",
                     f"INC {incident_text}",

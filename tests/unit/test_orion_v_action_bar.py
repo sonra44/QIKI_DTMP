@@ -63,7 +63,7 @@ async def test_action_bar_hides_irrelevant_controls_outside_context() -> None:
         assert app.query_one("#orionv-action-ack", Button).disabled is False
         feedback = app.query_one("#orionv-help", Static).render().plain
         assert "M LIVE" in feedback
-        assert "LOOP idle" in feedback
+        assert "CMD idle" in feedback  # last-command status (renamed from LOOP: collided with F1 playable loop)
 
 
 @pytest.mark.asyncio

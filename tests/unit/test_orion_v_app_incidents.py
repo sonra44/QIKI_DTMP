@@ -1881,12 +1881,13 @@ async def test_status_bars_always_visible_with_nodata_before_telemetry(monkeypat
         bars = app.query_one("#orionv-bars", OrionVStatusBars)
         assert not bars.has_class("hidden")
         power_chip = app.query_one("#orionv-status-power-action")
-        assert "NO DATA" in power_chip.label.plain
+        # chip now shows the status once ("NODATA"), not "NODATA | NO DATA"
+        assert "NODATA" in power_chip.label.plain
 
         await app._on_telemetry({"data": {"power": {"soc_pct": 80.0}}})
         await pilot.pause()
         power_chip = app.query_one("#orionv-status-power-action")
-        assert "NO DATA" not in power_chip.label.plain
+        assert "NODATA" not in power_chip.label.plain
 
 
 @pytest.mark.asyncio

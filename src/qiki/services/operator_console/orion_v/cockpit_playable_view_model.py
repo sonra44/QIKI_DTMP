@@ -537,16 +537,9 @@ def build_cockpit_hint_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitHintVM, ..
     """Build context-sensitive F1 hints for the focused panel."""
 
     panel_hint = _COCKPIT_PANEL_HINTS.get(vm.focused_panel_id, _COCKPIT_PANEL_HINTS["command"])
+    # no "f1_keys" hint here: the same key map is already always visible
+    # as the dedicated "F1 HINT |" line — a second verbatim copy was noise
     hints = [
-        CockpitHintVM(
-            hint_id="f1_keys",
-            panel_id=vm.focused_panel_id,
-            severity="info",
-            text="←/→ action | ↑/↓ panel | SPACE preview | ENTER apply | E evidence | H help",
-            key_hint="keyboard",
-            source="orion.f1_focus_view_model",
-            trust_status="view_model_backed",
-        ),
         CockpitHintVM(
             hint_id="f1_panel",
             panel_id=vm.focused_panel_id,

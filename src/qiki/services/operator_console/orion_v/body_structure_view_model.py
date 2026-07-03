@@ -298,9 +298,9 @@ def format_body_structure_cockpit_line(vm: BodyStructureConsoleViewModel | None 
         )
     if vm.last_decision == "attached":
         return (
-            f"BODY STRUCTURE | online | faces={vm.faces_total} | modules={vm.attached_modules_count} | "
-            f"attached @ {vm.mount_point} | {vm.trust_status} | "
-            f"BODY online: {vm.attached_modules_count} module @ {vm.mount_point} | ready={ready}"
+            f"BODY STRUCTURE | online | faces={vm.faces_total} | "
+            f"modules={vm.attached_modules_count} @ {vm.mount_point} | "
+            f"ready={ready} | {vm.trust_status}"
         )
     if vm.last_decision == "waiting":
         return (

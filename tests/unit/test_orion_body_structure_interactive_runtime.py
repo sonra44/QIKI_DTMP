@@ -68,7 +68,7 @@ def test_press_b_runs_attach_pipeline_and_updates_f1_f2_f8() -> None:
     f2 = format_body_structure_system_summary(vm)
     f8 = "\n".join(render_card_text(card) for card in build_body_structure_evidence_card_vms(vm))
 
-    assert "attached @ F06" in f1
+    assert "modules=1 @ F06" in f1  # dedup format: attach visible via modules@mount
     assert "modules=1" in f1
     assert "Before" in f2
     assert "After" in f2

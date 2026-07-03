@@ -153,7 +153,9 @@ def _safe_power_summary(power_thermal_vm: Any) -> str:
 
 def _face_map_lines(body_vm: Any) -> list[str]:
     rows = ["Face Map", "source: body_structure_view_model / attach seed"]
-    rows.extend(format_face_map_lines(_get(body_vm, "faces", ())))
+    face_lines = list(format_face_map_lines(_get(body_vm, "faces", ())))
+    # format_face_map_lines emits its own "Face Map" title — drop it to avoid a double header
+    rows.extend(face_lines[1:] if face_lines[:1] == ["Face Map"] else face_lines)
     rows.extend(
         [
             "",

@@ -247,7 +247,9 @@ def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
     assert focus.can_apply is True
     assert focus.can_open_evidence is False
     assert "Ctrl+P command palette enabled" in focus.palette_hint
-    assert {hint.hint_id for hint in hints} >= {"f1_keys", "f1_panel", "f1_evidence_pending"}
+    # f1_keys hint removed: the key map is already the always-visible "F1 HINT |" line
+    assert {hint.hint_id for hint in hints} >= {"f1_panel", "f1_evidence_pending"}
+    assert "f1_keys" not in {hint.hint_id for hint in hints}
     assert "F1 FOCUS | panel=SENSORS | action=SENSOR FOCUS" in lines
     assert "F1 HINT | ←/→ action | ↑/↓ panel" in lines
     assert "F1 PALETTE | Ctrl+P" in lines

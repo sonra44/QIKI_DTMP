@@ -107,7 +107,11 @@ class OrionVStatusBars(Static):
         )
         for chip in self._state.chips:
             button = self.query_one(f"#orionv-status-{chip.slug}-action", Button)
-            details: list[str] = [chip.label, chip.status.upper(), chip.short_summary]
+            details: list[str] = [chip.label, chip.status.upper()]
+            summary = (chip.short_summary or "").strip()
+            # skip the summary when it just restates the status ("NODATA" + "NO DATA")
+            if summary and summary.replace(" ", "").upper() != chip.status.replace("_", "").upper():
+                details.append(summary)
             if chip.stale:
                 details.append("stale")
             elif chip.severity != "normal" and isinstance(chip.numeric_anchor, (int, float)):
