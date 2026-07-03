@@ -405,9 +405,14 @@ def test_cockpit_safe_mode_section_is_ok_when_inactive() -> None:
 
 def test_cockpit_safe_mode_section_stays_ok_when_signal_is_absent_but_shell_is_nominal() -> None:
     screen = _CaptureCockpit()
+    # nominal power + thermal so this test isolates its real intent (absent
+    # safe-mode signal + nominal shell must not warn) instead of leaning on
+    # missing power/thermal telemetry, which §19.6 now flags as non-green.
     telemetry = {
         "sim_state": {"fsm_state": "RUNNING", "paused": False, "speed": 1.0},
         "comms": {"link": "online", "latency_ms": 90.0, "packet_loss_pct": 0.0},
+        "power": {"soc_pct": 82.0, "bus_v": 27.9, "bus_a": 3.1},
+        "thermal": {"core_c": 41.0, "radiator_c": 30.0},
     }
     shell_state = build_operator_shell_state(
         hardware_model=None,
@@ -434,6 +439,24 @@ def test_cockpit_safe_mode_section_stays_ok_when_signal_is_absent_but_shell_is_n
     assert "СИСТЕМА:" in text
     assert "НОРМА" in text
     assert "Есть предупреждения, требуется наблюдение." not in text
+
+
+def test_cockpit_energy_thermal_not_green_without_source() -> None:
+    # §19.6 / ADR-0014: ORION must not show a confident green/NOMINAL indicator
+    # for a subsystem whose telemetry source is missing. With empty telemetry the
+    # ENERGY and THERMAL quick-fact chips must flag WARN, not NOMINAL.
+    screen = _CaptureCockpit()
+    screen.set_state(
+        telemetry={},
+        nats_connected=True,
+        active_incidents=0,
+        incidents=[],
+    )
+    text = _render_text(screen)
+    assert "ENERGY       | WARN" in text
+    assert "THERMAL      | WARN" in text
+    assert "ENERGY       | NOMINAL" not in text
+    assert "THERMAL      | NOMINAL" not in text
 
 
 def test_cockpit_energy_block_renders_shed_reasons() -> None:

@@ -1879,6 +1879,11 @@ class OrionVCockpitScreen(Static):
             severity = "warn"
         if load_shedding is True:
             severity = _merge_severity(severity, "warn")
+        # §19.6 / ADR-0014: no confident green without source. If battery SOC is
+        # unknown, ORION cannot claim energy nominal — flag it (as _safety_block
+        # already does for missing safe-mode data). The detail line shows "Нет данных".
+        if severity == "ok" and soc is None:
+            severity = "warn"
 
         eta = _pick_num(tel, ["power", "eta_discharge_s"])
         if eta is None:
@@ -2091,6 +2096,11 @@ class OrionVCockpitScreen(Static):
             or ("warn" in thermal_warning)
             or ("alarm" in thermal_warning)
         ):
+            severity = "warn"
+        # §19.6 / ADR-0014: no confident green without source. With no core temp,
+        # no node telemetry and no warning text there is nothing to verify — do not
+        # show nominal green (the thermal-evidence line already marks it missing).
+        if severity == "ok" and core is None and not nodes and not thermal_warning:
             severity = "warn"
 
         trend = "стабильно"
