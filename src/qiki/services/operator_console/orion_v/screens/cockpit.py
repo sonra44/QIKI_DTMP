@@ -122,6 +122,7 @@ class OrionVCockpitScreen(Static):
 
     #orionv-mfd-main {
         height: 1fr;
+        min-height: 12;
         layout: horizontal;
     }
 
@@ -207,7 +208,8 @@ class OrionVCockpitScreen(Static):
     #orionv-mfd-qiki {
         height: auto;
         min-height: 5;
-        max-height: 48;
+        max-height: 16;
+        overflow-y: auto;
         border: round #9a7c3f;
         border-title-color: #d6b35f;
         background: #12140f;
