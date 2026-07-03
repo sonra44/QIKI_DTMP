@@ -28,6 +28,7 @@ from qiki.services.operator_console.orion_v.body_structure_view_model import (
     get_body_structure_console_view_model,
 )
 from qiki.services.operator_console.orion_v.evidence_card_vm import EvidenceCardVM
+from qiki.services.operator_console.orion_v.i18n_ru import phys_ru
 
 BODY_PHYSICS_MODE = "console-visible mass/CoM/inertia pending seed"
 BODY_PHYSICS_SOURCE = "local_body_physics_seed"
@@ -106,41 +107,41 @@ def format_body_physics_cockpit_line(vm: BodyPhysicsConsoleViewModel | None = No
     vm = vm or get_body_physics_console_view_model()
     if not vm.module_attached:
         return (
-            "BODY PHYSICS(seed) | waiting | mass=unchanged | "
-            f"CoM={vm.com_delta_class} | inertia={vm.inertia_class} | press B"
+            "ФИЗИКА(посев) | ожидание | масса: без изменений | "
+            f"ЦМ: {phys_ru(vm.com_delta_class)} | инерция: {phys_ru(vm.inertia_class)} | B"
         )
     return (
-        "BODY PHYSICS(seed) | mass=pending | "
-        f"CoM={vm.com_delta_class} | inertia={vm.inertia_class} | "
-        f"thrust_map={vm.thrust_map_status} | torque_map={vm.torque_map_status}"
+        "ФИЗИКА(посев) | масса: ожидается | "
+        f"ЦМ: {phys_ru(vm.com_delta_class)} | инерция: {phys_ru(vm.inertia_class)} | "
+        f"карта тяги: {phys_ru(vm.thrust_map_status)} | карта момента: {phys_ru(vm.torque_map_status)}"
     )
 
 
 def format_body_physics_system_summary(vm: BodyPhysicsConsoleViewModel | None = None) -> str:
     """F2 summary for the physical consequence pending seed."""
     vm = vm or get_body_physics_console_view_model()
-    blocked = ", ".join(vm.blocked_maneuvers) if vm.blocked_maneuvers else "none"
+    blocked = ", ".join(phys_ru(m) for m in vm.blocked_maneuvers) if vm.blocked_maneuvers else "нет"
     reasons = ", ".join(vm.reason_codes) if vm.reason_codes else "none"
     return "\n".join(
         [
-            "Body / Physical Consequences",
-            f"Source             {vm.source}",
-            f"Transport          {vm.transport}",
-            f"Trust              {vm.trust_status}",
+            "Корпус / Физические последствия",
+            f"Источник           {vm.source}",
+            f"Транспорт          {vm.transport}",
+            f"Доверие            {vm.trust_status}",
             f"Runtime            {vm.runtime_conformance}",
-            f"Base body mass     {vm.base_body_mass_status}",
-            f"Module             {vm.module_id or 'none'}",
-            f"Module mass        {vm.module_mass_status}",
-            f"Mounted at         {vm.mount_point}",
-            f"Mass state         {vm.mass_state}",
-            f"CoM delta          {vm.com_delta_class}",
-            f"Inertia class      {vm.inertia_class}",
-            f"Maneuver impact    {vm.maneuver_impact}",
-            f"Blocked maneuvers  {blocked}",
-            f"Thrust Map         {vm.thrust_map_status}",
-            f"Torque Map         {vm.torque_map_status}",
-            f"Reason codes       {reasons}",
-            f"Evidence           {vm.evidence_card_type} / {vm.evidence_card_id}",
+            f"Масса корпуса      {phys_ru(vm.base_body_mass_status)}",
+            f"Модуль             {vm.module_id or 'нет'}",
+            f"Масса модуля       {vm.module_mass_status}",
+            f"Гнездо             {vm.mount_point}",
+            f"Состояние массы    {phys_ru(vm.mass_state)}",
+            f"Смещение ЦМ        {phys_ru(vm.com_delta_class)}",
+            f"Класс инерции      {phys_ru(vm.inertia_class)}",
+            f"Влияние на манёвр  {phys_ru(vm.maneuver_impact)}",
+            f"Заблокировано      {blocked}",
+            f"Карта тяги         {phys_ru(vm.thrust_map_status)}",
+            f"Карта момента      {phys_ru(vm.torque_map_status)}",
+            f"Коды причин        {reasons}",
+            f"Улика              {vm.evidence_card_type} / {vm.evidence_card_id}",
         ]
     )
 
@@ -158,12 +159,12 @@ def build_body_physics_evidence_card_vms(
                 headline="Физических последствий пока нет. Нажмите B — проверка корпуса.",
                 reason_text="BODY_PHYSICS_WAITING",
                 detail_lines=(
-                    f"source: {vm.source}",
-                    f"transport: {vm.transport}",
-                    "trust: missing",
+                    f"источник: {vm.source}",
+                    f"транспорт: {vm.transport}",
+                    "доверие: missing",
                     f"runtime_conformance: {vm.runtime_conformance}",
-                    f"thrust_map: {vm.thrust_map_status}",
-                    f"torque_map: {vm.torque_map_status}",
+                    f"карта тяги: {phys_ru(vm.thrust_map_status)}",
+                    f"карта момента: {phys_ru(vm.torque_map_status)}",
                 ),
             )
         ]
@@ -172,21 +173,21 @@ def build_body_physics_evidence_card_vms(
             subsystem="ФИЗИКА КОРПУСА",
             state_key="target",
             headline=(
-                f"{vm.evidence_card_type} | module={vm.module_id} | "
-                f"CoM={vm.com_delta_class} | inertia={vm.inertia_class}"
+                f"{vm.evidence_card_type} | модуль: {vm.module_id} | "
+                f"ЦМ: {phys_ru(vm.com_delta_class)} | инерция: {phys_ru(vm.inertia_class)}"
             ),
             reason_text=", ".join(vm.reason_codes),
             detail_lines=(
-                f"module: {vm.module_id}",
-                f"mount: {vm.mount_point}",
-                f"mass_status: {vm.module_mass_status}",
-                f"mass_state: {vm.mass_state}",
-                f"CoM_delta_class: {vm.com_delta_class}",
-                f"inertia_class: {vm.inertia_class}",
-                f"maneuver_impact: {vm.maneuver_impact}",
-                f"blocked_maneuvers: {', '.join(vm.blocked_maneuvers) if vm.blocked_maneuvers else 'none'}",
-                f"thrust_map: {vm.thrust_map_status}",
-                f"torque_map: {vm.torque_map_status}",
+                f"модуль: {vm.module_id}",
+                f"гнездо: {vm.mount_point}",
+                f"масса модуля: {vm.module_mass_status}",
+                f"состояние массы: {phys_ru(vm.mass_state)}",
+                f"смещение ЦМ: {phys_ru(vm.com_delta_class)}",
+                f"класс инерции: {phys_ru(vm.inertia_class)}",
+                f"влияние на манёвр: {phys_ru(vm.maneuver_impact)}",
+                f"заблокировано: {', '.join(phys_ru(m) for m in vm.blocked_maneuvers) if vm.blocked_maneuvers else 'нет'}",
+                f"карта тяги: {phys_ru(vm.thrust_map_status)}",
+                f"карта момента: {phys_ru(vm.torque_map_status)}",
                 f"source: {vm.source}",
                 f"transport: {vm.transport}",
                 f"trust: {vm.trust_status}",

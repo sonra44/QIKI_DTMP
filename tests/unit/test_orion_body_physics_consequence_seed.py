@@ -55,15 +55,15 @@ def test_body_physics_seed_initial_state_has_no_module_impact() -> None:
     assert vm.runtime_conformance == BODY_PHYSICS_RUNTIME_CONFORMANCE
 
     visible = _visible_text()
-    assert "BODY PHYSICS(seed)" in visible
-    assert "waiting" in visible
-    assert "mass=unchanged" in visible
-    assert "CoM=unknown / waiting for attach" in visible
-    assert "inertia=unknown / waiting for attach" in visible
-    assert "Body / Physical Consequences" in visible
-    assert "Mass state         unchanged" in visible
-    assert "Thrust Map         TBD" in visible
-    assert "Torque Map         TBD" in visible
+    assert "ФИЗИКА(посев)" in visible
+    assert "ожидание" in visible
+    assert "масса: без изменений" in visible
+    assert "ЦМ: неизвестно / ждём установки модуля" in visible
+    assert "инерция: неизвестно / ждём установки модуля" in visible
+    assert "Корпус / Физические последствия" in visible
+    assert "Состояние массы    без изменений" in visible
+    assert "Карта тяги         не задано" in visible
+    assert "Карта момента      не задано" in visible
     assert "Физических последствий пока нет" in visible
     assert "runtime_conformance: not claimed" in visible
 
@@ -100,14 +100,14 @@ def test_body_physics_seed_does_not_claim_known_com_inertia_or_canon_trust() -> 
     visible = _visible_text()
 
     assert "BODY_PHYSICAL_CONSEQUENCE_SEED_PENDING" in visible
-    assert "CoM=unknown / requires mass + geometry" in visible
-    assert "inertia=unknown / requires inertia model" in visible
+    assert "ЦМ: неизвестно / нужны масса и геометрия" in visible
+    assert "инерция: неизвестно / нужна модель инерции" in visible
     assert "trust: seed_only" in visible
     assert "runtime_conformance: not claimed" in visible
-    assert "thrust_map=TBD" in visible
-    assert "torque_map=TBD" in visible
-    assert "Thrust Map         TBD" in visible
-    assert "Torque Map         TBD" in visible
+    assert "карта тяги: не задано" in visible
+    assert "карта момента: не задано" in visible
+    assert "Карта тяги         не задано" in visible
+    assert "Карта момента      не задано" in visible
 
     forbidden_fragments = (
         "C1 " + "minor",
@@ -132,11 +132,11 @@ def test_f8_evidence_contains_pending_body_physical_consequence_card() -> None:
 
     assert "ФИЗИКА КОРПУСА" in text
     assert "BODY_PHYSICAL_CONSEQUENCE_SEED_PENDING" in text
-    assert f"module: {BODY_STRUCTURE_TEST_MODULE_ID}" in text
-    assert "mount: F06" in text
-    assert "mass_status: test_fixture only / not canon" in text
-    assert "CoM_delta_class: unknown / requires mass + geometry" in text
-    assert "inertia_class: unknown / requires inertia model" in text
+    assert f"модуль: {BODY_STRUCTURE_TEST_MODULE_ID}" in text
+    assert "гнездо: F06" in text
+    assert "масса модуля: test_fixture only / not canon" in text
+    assert "смещение ЦМ: неизвестно / нужны масса и геометрия" in text
+    assert "класс инерции: неизвестно / нужна модель инерции" in text
     assert "source: local_body_physics_seed" in text
     assert "trust: seed_only" in text
     assert "read_only: true" in text
@@ -155,7 +155,7 @@ def test_reset_clears_body_physics_seed() -> None:
     assert vm.mass_changed is False
     assert vm.com_delta_class == "unknown / waiting for attach"
     assert vm.inertia_class == "unknown / waiting for attach"
-    assert "waiting" in format_body_physics_cockpit_line(vm)
+    assert "ожидание" in format_body_physics_cockpit_line(vm)
 
 
 def test_orion_f1_f2_f8_files_mount_body_physics_seed_without_touching_power_charge_title() -> None:

@@ -29,7 +29,7 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     format_soc_bat,
     format_soc_cap,
 )
-from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
+from qiki.services.operator_console.orion_v.i18n_ru import phys_ru, state_ru, tr
 from qiki.services.operator_console.orion_v.mfd_layout import (
     MFD_DEFAULT_LEFT_PAGE,
     MFD_DEFAULT_RIGHT_PAGE,
@@ -779,9 +779,9 @@ class OrionVCockpitScreen(Static):
         ]
         physics_rows = [
             f"Физика: {physics_vm.evidence_card_type}",
-            f"mass={physics_vm.mass_state} | CoM={physics_vm.com_delta_class} | inertia={physics_vm.inertia_class}",
-            f"Thrust Map={physics_vm.thrust_map_status} | Torque Map={physics_vm.torque_map_status}",
-            f"trust={physics_vm.trust_status} | runtime={physics_vm.runtime_conformance}",
+            f"масса: {phys_ru(physics_vm.mass_state)} | ЦМ: {phys_ru(physics_vm.com_delta_class)} | инерция: {phys_ru(physics_vm.inertia_class)}",
+            f"карта тяги: {phys_ru(physics_vm.thrust_map_status)} | карта момента: {phys_ru(physics_vm.torque_map_status)}",
+            f"доверие: {physics_vm.trust_status} | runtime: {physics_vm.runtime_conformance}",
         ]
         power_rows = [
             f"Power({power_vm.source}): SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
@@ -832,7 +832,7 @@ class OrionVCockpitScreen(Static):
                     _extract_mfd_sections(body_lines, ("Движение", "Наведение", "motion"), chunk=5, limit=14),
                     limit=14,
                 ),
-                *section_lines("Body Physics Pending", physics_rows, limit=6),
+                *section_lines("Физика корпуса (ожидается)", physics_rows, limit=6),
             ],
             "docking": [
                 *section_lines(

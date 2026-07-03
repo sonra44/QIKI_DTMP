@@ -83,3 +83,28 @@ def state_ru(value: object) -> str:
     text = str(value or "").strip()
     return STATE_RU.get(text.lower(), text)
 
+
+# Проза физических последствий для игрового поля (ПОКАЗ; значения в VM остаются
+# как есть — тесты держат их как честную семантику «модель не знает»).
+PHYS_RU = {
+    "unknown / waiting for attach": "неизвестно / ждём установки модуля",
+    "unknown / requires mass + geometry": "неизвестно / нужны масса и геометрия",
+    "unknown / requires mass+geometry": "неизвестно / нужны масса и геометрия",
+    "unknown / requires inertia model": "неизвестно / нужна модель инерции",
+    "pending; requires mass + geometry": "ожидается / нужны масса и геометрия",
+    "unchanged": "без изменений",
+    "TBD": "не задано",
+    "aggressive burn not unlocked": "агрессивный манёвр не разблокирован",
+    "none; waiting for attach self-check": "нет; ждём проверку корпуса (B)",
+    "pending; do not unlock aggressive burn until real mass/CoM/inertia and "
+    "Thrust/Torque maps exist":
+        "ожидается; агрессивный манёвр не разблокировать до реальных массы/ЦМ/инерции "
+        "и карт тяги/момента",
+    "none": "нет",
+}
+
+
+def phys_ru(value: object) -> str:
+    """Русское отображение прозы физики; незнакомое — как есть."""
+    return PHYS_RU.get(str(value or "").strip(), str(value or ""))
+
