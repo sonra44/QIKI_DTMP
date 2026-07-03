@@ -277,7 +277,7 @@ class OrionVApp(App[None]):
         self._command_mode_open = False
         self._help_text = "Команды: help"
         self._last_command_status = "idle"
-        self._last_command_summary = "No command issued yet"
+        self._last_command_summary = "Команда ещё не подавалась"
         self._operator_shell_state = OperatorShellState.empty()
         self._last_telemetry_received_wall: float | None = None
         self._safe_mode_state: dict[str, Any] = {

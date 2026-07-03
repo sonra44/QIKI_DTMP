@@ -162,11 +162,11 @@ class DerivedOperatorIndicators:
 @dataclass(frozen=True, slots=True)
 class OperatorLoopState:
     last_command_status: str = "idle"
-    last_command_summary: str = "No command issued yet"
+    last_command_summary: str = "Команда ещё не подавалась"
     pending_command_count: int = 0
     operator_action_required: bool = False
     command_mode_state: str = "standby"
-    hotkey_context: str = "F1/F2/F3/F4/F6/F7 switch shells | '/' ':' open command"
+    hotkey_context: str = "F1/F2/F3/F4/F6/F7 — экраны | '/' ':' — команда"
     status_text: str = "Команды: help"
     current_level: str = "f1"
     replay_mode: bool = False
@@ -1407,9 +1407,9 @@ def _chip_hint(subsystem: SubsystemView) -> str:
 
 def _hotkey_context(*, command_mode_open: bool, current_level: str, has_selected_incident: bool) -> str:
     if command_mode_open:
-        return "Enter submit | Esc close | q: asks QIKI"
+        return "Enter — отправить | Esc — закрыть | q: — запрос к QIKI"
     if current_level in {"f3", "f6"}:
-        return "PgUp/PgDn pages | Up/Down incident focus"
+        return "PgUp/PgDn — страницы | ↑/↓ — выбор инцидента"
     if has_selected_incident:
-        return "A ack selected incident | X clear acknowledged"
-    return "F1/F2/F3/F4/F6/F7 switch shells | '/' ':' open command"
+        return "A — квитировать инцидент | X — снять квитированные"
+    return "F1/F2/F3/F4/F6/F7 — экраны | '/' ':' — команда"
