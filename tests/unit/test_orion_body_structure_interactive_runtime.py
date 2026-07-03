@@ -39,8 +39,8 @@ def test_initial_body_structure_interactive_state_is_waiting() -> None:
     assert "modules=0" in f1
     assert "F06=free" in f1
     assert "press B" in f1
-    assert "Attached modules  0" in f2
-    assert "Evidence          none yet" in f2
+    assert "Модулей           0" in f2
+    assert "Улики             пока нет" in f2
     assert "Улик по установке модуля пока нет" in f8
 
 
@@ -70,8 +70,8 @@ def test_press_b_runs_attach_pipeline_and_updates_f1_f2_f8() -> None:
 
     assert "modules=1 @ F06" in f1  # dedup format: attach visible via modules@mount
     assert "modules=1" in f1
-    assert "Before" in f2
-    assert "After" in f2
+    assert "До" in f2
+    assert "После" in f2
     assert "modules         0" in f2
     assert "modules         1" in f2
     assert BODY_STRUCTURE_TEST_MODULE_ID in f2

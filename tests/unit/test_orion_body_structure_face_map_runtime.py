@@ -32,12 +32,12 @@ def test_face_map_initial_state_shows_12_free_faces() -> None:
     assert vm.selected_face_role == "mission"
     assert vm.selected_face_occupancy == "free"
     assert vm.attached_modules_count == 0
-    assert "Face Map" in text
+    assert "Карта граней" in text
     for face_id in [f"F{i:02d}" for i in range(12)]:
         assert face_id in text
     assert "F06" in text
     assert "mission" in text
-    assert "Selected face" in text
+    assert "Выбранная грань" in text
 
 
 def test_face_map_after_attach_marks_f06_occupied() -> None:
@@ -93,8 +93,8 @@ def test_f2_systems_renders_face_map_and_selected_face() -> None:
     run_body_structure_interactive_self_check()
     text = format_body_structure_system_summary()
 
-    assert "Face Map" in text
-    assert "Selected face" in text
+    assert "Карта граней" in text
+    assert "Выбранная грань" in text
     assert "face_id         F06" in text
     assert "role            mission" in text
     assert "occupancy       occupied" in text

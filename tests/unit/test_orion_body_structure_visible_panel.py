@@ -64,15 +64,15 @@ def test_f2_systems_body_structure_summary_has_operator_fields() -> None:
     text = format_body_structure_system_summary(build_body_structure_self_check_view_model())
 
     assert "Корпус / Модули" in text
-    assert "Seed status       online" in text
-    assert "Faces             F00-F11 (12)" in text
-    assert "Module            test_sensor_module_001" in text
-    assert "Mount             F06" in text
-    assert "Runtime ready     false" in text
-    assert "Capability        inactive" in text
-    assert "Source            body_structure.runtime_seed" in text
-    assert "Trust             audit_backed" in text
-    assert "Evidence          card:" in text
+    assert "Статус посева     online" in text
+    assert "Грани             F00-F11 (12)" in text
+    assert "Модуль            test_sensor_module_001" in text
+    assert "Гнездо            F06" in text
+    assert "Готов к работе    false" in text
+    assert "Способность       inactive" in text
+    assert "Источник          body_structure.runtime_seed" in text
+    assert "Доверие           audit_backed" in text
+    assert "Улики             card:" in text
 
 
 def test_f8_evidence_contains_body_attach_registered_card() -> None:

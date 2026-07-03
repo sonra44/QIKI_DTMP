@@ -103,7 +103,7 @@ class BodyStructureInteractiveController:
             self._selected_face_id = next_face_id(self._selected_face_id, self._body.face_ids)
             self._snapshot = self._navigation_snapshot(
                 last_action="select_next_face",
-                operator_hint=f"selected {self._selected_face_id}; press N/P to cycle faces",
+                operator_hint=f"выбрана {self._selected_face_id}; N/P — смена грани",
             )
             return self._snapshot
 
@@ -117,7 +117,7 @@ class BodyStructureInteractiveController:
             self._selected_face_id = previous_face_id(self._selected_face_id, self._body.face_ids)
             self._snapshot = self._navigation_snapshot(
                 last_action="select_previous_face",
-                operator_hint=f"selected {self._selected_face_id}; press N/P to cycle faces",
+                operator_hint=f"выбрана {self._selected_face_id}; N/P — смена грани",
             )
             return self._snapshot
 
@@ -171,7 +171,7 @@ class BodyStructureInteractiveController:
                     selected_face_id=self._selected_face_id,
                     can_run=False,
                     can_reset=True,
-                    operator_hint="already attached; press R to reset",
+                    operator_hint="модуль уже установлен; R — сброс",
                     decision=self._snapshot.decision,
                     audit_event=self._snapshot.audit_event,
                     evidence_card=self._snapshot.evidence_card,
@@ -204,7 +204,7 @@ class BodyStructureInteractiveController:
                 selected_face_id=self._selected_face_id,
                 can_run=False,
                 can_reset=True,
-                operator_hint="attach self-check completed; press R to reset",
+                operator_hint="самопроверка установки завершена; R — сброс",
                 decision=decision,
                 audit_event=audit_event,
                 evidence_card=evidence_card,
@@ -223,7 +223,7 @@ class BodyStructureInteractiveController:
             selected_face_id=normalize_selected_face_id(self._selected_face_id, self._body.face_ids),
             can_run=True,
             can_reset=False,
-            operator_hint="press B to run attach self-check",
+            operator_hint="B — запустить самопроверку установки",
         )
 
     def _mount_state(self, body: BodyConfigSnapshot) -> str:

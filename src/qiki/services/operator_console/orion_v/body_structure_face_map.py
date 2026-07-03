@@ -105,7 +105,7 @@ def selected_face_row(rows: tuple[BodyStructureFaceRow, ...], selected_face_id: 
 
 
 def format_body_structure_face_map(rows: tuple[BodyStructureFaceRow, ...]) -> str:
-    lines = ["Face Map"]
+    lines = ["Карта граней"]
     for row in rows:
         marker = ">" if row.selected else " "
         if row.occupancy == "occupied":
