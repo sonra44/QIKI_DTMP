@@ -34,13 +34,49 @@ def test_header_renders_mission_strip_state() -> None:
     )
 
     text = header.last_render
+    # ADR-0016 slice 4: primary row = canon engineering codes only
+    # (WORLD/LINK/DATA/SENS + conditional CTRL); prose/detail → tooltip.
     assert "[b]ORION V[/b]" in text
-    assert "L: [b]F1 Кокпит[/b]" in text
-    assert "P: [b]RUNNING 1.00x[/b]" in text
-    assert "M: [b]AUTO[/b]" in text
-    assert "A: [b]operator-confirm[/b]" in text
-    assert "СВЯЗЬ [green]" in text
-    assert "СОБЫТ [b]12[/b]" in text
-    # ADR-0016: DATA freshness code on the primary row (age → tooltip); no ДАННЫЕ dup
-    assert "СВЕЖ [b]OK[/b]" in text
-    assert "ДАННЫЕ" not in text
+    assert "[b]F1 Кокпит[/b]" in text
+    assert "МИР [green]RUN[/green]" in text
+    assert "СВЯЗЬ [green]OK[/green]" in text
+    assert "АКТУАЛ [green]OK[/green]" in text
+    assert "СЕНС [yellow]WARN[/yellow]" in text  # no SensorFrameSnapshot → degraded → WARN
+    assert "УПР [cyan]CONFIRM[/cyan]" in text  # pending action → operator-confirm gate
+    # absorbed/cut from primary: prose fields, events, raw freshness label
+    assert "P: " not in text
+    assert "M: " not in text
+    assert "A: " not in text
+    assert "СОБЫТ" not in text
+    assert "СВЕЖ" not in text
+    assert "операторский контур" not in text
+    # detail lives in the tooltip (canon) with click parity
+    tooltip = str(header.tooltip)
+    assert "МИР: RUNNING 1.00x" in tooltip
+    assert "СОБЫТ: 12" in tooltip
+    assert "режим: AUTO" in tooltip
+    assert "СЕНС: degraded" in tooltip
+    assert "F7" in tooltip and "F3" in tooltip and "F6" in tooltip
+
+
+def test_header_hides_ctrl_when_operator_holds_authority() -> None:
+    header = _CaptureHeader()
+    header.set_state(
+        build_operator_shell_state(
+            hardware_model=None,
+            telemetry={"sim_state": {"fsm_state": "running", "speed": 1.0}},
+            nats_state="connected",
+            last_telemetry_received_wall=time.time(),
+        )
+    )
+    # canon: УПР is shown ONLY when the permission contour is not with the operator
+    assert "УПР" not in header.last_render
+
+
+def test_header_world_wait_and_link_lost_without_sources() -> None:
+    header = _CaptureHeader()
+    header.set_state(build_operator_shell_state(hardware_model=None, telemetry={}))
+    text = header.last_render
+    assert "МИР [yellow]WAIT[/yellow]" in text  # canon: never «Нет данных»
+    assert "СВЯЗЬ [red]LOST[/red]" in text  # nats_state lost → no-data is LOST (red)
+    assert "АКТУАЛ [yellow]NODATA[/yellow]" in text
