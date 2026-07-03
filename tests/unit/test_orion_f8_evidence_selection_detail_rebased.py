@@ -39,7 +39,7 @@ def test_f8_detail_renders_selected_power_card_not_first_body_card() -> None:
     detail = _render_evidence_detail_mfd(cards, selected_index=_power_index(cards))
     listing = _render_evidence_list_mfd(cards, selected_index=_power_index(cards))
 
-    assert "selected:" in detail
+    assert "выбрано:" in detail
     assert "POWER/ACCUMULATOR" in detail
     assert "SoC_bat: 42%" in detail
     assert "SoC_cap: 79%" in detail
@@ -113,4 +113,4 @@ async def test_f8_screen_keyboard_selection_changes_detail_card_read_only() -> N
         assert screen.selected_evidence_subsystem == first_subsystem
 
         right_text = str(app.query_one("#orionv-evidence-mfd-right-screen").render())
-        assert "Evidence panel does not execute commands" in right_text
+        assert "панель улик не исполняет команды" in right_text

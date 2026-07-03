@@ -465,3 +465,33 @@ def test_f1_apply_requires_preview_first_no_stray_events(monkeypatch) -> None:
     assert app._f1_playable_loop_state["phase"] == "evidence_visible"
     assert app._f1_playable_loop_state.get("action_history")
     assert published  # аудит-событие ушло ровно после честного применения
+
+
+def test_mfd_page_cycle_keys_change_pages_ui_only(monkeypatch) -> None:
+    """D3: [ / ] листают страницы MFD с клавиатуры; только UI, только на F1/F2."""
+    from qiki.services.operator_console.orion_v.app import OrionVApp
+    from qiki.services.operator_console.orion_v.mfd_layout import mfd_button_specs
+
+    app = OrionVApp()
+    monkeypatch.setattr(app, "_refresh_ui", lambda: None)
+    monkeypatch.setattr(app, "_request_refresh_ui", lambda: None)
+
+    app._current_level = "f3"
+    start_left = app._active_mfd_left_page
+    app.action_mfd_page_cycle("left")
+    assert app._active_mfd_left_page == start_left  # вне F1/F2 клавиша молчит
+
+    app._current_level = "f1"
+    left_pages = [spec.page for spec in mfd_button_specs("left")]
+    seen = set()
+    for _ in range(len(left_pages)):
+        app.action_mfd_page_cycle("left")
+        seen.add(app._active_mfd_left_page)
+    assert app._active_mfd_left_page == start_left  # полный круг вернулся к началу
+    assert seen == set(left_pages)  # каждая страница была показана
+
+    start_right = app._active_mfd_right_page
+    right_pages = [spec.page for spec in mfd_button_specs("right")]
+    for _ in range(len(right_pages)):
+        app.action_mfd_page_cycle("right")
+    assert app._active_mfd_right_page == start_right

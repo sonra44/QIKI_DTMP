@@ -46,6 +46,7 @@ from qiki.services.operator_console.orion_v.mfd_layout import (
     MFD_DEFAULT_LEFT_PAGE,
     MFD_DEFAULT_RIGHT_PAGE,
     mfd_button_selection_from_id,
+    mfd_button_specs,
     normalize_mfd_page,
 )
 from qiki.services.operator_console.orion_v.procedure_engine import (
@@ -209,6 +210,8 @@ class OrionVApp(App[None]):
         ("up", "cockpit_focus_prev", "F1 panel prev"),
         ("down", "cockpit_focus_next", "F1 panel next"),
         ("h", "cockpit_toggle_help", "F1 help"),
+        ("left_square_bracket", "mfd_page_cycle('left')", "Левый MFD: след. страница"),
+        ("right_square_bracket", "mfd_page_cycle('right')", "Правый MFD: след. страница"),
         ("a", "ack_selected_incident", "Подтвердить"),
         ("x", "clear_acknowledged_incidents", "Снять подтвержденные"),
         ("slash", "open_command_mode", "Команда"),
@@ -1130,14 +1133,35 @@ class OrionVApp(App[None]):
         self._handle_action_bar_action(action)
 
 
+    def action_mfd_page_cycle(self, side: str) -> None:
+        """Листание страниц MFD с клавиатуры ([ — левый, ] — правый).
+
+        Только смена UI-страницы: команд кораблю не отправляет. Работает на
+        F1/F2, где MFD-панели видимы.
+        """
+        if self._current_level not in {"f1", "f2"}:
+            return
+        normalized_side = "left" if str(side).strip().lower() == "left" else "right"
+        pages = [spec.page for spec in mfd_button_specs(normalized_side)]
+        if not pages:
+            return
+        current = (
+            self._active_mfd_left_page if normalized_side == "left" else self._active_mfd_right_page
+        )
+        try:
+            next_page = pages[(pages.index(current) + 1) % len(pages)]
+        except ValueError:
+            next_page = pages[0]
+        self._select_mfd_page(side=normalized_side, page=next_page)
+
     def _select_mfd_page(self, *, side: str, page: str) -> None:
         normalized_side = str(side or "").strip().lower()
         if normalized_side == "left":
             self._active_mfd_left_page = normalize_mfd_page("left", page)
-            label = f"LEFT MFD page selected: {self._active_mfd_left_page}"
+            label = f"левый MFD: страница {self._active_mfd_left_page}"
         elif normalized_side == "right":
             self._active_mfd_right_page = normalize_mfd_page("right", page)
-            label = f"RIGHT MFD page selected: {self._active_mfd_right_page}"
+            label = f"правый MFD: страница {self._active_mfd_right_page}"
             subsystem_by_page = {
                 "systems": "body_structure",
                 "sensors": "sensors",

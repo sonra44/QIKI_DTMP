@@ -655,7 +655,7 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
             # единственная полная карта клавиш Ф1
             "КЛАВИШИ | "
             "←/→ действие | ↑/↓ панель | SPACE предпросмотр | ENTER применить | "
-            "B корпус | R сброс | E улики | H справка | Ctrl+P палитра"
+            "B корпус | R сброс | E улики | H справка | [ / ] MFD | Ctrl+P палитра"
         ),
         (
             "СПРАВКА | "

@@ -79,10 +79,15 @@ def build_evidence_cards(snapshot: Mapping[str, Any]) -> list[OrionVEvidenceCard
 
 
 def _render_evidence_list_mfd(cards: list[EvidenceCardVM], selected_index: int = 0) -> str:
-    lines = ["LEFT MFD / EVIDENCE LIST", "source: card VMs; read-only projection", ""]
+    lines = [
+        "ЛЕВЫЙ MFD / СПИСОК УЛИК",
+        "источник: карточки-проекции | только чтение",
+        "клавиши: ↑/↓ — выбор карточки | F1 — кокпит",
+        "",
+    ]
     selected_index = _clamp_evidence_index(cards, selected_index)
     if not cards:
-        lines.append("no evidence cards")
+        lines.append("улик пока нет")
     for index, card in enumerate(cards):
         marker = ">" if index == selected_index else " "
         human_index = index + 1
@@ -96,24 +101,24 @@ def _render_evidence_list_mfd(cards: list[EvidenceCardVM], selected_index: int =
 
 def _render_evidence_detail_mfd(cards: list[EvidenceCardVM], selected_index: int = 0) -> str:
     selected_index = _clamp_evidence_index(cards, selected_index)
-    lines = ["RIGHT MFD / EVIDENCE DETAIL"]
+    lines = ["ПРАВЫЙ MFD / ДЕТАЛИ УЛИКИ"]
     if not cards:
-        lines.extend(["selected: none", "", "No evidence detail available."])
+        lines.extend(["выбрано: нет", "", "Деталей улики нет."])
         return "\n".join(lines)
     card = cards[selected_index]
     lines.extend(
         [
-            f"selected: {selected_index + 1:02d}/{len(cards):02d} {card.subsystem}",
+            f"выбрано: {selected_index + 1:02d}/{len(cards):02d} {card.subsystem}",
             "",
-            f"subsystem: {card.subsystem}",
-            f"state_key: {card.state_key}",
-            f"headline: {card.headline}",
-            f"reason: {card.reason_text or '-'}",
-            "detail:",
+            f"подсистема: {card.subsystem}",
+            f"состояние: {card.state_key}",
+            f"заголовок: {card.headline}",
+            f"причина: {card.reason_text or '-'}",
+            "детали:",
             *[f"  {line}" for line in card.detail_lines],
             "",
-            "Boundary:",
-            "Evidence panel does not execute commands or create runtime state.",
+            "граница:",
+            "панель улик не исполняет команды и не создаёт runtime-состояние.",
         ]
     )
     return "\n".join(clipped_lines(lines, limit=34))
@@ -283,8 +288,8 @@ class OrionVEvidenceScreen(Static):
             self._selected_evidence_subsystem = ""
         semantic_update(
             self.query_one("#orionv-evidence-mfd-status", Static),
-            f"ORION V / F8 EVIDENCE MFD | cards={len(cards)} | mode=read-only | "
-            f"selected={self._selected_evidence_subsystem or 'none'} | source=audit/seed projections",
+            f"ORION V / F8 УЛИКИ | карточек: {len(cards)} | режим: только чтение | "
+            f"выбрано: {self._selected_evidence_subsystem or 'нет'} | источник: аудит/посевные проекции",
             domain="evidence",
         )
         semantic_update(

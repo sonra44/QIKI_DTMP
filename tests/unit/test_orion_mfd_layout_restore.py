@@ -83,9 +83,9 @@ def test_f8_evidence_restores_list_detail_mfd_split() -> None:
     assert "orionv-evidence-mfd-root" in evidence
     assert "orionv-evidence-mfd-left-screen" in evidence
     assert "orionv-evidence-mfd-right-screen" in evidence
-    assert "LEFT MFD / EVIDENCE LIST" in evidence
-    assert "RIGHT MFD / EVIDENCE DETAIL" in evidence
-    assert "Evidence panel does not execute commands" in evidence
+    assert "ЛЕВЫЙ MFD / СПИСОК УЛИК" in evidence
+    assert "ПРАВЫЙ MFD / ДЕТАЛИ УЛИКИ" in evidence
+    assert "панель улик не исполняет команды" in evidence
     assert "orionv-evidence-stream" in evidence
     assert "display: none" in evidence
 
