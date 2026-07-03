@@ -422,3 +422,46 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
 
         history = "\n".join(app._console_history)  # noqa: SLF001 - UI regression test
         assert "Ф1 применено: ОБНОВИТЬ ПИТАНИЕ" in history
+
+
+def test_f1_apply_requires_preview_first_no_stray_events(monkeypatch) -> None:
+    """D1: случайный ENTER (глобальный биндинг) не должен порождать событие/аудит.
+
+    Применение разрешено только из фазы «предпросмотр» — это и защита от
+    случайного нажатия, и honest-исполнение канонического цикла
+    снимок → предпросмотр → применение.
+    """
+    import asyncio as _asyncio
+
+    from qiki.services.operator_console.orion_v.app import OrionVApp
+
+    published: list[tuple] = []
+
+    def _drop_task(coro, *args, **kwargs):
+        coro.close()
+        published.append(("task",))
+
+    app = OrionVApp()
+    monkeypatch.setattr(app, "_refresh_ui", lambda: None)
+    monkeypatch.setattr(_asyncio, "create_task", _drop_task)
+    app._current_level = "f1"
+    app._f1_playable_loop_state = build_cockpit_playable_state(
+        selected_action_id="power_refresh"
+    )  # фаза по умолчанию «selected»
+
+    app.action_cockpit_playable_apply()
+
+    state = app._f1_playable_loop_state
+    assert state["phase"] == "selected"  # фаза не сдвинулась
+    assert not state.get("action_history")  # событие НЕ создано
+    assert not published  # аудит НЕ опубликован
+    assert app._last_command_status == "blocked"
+    assert "предпросмотр" in app._last_command_summary
+
+    # ...а честный цикл SPACE → ENTER работает
+    app.action_cockpit_playable_preview()
+    assert app._f1_playable_loop_state["phase"] == "preview"
+    app.action_cockpit_playable_apply()
+    assert app._f1_playable_loop_state["phase"] == "evidence_visible"
+    assert app._f1_playable_loop_state.get("action_history")
+    assert published  # аудит-событие ушло ровно после честного применения

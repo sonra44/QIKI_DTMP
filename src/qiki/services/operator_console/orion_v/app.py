@@ -766,6 +766,18 @@ class OrionVApp(App[None]):
         """
         if self._current_level != "f1":
             return
+        # цикл требует явного предпросмотра: случайный ENTER (глобальный биндинг)
+        # не должен порождать событие/аудит — сначала SPACE, потом применение
+        current_phase = normalize_cockpit_playable_phase(
+            (self._f1_playable_loop_state or {}).get("phase")
+        )
+        if current_phase != "preview":
+            summary = "Ф1: сначала предпросмотр — SPACE (или кнопка «Предпросмотр»)"
+            self._console_history.append(summary)
+            self._last_command_status = "blocked"
+            self._last_command_summary = summary
+            self._refresh_ui()
+            return
         action_vm = cockpit_playable_action_by_id(self._f1_playable_selected_action_id())
         event_id = f"f1-loop:{uuid4().hex[:12]}"
 
