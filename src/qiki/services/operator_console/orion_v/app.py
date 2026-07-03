@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
@@ -16,6 +16,17 @@ from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Static
 
 from qiki.services.operator_console.clients.nats_client import NATSClient
+from qiki.services.operator_console.orion_v.cockpit_playable_view_model import (
+    build_cockpit_event_history_item,
+    build_cockpit_playable_state,
+    cockpit_playable_action_by_id,
+    cockpit_playable_effect_panel_id,
+    next_cockpit_focus_panel_id,
+    next_cockpit_playable_action_id,
+    normalize_cockpit_focus_panel_id,
+    normalize_cockpit_playable_action_id,
+    normalize_cockpit_playable_phase,
+)
 from qiki.services.operator_console.orion_v.dialogs import ConfirmDialog
 from qiki.services.operator_console.orion_v.events_store import BoundedEventsStore, now_epoch_s
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
@@ -84,7 +95,7 @@ logger = logging.getLogger(__name__)
 class OrionVApp(App[None]):
     """ORION V operator console running in parallel with legacy ORION."""
 
-    ENABLE_COMMAND_PALETTE = False
+    ENABLE_COMMAND_PALETTE = True
     CSS_PATH = "orion_v.tcss"
 
     CSS = """
@@ -181,6 +192,10 @@ class OrionVApp(App[None]):
         ("b", "run_body_structure_self_check", "BODY attach"),
         ("n", "select_next_body_structure_face", "BODY face next"),
         ("p", "select_previous_body_structure_face", "BODY face prev"),
+        ("left", "cockpit_playable_prev", "F1 action prev"),
+        ("right", "cockpit_playable_next", "F1 action next"),
+        ("space", "cockpit_playable_preview", "F1 preview"),
+        ("enter", "cockpit_playable_apply", "F1 apply"),
         ("e", "show_level('f8')", "BODY evidence"),
         ("r", "reset_body_structure_self_check", "BODY reset"),
         ("alt+1", "status_chip('power')", "Чип: Питание"),
@@ -191,8 +206,9 @@ class OrionVApp(App[None]):
         ("alt+6", "status_chip('qiki')", "Чип: QIKI"),
         ("pagedown", "events_page_next", "Следующая страница"),
         ("pageup", "events_page_prev", "Предыдущая страница"),
-        ("up", "incident_prev", "Предыдущий инцидент"),
-        ("down", "incident_next", "Следующий инцидент"),
+        ("up", "cockpit_focus_prev", "F1 panel prev"),
+        ("down", "cockpit_focus_next", "F1 panel next"),
+        ("h", "cockpit_toggle_help", "F1 help"),
         ("a", "ack_selected_incident", "Подтвердить"),
         ("x", "clear_acknowledged_incidents", "Снять подтвержденные"),
         ("slash", "open_command_mode", "Команда"),
@@ -219,6 +235,7 @@ class OrionVApp(App[None]):
         self._current_level = "f1"
         self._active_mfd_left_page = MFD_DEFAULT_LEFT_PAGE
         self._active_mfd_right_page = MFD_DEFAULT_RIGHT_PAGE
+        self._f1_playable_loop_state = build_cockpit_playable_state()
         self._telemetry: dict[str, Any] = {}
         self._snapshot: dict[str, Any] = {}
         self._latest_radar_tracks: dict[str, dict[str, Any]] = {}
@@ -473,6 +490,357 @@ class OrionVApp(App[None]):
             self._control_acks.append(envelope)
         self._request_refresh_ui()
 
+    def _update_f1_playable_loop_state(
+        self,
+        *,
+        selected_action_id: str | None = None,
+        phase: str | None = None,
+        last_event_id: str | None = None,
+        last_event_summary: str | None = None,
+        last_action_id: str | None = None,
+        last_effect_panel_id: str | None = None,
+        last_effect_summary: str | None = None,
+        append_history_item: dict[str, str] | None = None,
+        focused_panel_id: str | None = None,
+        focus_reason: str | None = None,
+        help_visible: bool | None = None,
+        increment_cycle: bool = False,
+    ) -> None:
+        state = dict(self._f1_playable_loop_state or {})
+        if selected_action_id is not None:
+            state["selected_action_id"] = normalize_cockpit_playable_action_id(selected_action_id)
+        else:
+            state["selected_action_id"] = normalize_cockpit_playable_action_id(state.get("selected_action_id"))
+        if phase is not None:
+            state["phase"] = normalize_cockpit_playable_phase(phase)
+        else:
+            state["phase"] = normalize_cockpit_playable_phase(state.get("phase"))
+        if last_event_id is not None:
+            state["last_event_id"] = str(last_event_id or "").strip()
+        if last_event_summary is not None:
+            state["last_event_summary"] = str(last_event_summary or "").strip()
+        if last_action_id is not None:
+            state["last_action_id"] = (
+                normalize_cockpit_playable_action_id(last_action_id)
+                if str(last_action_id or "").strip()
+                else ""
+            )
+        if last_effect_panel_id is not None:
+            state["last_effect_panel_id"] = str(last_effect_panel_id or "").strip().lower()
+        if last_effect_summary is not None:
+            state["last_effect_summary"] = str(last_effect_summary or "").strip()
+        if append_history_item is not None:
+            history = list(state.get("action_history") or [])
+            history.append(dict(append_history_item))
+            state["action_history"] = history
+        if focused_panel_id is not None:
+            state["focused_panel_id"] = normalize_cockpit_focus_panel_id(
+                focused_panel_id, selected_action_id=state.get("selected_action_id")
+            )
+        else:
+            state["focused_panel_id"] = normalize_cockpit_focus_panel_id(
+                state.get("focused_panel_id"), selected_action_id=state.get("selected_action_id")
+            )
+        if focus_reason is not None:
+            state["focus_reason"] = str(focus_reason or "").strip() or "selected_by_key"
+        else:
+            state["focus_reason"] = str(state.get("focus_reason") or "default").strip() or "default"
+        if help_visible is not None:
+            state["help_visible"] = bool(help_visible)
+        else:
+            state["help_visible"] = bool(state.get("help_visible", True))
+        if increment_cycle:
+            try:
+                state["cycle_count"] = int(state.get("cycle_count", 0)) + 1
+            except Exception:
+                state["cycle_count"] = 1
+        self._f1_playable_loop_state = build_cockpit_playable_state(
+            selected_action_id=state.get("selected_action_id"),
+            phase=state.get("phase"),
+            cycle_count=state.get("cycle_count", 0),
+            last_event_id=state.get("last_event_id"),
+            last_event_summary=state.get("last_event_summary"),
+            last_action_id=state.get("last_action_id"),
+            last_effect_panel_id=state.get("last_effect_panel_id"),
+            last_effect_summary=state.get("last_effect_summary"),
+            action_history=state.get("action_history"),
+            focused_panel_id=state.get("focused_panel_id"),
+            focus_reason=state.get("focus_reason"),
+            help_visible=state.get("help_visible"),
+        )
+
+    def _f1_playable_selected_action_id(self) -> str:
+        return normalize_cockpit_playable_action_id(self._f1_playable_loop_state.get("selected_action_id"))
+
+    def _f1_focused_panel_id(self) -> str:
+        return normalize_cockpit_focus_panel_id(
+            self._f1_playable_loop_state.get("focused_panel_id"),
+            selected_action_id=self._f1_playable_selected_action_id(),
+        )
+
+    def action_cockpit_palette_select(self, action_id: str) -> None:
+        """Select one F1 action from Textual command palette without executing runtime commands."""
+        if self._current_level != "f1":
+            self._current_level = "f1"
+            self._events_page = 0
+            self._audit_page = 0
+            self._refresh_visible_level()
+        normalized_action_id = normalize_cockpit_playable_action_id(action_id)
+        action_vm = cockpit_playable_action_by_id(normalized_action_id)
+        summary = f"F1 PALETTE selected: {action_vm.label}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            selected_action_id=normalized_action_id,
+            phase="selected",
+            focused_panel_id=cockpit_playable_effect_panel_id(normalized_action_id),
+            focus_reason="palette",
+            help_visible=True,
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def get_system_commands(self, screen: Any) -> Iterable[Any]:
+        """Expose the F1 local cockpit loop through Textual's command palette.
+
+        These palette entries are discoverability affordances only. Selecting one
+        moves ORION to F1 and arms the local action; it does not publish a runtime
+        command, claim ACK, or claim physical effect confirmation.
+        """
+        yield from super().get_system_commands(screen)
+        try:
+            from textual.command import SystemCommand
+        except Exception:
+            return
+
+        f1_commands = (
+            (
+                "F1 Body self-check",
+                "Select BODY SELF-CHECK in the local cockpit loop; no runtime command is published.",
+                "body_self_check",
+            ),
+            (
+                "F1 Power refresh",
+                "Select POWER REFRESH; refreshes the power projection only, not PDU runtime.",
+                "power_refresh",
+            ),
+            (
+                "F1 Navigation page cycle",
+                "Select NAV PAGE CYCLE; cycles MFD UI state only, not a maneuver command.",
+                "nav_cycle",
+            ),
+            (
+                "F1 Sensor focus",
+                "Select SENSOR FOCUS; opens read-only sensor projection, not an active scan.",
+                "sensor_focus",
+            ),
+            (
+                "F1 Command preview",
+                "Select COMMAND PREVIEW; rehearses request semantics without publish / ACK / effect.",
+                "command_preview",
+            ),
+        )
+        for title, help_text, action_id in f1_commands:
+            yield SystemCommand(
+                title=title,
+                help=help_text,
+                callback=lambda action_id=action_id: self.action_cockpit_palette_select(action_id),
+                discover=True,
+            )
+
+    def action_cockpit_focus_next(self) -> None:
+        """Move F1 panel focus forward; outside F1 preserve incident navigation."""
+        if self._current_level != "f1":
+            self.action_incident_next()
+            return
+        panel_id = next_cockpit_focus_panel_id(self._f1_focused_panel_id(), delta=1)
+        summary = f"F1 FOCUS panel selected: {panel_id.upper()}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            phase="selected",
+            focused_panel_id=panel_id,
+            focus_reason="panel_key",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_focus_prev(self) -> None:
+        """Move F1 panel focus backward; outside F1 preserve incident navigation."""
+        if self._current_level != "f1":
+            self.action_incident_prev()
+            return
+        panel_id = next_cockpit_focus_panel_id(self._f1_focused_panel_id(), delta=-1)
+        summary = f"F1 FOCUS panel selected: {panel_id.upper()}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            phase="selected",
+            focused_panel_id=panel_id,
+            focus_reason="panel_key",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_toggle_help(self) -> None:
+        """Toggle the local F1 help/context rows."""
+        if self._current_level != "f1":
+            return
+        next_visible = not bool(self._f1_playable_loop_state.get("help_visible", True))
+        summary = f"F1 HELP {'shown' if next_visible else 'hidden'}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            phase="selected",
+            help_visible=next_visible,
+            focus_reason="help_toggle",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_playable_next(self) -> None:
+        """Select the next local F1 cockpit action; no runtime command is executed."""
+        if self._current_level != "f1":
+            return
+        action_id = next_cockpit_playable_action_id(self._f1_playable_selected_action_id(), delta=1)
+        action_vm = cockpit_playable_action_by_id(action_id)
+        summary = f"F1 PLAYABLE selected: {action_vm.label}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            selected_action_id=action_id,
+            phase="selected",
+            focused_panel_id=cockpit_playable_effect_panel_id(action_id),
+            focus_reason="action_key",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_playable_prev(self) -> None:
+        """Select the previous local F1 cockpit action; no runtime command is executed."""
+        if self._current_level != "f1":
+            return
+        action_id = next_cockpit_playable_action_id(self._f1_playable_selected_action_id(), delta=-1)
+        action_vm = cockpit_playable_action_by_id(action_id)
+        summary = f"F1 PLAYABLE selected: {action_vm.label}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            selected_action_id=action_id,
+            phase="selected",
+            focused_panel_id=cockpit_playable_effect_panel_id(action_id),
+            focus_reason="action_key",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_playable_preview(self) -> None:
+        """Preview the selected F1 action in the cockpit command strip."""
+        if self._current_level != "f1":
+            return
+        action_vm = cockpit_playable_action_by_id(self._f1_playable_selected_action_id())
+        summary = f"F1 PLAYABLE preview: {action_vm.label} -> {action_vm.cycle_effect}"
+        self._console_history.append(summary)
+        self._last_command_status = "preview"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            phase="preview",
+            focused_panel_id=cockpit_playable_effect_panel_id(action_vm.action_id),
+            focus_reason="preview",
+            last_event_summary=summary,
+        )
+        self._refresh_ui()
+
+    def action_cockpit_playable_apply(self) -> None:
+        """Apply one normal-only F1 local loop action and record an operator audit event.
+
+        This method deliberately does not publish a runtime command.  It changes only
+        ORION cockpit/local adapter state, except for BODY SELF-CHECK which reuses the
+        existing body-structure self-check seed.
+        """
+        if self._current_level != "f1":
+            return
+        action_vm = cockpit_playable_action_by_id(self._f1_playable_selected_action_id())
+        event_id = f"f1-loop:{uuid4().hex[:12]}"
+
+        if action_vm.action_id == "body_self_check":
+            snapshot = run_body_structure_interactive_self_check()
+            decision = snapshot.decision
+            if decision is None:
+                effect = "body self-check did not produce decision"
+            elif snapshot.interaction_state == "already_attached":
+                effect = "body self-check already attached; no body_config overwrite"
+            else:
+                effect = f"body self-check {decision.status} @ {decision.mount_point}"
+        elif action_vm.action_id == "power_refresh":
+            effect = "power/accumulator view-model refreshed from current snapshot"
+        elif action_vm.action_id == "nav_cycle":
+            next_left_page = {
+                "radar": "nav",
+                "nav": "target",
+                "target": "sector",
+                "sector": "mission",
+                "mission": "radar",
+            }.get(self._active_mfd_left_page, "radar")
+            self._active_mfd_left_page = normalize_mfd_page("left", next_left_page)
+            effect = f"left MFD page cycled to {self._active_mfd_left_page}"
+        elif action_vm.action_id == "sensor_focus":
+            self._active_mfd_right_page = normalize_mfd_page("right", "sensors")
+            self._selected_system_module_slug = "sensors"
+            effect = "right MFD focused on sensors read-only projection"
+        else:
+            effect = "command preview loop recorded; no command publish/ACK/effect claim"
+
+        effect_panel_id = cockpit_playable_effect_panel_id(action_vm.action_id)
+        history_item = build_cockpit_event_history_item(
+            event_id=event_id,
+            action_label=action_vm.label,
+            target_panel_id=effect_panel_id,
+            effect_summary=effect,
+        )
+        summary = f"F1 PLAYABLE applied: {action_vm.label}; {effect}; evidence={event_id}"
+        self._console_history.append(summary)
+        self._last_command_status = "ok"
+        self._last_command_summary = summary
+        self._update_f1_playable_loop_state(
+            phase="evidence_visible",
+            last_event_id=event_id,
+            last_event_summary=summary,
+            last_action_id=action_vm.action_id,
+            last_effect_panel_id=effect_panel_id,
+            last_effect_summary=effect,
+            append_history_item=history_item,
+            focused_panel_id=effect_panel_id,
+            focus_reason="after_apply",
+            increment_cycle=True,
+        )
+        asyncio.create_task(
+            self._publish_audit_event(
+                OPERATOR_ACTIONS,
+                {
+                    "kind": "f1_playable_loop",
+                    "action_type": "f1_playable_loop",
+                    "event_id": event_id,
+                    "action_id": action_vm.action_id,
+                    "action_label": action_vm.label,
+                    "phase": "evidence_visible",
+                    "effect_summary": effect,
+                    "effect_panel_id": effect_panel_id,
+                    "runtime_claim_status": "local_ui_loop_no_runtime_command",
+                    "source_owner": action_vm.source_owner,
+                    "evidence_policy": action_vm.evidence_policy,
+                    "operator": "orion_v",
+                },
+            )
+        )
+        self._refresh_ui()
+
     def action_run_body_structure_self_check(self) -> None:
         """Run the visible local body-structure attach loop and refresh F1/F2/F8."""
         snapshot = run_body_structure_interactive_self_check()
@@ -712,6 +1080,27 @@ class OrionVApp(App[None]):
             return
         if button_id == "orionv-cockpit-qiki-cancel":
             self._cancel_qiki_pending_action()
+            return
+        if button_id == "orionv-cockpit-loop-prev":
+            self.action_cockpit_playable_prev()
+            return
+        if button_id == "orionv-cockpit-loop-next":
+            self.action_cockpit_playable_next()
+            return
+        if button_id == "orionv-cockpit-loop-preview":
+            self.action_cockpit_playable_preview()
+            return
+        if button_id == "orionv-cockpit-loop-apply":
+            self.action_cockpit_playable_apply()
+            return
+        if button_id == "orionv-cockpit-focus-prev":
+            self.action_cockpit_focus_prev()
+            return
+        if button_id == "orionv-cockpit-focus-next":
+            self.action_cockpit_focus_next()
+            return
+        if button_id == "orionv-cockpit-help-toggle":
+            self.action_cockpit_toggle_help()
             return
         if button_id.startswith("orionv-status-") and button_id.endswith("-action"):
             metric_slug = button_id.removeprefix("orionv-status-").removesuffix("-action").strip().lower()
@@ -3005,6 +3394,7 @@ class OrionVApp(App[None]):
             operator_shell_state=self._operator_shell_state,
             active_left_mfd_page=self._active_mfd_left_page,
             active_right_mfd_page=self._active_mfd_right_page,
+            playable_loop_state=self._f1_playable_loop_state,
         )
 
         self.query_one("#orionv-systems", OrionVSystemsScreen).set_state(

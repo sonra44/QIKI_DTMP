@@ -10,6 +10,11 @@ from textual.containers import Container
 from textual.css.query import NoMatches
 from textual.widgets import Button, Static
 
+from qiki.services.operator_console.orion_v.cockpit_playable_view_model import (
+    build_cockpit_playable_loop_vm,
+    format_cockpit_playable_action_labels,
+    format_cockpit_playable_loop_lines,
+)
 from qiki.services.operator_console.orion_v.body_physics_view_model import (
     format_body_physics_cockpit_line,
     get_body_physics_console_view_model,
@@ -178,7 +183,7 @@ class OrionVCockpitScreen(Static):
 
     #orionv-cockpit-actions {
         height: auto;
-        max-height: 6;
+        max-height: 8;
         layout: vertical;
         border: round #617078;
         background: #0f1518;
@@ -202,7 +207,7 @@ class OrionVCockpitScreen(Static):
     #orionv-mfd-qiki {
         height: auto;
         min-height: 5;
-        max-height: 12;
+        max-height: 48;
         border: round #9a7c3f;
         border-title-color: #d6b35f;
         background: #12140f;
@@ -237,6 +242,8 @@ class OrionVCockpitScreen(Static):
         self._fallback_intervention_text = ""
         self._active_left_mfd_page = MFD_DEFAULT_LEFT_PAGE
         self._active_right_mfd_page = MFD_DEFAULT_RIGHT_PAGE
+        self._playable_loop_state: dict[str, Any] = {}
+        self._last_playable_loop_vm = None
 
     def compose(self) -> ComposeResult:
         with Container(id="orionv-mfd-root"):
@@ -262,6 +269,15 @@ class OrionVCockpitScreen(Static):
                     yield Button("", id="orionv-cockpit-jump-procedures", compact=True)
                     yield Button("", id="orionv-cockpit-qiki-confirm", variant="primary", compact=True)
                     yield Button("", id="orionv-cockpit-qiki-cancel", compact=True)
+                with Container(classes="orionv-cockpit-action-row"):
+                    yield Button("", id="orionv-cockpit-loop-prev", compact=True)
+                    yield Button("", id="orionv-cockpit-loop-preview", compact=True)
+                    yield Button("", id="orionv-cockpit-loop-apply", variant="primary", compact=True)
+                    yield Button("", id="orionv-cockpit-loop-next", compact=True)
+                with Container(classes="orionv-cockpit-action-row"):
+                    yield Button("Panel ▲", id="orionv-cockpit-focus-prev", compact=True)
+                    yield Button("Help", id="orionv-cockpit-help-toggle", compact=True)
+                    yield Button("Panel ▼", id="orionv-cockpit-focus-next", compact=True)
             yield Static("", id="orionv-mfd-qiki")
             yield Static("", id="orionv-cockpit-body")
             yield Static("", id="orionv-cockpit-intervention")
@@ -315,6 +331,7 @@ class OrionVCockpitScreen(Static):
         operator_shell_state: "OperatorShellState | None" = None,
         active_left_mfd_page: str | None = None,
         active_right_mfd_page: str | None = None,
+        playable_loop_state: dict[str, Any] | None = None,
     ) -> None:
         self._prev_core_temp_c = self._pick_core_temp_c(self._telemetry)
         self._telemetry = telemetry
@@ -331,6 +348,7 @@ class OrionVCockpitScreen(Static):
         self._operator_shell_state = operator_shell_state
         self._active_left_mfd_page = normalize_mfd_page("left", active_left_mfd_page or self._active_left_mfd_page)
         self._active_right_mfd_page = normalize_mfd_page("right", active_right_mfd_page or self._active_right_mfd_page)
+        self._playable_loop_state = dict(playable_loop_state or self._playable_loop_state or {})
         self._refresh_text()
 
     def _refresh_text(self) -> None:
@@ -432,6 +450,18 @@ class OrionVCockpitScreen(Static):
         body_physics_line = format_body_physics_cockpit_line(body_physics_vm)
         power_thermal_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         power_thermal_line = format_power_thermal_cockpit_line(power_thermal_vm)
+        playable_loop_vm = build_cockpit_playable_loop_vm(
+            loop_state=self._playable_loop_state,
+            body_vm=body_structure_vm,
+            body_physics_vm=body_physics_vm,
+            power_vm=power_thermal_vm,
+            active_left_mfd_page=self._active_left_mfd_page,
+            active_right_mfd_page=self._active_right_mfd_page,
+            nats_connected=self._nats_connected,
+            active_incidents=self._active_incidents,
+        )
+        self._last_playable_loop_vm = playable_loop_vm
+        playable_loop_lines = list(format_cockpit_playable_loop_lines(playable_loop_vm))
         qiki_reco_sev, qiki_reco_lines = self._qiki_recommendation_block(
             qiki_severity=qiki_sev,
             qiki_lines=qiki_lines,
@@ -572,6 +602,11 @@ class OrionVCockpitScreen(Static):
         intervention_text = "\n".join(
             [
                 *self._panel_block(
+                    "F1 / Первый живой цикл",
+                    playable_loop_lines,
+                ),
+                self._section_divider(),
+                *self._panel_block(
                     "QIKI / Решение",
                     self._qiki_recommendation_rows(
                         qiki_severity=qiki_reco_sev,
@@ -634,6 +669,7 @@ class OrionVCockpitScreen(Static):
             procedure_sev=procedure_sev,
             qiki_sev=qiki_sev,
         )
+        self._refresh_playable_loop_buttons(playable_loop_vm)
 
     def _set_panel_texts(
         self,
@@ -829,7 +865,7 @@ class OrionVCockpitScreen(Static):
             [
                 softkey_bar(),
                 "─" * 48,
-                *intervention_text.splitlines()[:12],
+                *intervention_text.splitlines()[:26],
             ]
         )
 
@@ -900,6 +936,33 @@ class OrionVCockpitScreen(Static):
             button.label = enabled_label if confirm_enabled else disabled_label
 
         self._set_mfd_button_classes()
+
+    def _refresh_playable_loop_buttons(self, playable_loop_vm) -> None:
+        for suffix, label, highlighted in format_cockpit_playable_action_labels(playable_loop_vm):
+            try:
+                button = self.query_one(f"#orionv-cockpit-loop-{suffix}", Button)
+            except NoMatches:
+                continue
+            button.label = label
+            button.disabled = False
+            button.variant = "primary" if highlighted else "default"
+        focus_buttons = (
+            ("#orionv-cockpit-focus-prev", "Panel ▲"),
+            ("#orionv-cockpit-help-toggle", "Help · ON" if playable_loop_vm.help_visible else "Help · OFF"),
+            ("#orionv-cockpit-focus-next", "Panel ▼"),
+        )
+        for selector, label in focus_buttons:
+            try:
+                button = self.query_one(selector, Button)
+            except NoMatches:
+                continue
+            button.label = label
+            button.disabled = False
+            button.variant = (
+                "primary"
+                if selector.endswith("help-toggle") and playable_loop_vm.help_visible
+                else "default"
+            )
 
     def _mission_context_block(
         self,
@@ -2241,12 +2304,16 @@ class OrionVCockpitScreen(Static):
     def _panel_block(
         self,
         title: str,
-        rows: list[tuple[str, str, str]],
+        rows: list[tuple[str, str, str]] | list[str],
         *,
         extras: list[str] | None = None,
     ) -> list[str]:
         lines = [f"> {title}"]
-        for label, state, detail in rows:
+        for row in rows:
+            if isinstance(row, str):
+                lines.append(row)
+                continue
+            label, state, detail = row
             lines.append(self._panel_row(label, state, detail))
         if extras:
             lines.extend(f"[dim]{line}[/dim]" for line in extras if line)
