@@ -22,6 +22,11 @@ from qiki.services.operator_console.orion_v.screens.systems import (
     F2_CARD_SOURCE_MAP,
     build_system_cards,
 )
+from qiki.services.operator_console.orion_v.sensor_trust_model import (
+    SensorTrustOverride,
+    SensorTrustSnapshot,
+    assess_sensor_trust,
+)
 from qiki.shared.models.qiki_chat import BilingualText, QikiChatResponseV1
 
 _SEVERITY_RANK = {"attention": 1, "warning": 2, "critical": 3}
@@ -98,6 +103,7 @@ class SubsystemChip:
 @dataclass(frozen=True, slots=True)
 class AlwaysOnOperatorState:
     mission_phase: str | None = None
+    world_run_state: str | None = None
     vehicle_mode: str | None = None
     control_authority: str | None = None
     autopilot_status: str | None = None
@@ -151,6 +157,10 @@ class DerivedOperatorIndicators:
     rcs_authority_available: bool | None = None
     commandability_state: str | None = None
     data_freshness_state: str | None = None
+    sensor_trust_state: str | None = None
+    sensor_trust_summary: str | None = None
+    sensor_trust_effect: str | None = None
+    sensor_trust_confidence: float | None = None
     collision_risk_score: float | None = None
     intervention_required: bool = False
     autonomy_confidence: str | None = None
@@ -202,6 +212,7 @@ def build_operator_shell_state(
     incidents: list[dict[str, Any]] | None = None,
     radar_tracks: dict[str, dict[str, Any]] | None = None,
     qiki_response: QikiChatResponseV1 | None = None,
+    sensor_trust_override: SensorTrustOverride | str | None = None,
     qiki_pending_action_title: str | None = None,
     qiki_pending_action: dict[str, Any] | None = None,
     selected_incident_id: str | None = None,
@@ -272,6 +283,15 @@ def build_operator_shell_state(
         alert_summary=alert_summary,
         operator_loop=operator_loop,
     )
+    # SENSORTRUST-0001: derived perception-trust surface (shared contract with
+    # legacy-telemetry fallback; override is local UI posture, not runtime truth).
+    sensor_trust_snapshot = assess_sensor_trust(
+        hardware_model=hardware_model,
+        telemetry=telemetry,
+        radar_tracks=radar_tracks,
+        observation_objective=objective,
+        operator_override=sensor_trust_override,
+    )
     derived = _build_derived_indicators(
         hardware_model=hardware_model,
         telemetry=telemetry,
@@ -281,6 +301,7 @@ def build_operator_shell_state(
         alert_summary=alert_summary,
         operator_loop=operator_loop,
         qiki_response=qiki_response,
+        sensor_trust_snapshot=sensor_trust_snapshot,
     )
     chips = _build_subsystem_chips(
         hardware_model=hardware_model,
@@ -386,6 +407,7 @@ def _build_always_on_state(
     unavailable: set[str] = set()
 
     mission_phase = _mission_phase_label(telemetry=telemetry, replay_mode=replay_mode)
+    world_run_state = _world_run_state(telemetry=telemetry, replay_mode=replay_mode)
     if mission_phase is not None:
         partial.add("mission_phase")
     else:
@@ -539,6 +561,7 @@ def _build_always_on_state(
 
     return AlwaysOnOperatorState(
         mission_phase=mission_phase,
+        world_run_state=world_run_state,
         vehicle_mode=vehicle_mode,
         control_authority=control_authority,
         autopilot_status=autopilot_status,
@@ -587,6 +610,7 @@ def _build_derived_indicators(
     alert_summary: AlertSummary,
     operator_loop: OperatorLoopState,
     qiki_response: QikiChatResponseV1 | None,
+    sensor_trust_snapshot: SensorTrustSnapshot,
 ) -> DerivedOperatorIndicators:
     partial: set[str] = set()
     unavailable: set[str] = set()
@@ -688,6 +712,10 @@ def _build_derived_indicators(
         rcs_authority_available=rcs_authority_available,
         commandability_state=commandability_state,
         data_freshness_state=data_freshness_state,
+        sensor_trust_state=sensor_trust_snapshot.state.value,
+        sensor_trust_summary=sensor_trust_snapshot.short_chip,
+        sensor_trust_effect=sensor_trust_snapshot.operator_effect_ru,
+        sensor_trust_confidence=sensor_trust_snapshot.confidence,
         collision_risk_score=collision_risk_score,
         intervention_required=operator_loop.operator_action_required,
         autonomy_confidence=autonomy_confidence,
@@ -1183,6 +1211,29 @@ def _mission_phase_label(*, telemetry: dict[str, Any], replay_mode: bool) -> str
     if bool(sim_state.get("paused")):
         return f"PAUSED{speed_text}"
     return f"{state_name}{speed_text}"
+
+
+def _world_run_state(*, telemetry: dict[str, Any], replay_mode: bool) -> str:
+    """MISSION_CONTROL_STRIP canon WORLD code: RUN / PAUSE / STOP / REPLAY / WAIT.
+
+    Honest mapping: RUN is claimed only for an explicitly RUNNING world; boot/init/
+    unknown states stay WAIT (canon: no-data shows WAIT, never «Нет данных»).
+    """
+    if replay_mode:
+        return "REPLAY"
+    sim_state = telemetry.get("sim_state")
+    if not isinstance(sim_state, dict):
+        return "WAIT"
+    state_name = str(sim_state.get("fsm_state") or "").strip().upper()
+    if not state_name:
+        return "WAIT"
+    if bool(sim_state.get("paused")):
+        return "PAUSE"
+    if state_name in {"STOPPED", "HALTED", "STOP", "SHUTDOWN"}:
+        return "STOP"
+    if state_name == "RUNNING":
+        return "RUN"
+    return "WAIT"
 
 
 def _control_authority_label(
