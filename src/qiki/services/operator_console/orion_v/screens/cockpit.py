@@ -731,14 +731,15 @@ class OrionVCockpitScreen(Static):
             evidence=body_vm.trust_status or "missing",
             source="audit/local seed",
         )
-        return "\n".join(
-            [
-                status,
-                format_body_structure_cockpit_line(body_vm),
-                format_body_physics_cockpit_line(physics_vm),
-                format_power_thermal_cockpit_line(power_vm),
-            ]
-        )
+        lines = [status]
+        # full body/physics/power lines only when the right MFD does not already
+        # show them (page "systems" carries all three sections); default view
+        # keeps the status box to the one-line delta strip
+        if normalize_mfd_page("right", self._active_right_mfd_page) != "systems":
+            lines.append(format_body_structure_cockpit_line(body_vm))
+            lines.append(format_body_physics_cockpit_line(physics_vm))
+            lines.append(format_power_thermal_cockpit_line(power_vm))
+        return "\n".join(lines)
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)

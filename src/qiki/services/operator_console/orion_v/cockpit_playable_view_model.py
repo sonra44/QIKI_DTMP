@@ -151,6 +151,9 @@ class CockpitPlayableLoopVM:
     sensor_summary: str
     command_summary: str
     available_actions: tuple[CockpitPlayableActionVM, ...]
+    # which right-MFD page is on screen: when it is "systems", the right MFD
+    # already shows body/physics/power state, so the loop panel must not repeat it
+    right_mfd_page: str = "systems"
 
 
 _ACTIONS: tuple[CockpitPlayableActionVM, ...] = (
@@ -513,6 +516,7 @@ def build_cockpit_playable_loop_vm(
         sensor_summary=sensor_summary,
         command_summary=command_summary,
         available_actions=_ACTIONS,
+        right_mfd_page=right_page,
     )
 
 
@@ -618,9 +622,10 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
             f"reason={focus.focus_reason}"
         ),
         (
+            # the single full key map for F1 (the trailing "keys:" line was a duplicate)
             "F1 HINT | "
             "←/→ action | ↑/↓ panel | SPACE preview | ENTER apply | "
-            "E evidence | H help | Ctrl+P palette"
+            "B body | R reset | E evidence | H help | Ctrl+P palette"
         ),
         (
             "F1 HELP | "
@@ -634,13 +639,21 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
     ]
     if vm.help_visible:
         for hint in build_cockpit_hint_vms(vm):
-            lines.append(
+            line = (
                 f"F1 CONTEXT | {hint.panel_id.upper()} | severity={hint.severity} | "
-                f"key={hint.key_hint} | {hint.text} | trust={hint.trust_status}"
+                f"key={hint.key_hint} | {hint.text}"
             )
+            # trust is stated once for the whole panel (source line); repeat it
+            # per-hint only when the hint's trust actually differs
+            if hint.trust_status != vm.trust_status:
+                line += f" | trust={hint.trust_status}"
+            lines.append(line)
     else:
         lines.append("F1 CONTEXT | hidden | press H to show help")
-    lines.extend([preview_line, result_line])
+    # before the first preview HELP already describes the expected effect verbatim
+    if vm.phase != "selected":
+        lines.append(preview_line)
+    lines.append(result_line)
     return tuple(lines)
 
 
@@ -729,13 +742,10 @@ def format_cockpit_event_ticker_lines(vm: CockpitPlayableLoopVM) -> tuple[str, .
             "F1 EVENT TICKER | entries=0 | latest=none",
             "event_history: none",
         )
-    latest = vm.action_history[-1]
     lines = [
-        (
-            "F1 EVENT TICKER | "
-            f"entries={len(vm.action_history)} | latest={latest.event_id} | "
-            f"action={latest.action_label} | target={latest.target_panel}"
-        )
+        # header keeps only the count: the latest event's id/action/target are
+        # the first event[N] line right below (and the id is also in F1 RESULT)
+        f"F1 EVENT TICKER | entries={len(vm.action_history)}"
     ]
     for index, item in enumerate(reversed(vm.action_history), start=1):
         lines.append(
@@ -755,36 +765,23 @@ def format_cockpit_visible_acceptance_lines(vm: CockpitPlayableLoopVM) -> tuple[
     panels = build_cockpit_visible_panel_vms(vm)
     ready_count = sum(1 for panel in panels if panel.status in {"shown", "ready", "recorded"})
     panel_flags = " | ".join(f"{panel.title}=yes" for panel in panels)
-    lines = [
+    # trimmed to the non-duplicating core: the per-panel status rows repeated the
+    # flags + panel summaries, "visible_acceptance:" was a verbatim second copy of
+    # the flags, "F1 ACTION EFFECT" repeated F1 RESULT, and the targets map was
+    # static boilerplate; panel completeness stays machine-checkable via
+    # build_cockpit_visible_panel_vms
+    return (
         f"F1 PANELS | visible_acceptance=ready | panels={ready_count}/{len(panels)}",
         panel_flags,
         f"EVENT: status={'recorded' if vm.last_event_id != 'none' else 'ready'} | "
-        f"event={vm.last_event_id} | history={len(vm.action_history)}",
-    ]
-    for panel in panels:
-        lines.append(
-            f"{panel.title}: status={panel.status} | source={panel.source} | "
-            f"trust={panel.trust_status} | {panel.summary}"
-        )
-    lines.append(f"visible_acceptance: {panel_flags}")
-    target_title = _PANEL_TITLE_BY_ID.get(vm.last_effect_panel_id, "none")
-    lines.append(
-        "F1 ACTION EFFECT | "
-        f"applied={vm.last_action_label} | target={target_title} | "
-        f"effect={vm.last_effect_summary} | event={vm.last_event_id}"
+        f"history={len(vm.action_history)}",
     )
-    lines.append(
-        "action_effect_targets: "
-        "BODY SELF-CHECK→BODY | POWER REFRESH→POWER | NAV PAGE CYCLE→NAV | "
-        "SENSOR FOCUS→SENSORS | COMMAND PREVIEW→COMMAND"
-    )
-    return tuple(lines)
 
 
 def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...]:
     """Compact F1 cockpit text block for the visible QIKI/operator MFD panel."""
 
-    return (
+    lines: list[str] = [
         (
             "F1 PLAYABLE LOOP | "
             f"{vm.loop_status} | phase={vm.phase} | "
@@ -794,17 +791,20 @@ def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, 
         f"source: {vm.source} | trust={vm.trust_status}",
         f"runtime_claim_status: {vm.runtime_claim_status}",
         *format_cockpit_focus_hint_lines(vm),
-        f"{vm.body_summary}",
-        f"{vm.power_summary}",
-        f"{vm.nav_summary}",
-        f"{vm.sensor_summary}",
-        f"{vm.command_summary}",
-        f"action_effect: {vm.action_summary}",
-        f"last_event: {vm.last_event_id} | {vm.last_event_summary}",
-        *format_cockpit_event_ticker_lines(vm),
-        *format_cockpit_visible_acceptance_lines(vm),
-        "keys: ◀/▶ select | SPACE preview | ENTER apply | B body | R reset | E evidence",
-    )
+    ]
+    # body/power detail lines only when the right MFD does NOT already show them
+    # (page "systems" carries Body/Physics/Power); nav duplicate the MFD titles
+    # visible right above the panel, so it is never repeated here
+    if vm.right_mfd_page != "systems":
+        lines.append(f"{vm.body_summary}")
+        lines.append(f"{vm.power_summary}")
+    lines.append(f"{vm.sensor_summary}")
+    lines.append(f"{vm.command_summary}")
+    # action effect and last_event were verbatim repeats of HELP/PREVIEW and
+    # RESULT+ticker; the event id stays visible in RESULT and event[N] lines
+    lines.extend(format_cockpit_event_ticker_lines(vm))
+    lines.extend(format_cockpit_visible_acceptance_lines(vm))
+    return tuple(lines)
 
 
 def format_cockpit_playable_action_labels(vm: CockpitPlayableLoopVM) -> tuple[tuple[str, str, bool], ...]:

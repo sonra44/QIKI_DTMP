@@ -8,6 +8,7 @@ from qiki.services.operator_console.orion_v.cockpit_playable_view_model import (
     build_cockpit_event_history_item,
     build_cockpit_playable_loop_vm,
     build_cockpit_playable_state,
+    cockpit_playable_effect_panel_id,
     build_cockpit_focus_vm,
     build_cockpit_hint_vms,
     build_cockpit_visible_panel_vms,
@@ -46,17 +47,35 @@ def test_cockpit_playable_view_model_exposes_complete_normal_cycle() -> None:
     assert "F1 PLAYABLE LOOP" in lines
     assert "snapshot → display → preview → request → applied → event → evidence" in lines
     assert "runtime_claim_status: local_ui_loop_no_runtime_command" in lines
-    assert "POWER:" in lines
+    # dedup contract: right MFD page "systems" already shows body/power state,
+    # so the loop panel must NOT repeat those detail lines
+    assert "POWER: SoC_bat=" not in lines
+    assert "BODY: " not in lines
     assert "F1 PANELS | visible_acceptance=ready | panels=6/6" in lines
     assert "BODY=yes | POWER=yes | NAV=yes | SENSORS=yes | COMMAND=yes | EVENT=yes" in lines
     assert "EVENT: status=ready" in lines
     assert "F1 FOCUS | panel=POWER | action=POWER REFRESH" in lines
     assert "F1 HINT |" in lines
+    assert "B body | R reset" in lines  # key map merged into the single HINT line
     assert "F1 HELP | POWER REFRESH" in lines
     assert "F1 PALETTE | Ctrl+P" in lines
     assert "F1 PREVIEW | target=POWER" in lines
     assert "runtime_command=no" in lines
-    assert "keys:" in lines
+
+    # ...and when the right MFD shows another page, the panel carries the state itself
+    vm_other = build_cockpit_playable_loop_vm(
+        loop_state=state,
+        body_vm=body,
+        body_physics_vm=physics,
+        power_vm=power,
+        active_left_mfd_page="radar",
+        active_right_mfd_page="thermal",
+        nats_connected=False,
+        active_incidents=0,
+    )
+    other_lines = "\n".join(format_cockpit_playable_loop_lines(vm_other))
+    assert "POWER: SoC_bat=" in other_lines
+    assert "BODY: " in other_lines
 
 
 def test_cockpit_visible_acceptance_panels_are_stable_and_complete() -> None:
@@ -85,14 +104,18 @@ def test_cockpit_visible_acceptance_panels_are_stable_and_complete() -> None:
     lines = "\n".join(format_cockpit_visible_acceptance_lines(vm))
 
     assert panel_ids == ("body", "power", "nav", "sensors", "command", "event")
+    # panel completeness stays machine-checkable via the panel VMs; the per-panel
+    # text rows were removed from the visible block as duplicates of the flags
+    statuses = {panel.panel_id: panel.status for panel in panels}
+    assert statuses["body"] == statuses["power"] == statuses["nav"] == "shown"
+    assert statuses["sensors"] == statuses["command"] == "shown"
+    assert statuses["event"] == "recorded"
     assert "F1 PANELS | visible_acceptance=ready | panels=6/6" in lines
-    assert "BODY: status=shown" in lines
-    assert "POWER: status=shown" in lines
-    assert "NAV: status=shown" in lines
-    assert "SENSORS: status=shown" in lines
-    assert "COMMAND: status=shown" in lines
+    assert "BODY=yes | POWER=yes | NAV=yes | SENSORS=yes | COMMAND=yes | EVENT=yes" in lines
     assert "EVENT: status=recorded" in lines
-    assert "f1-loop:test" in lines
+    # the event id lives in the F1 RESULT line of the full panel (single owner)
+    full = "\n".join(format_cockpit_playable_loop_lines(vm))
+    assert "f1-loop:test" in full
 
 
 def test_cockpit_playable_action_cycle_is_stable() -> None:
@@ -125,18 +148,18 @@ def test_cockpit_action_effect_is_routed_to_target_panel() -> None:
         nats_connected=False,
         active_incidents=0,
     )
-    lines = "\n".join(format_cockpit_visible_acceptance_lines(vm))
+    # effect routing is owned by F1 RESULT (the "F1 ACTION EFFECT" row duplicated it)
+    full = "\n".join(format_cockpit_playable_loop_lines(vm))
+    assert "F1 RESULT | applied=POWER REFRESH | target=POWER" in full
+    assert "event=f1-loop:power" in full
 
-    assert "F1 ACTION EFFECT | applied=POWER REFRESH | target=POWER" in lines
-    assert "effect=power/accumulator view-model refreshed from current snapshot" in lines
-    assert "POWER: status=shown" in lines
-    assert "POWER: SoC_bat=" in lines
-    assert "last_effect=power/accumulator view-model refreshed from current snapshot" in lines
-    assert "BODY: status=shown" in lines
-    assert "BODY: " in lines
-    assert "BODY: status=shown | source=body_structure_view_model | trust=view_model_backed | BODY:" in lines
-    body_line = next(line for line in lines.splitlines() if line.startswith("BODY: status=shown"))
-    assert "last_effect=none" in body_line
+    panels = {panel.panel_id: panel for panel in build_cockpit_visible_panel_vms(vm)}
+    assert panels["power"].status == "shown"
+    assert panels["body"].status == "shown"
+    assert "SoC_bat=" in panels["power"].summary
+    assert "last_effect=power/accumulator view-model refreshed from current snapshot" in panels["power"].summary
+    # the non-target panel must not claim the effect
+    assert "last_effect=none" in panels["body"].summary
 
 
 def test_cockpit_action_effect_target_map_is_visible_for_all_actions() -> None:
@@ -155,14 +178,16 @@ def test_cockpit_action_effect_target_map_is_visible_for_all_actions() -> None:
         nats_connected=False,
         active_incidents=0,
     )
-    lines = "\n".join(format_cockpit_visible_acceptance_lines(vm))
-
-    assert "action_effect_targets:" in lines
-    assert "BODY SELF-CHECK→BODY" in lines
-    assert "POWER REFRESH→POWER" in lines
-    assert "NAV PAGE CYCLE→NAV" in lines
-    assert "SENSOR FOCUS→SENSORS" in lines
-    assert "COMMAND PREVIEW→COMMAND" in lines
+    # карта маршрутизации проверяется машинно (boilerplate-строка с экрана убрана)
+    expected = {
+        "body_self_check": "body",
+        "power_refresh": "power",
+        "nav_cycle": "nav",
+        "sensor_focus": "sensors",
+        "command_preview": "command",
+    }
+    for action_id, panel_id in expected.items():
+        assert cockpit_playable_effect_panel_id(action_id) == panel_id
 
 
 def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
@@ -207,7 +232,7 @@ def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
     ticker = "\n".join(format_cockpit_event_ticker_lines(vm))
     lines = "\n".join(format_cockpit_playable_loop_lines(vm))
 
-    assert "F1 EVENT TICKER | entries=2 | latest=f1-loop:second" in ticker
+    assert "F1 EVENT TICKER | entries=2" in ticker  # заголовок только счётчик; latest = первая строка event[1]
     assert "event[1]: f1-loop:second | POWER REFRESH -> POWER | power refreshed" in ticker
     assert "event[2]: f1-loop:first | BODY SELF-CHECK -> BODY | body self-check registered" in ticker
     assert "F1 EVENT TICKER | entries=2" in lines
@@ -381,7 +406,7 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         await pilot.pause()
         preview = app.query_one("#orionv-mfd-qiki", Static).render().plain
         assert "phase=preview" in preview
-        assert "F1 PLAYABLE preview" in preview
+        assert "F1 PREVIEW | target=POWER" in preview  # last_event-строка убрана; PREVIEW видна с фазы preview
 
         await pilot.click("#orionv-cockpit-loop-apply")
         await pilot.pause()
