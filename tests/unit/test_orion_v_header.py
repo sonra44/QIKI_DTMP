@@ -41,4 +41,6 @@ def test_header_renders_mission_strip_state() -> None:
     assert "A: [b]operator-confirm[/b]" in text
     assert "СВЯЗЬ [green]" in text
     assert "СОБЫТ [b]12[/b]" in text
-    assert "ДАННЫЕ [b]fresh[/b]" in text
+    # ADR-0016: DATA freshness code on the primary row (age → tooltip); no ДАННЫЕ dup
+    assert "СВЕЖ [b]OK[/b]" in text
+    assert "ДАННЫЕ" not in text

@@ -46,7 +46,11 @@ class OrionVHeader(Static):
             if isinstance(always_on.telemetry_age_ms, (int, float))
             else None
         )
-        freshness = f"{freshness_seconds:.1f}s" if freshness_seconds is not None else "unknown"
+        # MISSION_CONTROL_STRIP_CANON / ADR-0016: the primary row shows the DATA
+        # freshness CODE (OK/LAG/STALE/NODATA); the exact age goes to the tooltip.
+        # Closes F-4b: no more "СВЕЖ unknown" while telemetry is actually flowing.
+        freshness = derived.data_freshness_state or "NODATA"
+        age_hint = f"{freshness_seconds:.1f}s" if freshness_seconds is not None else "нет данных"
         latency = (
             f"{always_on.signal_latency_ms:.0f}ms"
             if isinstance(always_on.signal_latency_ms, (int, float))
@@ -80,6 +84,6 @@ class OrionVHeader(Static):
         )
         if always_on.last_contact_timestamp:
             line_2 += f" | RX [b]{always_on.last_contact_timestamp}[/b]"
-        if derived.data_freshness_state:
-            line_2 += f" | ДАННЫЕ [b]{derived.data_freshness_state}[/b]"
+        # canon: human detail (exact age) lives in the tooltip, not the primary row
+        self.tooltip = f"СВЕЖ/DATA: возраст {age_hint} | ЗАДЕРЖ {latency} | ПОТЕРИ {loss}"
         self.update("\n".join((line_1, line_2)))

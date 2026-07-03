@@ -1351,14 +1351,17 @@ def _commandability_state(
     return "commandable"
 
 
-def _data_freshness_state(telemetry_age_ms: float | None) -> str | None:
+def _data_freshness_state(telemetry_age_ms: float | None) -> str:
+    # MISSION_CONTROL_STRIP_CANON / ADR-0016: DATA freshness engineering codes.
+    # No telemetry age → NODATA (honest, never "unknown"); age thresholds reuse the
+    # comms warn/crit budgets (operator-console decision, not a telemetry-schema one).
     if telemetry_age_ms is None:
-        return None
+        return "NODATA"
     if telemetry_age_ms >= COMMS_AGE_CRIT_S * 1000.0:
-        return "stale"
+        return "STALE"
     if telemetry_age_ms >= COMMS_AGE_WARN_S * 1000.0:
-        return "aging"
-    return "fresh"
+        return "LAG"
+    return "OK"
 
 
 def _autonomy_confidence(qiki_response: QikiChatResponseV1 | None) -> str | None:
