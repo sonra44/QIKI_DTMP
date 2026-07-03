@@ -10,7 +10,7 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     format_soc_bat,
     format_soc_cap,
 )
-from qiki.services.operator_console.orion_v.i18n_ru import state_ru
+from qiki.services.operator_console.orion_v.i18n_ru import body_seed_status_ru, state_ru
 from qiki.services.operator_console.orion_v.mfd_layout import mfd_page_label, normalize_mfd_page
 
 
@@ -495,7 +495,7 @@ def build_cockpit_playable_loop_vm(
     module_text = body_vm.module_id or "none"
     selected_face = body_vm.selected_face_id or "unknown"
     body_summary = (
-        f"КОРПУС: {state_ru(body_vm.seed_status)} | грань: {selected_face} | модуль: {module_text} | "
+        f"КОРПУС: {body_seed_status_ru(body_vm.seed_status, body_vm.runtime_ready)} | грань: {selected_face} | модуль: {module_text} | "
         f"готов: {'да' if body_vm.runtime_ready else 'нет'}"
     )
     power_summary = (

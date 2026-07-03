@@ -84,6 +84,18 @@ def state_ru(value: object) -> str:
     return STATE_RU.get(text.lower(), text)
 
 
+def body_seed_status_ru(seed_status: object, runtime_ready: bool) -> str:
+    """Честный показ статуса корпуса-посева.
+
+    §19 / 05_ENGINEERING_RATIONALE forbidden-wording: каркас-посев без
+    runtime_ready — НЕ «в строю» (операционен), это лишь загруженная модель
+    скелета. Не заявляем операционную готовность без runtime-evidence.
+    """
+    if str(seed_status or "").strip().lower() == "online" and not runtime_ready:
+        return "каркас (посев)"
+    return state_ru(seed_status)
+
+
 # Проза физических последствий для игрового поля (ПОКАЗ; значения в VM остаются
 # как есть — тесты держат их как честную семантику «модель не знает»).
 PHYS_RU = {

@@ -29,7 +29,7 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     format_soc_bat,
     format_soc_cap,
 )
-from qiki.services.operator_console.orion_v.i18n_ru import phys_ru, state_ru, tr
+from qiki.services.operator_console.orion_v.i18n_ru import body_seed_status_ru, phys_ru, state_ru, tr
 from qiki.services.operator_console.orion_v.mfd_layout import (
     MFD_DEFAULT_LEFT_PAGE,
     MFD_DEFAULT_RIGHT_PAGE,
@@ -736,7 +736,7 @@ class OrionVCockpitScreen(Static):
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         status = render_status_strip(
             mode="КОКПИТ",
-            body=f"{state_ru(body_vm.seed_status)} | модулей: {body_vm.attached_modules_count}",
+            body=f"{body_seed_status_ru(body_vm.seed_status, body_vm.runtime_ready)} | модулей: {body_vm.attached_modules_count}",
             evidence=body_vm.trust_status or "missing",
             source="аудит/локальный посев",
         )
@@ -780,7 +780,7 @@ class OrionVCockpitScreen(Static):
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         module = body_vm.module_id or "none"
         body_rows = [
-            f"Корпус: {state_ru(body_vm.seed_status)} | граней: {body_vm.faces_total} | выбрана: {body_vm.selected_face_id}",
+            f"Корпус: {body_seed_status_ru(body_vm.seed_status, body_vm.runtime_ready)} | граней: {body_vm.faces_total} | выбрана: {body_vm.selected_face_id}",
             f"Модуль: {module} | гнездо: {body_vm.mount_point} | решение: {state_ru(body_vm.last_decision)}",
             f"Паспорт: {state_ru(body_vm.passport_status)} | способность: {state_ru(body_vm.capability_status)} | "
             f"готов к работе: {'да' if body_vm.runtime_ready else 'нет'}",

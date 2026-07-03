@@ -476,6 +476,22 @@ def test_cockpit_energy_thermal_not_green_without_source() -> None:
     assert "THERMAL      | NOMINAL" not in text
 
 
+def test_cockpit_body_seed_not_claimed_operational_without_runtime() -> None:
+    # C2 / §19 forbidden-wording: a seed frame that is not runtime_ready (0 modules,
+    # capability inactive) must not read as "в строю" (operational). It is a loaded
+    # skeleton seed → "каркас (посев)".
+    screen = _CaptureCockpit()
+    screen.set_state(
+        telemetry={},
+        nats_connected=True,
+        active_incidents=0,
+        incidents=[],
+    )
+    status = screen._compose_mfd_status_text("")
+    assert "КОРПУС: каркас (посев)" in status
+    assert "КОРПУС: в строю" not in status
+
+
 def test_cockpit_guidance_compact_marks_partial_without_source() -> None:
     # F-3: with no guidance telemetry/derived state, the compact guidance/docking
     # rows must read "partial" (the same honest marker the verbose block uses),
