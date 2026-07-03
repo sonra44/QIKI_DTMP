@@ -27,6 +27,7 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     build_power_thermal_console_view_model_from_telemetry,
     build_power_thermal_evidence_card_vms,
 )
+from qiki.services.operator_console.orion_v.i18n_ru import state_ru
 from qiki.services.operator_console.orion_v.widgets.evidence_card_view import OrionVEvidenceCard
 from qiki.services.operator_console.orion_v.mfd_layout import clipped_lines, softkey_bar
 from qiki.services.operator_console.orion_v.ui_rich import semantic_update
@@ -93,7 +94,7 @@ def _render_evidence_list_mfd(cards: list[EvidenceCardVM], selected_index: int =
         human_index = index + 1
         lines.append(
             f"{marker}{human_index:02d}. {card.subsystem} | "
-            f"{card.state_key} | {card.reason_text or '-'}"
+            f"{state_ru(card.state_key)} | {card.reason_text or '-'}"
         )
         lines.append(f"    {card.headline}")
     return "\n".join(clipped_lines(lines, limit=32))
@@ -111,7 +112,7 @@ def _render_evidence_detail_mfd(cards: list[EvidenceCardVM], selected_index: int
             f"выбрано: {selected_index + 1:02d}/{len(cards):02d} {card.subsystem}",
             "",
             f"подсистема: {card.subsystem}",
-            f"состояние: {card.state_key}",
+            f"состояние: {state_ru(card.state_key)}",
             f"заголовок: {card.headline}",
             f"причина: {card.reason_text or '-'}",
             "детали:",

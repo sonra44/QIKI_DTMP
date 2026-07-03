@@ -136,9 +136,9 @@ def softkey_bar(extra: Iterable[str] = ()) -> str:
 def render_status_strip(*, mode: str, body: str, evidence: str, source: str) -> str:
     return " | ".join(
         (
-            f"MODE: {mode}",
-            f"BODY: {body}",
-            f"EVIDENCE: {evidence}",
-            f"SOURCE: {source}",
+            f"РЕЖИМ: {mode}",
+            f"КОРПУС: {body}",
+            f"УЛИКИ: {evidence}",
+            f"ИСТОЧНИК: {source}",
         )
     )

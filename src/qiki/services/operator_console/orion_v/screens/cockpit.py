@@ -29,7 +29,7 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     format_soc_bat,
     format_soc_cap,
 )
-from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
 from qiki.services.operator_console.orion_v.mfd_layout import (
     MFD_DEFAULT_LEFT_PAGE,
     MFD_DEFAULT_RIGHT_PAGE,
@@ -726,10 +726,10 @@ class OrionVCockpitScreen(Static):
         physics_vm = get_body_physics_console_view_model(body_vm)
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         status = render_status_strip(
-            mode="COCKPIT",
-            body=f"{body_vm.seed_status} modules={body_vm.attached_modules_count}",
+            mode="КОКПИТ",
+            body=f"{state_ru(body_vm.seed_status)} | модулей: {body_vm.attached_modules_count}",
             evidence=body_vm.trust_status or "missing",
-            source="audit/local seed",
+            source="аудит/локальный посев",
         )
         lines = [status]
         # full body/physics/power lines only when the right MFD does not already
@@ -771,10 +771,10 @@ class OrionVCockpitScreen(Static):
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         module = body_vm.module_id or "none"
         body_rows = [
-            f"Корпус: {body_vm.seed_status} | граней: {body_vm.faces_total} | выбрана: {body_vm.selected_face_id}",
-            f"Модуль: {module} | гнездо: {body_vm.mount_point} | решение: {body_vm.last_decision}",
-            f"Паспорт: {body_vm.passport_status} | способность: {body_vm.capability_status} | "
-            f"ready={str(body_vm.runtime_ready).lower()}",
+            f"Корпус: {state_ru(body_vm.seed_status)} | граней: {body_vm.faces_total} | выбрана: {body_vm.selected_face_id}",
+            f"Модуль: {module} | гнездо: {body_vm.mount_point} | решение: {state_ru(body_vm.last_decision)}",
+            f"Паспорт: {state_ru(body_vm.passport_status)} | способность: {state_ru(body_vm.capability_status)} | "
+            f"готов к работе: {'да' if body_vm.runtime_ready else 'нет'}",
             f"Улика: {body_vm.evidence_card_type or 'нет'} | доверие: {body_vm.trust_status}",
         ]
         physics_rows = [
@@ -786,7 +786,7 @@ class OrionVCockpitScreen(Static):
         power_rows = [
             f"Power({power_vm.source}): SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
             f"SoC_cap={format_soc_cap(power_vm.supercap_soc_pct)} | bus={power_vm.bus_state}",
-            f"Пик: {power_vm.peak_readiness} | тепло: {power_vm.thermal_status}",
+            f"Пик: {state_ru(power_vm.peak_readiness)} | тепло: {state_ru(power_vm.thermal_status)}",
             f"Заблокировано: {', '.join(power_vm.blocked_commands) if power_vm.blocked_commands else 'нет'}",
             f"Runtime: {power_vm.runtime_conformance} | источник: {power_vm.source}",
         ]
@@ -1544,7 +1544,7 @@ class OrionVCockpitScreen(Static):
             qiki_state, qiki_detail = "ГОТОВ", "q: <команда>"
         else:
             head_legality = resp.legality
-            qiki_state = (head_legality.status if head_legality is not None else "ГОТОВ").strip().upper()
+            qiki_state = state_ru((head_legality.status if head_legality is not None else "ГОТОВ").strip()).upper()
             qiki_detail = (
                 head_legality.reason_code if head_legality is not None and head_legality.reason_code else "review"
             ).strip().lower() or "review"
@@ -2473,8 +2473,8 @@ class OrionVCockpitScreen(Static):
             if line.startswith("Следующий шаг: "):
                 next_step = line.removeprefix("Следующий шаг: ").strip()
         return [
-            ("ДЕЙСТВИЕ", "УДЕРЖАНИЕ" if self._qiki_pending_action_title else loop_state, next_step),
-            ("ВВОД", mode, f"в очереди: {pending_count}"),
+            ("ДЕЙСТВИЕ", "УДЕРЖАНИЕ" if self._qiki_pending_action_title else state_ru(loop_state).upper(), next_step),
+            ("ВВОД", state_ru(mode).upper(), f"в очереди: {pending_count}"),
             ("ПОСЛЕДНЯЯ", "ПУСТО" if last_summary == "No command issued yet" else "ЕСТЬ", last_summary),
         ]
 

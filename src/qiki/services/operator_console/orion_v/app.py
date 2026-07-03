@@ -31,7 +31,7 @@ from qiki.services.operator_console.orion_v.dialogs import ConfirmDialog
 from qiki.services.operator_console.orion_v.events_store import BoundedEventsStore, now_epoch_s
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
 from qiki.services.operator_console.orion_v.hardware_view_model.types import HardwareViewModel
-from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
     reset_body_structure_interactive_state,
     run_body_structure_interactive_self_check,
@@ -866,7 +866,7 @@ class OrionVApp(App[None]):
             summary = "КОРПУС: модуль уже установлен; R — сброс"
         else:
             summary = (
-                f"КОРПУС: проверка — {decision.status} @ {decision.mount_point}; "
+                f"КОРПУС: проверка — {state_ru(decision.status)} @ {decision.mount_point}; "
                 f"аудит={decision.audit_event_id}"
             )
         self._console_history.append(summary)
