@@ -95,6 +95,13 @@ def _left_mfd_page_title(page: str) -> str:
     }.get(page, "Mission / Navigation")
 
 
+# Single source of truth for the operator "next step" line prefix. Both the
+# producers (_current_process_block / _procedure_block) and the consumer
+# (_pick_next_step) reference it, so a wording/localization change can't make the
+# picker silently miss the line and fall back to the default.
+_NEXT_STEP_PREFIX = "Следующий шаг/Next:"
+
+
 class OrionVCockpitScreen(Static):
     """Operator cockpit (F1): status-first layout for 3-5s situation awareness."""
 
@@ -1225,10 +1232,8 @@ class OrionVCockpitScreen(Static):
     def _pick_next_step(self, *blocks: list[str]) -> str:
         for block in blocks:
             for line in block:
-                if line.startswith("Следующий шаг/Next:"):
-                    return line.removeprefix("Следующий шаг/Next:").strip()
-                if line.startswith("Следующий шаг:"):
-                    return line.removeprefix("Следующий шаг:").strip()
+                if line.startswith(_NEXT_STEP_PREFIX):
+                    return line.removeprefix(_NEXT_STEP_PREFIX).strip()
         return "держите контур под контролем и готовьте следующую команду"
 
     @staticmethod
@@ -1451,7 +1456,7 @@ class OrionVCockpitScreen(Static):
             lines.append("Linked facts:")
             lines.extend(f"  {line}" for line in objective_facts_lines[:2])
         if not lines:
-            lines = ["Статус/Status: процесс не активен", "Следующий шаг/Next: задайте QIKI intent"]
+            lines = ["Статус/Status: процесс не активен", f"{_NEXT_STEP_PREFIX} задайте QIKI intent"]
         severity = _merge_severity(procedure_severity, objective_severity)
         severity = _merge_severity(severity, objective_facts_severity)
         return severity, lines
@@ -1674,7 +1679,7 @@ class OrionVCockpitScreen(Static):
         if pending_title:
             severity = "warn"
             lines.append(f"Подготовлено/Prepared: {pending_title}")
-            lines.append("Следующий шаг/Next: click QIKI подтвердить/Confirm or use q confirm.")
+            lines.append(f"{_NEXT_STEP_PREFIX} click QIKI подтвердить/Confirm or use q confirm.")
         else:
             lines.append("Подготовлено/Prepared: нет ожидающей процедуры")
 

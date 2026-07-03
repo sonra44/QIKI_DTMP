@@ -7,7 +7,10 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Static
 
-from qiki.services.operator_console.orion_v.screens.cockpit import OrionVCockpitScreen
+from qiki.services.operator_console.orion_v.screens.cockpit import (
+    _NEXT_STEP_PREFIX,
+    OrionVCockpitScreen,
+)
 from qiki.services.operator_console.orion_v.operator_state import build_operator_shell_state
 from qiki.services.operator_console.orion_v.i18n_ru import tr
 from qiki.shared.models.qiki_chat import (
@@ -442,6 +445,17 @@ def test_cockpit_safe_mode_section_stays_ok_when_signal_is_absent_but_shell_is_n
     assert "СИСТЕМА:" in text
     assert "НОРМА" in text
     assert "Есть предупреждения, требуется наблюдение." not in text
+
+
+def test_cockpit_pick_next_step_shares_prefix_with_producers() -> None:
+    # F-7: the "next step" picker and its producers must share one prefix constant
+    # so a wording/localization change cannot silently break the parse. A line
+    # built from the shared prefix must be extracted; a foreign prefix must not.
+    screen = _CaptureCockpit()
+    picked = screen._pick_next_step([f"{_NEXT_STEP_PREFIX} задайте QIKI intent"])
+    assert picked == "задайте QIKI intent"
+    fallback = screen._pick_next_step(["Next step: do something"])
+    assert fallback == "держите контур под контролем и готовьте следующую команду"
 
 
 def test_cockpit_energy_thermal_not_green_without_source() -> None:
