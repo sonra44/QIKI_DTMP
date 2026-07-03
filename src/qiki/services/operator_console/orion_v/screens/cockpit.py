@@ -1599,7 +1599,10 @@ class OrionVCockpitScreen(Static):
         if consequence is not None:
             effect_bullet = f"{consequence.status} | {consequence.summary.ru}"
             if consequence.telemetry_confirmation is not None:
-                effect_bullet += f" | подтв: {consequence.telemetry_confirmation.ru}"
+                # §19.6 / ADR-0015: ACK/QIKI-claim != independent effect confirmation.
+                # This text comes from the QIKI response, so attribute it to QIKI —
+                # do not present it as an ORION-verified telemetry confirmation.
+                effect_bullet += f" | подтв.(со слов QIKI): {consequence.telemetry_confirmation.ru}"
             effect_state_row = consequence.status.strip().upper()
             effect_detail_row = consequence.summary.ru
         else:

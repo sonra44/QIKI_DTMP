@@ -599,6 +599,9 @@ def test_cockpit_renders_qiki_legality_trust_and_consequence_block() -> None:
     assert "• Допуск/Legality: blocked [protocol] MVP_NO_AUTO_ACTIONS" in text
     assert "• Доверие/Trust: healthy | Политика исполнения/Execution policy | conf=1.00 | src=policy" in text
     assert "• Эффект/Last: not_sent | Команда не была отправлена на control bus." in text
+    # F-6: QIKI's telemetry_confirmation is attributed to QIKI, not presented as an
+    # ORION-verified effect confirmation (§19.6 / ADR-0015: ACK != effect confirmation).
+    assert "подтв.(со слов QIKI): Состояние исполнения осталось без изменений." in text
     assert "QIKI, действие, контур." in text
 
 
