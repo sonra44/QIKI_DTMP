@@ -51,6 +51,15 @@ def test_f1_cockpit_body_status_line_is_visible() -> None:
     assert "audit_backed" in line
 
 
+def test_f1_cockpit_body_status_line_marks_seed_source() -> None:
+    # F-5: the seed/local origin must be visible on the body-structure header so
+    # faces/modules never read as live telemetry. The default (waiting) branch
+    # previously carried no provenance marker at all.
+    line = format_body_structure_cockpit_line()
+
+    assert "src=body_structure.runtime_seed" in line
+
+
 def test_f2_systems_body_structure_summary_has_operator_fields() -> None:
     text = format_body_structure_system_summary(build_body_structure_self_check_view_model())
 
