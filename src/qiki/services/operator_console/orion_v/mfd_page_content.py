@@ -189,8 +189,8 @@ def render_left_mfd_page(
     incidents_seq = list(incidents or [])
     telemetry_map = dict(telemetry or {})
     header = [
-        f"LEFT MFD / {label}",
-        f"page: {selected} | read-only projection; no runtime mutation",
+        f"ЛЕВЫЙ MFD / {label}",
+        f"страница: {selected} | только чтение; runtime не изменяется",
     ]
 
     if selected == "radar":
@@ -262,8 +262,8 @@ def render_right_mfd_page(
     }
     subsystem_key = selected_subsystem or page_to_subsystem.get(selected)
     header = [
-        f"RIGHT MFD / {label}",
-        f"page: {selected} | evidence station: read-only projection, not source of truth",
+        f"ПРАВЫЙ MFD / {label}",
+        f"страница: {selected} | станция улик: только чтение, не источник истины",
     ]
 
     if selected == "systems":

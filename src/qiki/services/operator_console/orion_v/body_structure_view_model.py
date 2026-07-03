@@ -396,30 +396,30 @@ def body_structure_evidence_to_card_vm(card: EvidenceCard) -> EvidenceCardVM:
     mount = str(card.facts.get("mount_point") or card.facts.get("attempted_mount") or "missing")
     runtime_ready = str(card.runtime_ready or bool(card.facts.get("runtime_ready"))).lower()
     headline = (
-        f"module {card.subject_id} attached @ {mount}"
+        f"модуль {card.subject_id} установлен @ {mount}"
         if card.subject_status == "attached"
-        else f"attach rejected: {card.reason_code or 'reason missing'}"
+        else f"установка отклонена: {card.reason_code or 'код причины отсутствует'}"
     )
     reason_text = ", ".join(card.reason_codes)
     detail_lines = (
-        f"card: {card.card_type}",
-        f"operation: {card.operation}",
-        f"mount: {mount}",
-        f"face: {mount}",
-        f"face_state: {'occupied' if card.subject_status == 'attached' else 'unchanged'}",
-        f"passport: {card.facts.get('passport_status', 'missing')}",
-        f"runtime_ready: {runtime_ready}",
-        f"capability: {card.facts.get('capability_status', 'missing')}",
-        f"source: {card.source_type}",
-        f"trust: {card.trust_status}",
-        f"read_only: {str(card.read_only).lower()}",
-        f"audit_event_id: {card.related_audit_event_id}",
-        f"evidence_card_id: {card.card_id}",
-        f"mode: {BODY_STRUCTURE_MODE}",
-        f"transport: {BODY_STRUCTURE_TRANSPORT}",
+        f"карточка: {card.card_type}",
+        f"операция: {card.operation}",
+        f"гнездо: {mount}",
+        f"грань: {mount}",
+        f"состояние грани: {'занята' if card.subject_status == 'attached' else 'без изменений'}",
+        f"паспорт: {card.facts.get('passport_status', 'missing')}",
+        f"готов к работе: {runtime_ready}",
+        f"способность: {card.facts.get('capability_status', 'missing')}",
+        f"источник: {card.source_type}",
+        f"доверие: {card.trust_status}",
+        f"только чтение: {str(card.read_only).lower()}",
+        f"аудит: {card.related_audit_event_id}",
+        f"id карточки: {card.card_id}",
+        f"режим: {BODY_STRUCTURE_MODE}",
+        f"транспорт: {BODY_STRUCTURE_TRANSPORT}",
     )
     return EvidenceCardVM(
-        subsystem="BODY",
+        subsystem="КОРПУС",
         state_key=state_key,
         headline=headline,
         reason_text=reason_text,
@@ -434,16 +434,16 @@ def build_body_structure_evidence_card_vms(
     if vm.evidence_card is None:
         return [
             EvidenceCardVM(
-                subsystem="BODY",
+                subsystem="КОРПУС",
                 state_key="missing",
-                headline="No body attach evidence yet. Run attach self-check from ORION.",
+                headline="Улик по установке модуля пока нет. Нажмите B — проверка корпуса.",
                 reason_text="BODY_STRUCTURE_WAITING",
                 detail_lines=(
-                    f"source: {vm.source}",
-                    f"mode: {vm.mode}",
-                    f"transport: {vm.transport}",
-                    f"selected_face: {vm.selected_face_id}",
-                    f"hint: {vm.operator_hint}",
+                    f"источник: {vm.source}",
+                    f"режим: {vm.mode}",
+                    f"транспорт: {vm.transport}",
+                    f"выбранная грань: {vm.selected_face_id}",
+                    f"подсказка: {vm.operator_hint}",
                 ),
             )
         ]

@@ -64,7 +64,7 @@ def test_body_physics_seed_initial_state_has_no_module_impact() -> None:
     assert "Mass state         unchanged" in visible
     assert "Thrust Map         TBD" in visible
     assert "Torque Map         TBD" in visible
-    assert "No physical consequence seed yet" in visible
+    assert "Физических последствий пока нет" in visible
     assert "runtime_conformance: not claimed" in visible
 
 
@@ -130,7 +130,7 @@ def test_f8_evidence_contains_pending_body_physical_consequence_card() -> None:
     cards = build_body_physics_evidence_card_vms()
     text = "\n".join(render_card_text(card) for card in cards)
 
-    assert "BODY PHYSICS" in text
+    assert "ФИЗИКА КОРПУСА" in text
     assert "BODY_PHYSICAL_CONSEQUENCE_SEED_PENDING" in text
     assert f"module: {BODY_STRUCTURE_TEST_MODULE_ID}" in text
     assert "mount: F06" in text

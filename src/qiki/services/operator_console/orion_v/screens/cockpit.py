@@ -757,8 +757,8 @@ class OrionVCockpitScreen(Static):
             wanted = lines[:18]
         return "\n".join(
             [
-                f"LEFT MFD / {page_label} / page={page}",
-                "source: telemetry/objective/shell state; no invented facts",
+                f"ЛЕВЫЙ MFD / {page_label}",
+                "источник: телеметрия/цель/оболочка | фактов не выдумываем",
                 *section_lines(_left_mfd_page_title(page), wanted, limit=18),
             ]
         )
@@ -771,14 +771,14 @@ class OrionVCockpitScreen(Static):
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         module = body_vm.module_id or "none"
         body_rows = [
-            f"Body: {body_vm.seed_status} | faces={body_vm.faces_total} | selected={body_vm.selected_face_id}",
-            f"Module: {module} | mount={body_vm.mount_point} | decision={body_vm.last_decision}",
-            f"Passport: {body_vm.passport_status} | capability={body_vm.capability_status} | "
+            f"Корпус: {body_vm.seed_status} | граней: {body_vm.faces_total} | выбрана: {body_vm.selected_face_id}",
+            f"Модуль: {module} | гнездо: {body_vm.mount_point} | решение: {body_vm.last_decision}",
+            f"Паспорт: {body_vm.passport_status} | способность: {body_vm.capability_status} | "
             f"ready={str(body_vm.runtime_ready).lower()}",
-            f"Evidence: {body_vm.evidence_card_type or 'none'} | trust={body_vm.trust_status}",
+            f"Улика: {body_vm.evidence_card_type or 'нет'} | доверие: {body_vm.trust_status}",
         ]
         physics_rows = [
-            f"Physics: {physics_vm.evidence_card_type}",
+            f"Физика: {physics_vm.evidence_card_type}",
             f"mass={physics_vm.mass_state} | CoM={physics_vm.com_delta_class} | inertia={physics_vm.inertia_class}",
             f"Thrust Map={physics_vm.thrust_map_status} | Torque Map={physics_vm.torque_map_status}",
             f"trust={physics_vm.trust_status} | runtime={physics_vm.runtime_conformance}",
@@ -786,9 +786,9 @@ class OrionVCockpitScreen(Static):
         power_rows = [
             f"Power({power_vm.source}): SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
             f"SoC_cap={format_soc_cap(power_vm.supercap_soc_pct)} | bus={power_vm.bus_state}",
-            f"Peak={power_vm.peak_readiness} | thermal={power_vm.thermal_status}",
-            f"Blocked: {', '.join(power_vm.blocked_commands) if power_vm.blocked_commands else 'none'}",
-            f"Runtime: {power_vm.runtime_conformance} | source={power_vm.source}",
+            f"Пик: {power_vm.peak_readiness} | тепло: {power_vm.thermal_status}",
+            f"Заблокировано: {', '.join(power_vm.blocked_commands) if power_vm.blocked_commands else 'нет'}",
+            f"Runtime: {power_vm.runtime_conformance} | источник: {power_vm.source}",
         ]
         thermal_rows = [
             f"Thermal status: {power_vm.thermal_status}",
@@ -802,11 +802,11 @@ class OrionVCockpitScreen(Static):
         body_lines = body_text.splitlines()
         subsystem_sections: dict[str, list[str]] = {
             "systems": [
-                *section_lines("Body / Structure", body_rows, limit=8),
+                *section_lines("Корпус / Структура", body_rows, limit=8),
                 "",
-                *section_lines("Physical Consequence", physics_rows, limit=8),
+                *section_lines("Физические последствия", physics_rows, limit=8),
                 "",
-                *section_lines("Power / Thermal", power_rows, limit=8),
+                *section_lines("Питание / Тепло", power_rows, limit=8),
             ],
             "sensors": [
                 *section_lines(
@@ -857,8 +857,8 @@ class OrionVCockpitScreen(Static):
         }
         return "\n".join(
             [
-                f"RIGHT MFD / {page_label} / page={page}",
-                "evidence station: read-only projection, not source of truth",
+                f"ПРАВЫЙ MFD / {page_label}",
+                "станция улик: только чтение, не источник истины",
                 *subsystem_sections.get(page, subsystem_sections["systems"]),
             ]
         )
@@ -1539,12 +1539,12 @@ class OrionVCockpitScreen(Static):
 
         # QIKI head row
         if pending_title:
-            qiki_state, qiki_detail = "HOLD", "confirm required"
+            qiki_state, qiki_detail = "УДЕРЖАНИЕ", "нужно подтверждение"
         elif resp is None:
-            qiki_state, qiki_detail = "READY", "q: <команда>"
+            qiki_state, qiki_detail = "ГОТОВ", "q: <команда>"
         else:
             head_legality = resp.legality
-            qiki_state = (head_legality.status if head_legality is not None else "READY").strip().upper()
+            qiki_state = (head_legality.status if head_legality is not None else "ГОТОВ").strip().upper()
             qiki_detail = (
                 head_legality.reason_code if head_legality is not None and head_legality.reason_code else "review"
             ).strip().lower() or "review"
@@ -2473,9 +2473,9 @@ class OrionVCockpitScreen(Static):
             if line.startswith("Следующий шаг: "):
                 next_step = line.removeprefix("Следующий шаг: ").strip()
         return [
-            ("ACTION", "HOLD" if self._qiki_pending_action_title else loop_state, next_step),
-            ("INPUT", mode, f"pending={pending_count}"),
-            ("LAST", "IDLE" if last_summary == "No command issued yet" else "SET", last_summary),
+            ("ДЕЙСТВИЕ", "УДЕРЖАНИЕ" if self._qiki_pending_action_title else loop_state, next_step),
+            ("ВВОД", mode, f"в очереди: {pending_count}"),
+            ("ПОСЛЕДНЯЯ", "ПУСТО" if last_summary == "No command issued yet" else "ЕСТЬ", last_summary),
         ]
 
     def _process_state_rows(

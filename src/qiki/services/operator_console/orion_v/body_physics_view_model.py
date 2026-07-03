@@ -153,9 +153,9 @@ def build_body_physics_evidence_card_vms(
     if not vm.module_attached:
         return [
             EvidenceCardVM(
-                subsystem="BODY PHYSICS",
+                subsystem="ФИЗИКА КОРПУСА",
                 state_key="missing",
-                headline="No physical consequence seed yet. Run body attach self-check from ORION.",
+                headline="Физических последствий пока нет. Нажмите B — проверка корпуса.",
                 reason_text="BODY_PHYSICS_WAITING",
                 detail_lines=(
                     f"source: {vm.source}",
@@ -169,7 +169,7 @@ def build_body_physics_evidence_card_vms(
         ]
     return [
         EvidenceCardVM(
-            subsystem="BODY PHYSICS",
+            subsystem="ФИЗИКА КОРПУСА",
             state_key="target",
             headline=(
                 f"{vm.evidence_card_type} | module={vm.module_id} | "

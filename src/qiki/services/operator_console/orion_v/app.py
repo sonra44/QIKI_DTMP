@@ -861,13 +861,13 @@ class OrionVApp(App[None]):
         snapshot = run_body_structure_interactive_self_check()
         decision = snapshot.decision
         if decision is None:
-            summary = "BODY STRUCTURE self-check waiting"
+            summary = "КОРПУС: проверка ожидает запуска"
         elif snapshot.interaction_state == "already_attached":
-            summary = "BODY STRUCTURE already attached; press R to reset"
+            summary = "КОРПУС: модуль уже установлен; R — сброс"
         else:
             summary = (
-                f"BODY STRUCTURE self-check: {decision.status} @ {decision.mount_point}; "
-                f"audit={decision.audit_event_id}"
+                f"КОРПУС: проверка — {decision.status} @ {decision.mount_point}; "
+                f"аудит={decision.audit_event_id}"
             )
         self._console_history.append(summary)
         self._last_command_status = "ok"
@@ -878,7 +878,7 @@ class OrionVApp(App[None]):
     def action_select_next_body_structure_face(self) -> None:
         """Cycle the visible Face Map selection without mutating body_config."""
         snapshot = select_next_body_structure_face()
-        summary = f"BODY STRUCTURE selected face: {snapshot.selected_face_id}"
+        summary = f"КОРПУС: выбрана грань {snapshot.selected_face_id}"
         self._console_history.append(summary)
         self._last_command_status = "ok"
         self._last_command_summary = summary
@@ -888,7 +888,7 @@ class OrionVApp(App[None]):
     def action_select_previous_body_structure_face(self) -> None:
         """Cycle the visible Face Map selection backwards without mutating body_config."""
         snapshot = select_previous_body_structure_face()
-        summary = f"BODY STRUCTURE selected face: {snapshot.selected_face_id}"
+        summary = f"КОРПУС: выбрана грань {snapshot.selected_face_id}"
         self._console_history.append(summary)
         self._last_command_status = "ok"
         self._last_command_summary = summary
@@ -897,7 +897,7 @@ class OrionVApp(App[None]):
     def action_reset_body_structure_self_check(self) -> None:
         """Reset the visible local body-structure loop to modules=0/F06=free."""
         reset_body_structure_interactive_state()
-        summary = "BODY STRUCTURE self-check reset: modules=0; F06=free"
+        summary = "КОРПУС: сброс проверки — модулей 0; F06 свободна"
         self._console_history.append(summary)
         self._last_command_status = "ok"
         self._last_command_summary = summary

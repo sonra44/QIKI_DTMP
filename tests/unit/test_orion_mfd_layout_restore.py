@@ -48,7 +48,7 @@ def test_f1_cockpit_restores_left_right_mfd_shell_and_keeps_legacy_buttons() -> 
     assert "mfd_button_specs(\"right\")" in cockpit
     assert 'mfd_page_label("right", page)' in cockpit
     assert 'mfd_page_label("left", page)' in cockpit
-    assert "page={page}" in cockpit
+    assert "ЛЕВЫЙ MFD / {page_label}" in cockpit
 
     # App-level quick-jump buttons remain present for existing routing tests.
     assert "orionv-cockpit-jump-power" in cockpit

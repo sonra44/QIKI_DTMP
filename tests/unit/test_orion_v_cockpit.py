@@ -143,10 +143,10 @@ async def test_cockpit_live_intervention_panel_is_compact_in_nominal_state() -> 
 
         text = _live_intervention_text(app)
         assert "QIKI" in text
-        assert "READY" in text
+        assert "ГОТОВ" in text
         assert "q: <команда>" in text
-        assert "ACTION" in text
-        assert "INPUT" in text
+        assert "ДЕЙСТВИЕ" in text
+        assert "ВВОД" in text
         assert "PROCESS" in text
         assert "FOCUS" in text
         assert "LEGALITY" not in text

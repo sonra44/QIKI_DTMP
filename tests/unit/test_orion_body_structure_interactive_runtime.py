@@ -41,7 +41,7 @@ def test_initial_body_structure_interactive_state_is_waiting() -> None:
     assert "press B" in f1
     assert "Attached modules  0" in f2
     assert "Evidence          none yet" in f2
-    assert "No body attach evidence yet" in f8
+    assert "Улик по установке модуля пока нет" in f8
 
 
 def test_press_b_runs_attach_pipeline_and_updates_f1_f2_f8() -> None:
@@ -77,8 +77,8 @@ def test_press_b_runs_attach_pipeline_and_updates_f1_f2_f8() -> None:
     assert BODY_STRUCTURE_TEST_MODULE_ID in f2
     assert "runtime_ready   false" in f2
     assert "BODY_MODULE_ATTACH_REGISTERED" in f8
-    assert "source: audit" in f8
-    assert "read_only: true" in f8
+    assert "источник: audit" in f8
+    assert "только чтение: true" in f8
 
 
 def test_reset_returns_body_structure_to_waiting_state() -> None:

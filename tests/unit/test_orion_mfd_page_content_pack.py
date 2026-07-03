@@ -132,13 +132,13 @@ def test_left_mfd_pages_render_distinct_source_backed_content() -> None:
         safe_mode={"active": False},
     )
 
-    assert "LEFT MFD / РАДАР" in radar
+    assert "ЛЕВЫЙ MFD / РАДАР" in radar
     assert "TGT-1" in radar
-    assert "LEFT MFD / ЦЕЛЬ" in target
+    assert "ЛЕВЫЙ MFD / ЦЕЛЬ" in target
     assert "observe target" in target
-    assert "LEFT MFD / СЕКТОР" in sector
+    assert "ЛЕВЫЙ MFD / СЕКТОР" in sector
     assert "inc-1" in sector
-    assert "read-only projection" in radar
+    assert "только чтение" in radar
 
 
 def test_right_mfd_pages_are_content_pages_not_placeholders() -> None:
@@ -181,7 +181,7 @@ def test_right_mfd_pages_are_content_pages_not_placeholders() -> None:
     for rendered in (sensors, propulsion, docking, procedures):
         assert "Selected page is a read-only systems projection" not in rendered
         assert "No runtime action is executed by MFD page selection" not in rendered
-        assert "read-only projection, not source of truth" in rendered
+        assert "только чтение, не источник истины" in rendered
 
     assert "Sensor Trust / Radar" in sensors
     assert "TGT-1" in sensors

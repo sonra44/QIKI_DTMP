@@ -107,10 +107,10 @@ def test_f8_evidence_includes_face_id_and_face_state() -> None:
     body_text = "\n".join(render_card_text(card) for card in build_body_structure_evidence_card_vms())
 
     assert "BODY_MODULE_ATTACH_REGISTERED" in body_text
-    assert "face: F06" in body_text
-    assert "face_state: occupied" in body_text
-    assert "source: audit" in body_text
-    assert "read_only: true" in body_text
+    assert "грань: F06" in body_text
+    assert "состояние грани: занята" in body_text
+    assert "источник: audit" in body_text
+    assert "только чтение: true" in body_text
 
 
 def test_orion_app_has_face_map_hotkey_and_action() -> None:

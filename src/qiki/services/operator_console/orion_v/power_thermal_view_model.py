@@ -349,7 +349,7 @@ def build_power_thermal_evidence_card_vms(
     blocked_text = ", ".join(blocked_commands) if blocked_commands else "none"
     return [
         EvidenceCardVM(
-            subsystem="POWER/ACCUMULATOR",
+            subsystem="ПИТАНИЕ/НАКОПИТЕЛИ",
             state_key=state_key,
             headline=(
                 f"{_vm_get(vm, 'evidence_card_type', POWER_THERMAL_CARD_TYPE)} | "

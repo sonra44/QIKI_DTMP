@@ -29,9 +29,9 @@ _POWER_SNAPSHOT = {
 
 def _power_index(cards) -> int:
     for index, card in enumerate(cards):
-        if card.subsystem == "POWER/ACCUMULATOR":
+        if card.subsystem == "ПИТАНИЕ/НАКОПИТЕЛИ":
             return index
-    raise AssertionError("POWER/ACCUMULATOR card missing")
+    raise AssertionError("карточка ПИТАНИЕ/НАКОПИТЕЛИ не найдена")
 
 
 def test_f8_detail_renders_selected_power_card_not_first_body_card() -> None:
@@ -40,21 +40,21 @@ def test_f8_detail_renders_selected_power_card_not_first_body_card() -> None:
     listing = _render_evidence_list_mfd(cards, selected_index=_power_index(cards))
 
     assert "выбрано:" in detail
-    assert "POWER/ACCUMULATOR" in detail
+    assert "ПИТАНИЕ/НАКОПИТЕЛИ" in detail
     assert "SoC_bat: 42%" in detail
     assert "SoC_cap: 79%" in detail
     assert "PDU_boundary: target-only; no full PDU runtime in this patch" in detail
     assert "PDU_allowance" not in detail
     assert "BODY_MODULE_ATTACH_REGISTERED" not in detail
     assert ">" in listing
-    assert ">" + f"{_power_index(cards) + 1:02d}. POWER/ACCUMULATOR" in listing
+    assert ">" + f"{_power_index(cards) + 1:02d}. ПИТАНИЕ/НАКОПИТЕЛИ" in listing
 
 
 def test_f8_detail_uses_unknown_for_missing_power_telemetry_terms() -> None:
     cards = build_evidence_card_vms({})
     detail = _render_evidence_detail_mfd(cards, selected_index=_power_index(cards))
 
-    assert "POWER/ACCUMULATOR" in detail
+    assert "ПИТАНИЕ/НАКОПИТЕЛИ" in detail
     assert "SoC_bat: unknown" in detail
     assert "SoC_cap: unknown" in detail
     assert "POWER_TELEM_MISSING" in detail
@@ -81,14 +81,14 @@ class _Host(App):
 
 @pytest.mark.asyncio
 async def test_f8_screen_prefers_power_detail_when_opened_from_power_context() -> None:
-    app = _Host(_POWER_SNAPSHOT, preferred_card_type="POWER/ACCUMULATOR")
+    app = _Host(_POWER_SNAPSHOT, preferred_card_type="ПИТАНИЕ/НАКОПИТЕЛИ")
     async with app.run_test(size=(100, 30)) as pilot:
         await pilot.pause()
         screen = app.query_one(OrionVEvidenceScreen)
 
-        assert screen.selected_evidence_subsystem == "POWER/ACCUMULATOR"
+        assert screen.selected_evidence_subsystem == "ПИТАНИЕ/НАКОПИТЕЛИ"
         right_text = str(app.query_one("#orionv-evidence-mfd-right-screen").render())
-        assert "POWER/ACCUMULATOR" in right_text
+        assert "ПИТАНИЕ/НАКОПИТЕЛИ" in right_text
         assert "SoC_bat: 42%" in right_text
         assert "BODY_MODULE_ATTACH_REGISTERED" not in right_text
 

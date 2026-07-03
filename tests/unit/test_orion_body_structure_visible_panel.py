@@ -71,12 +71,12 @@ def test_f8_evidence_contains_body_attach_registered_card() -> None:
     body_text = "\n".join(render_card_text(vm) for vm in body_vms)
 
     assert "BODY" in body_text
-    assert "module test_sensor_module_001 attached @ F06" in body_text
+    assert "модуль test_sensor_module_001 установлен @ F06" in body_text
     assert "BODY_MODULE_ATTACH_REGISTERED" in body_text
-    assert "source: audit" in body_text
-    assert "trust: trusted" in body_text
-    assert "read_only: true" in body_text
-    assert "runtime_ready: false" in body_text
+    assert "источник: audit" in body_text
+    assert "доверие: trusted" in body_text
+    assert "только чтение: true" in body_text
+    assert "готов к работе: false" in body_text
 
 
 def test_orion_screen_modules_are_wired_to_body_structure_view_model() -> None:
