@@ -2362,8 +2362,8 @@ class OrionVCockpitScreen(Static):
             str(objective.get("target_designator") or objective.get("track_label") or "").strip() or "undefined"
         )
         return [
-            ("CONTEXT", self._compact_severity(global_severity), scene_profile),
-            ("OBJECTIVE", objective_state, target),
+            ("КОНТЕКСТ", self._compact_severity(global_severity), scene_profile),
+            ("ЦЕЛЬ", objective_state, target),
         ]
 
     def _mission_context_rows(
@@ -2377,9 +2377,9 @@ class OrionVCockpitScreen(Static):
         intent = str(objective.get("follow_up_status") or objective.get("status") or "none").strip().upper() or "NONE"
         docking_state = _pick_text(self._telemetry, ["docking", "state"]).strip().upper() or scene_profile.upper()
         return [
-            ("PHASE", phase, f"scene={scene_profile}"),
-            ("INTENT", intent, f"scene={scene_profile}"),
-            ("DOCKING", docking_state, scene_profile),
+            ("ФАЗА", phase, f"scene={scene_profile}"),
+            ("НАМЕРЕНИЕ", intent, f"scene={scene_profile}"),
+            ("СТЫКОВКА", docking_state, scene_profile),
         ]
 
     def _guidance_rows(
@@ -2397,9 +2397,9 @@ class OrionVCockpitScreen(Static):
         route_dev = str(getattr(derived_state, "trajectory_deviation", None) or "none").strip()
         maneuver = str(getattr(derived_state, "maneuver_feasibility", None) or "available").strip()
         return [
-            ("GUIDANCE", self._compact_severity(guidance_severity), guidance_state),
-            ("DEV", route_dev.upper(), str(getattr(derived_state, "commandability_state", None) or "commandable")),
-            ("MANEUVER", maneuver.upper(), str(getattr(derived_state, "attitude_stability", None) or "partial")),
+            ("НАВЕДЕНИЕ", self._compact_severity(guidance_severity), guidance_state),
+            ("ОТКЛОН", route_dev.upper(), str(getattr(derived_state, "commandability_state", None) or "commandable")),
+            ("МАНЁВР", maneuver.upper(), str(getattr(derived_state, "attitude_stability", None) or "partial")),
         ]
 
     def _incident_rows(self, *, incident_focus_severity: str) -> list[tuple[str, str, str]]:
@@ -2418,9 +2418,9 @@ class OrionVCockpitScreen(Static):
             if latest_inc is not None:
                 latest = str(latest_inc.get("id") or "critical").strip()
         return [
-            ("CRITICAL", str(crit_count), self._compact_severity(incident_focus_severity)),
-            ("ALERT", str(total), "clean" if total == 0 else "active"),
-            ("LAST CRIT", latest.upper() if latest != "clean" else "NONE", "clean" if total == 0 else latest),
+            ("КРИТ", str(crit_count), self._compact_severity(incident_focus_severity)),
+            ("ТРЕВОГА", str(total), "чисто" if total == 0 else "активно"),
+            ("ПОСЛ.КРИТ", latest.upper() if latest != "clean" else "НЕТ", "чисто" if total == 0 else latest),
         ]
 
     def _route_rows(
@@ -2433,8 +2433,8 @@ class OrionVCockpitScreen(Static):
         route_role = str(objective.get("route_role") or "unset").strip().upper() or "UNSET"
         target = str(objective.get("target_designator") or "unset").strip().upper() or "UNSET"
         return [
-            ("ROUTE", route_role, scene_profile),
-            ("TARGET", target, str(objective.get("track_label") or "undefined").strip() or "undefined"),
+            ("МАРШРУТ", route_role, scene_profile),
+            ("ЦЕЛЬ", target, str(objective.get("track_label") or "undefined").strip() or "undefined"),
         ]
 
     def _qiki_recommendation_rows(

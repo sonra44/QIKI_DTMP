@@ -73,7 +73,7 @@ def _card_lines(card: Any | None, *, title: str) -> list[str]:
 
 def _incident_lines(incidents: Sequence[Mapping[str, Any]], *, limit: int = 5) -> list[str]:
     if not incidents:
-        return ["no active incident rows in this view"]
+        return ["активных инцидентов в этом виде нет"]
     rows: list[str] = []
     for incident in incidents[:limit]:
         inc_id = _text(incident.get("id") or incident.get("incident_id"), "incident")
@@ -94,7 +94,7 @@ def _radar_track_lines(
     limit: int = 6,
 ) -> list[str]:
     if not radar_tracks:
-        return ["no live radar tracks in current state"]
+        return ["живых радар-треков нет"]
     rows: list[str] = []
     for index, (track_id, track) in enumerate(radar_tracks.items(), start=1):
         if index > limit:
@@ -111,7 +111,7 @@ def _radar_track_lines(
 
 def _objective_lines(objective: Mapping[str, Any] | None) -> list[str]:
     if not objective:
-        return ["no active observation objective"]
+        return ["активной цели наблюдения нет"]
     target = _text(
         objective.get("target_designator") or objective.get("track_label") or objective.get("track_id"),
         "no target",
@@ -134,7 +134,7 @@ def _objective_lines(objective: Mapping[str, Any] | None) -> list[str]:
 
 def _safe_lines(safe_mode: Mapping[str, Any] | None) -> list[str]:
     if not safe_mode:
-        return ["SAFE: no active safe-mode payload"]
+        return ["SAFE: полезной нагрузки safe-mode нет"]
     active = safe_mode.get("active") is True
     reason = _text(safe_mode.get("reason"), _EMPTY)
     state = "active" if active else "inactive"
@@ -194,7 +194,7 @@ def render_left_mfd_page(
     ]
 
     if selected == "radar":
-        sections = [section_lines("Radar picture", _radar_track_lines(tracks), limit=9)]
+        sections = [section_lines("Радар-картина", _radar_track_lines(tracks), limit=9)]
     elif selected == "nav":
         nav_rows = [
             f"scene_profile: {_text(telemetry_map.get('scene_profile'))}",
