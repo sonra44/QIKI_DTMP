@@ -222,12 +222,12 @@ class OrionVApp(App[None]):
 
     LEVEL_META = {
         "f1": {"label": "F1 Кокпит", "widget_id": "orionv-cockpit"},
-        "f2": {"label": "F2 Подсистемы", "widget_id": "orionv-systems"},
+        "f2": {"label": "F2 Системы", "widget_id": "orionv-systems"},
         "f3": {"label": "F3 Глубокий анализ", "widget_id": "orionv-deep"},
         "f4": {"label": "F4 Консоль", "widget_id": "orionv-raw"},
         "f6": {"label": "F6 Журнал", "widget_id": "orionv-audit"},
         "f7": {"label": "F7 Состояние системы", "widget_id": "orionv-health"},
-        "f8": {"label": "F8 Evidence", "widget_id": "orionv-evidence"},
+        "f8": {"label": "F8 Улики", "widget_id": "orionv-evidence"},
     }
 
     def __init__(self) -> None:

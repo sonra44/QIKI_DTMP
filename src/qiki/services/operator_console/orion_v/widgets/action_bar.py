@@ -69,13 +69,13 @@ class OrionVActionBar(Static):
             super().__init__()
 
     _BUTTONS: tuple[tuple[str, str], ...] = (
-        ("f1", "F1 Мостик"),
+        ("f1", "F1 Кокпит"),
         ("f2", "F2 Системы"),
         ("f3", "F3 Анализ"),
         ("f4", "F4 Консоль"),
         ("f6", "F6 Журнал"),
         ("f7", "F7 Статус"),
-        ("f8", "F8 Evid"),
+        ("f8", "F8 Улики"),
         ("incident_prev", "Инц <-"),
         ("incident_next", "Инц ->"),
         ("ack", "Подтв."),
