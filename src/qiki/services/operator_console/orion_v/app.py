@@ -616,28 +616,28 @@ class OrionVApp(App[None]):
 
         f1_commands = (
             (
-                "F1 Body self-check",
-                "Select BODY SELF-CHECK in the local cockpit loop; no runtime command is published.",
+                "Ф1 Проверка корпуса",
+                "Выбрать ПРОВЕРКУ КОРПУСА в локальном цикле кокпита; команда кораблю не отправляется.",
                 "body_self_check",
             ),
             (
-                "F1 Power refresh",
-                "Select POWER REFRESH; refreshes the power projection only, not PDU runtime.",
+                "Ф1 Обновить питание",
+                "Выбрать ОБНОВИТЬ ПИТАНИЕ; обновляет только проекцию питания, не PDU-runtime.",
                 "power_refresh",
             ),
             (
-                "F1 Navigation page cycle",
-                "Select NAV PAGE CYCLE; cycles MFD UI state only, not a maneuver command.",
+                "Ф1 Смена страницы НАВ",
+                "Выбрать СМЕНУ СТРАНИЦЫ НАВ; листает только состояние MFD, команда манёвра не отправляется.",
                 "nav_cycle",
             ),
             (
-                "F1 Sensor focus",
-                "Select SENSOR FOCUS; opens read-only sensor projection, not an active scan.",
+                "Ф1 Фокус сенсоров",
+                "Выбрать ФОКУС СЕНСОРОВ; открывает проекцию только для чтения, скан не активируется.",
                 "sensor_focus",
             ),
             (
-                "F1 Command preview",
-                "Select COMMAND PREVIEW; rehearses request semantics without publish / ACK / effect.",
+                "Ф1 Репетиция команды",
+                "Выбрать РЕПЕТИЦИЮ КОМАНДЫ; показывает семантику запроса без publish/ACK/effect.",
                 "command_preview",
             ),
         )
@@ -708,7 +708,7 @@ class OrionVApp(App[None]):
             return
         action_id = next_cockpit_playable_action_id(self._f1_playable_selected_action_id(), delta=1)
         action_vm = cockpit_playable_action_by_id(action_id)
-        summary = f"F1 PLAYABLE selected: {action_vm.label}"
+        summary = f"Ф1 выбрано: {action_vm.label}"
         self._console_history.append(summary)
         self._last_command_status = "preview"
         self._last_command_summary = summary
@@ -727,7 +727,7 @@ class OrionVApp(App[None]):
             return
         action_id = next_cockpit_playable_action_id(self._f1_playable_selected_action_id(), delta=-1)
         action_vm = cockpit_playable_action_by_id(action_id)
-        summary = f"F1 PLAYABLE selected: {action_vm.label}"
+        summary = f"Ф1 выбрано: {action_vm.label}"
         self._console_history.append(summary)
         self._last_command_status = "preview"
         self._last_command_summary = summary
@@ -745,7 +745,7 @@ class OrionVApp(App[None]):
         if self._current_level != "f1":
             return
         action_vm = cockpit_playable_action_by_id(self._f1_playable_selected_action_id())
-        summary = f"F1 PLAYABLE preview: {action_vm.label} -> {action_vm.cycle_effect}"
+        summary = f"Ф1 предпросмотр: {action_vm.label} → {action_vm.cycle_effect}"
         self._console_history.append(summary)
         self._last_command_status = "preview"
         self._last_command_summary = summary
@@ -773,13 +773,13 @@ class OrionVApp(App[None]):
             snapshot = run_body_structure_interactive_self_check()
             decision = snapshot.decision
             if decision is None:
-                effect = "body self-check did not produce decision"
+                effect = "проверка корпуса не дала решения"
             elif snapshot.interaction_state == "already_attached":
-                effect = "body self-check already attached; no body_config overwrite"
+                effect = "корпус уже с модулем; конфигурация не перезаписана"
             else:
-                effect = f"body self-check {decision.status} @ {decision.mount_point}"
+                effect = f"проверка корпуса: {decision.status} @ {decision.mount_point}"
         elif action_vm.action_id == "power_refresh":
-            effect = "power/accumulator view-model refreshed from current snapshot"
+            effect = "проекция питания и накопителей обновлена из текущего снимка"
         elif action_vm.action_id == "nav_cycle":
             next_left_page = {
                 "radar": "nav",
@@ -789,13 +789,13 @@ class OrionVApp(App[None]):
                 "mission": "radar",
             }.get(self._active_mfd_left_page, "radar")
             self._active_mfd_left_page = normalize_mfd_page("left", next_left_page)
-            effect = f"left MFD page cycled to {self._active_mfd_left_page}"
+            effect = f"левый MFD переключён на страницу {self._active_mfd_left_page}"
         elif action_vm.action_id == "sensor_focus":
             self._active_mfd_right_page = normalize_mfd_page("right", "sensors")
             self._selected_system_module_slug = "sensors"
-            effect = "right MFD focused on sensors read-only projection"
+            effect = "правый MFD: сенсорная проекция (только чтение)"
         else:
-            effect = "command preview loop recorded; no command publish/ACK/effect claim"
+            effect = "репетиция команды записана; publish/ACK/effect не заявляются"
 
         effect_panel_id = cockpit_playable_effect_panel_id(action_vm.action_id)
         history_item = build_cockpit_event_history_item(
@@ -804,7 +804,7 @@ class OrionVApp(App[None]):
             target_panel_id=effect_panel_id,
             effect_summary=effect,
         )
-        summary = f"F1 PLAYABLE applied: {action_vm.label}; {effect}; evidence={event_id}"
+        summary = f"Ф1 применено: {action_vm.label}; {effect}; улика={event_id}"
         self._console_history.append(summary)
         self._last_command_status = "ok"
         self._last_command_summary = summary

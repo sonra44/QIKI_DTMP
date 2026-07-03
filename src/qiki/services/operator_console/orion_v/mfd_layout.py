@@ -89,11 +89,11 @@ def mfd_button_class(spec: MFDButtonSpec, *, active_left: str | None, active_rig
     return "mfd-active" if spec.page == normalize_mfd_page(spec.side, active) else ""
 
 MFD_SOFTKEYS: tuple[str, ...] = (
-    "B attach self-check",
-    "R reset",
-    "N next face",
-    "P previous face",
-    "F8 evidence",
+    "B проверка корпуса",
+    "R сброс",
+    "N след. грань",
+    "P пред. грань",
+    "F8 улики",
 )
 
 
@@ -130,7 +130,7 @@ def section_lines(title: str, lines: Iterable[str], *, limit: int = 12) -> tuple
 
 def softkey_bar(extra: Iterable[str] = ()) -> str:
     keys = (*MFD_SOFTKEYS, *tuple(str(item) for item in extra if str(item).strip()))
-    return "SOFTKEYS: " + "  ".join(f"[{key}]" for key in keys)
+    return "ПЕРЕХОДЫ: " + "  ".join(f"[{key}]" for key in keys)
 
 
 def render_status_strip(*, mode: str, body: str, evidence: str, source: str) -> str:

@@ -159,48 +159,48 @@ class CockpitPlayableLoopVM:
 _ACTIONS: tuple[CockpitPlayableActionVM, ...] = (
     CockpitPlayableActionVM(
         action_id="body_self_check",
-        label="BODY SELF-CHECK",
-        key_hint="B / APPLY",
-        target_panel="BODY",
-        cycle_effect="register visible body-structure seed if not already attached",
+        label="ПРОВЕРКА КОРПУСА",
+        key_hint="B / ENTER",
+        target_panel="КОРПУС",
+        cycle_effect="зарегистрировать видимый модуль корпуса (если ещё не установлен)",
         source_owner="qiki.body_structure.run_attach_pipeline",
-        evidence_policy="audit-backed body evidence",
+        evidence_policy="улика корпуса с аудитом",
     ),
     CockpitPlayableActionVM(
         action_id="power_refresh",
-        label="POWER REFRESH",
-        key_hint="APPLY",
-        target_panel="POWER",
-        cycle_effect="refresh power/accumulator projection from the current view-model snapshot",
+        label="ОБНОВИТЬ ПИТАНИЕ",
+        key_hint="ENTER",
+        target_panel="ПИТАНИЕ",
+        cycle_effect="обновить проекцию питания и накопителей из текущего снимка",
         source_owner="orion.power_thermal_view_model",
-        evidence_policy="telemetry/view-model projection; no full PDU runtime claim",
+        evidence_policy="проекция телеметрии; полный PDU-runtime не заявляется",
     ),
     CockpitPlayableActionVM(
         action_id="nav_cycle",
-        label="NAV PAGE CYCLE",
-        key_hint="APPLY",
-        target_panel="LEFT MFD",
-        cycle_effect="cycle left MFD situation page and redraw F1",
+        label="СМЕНА СТРАНИЦЫ НАВ",
+        key_hint="ENTER",
+        target_panel="ЛЕВЫЙ MFD",
+        cycle_effect="переключить страницу левого MFD и перерисовать Ф1",
         source_owner="orion.mfd_page_state",
-        evidence_policy="UI state event; no navigation runtime command",
+        evidence_policy="событие интерфейса; команд навигации не отправляется",
     ),
     CockpitPlayableActionVM(
         action_id="sensor_focus",
-        label="SENSOR FOCUS",
-        key_hint="APPLY",
-        target_panel="RIGHT MFD",
-        cycle_effect="focus sensors page as a read-only projection",
+        label="ФОКУС СЕНСОРОВ",
+        key_hint="ENTER",
+        target_panel="ПРАВЫЙ MFD",
+        cycle_effect="открыть сенсорную проекцию (только чтение)",
         source_owner="orion.mfd_page_state",
-        evidence_policy="UI state event; no sensor activation",
+        evidence_policy="событие интерфейса; сенсоры не активируются",
     ),
     CockpitPlayableActionVM(
         action_id="command_preview",
-        label="COMMAND PREVIEW",
-        key_hint="PREVIEW / APPLY",
-        target_panel="COMMAND STRIP",
-        cycle_effect="show request→validation→event loop without publishing a runtime command",
+        label="РЕПЕТИЦИЯ КОМАНДЫ",
+        key_hint="SPACE / ENTER",
+        target_panel="КОМАНДНАЯ СТРОКА",
+        cycle_effect="показать цикл запрос→проверка→событие без отправки команды кораблю",
         source_owner="orion.f1_playable_loop",
-        evidence_policy="local operator audit event only",
+        evidence_policy="только локальное операторское аудит-событие",
     ),
 )
 
@@ -215,12 +215,12 @@ _EFFECT_PANEL_BY_ACTION_ID: dict[str, str] = {
 }
 
 _PANEL_TITLE_BY_ID: dict[str, str] = {
-    "body": "BODY",
-    "power": "POWER",
-    "nav": "NAV",
-    "sensors": "SENSORS",
-    "command": "COMMAND",
-    "event": "EVENT",
+    "body": "КОРПУС",
+    "power": "ПИТАНИЕ",
+    "nav": "НАВ",
+    "sensors": "СЕНСОРЫ",
+    "command": "КОМАНДА",
+    "event": "СОБЫТИЯ",
 }
 
 _COCKPIT_FOCUS_PANEL_ORDER: tuple[str, ...] = (
@@ -233,15 +233,39 @@ _COCKPIT_FOCUS_PANEL_ORDER: tuple[str, ...] = (
 )
 
 _COCKPIT_PANEL_HINTS: dict[str, str] = {
-    "body": "Body shows the current attach seed and runtime_ready boundary.",
-    "power": "Power refresh reads the current projection; it does not enable PDU runtime.",
-    "nav": "Navigation cycles the left MFD page; it does not publish a maneuver command.",
-    "sensors": "Sensor focus opens the read-only sensor projection; it does not activate a scan.",
-    "command": "Command preview rehearses request semantics; it does not publish to runtime.",
-    "event": "Event keeps local cockpit history and points to evidence hints.",
+    "body": "Корпус показывает установленный модуль и границу runtime_ready.",
+    "power": "Обновление питания читает текущую проекцию; PDU-runtime не включает.",
+    "nav": "Навигация листает страницу левого MFD; команду манёвра не отправляет.",
+    "sensors": "Фокус сенсоров открывает проекцию только для чтения; скан не активирует.",
+    "command": "Репетиция команды показывает семантику запроса; в runtime не публикует.",
+    "event": "События хранят локальную историю кокпита и ведут к уликам.",
 }
 
 _COCKPIT_EVENT_HISTORY_LIMIT = 5
+
+_PHASE_RU: dict[str, str] = {
+    "selected": "выбор",
+    "preview": "предпросмотр",
+    "applied": "применено",
+    "event_recorded": "событие записано",
+    "evidence_visible": "улика на экране",
+}
+
+_LOOP_STATUS_RU: dict[str, str] = {"online": "в работе", "attention": "внимание"}
+
+_FOCUS_REASON_RU: dict[str, str] = {
+    "default": "по умолчанию",
+    "preview": "предпросмотр",
+    "after_apply": "после применения",
+    "panel_cycle": "смена панели",
+    "palette": "палитра",
+}
+
+
+def _ru(mapping: dict[str, str], value: str) -> str:
+    return mapping.get(value, value)
+
+
 
 
 def cockpit_playable_action_ids() -> tuple[str, ...]:
@@ -301,10 +325,18 @@ def next_cockpit_focus_panel_id(current: str | None, *, delta: int = 1) -> str:
     return _COCKPIT_FOCUS_PANEL_ORDER[(index + int(delta)) % len(_COCKPIT_FOCUS_PANEL_ORDER)]
 
 
+_PANEL_ID_BY_TITLE: dict[str, str] = {title: pid for pid, title in _PANEL_TITLE_BY_ID.items()}
+
+
 def _normalize_cockpit_effect_panel_id(value: str | None) -> str:
-    panel_id = str(value or "").strip().lower()
+    raw = str(value or "").strip()
+    panel_id = raw.lower()
     if panel_id in _PANEL_TITLE_BY_ID:
         return panel_id
+    # history items round-trip through the DISPLAY title (e.g. «ПИТАНИЕ»); with
+    # English titles "POWER".lower() happened to equal the id — map back explicitly
+    if raw.upper() in _PANEL_ID_BY_TITLE:
+        return _PANEL_ID_BY_TITLE[raw.upper()]
     return ""
 
 
@@ -462,26 +494,26 @@ def build_cockpit_playable_loop_vm(
     module_text = body_vm.module_id or "none"
     selected_face = body_vm.selected_face_id or "unknown"
     body_summary = (
-        f"BODY: {body_vm.seed_status} | face={selected_face} | module={module_text} | "
-        f"ready={str(body_vm.runtime_ready).lower()}"
+        f"КОРПУС: {body_vm.seed_status} | грань: {selected_face} | модуль: {module_text} | "
+        f"готов: {'да' if body_vm.runtime_ready else 'нет'}"
     )
     power_summary = (
-        f"POWER: SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
-        f"SoC_cap={format_soc_cap(power_vm.supercap_soc_pct)} | peak={power_vm.peak_readiness}"
+        f"ПИТАНИЕ: SoC_bat={format_soc_bat(power_vm.battery_soc_pct)} | "
+        f"SoC_cap={format_soc_cap(power_vm.supercap_soc_pct)} | пик: {power_vm.peak_readiness}"
     )
     nav_summary = (
-        f"MFD: left={mfd_page_label('left', left_page)}/{left_page} | "
-        f"right={mfd_page_label('right', right_page)}/{right_page}"
+        f"MFD: слева {mfd_page_label('left', left_page)} | "
+        f"справа {mfd_page_label('right', right_page)}"
     )
-    sensor_summary = "SENSORS: read-only projection | no active scan in F1 slice"
+    sensor_summary = "СЕНСОРЫ: проекция только для чтения | активного скана нет"
     command_summary = (
-        "COMMAND: preview/request/event loop only | "
-        "no publish/ACK/effect claim in this slice"
+        "КОМАНДА: цикл предпросмотр→запрос→событие | "
+        "publish/ACK/effect не заявляются"
     )
     if nats_connected:
-        source = "orion app state + telemetry adapters"
+        source = "состояние ORION + адаптеры телеметрии"
     else:
-        source = "orion local state + missing/partial telemetry"
+        source = "локальное состояние ORION | телеметрия отсутствует/неполная"
     if active_incidents > 0:
         loop_status = "attention"
     else:
@@ -533,7 +565,7 @@ def build_cockpit_focus_vm(vm: CockpitPlayableLoopVM) -> CockpitFocusVM:
         can_apply=True,
         can_open_evidence=vm.last_event_id != "none",
         help_visible=vm.help_visible,
-        palette_hint="Ctrl+P command palette enabled; type body/power/nav/sensor/command",
+        palette_hint="Ctrl+P — палитра команд; введите: корпус/питание/нав/сенсоры/команда",
     )
 
 
@@ -560,7 +592,7 @@ def build_cockpit_hint_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitHintVM, ..
                 hint_id="f1_evidence",
                 panel_id="event",
                 severity="info",
-                text=f"Latest local event {vm.last_event_id}; press E to inspect evidence surface.",
+                text=f"Свежее локальное событие {vm.last_event_id}; нажмите E, чтобы открыть улики.",
                 key_hint="E",
                 source="f1_playable_loop_audit_marker",
                 trust_status="local_event_backed",
@@ -572,7 +604,7 @@ def build_cockpit_hint_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitHintVM, ..
                 hint_id="f1_evidence_pending",
                 panel_id="event",
                 severity="info",
-                text="No local event yet; press SPACE then ENTER to produce an evidence hint.",
+                text="Локальных событий пока нет; нажмите SPACE, затем ENTER — появится улика.",
                 key_hint="SPACE→ENTER",
                 source="orion.f1_focus_view_model",
                 trust_status="view_model_backed",
@@ -585,15 +617,15 @@ def build_cockpit_action_help_vm(vm: CockpitPlayableLoopVM) -> CockpitActionHelp
     """Build the selected action help/preview contract."""
 
     action = cockpit_playable_action_by_id(vm.selected_action_id)
-    target_panel = _PANEL_TITLE_BY_ID.get(cockpit_playable_effect_panel_id(action.action_id), "COMMAND")
+    target_panel = _PANEL_TITLE_BY_ID.get(cockpit_playable_effect_panel_id(action.action_id), "КОМАНДА")
     return CockpitActionHelpVM(
         action_id=action.action_id,
         action_label=action.label,
         target_panel=target_panel,
         summary=action.cycle_effect,
-        preview_text=f"Preview {action.label}: {action.cycle_effect}.",
-        apply_text=f"Apply records a local cockpit event for {target_panel}; no runtime command is published.",
-        result_text=f"Result target: {target_panel}; evidence policy: {action.evidence_policy}.",
+        preview_text=f"Предпросмотр {action.label}: {action.cycle_effect}.",
+        apply_text=f"Применение запишет локальное событие кокпита для панели {target_panel}; команда кораблю не отправляется.",
+        result_text=f"Цель результата: {target_panel}; политика улик: {action.evidence_policy}.",
         runtime_claim_status="local_ui_loop_no_runtime_command",
     )
 
@@ -604,44 +636,39 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
     focus = build_cockpit_focus_vm(vm)
     action_help = build_cockpit_action_help_vm(vm)
     preview_line = (
-        "F1 PREVIEW | "
-        f"target={action_help.target_panel} | expected_effect={action_help.summary} | runtime_command=no"
+        "ПРЕДПРОСМОТР | "
+        f"цель: {action_help.target_panel} | эффект: {action_help.summary} | команда кораблю: НЕТ"
     )
     result_line = (
-        "F1 RESULT | "
-        f"applied={vm.last_action_label} | target={_PANEL_TITLE_BY_ID.get(vm.last_effect_panel_id, 'none')} | "
-        f"event={vm.last_event_id} | evidence_hint={'available' if vm.last_event_id != 'none' else 'pending'}"
+        "РЕЗУЛЬТАТ | "
+        f"применено: {vm.last_action_label} | цель: {_PANEL_TITLE_BY_ID.get(vm.last_effect_panel_id, 'нет')} | "
+        f"событие: {vm.last_event_id} | улика: {'готова (E)' if vm.last_event_id != 'none' else 'ожидается'}"
     )
     lines = [
         (
-            "F1 FOCUS | "
-            f"panel={focus.focused_panel_title} | action={focus.focused_action_label} | "
-            f"can_preview={'yes' if focus.can_preview else 'no'} | "
-            f"can_apply={'yes' if focus.can_apply else 'no'} | "
-            f"evidence={'yes' if focus.can_open_evidence else 'pending'} | "
-            f"reason={focus.focus_reason}"
+            "ФОКУС | "
+            f"панель: {focus.focused_panel_title} | действие: {focus.focused_action_label} | "
+            f"улика: {'есть' if focus.can_open_evidence else 'ожидается'} | "
+            f"причина: {_ru(_FOCUS_REASON_RU, focus.focus_reason)}"
         ),
         (
-            # the single full key map for F1 (the trailing "keys:" line was a duplicate)
-            "F1 HINT | "
-            "←/→ action | ↑/↓ panel | SPACE preview | ENTER apply | "
-            "B body | R reset | E evidence | H help | Ctrl+P palette"
+            # единственная полная карта клавиш Ф1
+            "КЛАВИШИ | "
+            "←/→ действие | ↑/↓ панель | SPACE предпросмотр | ENTER применить | "
+            "B корпус | R сброс | E улики | H справка | Ctrl+P палитра"
         ),
         (
-            "F1 HELP | "
+            "СПРАВКА | "
             f"{action_help.action_label} → {action_help.summary}; "
-            "no runtime command published"
+            "команда кораблю не отправляется"
         ),
-        (
-            "F1 PALETTE | Ctrl+P | fuzzy search: body / power / nav / sensors / command | "
-            "discoverability=enabled"
-        ),
+        "ПАЛИТРА | Ctrl+P | поиск: корпус / питание / нав / сенсоры / команда",
     ]
     if vm.help_visible:
         for hint in build_cockpit_hint_vms(vm):
             line = (
-                f"F1 CONTEXT | {hint.panel_id.upper()} | severity={hint.severity} | "
-                f"key={hint.key_hint} | {hint.text}"
+                f"ПОДСКАЗКА [{_PANEL_TITLE_BY_ID.get(hint.panel_id, hint.panel_id.upper())}] | "
+                f"{hint.text}"
             )
             # trust is stated once for the whole panel (source line); repeat it
             # per-hint only when the hint's trust actually differs
@@ -649,7 +676,7 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
                 line += f" | trust={hint.trust_status}"
             lines.append(line)
     else:
-        lines.append("F1 CONTEXT | hidden | press H to show help")
+        lines.append("ПОДСКАЗКИ СКРЫТЫ | H — показать справку")
     # before the first preview HELP already describes the expected effect verbatim
     if vm.phase != "selected":
         lines.append(preview_line)
@@ -676,7 +703,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
     return (
         CockpitVisiblePanelVM(
             panel_id="body",
-            title="BODY",
+            title="КОРПУС",
             status="shown",
             source="body_structure_view_model",
             trust_status="view_model_backed",
@@ -684,7 +711,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
         ),
         CockpitVisiblePanelVM(
             panel_id="power",
-            title="POWER",
+            title="ПИТАНИЕ",
             status="shown",
             source="power_thermal_view_model",
             trust_status="view_model_backed",
@@ -692,7 +719,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
         ),
         CockpitVisiblePanelVM(
             panel_id="nav",
-            title="NAV",
+            title="НАВ",
             status="shown",
             source="mfd_page_state",
             trust_status="ui_state_backed",
@@ -700,7 +727,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
         ),
         CockpitVisiblePanelVM(
             panel_id="sensors",
-            title="SENSORS",
+            title="СЕНСОРЫ",
             status="shown",
             source="sensor_projection_placeholder",
             trust_status="view_model_backed",
@@ -708,7 +735,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
         ),
         CockpitVisiblePanelVM(
             panel_id="command",
-            title="COMMAND",
+            title="КОМАНДА",
             status="shown",
             source="f1_playable_loop",
             trust_status="local_loop_backed",
@@ -716,7 +743,7 @@ def build_cockpit_visible_panel_vms(vm: CockpitPlayableLoopVM) -> tuple[CockpitV
         ),
         CockpitVisiblePanelVM(
             panel_id="event",
-            title="EVENT",
+            title="СОБЫТИЯ",
             status=event_status,
             source="f1_playable_loop_audit_marker",
             trust_status="local_event_backed",
@@ -738,18 +765,14 @@ def format_cockpit_event_ticker_lines(vm: CockpitPlayableLoopVM) -> tuple[str, .
     """
 
     if not vm.action_history:
-        return (
-            "F1 EVENT TICKER | entries=0 | latest=none",
-            "event_history: none",
-        )
+        return ("ЛЕНТА СОБЫТИЙ | записей: 0 | пока пусто",)
     lines = [
-        # header keeps only the count: the latest event's id/action/target are
-        # the first event[N] line right below (and the id is also in F1 RESULT)
-        f"F1 EVENT TICKER | entries={len(vm.action_history)}"
+        # в заголовке только счётчик: свежее событие — первой строкой ниже
+        f"ЛЕНТА СОБЫТИЙ | записей: {len(vm.action_history)}"
     ]
     for index, item in enumerate(reversed(vm.action_history), start=1):
         lines.append(
-            f"event[{index}]: {item.event_id} | {item.action_label} -> "
+            f"событие[{index}]: {item.event_id} | {item.action_label} → "
             f"{item.target_panel} | {item.effect_summary}"
         )
     return tuple(lines)
@@ -764,17 +787,17 @@ def format_cockpit_visible_acceptance_lines(vm: CockpitPlayableLoopVM) -> tuple[
 
     panels = build_cockpit_visible_panel_vms(vm)
     ready_count = sum(1 for panel in panels if panel.status in {"shown", "ready", "recorded"})
-    panel_flags = " | ".join(f"{panel.title}=yes" for panel in panels)
+    panel_flags = " | ".join(f"{panel.title} ✓" for panel in panels)
     # trimmed to the non-duplicating core: the per-panel status rows repeated the
     # flags + panel summaries, "visible_acceptance:" was a verbatim second copy of
     # the flags, "F1 ACTION EFFECT" repeated F1 RESULT, and the targets map was
     # static boilerplate; panel completeness stays machine-checkable via
     # build_cockpit_visible_panel_vms
     return (
-        f"F1 PANELS | visible_acceptance=ready | panels={ready_count}/{len(panels)}",
+        f"ПАНЕЛИ | готово {ready_count}/{len(panels)}",
         panel_flags,
-        f"EVENT: status={'recorded' if vm.last_event_id != 'none' else 'ready'} | "
-        f"history={len(vm.action_history)}",
+        f"СОБЫТИЯ: {'записано' if vm.last_event_id != 'none' else 'готово'} | "
+        f"история: {len(vm.action_history)}",
     )
 
 
@@ -783,13 +806,10 @@ def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, 
 
     lines: list[str] = [
         (
-            "F1 PLAYABLE LOOP | "
-            f"{vm.loop_status} | phase={vm.phase} | "
-            f"selected={vm.selected_action_label} ({vm.selected_action_index + 1}/{vm.actions_count})"
+            "Ф1 ЖИВОЙ ЦИКЛ | "
+            f"{_ru(_LOOP_STATUS_RU, vm.loop_status)} | фаза: {_ru(_PHASE_RU, vm.phase)} | "
+            f"выбрано: {vm.selected_action_label} ({vm.selected_action_index + 1}/{vm.actions_count})"
         ),
-        "cycle: snapshot → display → preview → request → applied → event → evidence",
-        f"source: {vm.source} | trust={vm.trust_status}",
-        f"runtime_claim_status: {vm.runtime_claim_status}",
         *format_cockpit_focus_hint_lines(vm),
     ]
     # body/power detail lines only when the right MFD does NOT already show them
@@ -804,6 +824,13 @@ def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, 
     # RESULT+ticker; the event id stays visible in RESULT and event[N] lines
     lines.extend(format_cockpit_event_ticker_lines(vm))
     lines.extend(format_cockpit_visible_acceptance_lines(vm))
+    # служебная граница цикла — внизу, а не над действием оператора (игровое поле,
+    # не дебаг-дамп); коды остаются в evidence/audit
+    lines.append("цикл: снимок → экран → предпросмотр → запрос → применение → событие → улика")
+    lines.append(
+        "— граница: локальный цикл интерфейса, команды кораблю НЕ отправляются | "
+        f"источник: {vm.source} | доверие: {vm.trust_status}"
+    )
     return tuple(lines)
 
 
@@ -814,10 +841,10 @@ def format_cockpit_playable_action_labels(vm: CockpitPlayableLoopVM) -> tuple[tu
     """
 
     return (
-        ("prev", "◀ Action", False),
-        ("preview", f"Preview · {vm.selected_action_label}", vm.phase == "preview"),
-        ("apply", f"Apply · {vm.selected_action_label}", vm.phase in {"applied", "event_recorded", "evidence_visible"}),
-        ("next", "Action ▶", False),
+        ("prev", "◀ Действие", False),
+        ("preview", f"Предпросмотр · {vm.selected_action_label}", vm.phase == "preview"),
+        ("apply", f"Применить · {vm.selected_action_label}", vm.phase in {"applied", "event_recorded", "evidence_visible"}),
+        ("next", "Действие ▶", False),
     )
 
 

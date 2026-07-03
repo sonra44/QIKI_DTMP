@@ -29,8 +29,8 @@ def test_mfd_button_catalog_restores_left_and_right_operator_sets() -> None:
     )
     assert mfd_button_specs("left") == MFD_LEFT_BUTTONS
     assert mfd_button_specs("right") == MFD_RIGHT_BUTTONS
-    assert "B attach self-check" in softkey_bar()
-    assert "F8 evidence" in softkey_bar()
+    assert "B проверка корпуса" in softkey_bar()
+    assert "F8 улики" in softkey_bar()
 
 
 def test_f1_cockpit_restores_left_right_mfd_shell_and_keeps_legacy_buttons() -> None:

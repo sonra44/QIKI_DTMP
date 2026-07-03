@@ -36,7 +36,7 @@ class BodyActionFooter(Static):
 
     def update_view_model(self, vm: BodyStructureConsoleViewModel) -> None:
         self.update(
-            "B attach self-check | R reset | N next face | P previous face | "
+            "B проверка корпуса | R сброс | N след. грань | P пред. грань | "
             f"selected={vm.selected_face_id} | hint={vm.operator_hint}"
         )
 

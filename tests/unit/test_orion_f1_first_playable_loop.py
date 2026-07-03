@@ -44,23 +44,23 @@ def test_cockpit_playable_view_model_exposes_complete_normal_cycle() -> None:
 
     assert vm.selected_action_id == "power_refresh"
     assert vm.phase == "preview"
-    assert "F1 PLAYABLE LOOP" in lines
-    assert "snapshot → display → preview → request → applied → event → evidence" in lines
-    assert "runtime_claim_status: local_ui_loop_no_runtime_command" in lines
+    assert "Ф1 ЖИВОЙ ЦИКЛ" in lines
+    assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in lines
+    assert "команды кораблю НЕ отправляются" in lines
     # dedup contract: right MFD page "systems" already shows body/power state,
     # so the loop panel must NOT repeat those detail lines
-    assert "POWER: SoC_bat=" not in lines
-    assert "BODY: " not in lines
-    assert "F1 PANELS | visible_acceptance=ready | panels=6/6" in lines
-    assert "BODY=yes | POWER=yes | NAV=yes | SENSORS=yes | COMMAND=yes | EVENT=yes" in lines
-    assert "EVENT: status=ready" in lines
-    assert "F1 FOCUS | panel=POWER | action=POWER REFRESH" in lines
-    assert "F1 HINT |" in lines
-    assert "B body | R reset" in lines  # key map merged into the single HINT line
-    assert "F1 HELP | POWER REFRESH" in lines
-    assert "F1 PALETTE | Ctrl+P" in lines
-    assert "F1 PREVIEW | target=POWER" in lines
-    assert "runtime_command=no" in lines
+    assert "ПИТАНИЕ: SoC_bat=" not in lines
+    assert "КОРПУС: " not in lines
+    assert "ПАНЕЛИ | готово 6/6" in lines
+    assert "КОРПУС ✓ | ПИТАНИЕ ✓ | НАВ ✓ | СЕНСОРЫ ✓ | КОМАНДА ✓ | СОБЫТИЯ ✓" in lines
+    assert "СОБЫТИЯ: готово" in lines
+    assert "ФОКУС | панель: ПИТАНИЕ | действие: ОБНОВИТЬ ПИТАНИЕ" in lines
+    assert "КЛАВИШИ |" in lines
+    assert "B корпус | R сброс" in lines  # key map merged into the single HINT line
+    assert "СПРАВКА | ОБНОВИТЬ ПИТАНИЕ" in lines
+    assert "ПАЛИТРА | Ctrl+P" in lines
+    assert "ПРЕДПРОСМОТР | цель: ПИТАНИЕ" in lines
+    assert "команда кораблю: НЕТ" in lines
 
     # ...and when the right MFD shows another page, the panel carries the state itself
     vm_other = build_cockpit_playable_loop_vm(
@@ -74,8 +74,8 @@ def test_cockpit_playable_view_model_exposes_complete_normal_cycle() -> None:
         active_incidents=0,
     )
     other_lines = "\n".join(format_cockpit_playable_loop_lines(vm_other))
-    assert "POWER: SoC_bat=" in other_lines
-    assert "BODY: " in other_lines
+    assert "ПИТАНИЕ: SoC_bat=" in other_lines
+    assert "КОРПУС: " in other_lines
 
 
 def test_cockpit_visible_acceptance_panels_are_stable_and_complete() -> None:
@@ -110,9 +110,9 @@ def test_cockpit_visible_acceptance_panels_are_stable_and_complete() -> None:
     assert statuses["body"] == statuses["power"] == statuses["nav"] == "shown"
     assert statuses["sensors"] == statuses["command"] == "shown"
     assert statuses["event"] == "recorded"
-    assert "F1 PANELS | visible_acceptance=ready | panels=6/6" in lines
-    assert "BODY=yes | POWER=yes | NAV=yes | SENSORS=yes | COMMAND=yes | EVENT=yes" in lines
-    assert "EVENT: status=recorded" in lines
+    assert "ПАНЕЛИ | готово 6/6" in lines
+    assert "КОРПУС ✓ | ПИТАНИЕ ✓ | НАВ ✓ | СЕНСОРЫ ✓ | КОМАНДА ✓ | СОБЫТИЯ ✓" in lines
+    assert "СОБЫТИЯ: записано" in lines
     # the event id lives in the F1 RESULT line of the full panel (single owner)
     full = "\n".join(format_cockpit_playable_loop_lines(vm))
     assert "f1-loop:test" in full
@@ -132,7 +132,7 @@ def test_cockpit_action_effect_is_routed_to_target_panel() -> None:
         selected_action_id="power_refresh",
         phase="evidence_visible",
         last_event_id="f1-loop:power",
-        last_event_summary="F1 PLAYABLE applied: POWER REFRESH",
+        last_event_summary="Ф1 применено: ОБНОВИТЬ ПИТАНИЕ",
         last_action_id="power_refresh",
         last_effect_panel_id="power",
         last_effect_summary="power/accumulator view-model refreshed from current snapshot",
@@ -150,8 +150,8 @@ def test_cockpit_action_effect_is_routed_to_target_panel() -> None:
     )
     # effect routing is owned by F1 RESULT (the "F1 ACTION EFFECT" row duplicated it)
     full = "\n".join(format_cockpit_playable_loop_lines(vm))
-    assert "F1 RESULT | applied=POWER REFRESH | target=POWER" in full
-    assert "event=f1-loop:power" in full
+    assert "РЕЗУЛЬТАТ | применено: ОБНОВИТЬ ПИТАНИЕ | цель: ПИТАНИЕ" in full
+    assert "событие: f1-loop:power" in full
 
     panels = {panel.panel_id: panel for panel in build_cockpit_visible_panel_vms(vm)}
     assert panels["power"].status == "shown"
@@ -197,13 +197,13 @@ def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
     history = [
         build_cockpit_event_history_item(
             event_id="f1-loop:first",
-            action_label="BODY SELF-CHECK",
+            action_label="ПРОВЕРКА КОРПУСА",
             target_panel_id="body",
             effect_summary="body self-check registered",
         ),
         build_cockpit_event_history_item(
             event_id="f1-loop:second",
-            action_label="POWER REFRESH",
+            action_label="ОБНОВИТЬ ПИТАНИЕ",
             target_panel_id="power",
             effect_summary="power refreshed",
         ),
@@ -212,7 +212,7 @@ def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
         selected_action_id="power_refresh",
         phase="evidence_visible",
         last_event_id="f1-loop:second",
-        last_event_summary="F1 PLAYABLE applied: POWER REFRESH",
+        last_event_summary="Ф1 применено: ОБНОВИТЬ ПИТАНИЕ",
         last_action_id="power_refresh",
         last_effect_panel_id="power",
         last_effect_summary="power refreshed",
@@ -232,12 +232,12 @@ def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
     ticker = "\n".join(format_cockpit_event_ticker_lines(vm))
     lines = "\n".join(format_cockpit_playable_loop_lines(vm))
 
-    assert "F1 EVENT TICKER | entries=2" in ticker  # заголовок только счётчик; latest = первая строка event[1]
-    assert "event[1]: f1-loop:second | POWER REFRESH -> POWER | power refreshed" in ticker
-    assert "event[2]: f1-loop:first | BODY SELF-CHECK -> BODY | body self-check registered" in ticker
-    assert "F1 EVENT TICKER | entries=2" in lines
-    assert "EVENT: status=recorded" in lines
-    assert "history=2" in lines
+    assert "ЛЕНТА СОБЫТИЙ | записей: 2" in ticker  # заголовок только счётчик; latest = первая строка event[1]
+    assert "событие[1]: f1-loop:second | ОБНОВИТЬ ПИТАНИЕ → ПИТАНИЕ | power refreshed" in ticker
+    assert "событие[2]: f1-loop:first | ПРОВЕРКА КОРПУСА → КОРПУС | body self-check registered" in ticker
+    assert "ЛЕНТА СОБЫТИЙ | записей: 2" in lines
+    assert "СОБЫТИЯ: записано" in lines
+    assert "история: 2" in lines
 
 
 def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
@@ -266,20 +266,20 @@ def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
     lines = "\n".join(format_cockpit_focus_hint_lines(vm))
 
     assert focus.focused_panel_id == "sensors"
-    assert focus.focused_panel_title == "SENSORS"
-    assert focus.focused_action_label == "SENSOR FOCUS"
+    assert focus.focused_panel_title == "СЕНСОРЫ"
+    assert focus.focused_action_label == "ФОКУС СЕНСОРОВ"
     assert focus.can_preview is True
     assert focus.can_apply is True
     assert focus.can_open_evidence is False
-    assert "Ctrl+P command palette enabled" in focus.palette_hint
-    # f1_keys hint removed: the key map is already the always-visible "F1 HINT |" line
+    assert "Ctrl+P — палитра команд" in focus.palette_hint
+    # f1_keys hint removed: the key map is already the always-visible "КЛАВИШИ |" line
     assert {hint.hint_id for hint in hints} >= {"f1_panel", "f1_evidence_pending"}
     assert "f1_keys" not in {hint.hint_id for hint in hints}
-    assert "F1 FOCUS | panel=SENSORS | action=SENSOR FOCUS" in lines
-    assert "F1 HINT | ←/→ action | ↑/↓ panel" in lines
-    assert "F1 PALETTE | Ctrl+P" in lines
-    assert "F1 CONTEXT | SENSORS" in lines
-    assert "no runtime command published" in lines
+    assert "ФОКУС | панель: СЕНСОРЫ | действие: ФОКУС СЕНСОРОВ" in lines
+    assert "КЛАВИШИ | ←/→ действие | ↑/↓ панель" in lines
+    assert "ПАЛИТРА | Ctrl+P" in lines
+    assert "ПОДСКАЗКА [СЕНСОРЫ]" in lines
+    assert "команда кораблю не отправляется" in lines
 
 
 def test_cockpit_focus_panel_cycle_is_stable_and_help_can_hide_context() -> None:
@@ -306,9 +306,9 @@ def test_cockpit_focus_panel_cycle_is_stable_and_help_can_hide_context() -> None
     )
     lines = "\n".join(format_cockpit_focus_hint_lines(vm))
 
-    assert "F1 FOCUS | panel=EVENT" in lines
-    assert "F1 CONTEXT | hidden | press H to show help" in lines
-    assert "F1 PALETTE | Ctrl+P" in lines
+    assert "ФОКУС | панель: СОБЫТИЯ" in lines
+    assert "ПОДСКАЗКИ СКРЫТЫ | H — показать справку" in lines
+    assert "ПАЛИТРА | Ctrl+P" in lines
 
 
 def test_f1_command_palette_is_enabled_and_exposes_discoverable_actions() -> None:
@@ -318,12 +318,12 @@ def test_f1_command_palette_is_enabled_and_exposes_discoverable_actions() -> Non
 
     assert "ENABLE_COMMAND_PALETTE = True" in app_source
     assert "def get_system_commands" in app_source
-    assert "F1 Body self-check" in app_source
-    assert "F1 Power refresh" in app_source
-    assert "F1 Navigation page cycle" in app_source
-    assert "F1 Sensor focus" in app_source
-    assert "F1 Command preview" in app_source
-    assert "no runtime command is published" in app_source
+    assert "Ф1 Проверка корпуса" in app_source
+    assert "Ф1 Обновить питание" in app_source
+    assert "Ф1 Смена страницы НАВ" in app_source
+    assert "Ф1 Фокус сенсоров" in app_source
+    assert "Ф1 Репетиция команды" in app_source
+    assert "команда кораблю не отправляется" in app_source
 
 
 @pytest.mark.asyncio
@@ -351,12 +351,12 @@ async def test_f1_cockpit_renders_first_playable_loop_panel() -> None:
         await pilot.pause()
 
         text = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "F1 PLAYABLE LOOP" in text
-        assert "phase=selected" in text
-        assert "BODY SELF-CHECK" in text
-        assert "snapshot → display → preview → request → applied → event → evidence" in text
-        assert "F1 PANELS | visible_acceptance=ready | panels=6/6" in text
-        assert "BODY=yes | POWER=yes | NAV=yes | SENSORS=yes | COMMAND=yes | EVENT=yes" in text
+        assert "Ф1 ЖИВОЙ ЦИКЛ" in text
+        assert "фаза: выбор" in text
+        assert "ПРОВЕРКА КОРПУСА" in text
+        assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in text
+        assert "ПАНЕЛИ | готово 6/6" in text
+        assert "КОРПУС ✓ | ПИТАНИЕ ✓ | НАВ ✓ | СЕНСОРЫ ✓ | КОМАНДА ✓ | СОБЫТИЯ ✓" in text
 
 
 @pytest.mark.asyncio
@@ -378,21 +378,21 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         await pilot.pause()
 
         before = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "F1 PLAYABLE LOOP" in before
-        assert "phase=selected" in before
-        assert "F1 FOCUS |" in before
-        assert "F1 HINT |" in before
-        assert "F1 PALETTE | Ctrl+P" in before
+        assert "Ф1 ЖИВОЙ ЦИКЛ" in before
+        assert "фаза: выбор" in before
+        assert "ФОКУС |" in before
+        assert "КЛАВИШИ |" in before
+        assert "ПАЛИТРА | Ctrl+P" in before
 
         await pilot.click("#orionv-cockpit-focus-next")
         await pilot.pause()
         focused = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "F1 FOCUS | panel=POWER" in focused
+        assert "ФОКУС | панель: ПИТАНИЕ" in focused
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()
         hidden_help = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "F1 CONTEXT | hidden | press H to show help" in hidden_help
+        assert "ПОДСКАЗКИ СКРЫТЫ | H — показать справку" in hidden_help
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()
@@ -400,25 +400,25 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         await pilot.click("#orionv-cockpit-loop-next")
         await pilot.pause()
         selected = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "POWER REFRESH" in selected
+        assert "ОБНОВИТЬ ПИТАНИЕ" in selected
 
         await pilot.click("#orionv-cockpit-loop-preview")
         await pilot.pause()
         preview = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "phase=preview" in preview
-        assert "F1 PREVIEW | target=POWER" in preview  # last_event-строка убрана; PREVIEW видна с фазы preview
+        assert "фаза: предпросмотр" in preview
+        assert "ПРЕДПРОСМОТР | цель: ПИТАНИЕ" in preview  # last_event-строка убрана; PREVIEW видна с фазы preview
 
         await pilot.click("#orionv-cockpit-loop-apply")
         await pilot.pause()
         applied = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "phase=evidence_visible" in applied
+        assert "фаза: улика на экране" in applied
         assert "f1-loop:" in applied
-        assert "EVENT: status=recorded" in applied
-        assert "F1 EVENT TICKER | entries=1" in applied
-        assert "event[1]:" in applied
-        assert "POWER REFRESH -> POWER" in applied
-        assert "history=1" in applied
-        assert "local_ui_loop_no_runtime_command" in applied
+        assert "СОБЫТИЯ: записано" in applied
+        assert "ЛЕНТА СОБЫТИЙ | записей: 1" in applied
+        assert "событие[1]:" in applied
+        assert "ОБНОВИТЬ ПИТАНИЕ → ПИТАНИЕ" in applied
+        assert "история: 1" in applied
+        assert "команды кораблю НЕ отправляются" in applied
 
         history = "\n".join(app._console_history)  # noqa: SLF001 - UI regression test
-        assert "F1 PLAYABLE applied: POWER REFRESH" in history
+        assert "Ф1 применено: ОБНОВИТЬ ПИТАНИЕ" in history
