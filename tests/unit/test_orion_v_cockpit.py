@@ -413,6 +413,9 @@ def test_cockpit_safe_mode_section_stays_ok_when_signal_is_absent_but_shell_is_n
         "comms": {"link": "online", "latency_ms": 90.0, "packet_loss_pct": 0.0},
         "power": {"soc_pct": 82.0, "bus_v": 27.9, "bus_a": 3.1},
         "thermal": {"core_c": 41.0, "radiator_c": 30.0},
+        "speed_m_s": 1.2,
+        "heading": 90.0,
+        "attitude": {"pitch_deg": 0.0, "yaw_deg": 0.0, "roll_deg": 0.0},
     }
     shell_state = build_operator_shell_state(
         hardware_model=None,
@@ -475,6 +478,10 @@ def test_cockpit_guidance_compact_marks_partial_without_source() -> None:
     assert "ОТКЛОН       | PARTIAL" in text
     assert "МАНЁВР       | PARTIAL" in text
     assert "СТЫКОВКА     | PARTIAL" in text
+    # F-2b: guidance severity is motion_severity — with no motion source the
+    # НАВЕДЕНИЕ chip must not stay green either.
+    assert "НАВЕДЕНИЕ    | WARN" in text
+    assert "НАВЕДЕНИЕ    | NOMINAL" not in text
 
 
 def test_cockpit_energy_block_renders_shed_reasons() -> None:

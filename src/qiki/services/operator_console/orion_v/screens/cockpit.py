@@ -1940,6 +1940,19 @@ class OrionVCockpitScreen(Static):
             severity = "crit"
         elif align_err is not None and align_err >= 8.0:
             severity = "warn"
+        # §19.6 / ADR-0014: no confident green without source. With no velocity,
+        # heading, attitude or orbit state there is no motion truth to verify — do
+        # not show nominal (this feeds guidance_severity and the global status).
+        if (
+            severity == "ok"
+            and velocity is None
+            and heading is None
+            and pitch is None
+            and yaw is None
+            and roll is None
+            and not orbit_state
+        ):
+            severity = "warn"
 
         lines = [
             (
