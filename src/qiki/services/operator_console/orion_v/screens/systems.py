@@ -70,14 +70,14 @@ def _mfd_visual_domain(selector: str) -> str:
 
 
 F2_CARD_TITLES: dict[str, str] = {
-    "body_structure": "Body / Structure / Modules",
-    "docking": "Docking / Dock Interface",
-    "power": "Power / Charge",
-    "propulsion": "Propulsion / Motion",
-    "navigation": "Navigation / Route",
-    "sensors": "Sensors / Radar / Observation",
-    "comms": "Comms / Link / Protocol",
-    "safety": "Safety / Integrity / Hazard",
+    "body_structure": "Корпус / Модули",
+    "docking": "Стыковка / Узел",
+    "power": "Питание / Заряд",
+    "propulsion": "Двигатели / Движение",
+    "navigation": "Навигация / Маршрут",
+    "sensors": "Сенсоры / Радар / Наблюдение",
+    "comms": "Связь / Канал / Протокол",
+    "safety": "Безопасность / Целостность / Угрозы",
 }
 
 F2_CARD_SOURCE_MAP: dict[str, dict[str, tuple[str, ...] | str]] = {
@@ -297,8 +297,8 @@ def render_system_cards_with_safety(
     lines = [
         "[F2] Systems Overview",
         "",
-        "Operator view: health -> effect on actions -> next attention",
-        "Truth: hardware_view_model + telemetry/objective/events already present in ORION V",
+        "Обзор оператора: состояние → влияние на действия → куда смотреть дальше",
+        "Правда: hardware_view_model + телеметрия/цель/события — уже в ORION V",
     ]
     authority = _safe_mode_header_line(safe_mode)
     if authority:
@@ -1349,8 +1349,8 @@ class OrionVSystemsScreen(Static):
         self._semantic_static_update("#orionv-systems-title", "[F2] Systems Overview")
         self._semantic_static_update(
             "#orionv-systems-intro",
-            "Operator view: health -> effect on actions -> next attention\n"
-            "Truth: hardware_view_model + telemetry/objective/events already present in ORION V",
+            "Обзор оператора: состояние → влияние на действия → куда смотреть дальше\n"
+            "Правда: hardware_view_model + телеметрия/цель/события — уже в ORION V",
         )
         self._semantic_static_update(
             "#orionv-systems-authority",

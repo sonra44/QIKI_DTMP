@@ -971,7 +971,7 @@ def _build_system_alerts(
             OperatorAlert(
                 id=f"system:{card.subsystem_id}",
                 severity=severity,
-                title="Power / Charge" if card.subsystem_id == "power" else card.title,
+                title="Питание / Заряд" if card.subsystem_id == "power" else card.title,
                 short_meaning=card.current_status,
                 source=source_text or "hardware_view_model",
                 operator_effect=card.operational_effect,

@@ -61,13 +61,13 @@ def _card_by_id(cards: Sequence[Any], subsystem_id: str) -> Any | None:
 
 def _card_lines(card: Any | None, *, title: str) -> list[str]:
     if card is None:
-        return [title, "status: missing", "summary: no subsystem card available"]
+        return [title, "статус: нет данных", "сводка: карточка подсистемы недоступна"]
     return [
         title,
-        f"status: {_text(_get(card, 'current_status'))} [{_text(_get(card, 'severity'))}]",
-        f"summary: {_text(_get(card, 'summary'))}",
-        f"effect: {_text(_get(card, 'operational_effect'))}",
-        f"next: {_text(_get(card, 'next_attention'))}",
+        f"статус: {_text(_get(card, 'current_status'))} [{_text(_get(card, 'severity'))}]",
+        f"сводка: {_text(_get(card, 'summary'))}",
+        f"эффект: {_text(_get(card, 'operational_effect'))}",
+        f"дальше: {_text(_get(card, 'next_attention'))}",
     ]
 
 

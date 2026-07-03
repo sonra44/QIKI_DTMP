@@ -46,7 +46,7 @@ def test_systems_screen_reads_power_status_from_hardware_model() -> None:
 
     text = render_system_cards(build_system_cards(model))
 
-    assert "Power / Charge [critical]" in text
+    assert "Питание / Заряд [critical]" in text
     assert "Status: power constrained" in text
     assert "Summary: Заряд 10%, 19В" in text
 
@@ -60,7 +60,7 @@ def test_missing_truth_is_rendered_as_unknown() -> None:
 
     text = render_system_cards(build_system_cards(model))
 
-    assert "Power / Charge [unknown]" in text
+    assert "Питание / Заряд [unknown]" in text
     assert "Status: truth incomplete" in text
     assert "Summary: Нет данных" in text
 
@@ -89,8 +89,8 @@ def test_system_cards_render_severity_badges_and_selected_marker() -> None:
 
     text = render_system_cards(build_system_cards(model), selected_subsystem="comms")
 
-    assert "Power / Charge [critical]" in text
-    assert "Comms / Link / Protocol [degraded]" in text
+    assert "Питание / Заряд [critical]" in text
+    assert "Связь / Канал / Протокол [degraded]" in text
     assert "#ff5f56" in text
     assert "#f2b84b" in text
     assert "CRIT" in text
@@ -176,7 +176,7 @@ def test_docked_power_card_changes_meaning_with_charging_context() -> None:
         )
     )
 
-    assert "Power / Charge [stable]" in text
+    assert "Питание / Заряд [stable]" in text
     assert "Status: charging supported" in text
     assert "Effect: Dockside power supports the current station contour and reduces route pressure." in text
 
@@ -213,7 +213,7 @@ def test_route_transit_card_uses_objective_follow_up_as_action_gate() -> None:
     text = render_system_cards(cards)
 
     assert cards[0].subsystem_id == "navigation"
-    assert "Navigation / Route [critical]" in text
+    assert "Навигация / Маршрут [critical]" in text
     assert "Status: review gate active" in text
     assert "Effect: F1 action flow is constrained until the observation review is acknowledged and closed." in text
     assert "Next: Продолжение разрешено только после review confirm." in text
@@ -250,7 +250,7 @@ def test_sensors_card_uses_live_target_track() -> None:
         )
     )
 
-    assert "Sensors / Radar / Observation [stable]" in text
+    assert "Сенсоры / Радар / Наблюдение [stable]" in text
     assert "Status: observation target live" in text
     assert "Summary: Сенсоры: 3 в работе, 0 деградации, 0 отключены | tracks 1 | target ALLY-62FD23" in text
 
@@ -279,5 +279,5 @@ def test_systems_screen_renders_safe_mode_authority_header_and_card() -> None:
     )
 
     assert "Safety authority: SAFE MODE active (SAFE_MODE_ENTER_SENSORS_STALE)" in text
-    assert "Safety / Integrity / Hazard [critical]" in text
+    assert "Безопасность / Целостность / Угрозы [critical]" in text
     assert "Status: safe mode active" in text

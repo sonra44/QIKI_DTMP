@@ -54,7 +54,7 @@ def test_f1_cockpit_body_status_line_is_visible() -> None:
 def test_f2_systems_body_structure_summary_has_operator_fields() -> None:
     text = format_body_structure_system_summary(build_body_structure_self_check_view_model())
 
-    assert "Body / Structure / Modules" in text
+    assert "Корпус / Модули" in text
     assert "Seed status       online" in text
     assert "Faces             F00-F11 (12)" in text
     assert "Module            test_sensor_module_001" in text
@@ -87,7 +87,7 @@ def test_orion_screen_modules_are_wired_to_body_structure_view_model() -> None:
     assert "format_body_structure_cockpit_line" in cockpit
     assert "body_structure_line" in cockpit
     assert "body_structure" in systems
-    assert "Body / Structure / Modules" in systems
+    assert "Корпус / Модули" in systems
     assert "_build_body_structure_card" in systems
     assert "build_body_structure_evidence_card_vms" in evidence
     assert "build_evidence_card_vms" in evidence

@@ -330,7 +330,7 @@ def format_body_structure_system_summary(vm: BodyStructureConsoleViewModel | Non
     if vm.last_decision == "waiting":
         return "\n".join(
             [
-                "Body / Structure / Modules",
+                "Корпус / Модули",
                 f"Status            {vm.seed_status}",
                 f"Mode              {vm.mode}",
                 f"Transport         {vm.transport}",
@@ -349,7 +349,7 @@ def format_body_structure_system_summary(vm: BodyStructureConsoleViewModel | Non
         )
     return "\n".join(
         [
-            "Body / Structure / Modules",
+            "Корпус / Модули",
             f"Seed status       {vm.seed_status}",
             f"Status            {vm.seed_status}",
             f"Mode              {vm.mode}",

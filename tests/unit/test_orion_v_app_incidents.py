@@ -1287,7 +1287,7 @@ async def test_telemetry_thermal_warn_trip_visible_in_f1_and_f2_runtime_path(mon
         cockpit_widget = app.query_one("#orionv-cockpit", OrionVCockpitScreen)
         assert not cockpit_widget.has_class("hidden")
 
-    assert any("Safety / Integrity / Hazard [unknown]" in text for text in systems_card_texts)
+    assert any("Безопасность / Целостность / Угрозы [unknown]" in text for text in systems_card_texts)
     assert any("Core: 86.0 °C | limit 90°C | state=WARN" in text for text in cockpit_updates)
     assert any("TRIP nodes: pdu" in text for text in cockpit_updates)
 
@@ -1469,7 +1469,7 @@ def test_build_level0_alerts_includes_system_driven_card_alert() -> None:
     alerts = build_level0_alerts(hardware_model=model)
 
     assert any(
-        alert.title == "Power / Charge"
+        alert.title == "Питание / Заряд"
         and alert.severity == "critical"
         and alert.short_meaning == "power constrained"
         for alert in alerts

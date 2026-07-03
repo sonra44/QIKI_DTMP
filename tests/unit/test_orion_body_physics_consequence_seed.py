@@ -169,6 +169,6 @@ def test_orion_f1_f2_f8_files_mount_body_physics_seed_without_touching_power_cha
     assert "BodyPhysicsPanel" in systems
     assert 'id="orionv-body-physics-panel"' in systems
     assert "BodyPhysicsPanel" in systems
-    assert "Power / Charge" in systems
+    assert "Питание / Заряд" in systems
     assert "build_body_physics_evidence_card_vms" in evidence
     assert "class BodyPhysicsPanel(Static)" in widget

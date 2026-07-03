@@ -73,7 +73,7 @@ def test_f2_systems_uses_mfd_panes_instead_of_flattened_seed_scroll() -> None:
     assert 'id="orionv-body-structure-dashboard"' in systems
     assert 'id="orionv-body-physics-panel"' in systems
     assert 'id="orionv-power-thermal-dashboard"' in systems
-    assert "Power / Charge" in systems
+    assert "Питание / Заряд" in systems
     assert "Power / Charge (telemetry source)" not in systems
 
 
