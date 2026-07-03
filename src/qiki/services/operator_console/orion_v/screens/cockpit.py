@@ -87,12 +87,12 @@ def _extract_mfd_sections(
 
 def _left_mfd_page_title(page: str) -> str:
     return {
-        "radar": "Radar / Situation",
-        "nav": "Navigation",
-        "target": "Target / Objective",
-        "sector": "Sector / Hazards",
-        "mission": "Mission / Process",
-    }.get(page, "Mission / Navigation")
+        "radar": "Радар / Обстановка",
+        "nav": "Навигация",
+        "target": "Цель / Задача",
+        "sector": "Сектор / Угрозы",
+        "mission": "Миссия / Процесс",
+    }.get(page, "Миссия / Навигация")
 
 
 # Single source of truth for the operator "next step" line prefix. Both the

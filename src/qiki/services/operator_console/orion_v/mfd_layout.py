@@ -125,7 +125,7 @@ def clipped_lines(lines: Iterable[str], *, limit: int = 16) -> tuple[str, ...]:
 
 def section_lines(title: str, lines: Iterable[str], *, limit: int = 12) -> tuple[str, ...]:
     rows = clipped_lines(lines, limit=limit)
-    return (title, "─" * min(28, max(8, len(title))), *rows) if rows else (title, "─" * min(28, len(title)), "no data")
+    return (title, "─" * min(28, max(8, len(title))), *rows) if rows else (title, "─" * min(28, len(title)), "нет данных")
 
 
 def softkey_bar(extra: Iterable[str] = ()) -> str:
