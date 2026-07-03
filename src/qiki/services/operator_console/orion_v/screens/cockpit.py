@@ -618,7 +618,9 @@ class OrionVCockpitScreen(Static):
                 self._section_divider(),
                 *self._panel_block(
                     "Оператор / Действие",
-                    self._operator_intervention_rows(intervention_lines=intervention_lines),
+                    self._operator_intervention_rows(
+                        next_step=self._pick_next_step(qiki_lines, procedure_lines, process_lines),
+                    ),
                 ),
                 self._section_divider(),
                 *self._panel_block(
@@ -2454,28 +2456,21 @@ class OrionVCockpitScreen(Static):
             rows.append(("ACK", ack_state, f"assist={getattr(always_on, 'qiki_assist_status', None) or 'partial'}"))
         return rows
 
-    def _operator_intervention_rows(self, *, intervention_lines: list[str]) -> list[tuple[str, str, str]]:
-        loop_state = "IDLE"
-        mode = "standby"
-        next_step = "immediate required"
-        last_summary = "No command issued yet"
-        pending_count = "0"
-        for line in intervention_lines:
-            if line.startswith("Контур команды: "):
-                payload = line.removeprefix("Контур команды: ")
-                loop_state = payload.split("|", 1)[0].strip().upper()
-                if "pending=" in payload:
-                    pending_count = payload.split("pending=", 1)[1].split("|", 1)[0].strip()
-                if "mode=" in payload:
-                    mode = payload.split("mode=", 1)[1].strip().upper()
-            if line.startswith("Последняя команда: "):
-                last_summary = line.removeprefix("Последняя команда: ").strip()
-            if line.startswith("Следующий шаг: "):
-                next_step = line.removeprefix("Следующий шаг: ").strip()
+    def _operator_intervention_rows(self, *, next_step: str) -> list[tuple[str, str, str]]:
+        # single owner per fact: read the operator loop directly (same source as
+        # _operator_intervention_block) instead of parsing that block's rendered
+        # lines. The old render->parse coupling silently broke when the block's RU
+        # prefixes changed — and it already mislabeled the empty state as "ЕСТЬ".
+        loop = getattr(self._operator_shell_state, "operator_loop", None)
+        loop_state = str(getattr(loop, "last_command_status", None) or "idle").strip()
+        mode = str(getattr(loop, "command_mode_state", None) or "standby").strip()
+        pending_count = getattr(loop, "pending_command_count", 0)
+        last_summary = str(getattr(loop, "last_command_summary", None) or "").strip()
+        no_command = not last_summary or last_summary == "Команда ещё не подавалась"
         return [
             ("ДЕЙСТВИЕ", "УДЕРЖАНИЕ" if self._qiki_pending_action_title else state_ru(loop_state).upper(), next_step),
             ("ВВОД", state_ru(mode).upper(), f"в очереди: {pending_count}"),
-            ("ПОСЛЕДНЯЯ", "ПУСТО" if last_summary == "No command issued yet" else "ЕСТЬ", last_summary),
+            ("ПОСЛЕДНЯЯ", "ПУСТО" if no_command else "ЕСТЬ", last_summary or "Команда ещё не подавалась"),
         ]
 
     def _process_state_rows(
