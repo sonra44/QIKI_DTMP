@@ -6,6 +6,7 @@ from qiki.services.operator_console.orion_v.evidence_card_vm import render_card_
 from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     ThermalNodeView,
     build_power_thermal_console_view_model,
+    build_power_thermal_console_view_model_from_telemetry,
     build_power_thermal_evidence_card_vms,
     format_power_thermal_cockpit_line,
     format_power_thermal_system_summary,
@@ -64,6 +65,24 @@ def test_low_supercap_blocks_peak_and_shows_cap_low() -> None:
     assert "SoC_cap=12%" in line
     assert "peak=blocked" in line
     assert "CAP_LOW" in line
+
+
+def test_f1_power_line_surfaces_freshness_and_marks_stale() -> None:
+    # F-4: the glanceable F1 POWER line must carry telemetry freshness (owned
+    # per-subsystem by the power VM) and mark stale data, not hide it.
+    fresh_line = format_power_thermal_cockpit_line(
+        build_power_thermal_console_view_model_from_telemetry(
+            {"power": {"soc_pct": 80.0, "bus_v": 27.9}, "freshness": "fresh"}
+        )
+    )
+    assert "freshness=fresh" in fresh_line
+    assert "[УСТАРЕЛО]" not in fresh_line
+    stale_line = format_power_thermal_cockpit_line(
+        build_power_thermal_console_view_model_from_telemetry(
+            {"power": {"soc_pct": 80.0, "bus_v": 27.9}, "freshness": "stale"}
+        )
+    )
+    assert "freshness=stale [УСТАРЕЛО]" in stale_line
 
 
 def test_thermal_orange_marks_blocked_command_and_reason_code() -> None:

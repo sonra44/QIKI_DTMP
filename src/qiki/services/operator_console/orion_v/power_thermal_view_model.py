@@ -253,13 +253,19 @@ def format_power_thermal_cockpit_line(vm: PowerThermalConsoleViewModel | None = 
     """Compact F1 line. It must remain glanceable, not a table."""
     vm = vm or get_power_thermal_console_view_model()
     reason_codes = tuple(_vm_get(vm, "reason_codes", ()) or ())
+    # §19.6 / ADR-0014: the glanceable F1 line must carry data freshness, not just
+    # source. This is the power subsystem's own freshness (single-owner safe) —
+    # global snapshot freshness belongs to the mission-control АКТУАЛ element.
+    freshness = str(_vm_get(vm, "telemetry_freshness", "unknown"))
+    stale_mark = " [УСТАРЕЛО]" if freshness.lower() == "stale" else ""
     base = (
         f"POWER({_vm_get(vm, 'source', POWER_THERMAL_SOURCE)}) | "
         f"SoC_bat={format_soc_bat(_vm_get(vm, 'battery_soc_pct'))} | "
         f"SoC_cap={format_soc_cap(_vm_get(vm, 'supercap_soc_pct'))} | "
         f"bus={_vm_get(vm, 'bus_state', 'unknown')} | "
         f"peak={_vm_get(vm, 'peak_readiness', 'unknown')} | "
-        f"thermal={_vm_get(vm, 'thermal_status', 'unknown')}"
+        f"thermal={_vm_get(vm, 'thermal_status', 'unknown')} | "
+        f"freshness={freshness}{stale_mark}"
     )
     if reason_codes:
         return f"{base} | reason={reason_codes[0]}"
