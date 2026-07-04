@@ -29,6 +29,7 @@ If you change "the operator console", you change **ORION V**. Nothing else.
 | **Archive entrypoint** | `main.py` | ARCHIVE | requires `ALLOW_LEGACY_OPERATOR_CONSOLE=1`; not production |
 | **Prototypes** | `main_full.py`, `main_enhanced.py`, `main_integrated.py`, `main_live.py` | DEAD / PROTOTYPE (manual-only) | old Rich prototypes, 0 compose references; manually runnable via `__main__` — **NOT** assumed safe to delete without a test/import inventory |
 | **shell_os** | `qiki.services.shell_os.main` | SEPARATE | support surface, not ORION V |
+| **qiki_chat ingress** | `qiki.services.qiki_chat.main` + client `qiki/tools/qiki_ask.py` | RETIRED (M0b, 2026-07-04) | was a second command ingress: `qiki.chat.v1` → `QikiProposedActionV1(dry_run=False)`. Daemon and client deleted (recover via git history only). `qiki_chat/handler.py` stays **only** as a faststream_bridge library — never re-add a `qiki.chat.v1` subscriber without the gateway (F5 design §6, M3) |
 
 ## Hard rules (never break)
 
