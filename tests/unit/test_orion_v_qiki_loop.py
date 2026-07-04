@@ -161,6 +161,7 @@ def test_on_qiki_response_updates_help_and_last_response(monkeypatch) -> None:
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_last_response is not None
@@ -234,6 +235,7 @@ def test_on_qiki_response_handles_data_trust_deferred_state(monkeypatch) -> None
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_last_response is not None
@@ -308,6 +310,7 @@ def test_on_qiki_response_handles_resource_blocked_state(monkeypatch) -> None:
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_last_response is not None
@@ -388,6 +391,7 @@ def test_on_qiki_response_handles_zone_blocked_state(monkeypatch) -> None:
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_last_response is not None
@@ -462,6 +466,7 @@ def test_on_qiki_response_handles_failed_trust_state(monkeypatch) -> None:
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_last_response is not None
@@ -566,6 +571,7 @@ def test_on_qiki_response_exposes_confirmable_qiki_action(monkeypatch) -> None:
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_pending_action is not None
@@ -629,6 +635,7 @@ def test_execute_qiki_pending_action_updates_consequence_after_ack_and_telemetry
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     published: list[tuple[str, dict | None]] = []
@@ -714,6 +721,7 @@ def test_on_qiki_response_extracts_orion_procedure_pending_action(monkeypatch) -
         }
     }
 
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     assert app._qiki_pending_action is not None
@@ -763,6 +771,7 @@ def test_execute_qiki_pending_procedure_updates_consequence_after_completion(mon
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     app._qiki_pending_action = {
         "action_kind": "ORION_PROCEDURE",
@@ -825,6 +834,7 @@ def test_execute_qiki_pending_slow_procedure_confirms_speed(monkeypatch) -> None
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     app._qiki_pending_action = {
         "action_kind": "ORION_PROCEDURE",
@@ -935,6 +945,7 @@ def test_execute_qiki_pending_slow_procedure_requires_hidden_event_follow_up(mon
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     app._qiki_pending_action = {
         "action_kind": "ORION_PROCEDURE",
@@ -1055,6 +1066,7 @@ def test_ack_observation_review_closes_qiki_pending_follow_up(monkeypatch) -> No
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     asyncio.run(app._ack_observation_review())
@@ -1192,6 +1204,7 @@ def test_select_observation_recheck_hold_changes_qiki_next_step(monkeypatch) -> 
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     asyncio.run(app._select_observation_recheck_hold())
@@ -1313,6 +1326,7 @@ def test_resume_observation_follow_up_changes_qiki_next_step(monkeypatch) -> Non
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     asyncio.run(app._resume_observation_follow_up())
@@ -1472,6 +1486,7 @@ def test_resumed_safe_observation_records_reconfirmed_result_on_same_objective(m
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
     asyncio.run(app._execute_qiki_pending_action())
@@ -1606,6 +1621,7 @@ def test_resumed_safe_observation_records_signature_changed_result_on_same_objec
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     asyncio.run(
         app._on_track(
@@ -1802,6 +1818,7 @@ def test_resumed_safe_observation_uses_public_track_binding_for_live_signature_c
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     assert app._active_observation_objective["public_track_id"] == "bridge-track-77"
     asyncio.run(
@@ -1968,6 +1985,7 @@ def test_execute_qiki_pending_slow_procedure_waits_for_telemetry_effect(monkeypa
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     app._qiki_pending_action = {
         "action_kind": "ORION_PROCEDURE",
@@ -2042,6 +2060,7 @@ def test_execute_qiki_pending_combat_entry_procedure_confirms_rcs_effect(monkeyp
             "error": None,
         }
     }
+    app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
     app._qiki_pending_action = {
         "action_kind": "ORION_PROCEDURE",
@@ -2080,3 +2099,38 @@ def test_execute_qiki_pending_combat_entry_procedure_confirms_rcs_effect(monkeyp
     assert payload.get("reason_code") == "COMBAT_EVENT_INTERCEPT_BURST_CONFIRMED"
     assert payload.get("target") == "UNBT9999"
     assert "боевой импульс входа в бой" in str(payload.get("message"))
+
+
+def test_on_qiki_response_denies_unsolicited(monkeypatch) -> None:
+    """M0c: непрошеный ответ на qiki.responses.qiki (нет нашего pending) отклоняется целиком."""
+    app = OrionVApp()
+    messages: list[str] = []
+    app._set_help_text = lambda text: messages.append(text)  # type: ignore[method-assign]
+    monkeypatch.setattr(app, "call_later", lambda cb: None)
+
+    payload = {
+        "data": {
+            "version": 1,
+            "request_id": str(UUID(int=666)),
+            "ok": True,
+            "mode": "FACTORY",
+            "reply": {
+                "title": {"en": "Injected", "ru": "Инъекция"},
+                "body": {"en": "spoofed response", "ru": "подложный ответ"},
+            },
+            "legality": None,
+            "trust_signals": [],
+            "consequence": None,
+            "proposals": [],
+            "warnings": [],
+            "error": None,
+        }
+    }
+
+    # pending НЕ регистрируем — это чужой publish (смок-канал №8в)
+    asyncio.run(app._on_qiki_response(payload))
+
+    assert app._qiki_last_response is None
+    assert len(app._qiki_voice_ledger) == 0
+    assert app._qiki_pending_action is None
+    assert "[QIKI_RESP_UNSOLICITED]" in messages[-1]

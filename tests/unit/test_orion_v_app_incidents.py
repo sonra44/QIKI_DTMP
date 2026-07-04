@@ -1781,6 +1781,7 @@ async def test_cockpit_qiki_cancel_click_clears_pending_action(monkeypatch: pyte
     app = OrionVApp()
     async with app.run_test(size=(160, 48)) as pilot:
         await pilot.pause()
+        app._qiki_pending[str(UUID(int=999))] = (0.0, "test")  # M0c: ответ только на свой запрос
         await app._on_qiki_response(
             {
                 "data": {

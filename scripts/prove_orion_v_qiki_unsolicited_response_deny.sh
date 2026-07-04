@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+STACK=(-f docker-compose.phase1.yml -f docker-compose.operator.yml)
+
+printf '[prove] phase1 status\n'
+docker compose "${STACK[@]}" ps qiki-dev q-sim-service operator-console q-bios-service
+
+printf '\n[prove] live ORION V M0c: deny непрошеных ответов на qiki.responses.qiki\n'
+docker compose -f docker-compose.phase1.yml exec -T qiki-dev python tools/orion_v_qiki_unsolicited_response_deny_smoke.py

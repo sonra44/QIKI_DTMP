@@ -3178,7 +3178,15 @@ class OrionVApp(App[None]):
             self._set_help_text("QIKI response: ошибка декодирования")
             return
 
-        self._qiki_pending.pop(str(response.request_id), None)
+        request_id = str(response.request_id)
+        if request_id not in self._qiki_pending:
+            # M0c: принимаем только ответы на запросы, отправленные этой консолью;
+            # непрошеный publish в qiki.responses.qiki отклоняется (полный auth — M2).
+            logger.warning("orion_v_qiki_response_denied_unsolicited request_id=%s", request_id)
+            self._set_help_text("QIKI: непрошеный ответ отклонён [QIKI_RESP_UNSOLICITED]")
+            self._request_refresh_ui()
+            return
+        self._qiki_pending.pop(request_id, None)
         self._qiki_last_response = response
         # №8в: голос QIKI — каждая реплика в ленту с временем приёма и типом
         self._qiki_voice_ledger.append(
