@@ -656,6 +656,7 @@ def test_execute_qiki_pending_action_updates_consequence_after_ack_and_telemetry
     monkeypatch.setattr(app, "_wait_for_ack", _wait_ack)
     monkeypatch.setattr(app, "_wait_for_qiki_effect", _wait_effect)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert published == [("sim.dock.release", {})]
@@ -789,6 +790,7 @@ def test_execute_qiki_pending_procedure_updates_consequence_after_completion(mon
     monkeypatch.setattr(app, "_run_procedure", _fake_run)
     monkeypatch.setattr(app, "_wait_for_procedure_completion", _fake_wait)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._qiki_pending_action is None
@@ -852,6 +854,7 @@ def test_execute_qiki_pending_slow_procedure_confirms_speed(monkeypatch) -> None
     monkeypatch.setattr(app, "_run_procedure", _fake_run)
     monkeypatch.setattr(app, "_wait_for_procedure_completion", _fake_wait)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._qiki_pending_action is None
@@ -963,6 +966,7 @@ def test_execute_qiki_pending_slow_procedure_requires_hidden_event_follow_up(mon
     monkeypatch.setattr(app, "_run_procedure", _fake_run)
     monkeypatch.setattr(app, "_wait_for_procedure_completion", _fake_wait)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._qiki_pending_action is None
@@ -1489,6 +1493,7 @@ def test_resumed_safe_observation_records_reconfirmed_result_on_same_objective(m
     app._qiki_pending[str(payload["data"]["request_id"])] = (0.0, "test")  # M0c: ответ только на свой запрос
     asyncio.run(app._on_qiki_response(payload))
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._active_observation_objective is not None
@@ -1636,6 +1641,7 @@ def test_resumed_safe_observation_records_signature_changed_result_on_same_objec
             }
         )
     )
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._active_observation_objective is not None
@@ -1835,6 +1841,7 @@ def test_resumed_safe_observation_uses_public_track_binding_for_live_signature_c
         )
     )
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._active_observation_objective is not None
@@ -2005,6 +2012,7 @@ def test_execute_qiki_pending_slow_procedure_waits_for_telemetry_effect(monkeypa
     monkeypatch.setattr(app, "_run_procedure", _fake_run)
     monkeypatch.setattr(app, "_wait_for_procedure_completion", _fake_wait)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._qiki_pending_action is None
@@ -2078,6 +2086,7 @@ def test_execute_qiki_pending_combat_entry_procedure_confirms_rcs_effect(monkeyp
     monkeypatch.setattr(app, "_run_procedure", _fake_run)
     monkeypatch.setattr(app, "_wait_for_procedure_completion", _fake_wait)
 
+    app._seal_pending_decision(app._qiki_pending_action)  # M5: реальный поток пломбирует до execute
     asyncio.run(app._execute_qiki_pending_action())
 
     assert app._qiki_pending_action is None

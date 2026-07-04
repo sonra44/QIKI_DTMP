@@ -73,6 +73,12 @@ from qiki.shared.models.qiki_chat_v2 import (
     QikiChatRequestV2,
     parse_chat_response,
 )
+from qiki.shared.command_decision import (
+    CommandIntent,
+    DecisionStore,
+    authorize_publish,
+    seal_decision,
+)
 from qiki.services.operator_console.orion_v.screens.system_health import OrionVSystemHealthScreen
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import OrionVAlertsOverlay
 from qiki.services.operator_console.orion_v.widgets.action_bar import OrionVActionBar
@@ -292,6 +298,9 @@ class OrionVApp(App[None]):
         self._qiki_voice_ledger: deque[QikiVoiceEntry] = deque(maxlen=20)
         # F5 (M1): intent-лог оператора — реплики оператора для ленты диалога.
         self._qiki_dialog_operator_ledger: deque[tuple[str, str]] = deque(maxlen=20)
+        # M5: реестр решений + текущая пломба (связка одобрение↔точная команда, Д3).
+        self._decision_store = DecisionStore()
+        self._pending_decision_id: str | None = None
         # M4: конверт v2 под feature-flag; token_id — отпечаток, не секрет.
         self._qiki_envelope_v2 = os.getenv("ORION_QIKI_ENVELOPE_V2", "0").strip() == "1"
         self._console_session_id = str(uuid4())
@@ -2842,11 +2851,31 @@ class OrionVApp(App[None]):
         await self._publish_operator_event(OPERATOR_OBJECTIVES, payload)
         self._request_refresh_ui()
 
+    def _seal_pending_decision(self, action: dict[str, Any]) -> str:
+        """M5: запломбировать ТОЧНУЮ одобряемую команду (subject/name/params+title).
+
+        Пломба берётся из действия в момент показа диалога подтверждения. При
+        исполнении публикуемая команда обязана совпасть с пломбой (закрытие Д3).
+        """
+        decision_id = str(uuid4())
+        intent = CommandIntent(
+            kind=str(action.get("action_kind") or "NATS_COMMAND").strip(),
+            subject=str(action.get("subject") or "").strip(),
+            name=str(action.get("name") or "").strip(),
+            parameters=dict(action.get("parameters") or {}),
+            operator_facing_title=str(action.get("title_ru") or action.get("title_en") or "").strip(),
+        )
+        self._decision_store.put(seal_decision(decision_id=decision_id, intent=intent))
+        self._pending_decision_id = decision_id
+        return decision_id
+
     def _confirm_qiki_pending_action(self) -> None:
         action = self._qiki_pending_action
         if action is None:
             self._set_help_text("QIKI: нет действия для подтверждения")
             return
+        # Пломбируем команду В МОМЕНТ показа подтверждения — то, что видит оператор.
+        self._seal_pending_decision(action)
         title_ru = str(action.get("title_ru") or "выполнить действие QIKI")
         self._set_last_command_loop_state("awaiting_confirm", f"Awaiting operator confirm: {title_ru}")
         self.push_screen(
@@ -2856,6 +2885,34 @@ class OrionVApp(App[None]):
                 lambda: asyncio.create_task(self._execute_qiki_pending_action()),
             ),
         )
+
+    def _authorize_pending_against_seal(self, action: dict[str, Any]) -> bool:
+        """M5: публикуем ТОЛЬКО если текущее действие совпадает с пломбой одобрения.
+
+        Расхождение (подменённый после одобрения name/subject/params) → отказ +
+        аудит, команда НЕ исполняется. Это закрытие Д3 в живом execute-пути.
+        """
+        decision = (
+            self._decision_store.get(self._pending_decision_id) if self._pending_decision_id else None
+        )
+        if decision is None:
+            self._set_help_text("QIKI: нет пломбы решения — исполнение отклонено [CMD_NO_DECISION]")
+            return False
+        auth = authorize_publish(
+            decision,
+            candidate_kind=str(action.get("action_kind") or "NATS_COMMAND").strip(),
+            candidate_subject=str(action.get("subject") or "").strip(),
+            candidate_name=str(action.get("name") or "").strip(),
+            candidate_parameters=dict(action.get("parameters") or {}),
+        )
+        self._decision_store.put(auth.decision)
+        if not auth.allowed:
+            codes = ",".join(auth.reason_codes) or "REJECTED"
+            logger.warning("orion_v_decision_publish_denied decision_id=%s codes=%s", decision.decision_id, codes)
+            self._set_last_command_loop_state("blocked", f"Публикация отклонена: {codes}")
+            self._set_help_text(f"QIKI: команда расходится с одобренной — не исполнена [{codes}]")
+            self._request_refresh_ui()
+        return auth.allowed
 
     async def _wait_for_qiki_effect(self, command_name: str, timeout_s: float) -> BilingualText | None:
         deadline = time.monotonic() + timeout_s
@@ -2949,6 +3006,11 @@ class OrionVApp(App[None]):
             return
         if self._replay_mode:
             self._set_help_text("РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО")
+            return
+
+        # M5 (Д3): исполняем ТОЛЬКО команду, совпадающую с пломбой одобрения.
+        if not self._authorize_pending_against_seal(action):
+            self._qiki_pending_action = None
             return
 
         action_kind = str(action.get("action_kind") or "NATS_COMMAND").strip()
