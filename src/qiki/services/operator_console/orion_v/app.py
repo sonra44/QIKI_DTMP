@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
@@ -65,6 +66,12 @@ from qiki.services.operator_console.orion_v.screens.qiki_dialog import (
     OrionVQikiDialogScreen,
     QikiDialogLine,
     merge_dialog_lines,
+)
+from qiki.shared.models.qiki_chat_v2 import (
+    AuthContext,
+    EvidenceContext,
+    QikiChatRequestV2,
+    parse_chat_response,
 )
 from qiki.services.operator_console.orion_v.screens.system_health import OrionVSystemHealthScreen
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import OrionVAlertsOverlay
@@ -285,6 +292,13 @@ class OrionVApp(App[None]):
         self._qiki_voice_ledger: deque[QikiVoiceEntry] = deque(maxlen=20)
         # F5 (M1): intent-лог оператора — реплики оператора для ленты диалога.
         self._qiki_dialog_operator_ledger: deque[tuple[str, str]] = deque(maxlen=20)
+        # M4: конверт v2 под feature-flag; token_id — отпечаток, не секрет.
+        self._qiki_envelope_v2 = os.getenv("ORION_QIKI_ENVELOPE_V2", "0").strip() == "1"
+        self._console_session_id = str(uuid4())
+        raw_nats_token = os.getenv("NATS_TOKEN", "").strip()
+        self._nats_token_fingerprint = (
+            "tk_" + hashlib.sha256(raw_nats_token.encode("utf-8")).hexdigest()[:12] if raw_nats_token else "none"
+        )
         self._qiki_pending_action: dict[str, Any] | None = None
         self._active_observation_objective: dict[str, Any] | None = None
         self._event_timestamps: deque[float] = deque(maxlen=4000)
@@ -2018,7 +2032,7 @@ class OrionVApp(App[None]):
 
     def _build_qiki_chat_request(self, text: str) -> QikiChatRequestV1:
         freshness = TelemetryFreshness.FRESH if self._telemetry else TelemetryFreshness.UNKNOWN
-        return QikiChatRequestV1(
+        common: dict[str, Any] = dict(
             request_id=uuid4(),
             ts_epoch_ms=int(time.time() * 1000),
             mode_hint=QikiMode.FACTORY,
@@ -2031,6 +2045,23 @@ class OrionVApp(App[None]):
                 ),
             ),
             system_context=SystemContext(telemetry_freshness=freshness),
+        )
+        if not self._qiki_envelope_v2:
+            return QikiChatRequestV1(**common)
+        # M4 (feature-flag): конверт v2 — кто спрашивает + что консоль знает о доверии.
+        return QikiChatRequestV2(
+            **common,
+            auth_context=AuthContext(
+                subject="operator_console.orion_v",
+                session=self._console_session_id,
+                scopes=["qiki.intents.publish"],
+                token_id=self._nats_token_fingerprint,
+            ),
+            evidence_context=EvidenceContext(
+                sensor_trust="trusted" if self._telemetry else "missing",
+                source="orion_v.telemetry",
+            ),
+            command_intent_class="dialog",
         )
 
     async def _publish_qiki_intent(self, text: str) -> None:
@@ -3208,7 +3239,8 @@ class OrionVApp(App[None]):
         if not isinstance(payload, dict):
             return
         try:
-            response = QikiChatResponseV1.model_validate(payload)
+            # M4: диспатч версий — v2-ответ (superset v1) парсится и работает всюду как v1.
+            response = parse_chat_response(payload)
         except Exception:
             logger.debug("orion_v_decode_qiki_response_failed", exc_info=True)
             self._set_help_text("QIKI response: ошибка декодирования")

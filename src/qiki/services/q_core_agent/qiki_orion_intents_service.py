@@ -38,6 +38,14 @@ from qiki.shared.nats_subjects import (
     SYSTEM_TELEMETRY,
 )
 from qiki.shared.nats_subjects import OPENAI_API_KEY_UPDATE
+from qiki.shared.models.qiki_chat_v2 import (
+    DecisionPreview,
+    EvidenceSourceType,
+    ResponseEvidence,
+    RuntimeClaimStatus,
+    parse_chat_request,
+    upgrade_response_to_v2,
+)
 from qiki.shared.nats_connect import nats_auth_kwargs
 
 _STATION_OBJECT_TYPE = 3
@@ -3898,6 +3906,34 @@ async def _refresh_agent_snapshot_until_target_track(
         logger.warning("Target-track warmup ended without track for %s: %s", target_designator, last_error)
 
 
+def _encode_chat_response(resp: "QikiChatResponseV1", *, request_version: int) -> bytes:
+    """M4: ответ уходит В ВЕРСИИ ЗАПРОСА — v1-клиенты не видят v2-полей.
+
+    Для v2 добавляется честный evidence: ответы этого сервиса — детерминированная
+    policy (source_type=derived), runtime они не трогают (candidate_only,
+    ADR-0017); decision_preview — только при наличии предложенных действий.
+    """
+    if request_version == 2 and resp.version == 1:
+        has_actions = any(proposal.proposed_actions for proposal in resp.proposals)
+        evidence = ResponseEvidence(
+            source_type=EvidenceSourceType.DERIVED,
+            source_id="q_core_intents",
+            trust_status="trusted",
+            freshness="unknown",
+            runtime_claim_status=RuntimeClaimStatus.CANDIDATE_ONLY,
+        )
+        preview = (
+            DecisionPreview(
+                validation_layers=["trust", "power", "thermal", "safe"],
+                next_step="q confirm",
+            )
+            if has_actions
+            else None
+        )
+        resp = upgrade_response_to_v2(resp, evidence=evidence, decision_preview=preview)
+    return resp.model_dump_json(ensure_ascii=False).encode("utf-8")
+
+
 async def _secrets_bus_handler(msg, *, nc) -> None:
     """Runtime secret status endpoint (M0a: secrets are never accepted from the bus).
 
@@ -4031,11 +4067,12 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
             return
 
         raw_req_id = payload.get("request_id") or payload.get("requestId")
+        req_version = 2 if payload.get("version") == 2 else 1
         try:
-            req = QikiChatRequestV1.model_validate(payload)
+            req = parse_chat_request(payload)
         except Exception:
             resp = _build_invalid_request_response(raw_request_id=str(raw_req_id) if raw_req_id else None, mode=mode)
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         # Best-effort: refresh context right before answering.
@@ -4085,7 +4122,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 hidden_event = _build_observation_hidden_event(objective_event=objective_event)
                 if hidden_event is not None:
                     await nc.publish(EVENTS_AUDIT, json.dumps(hidden_event, ensure_ascii=False).encode("utf-8"))
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_safe_observation_command(req.input.text):
@@ -4149,7 +4186,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                     hidden_event = _build_observation_hidden_event(objective_event=objective_event)
                     if hidden_event is not None:
                         await nc.publish(EVENTS_AUDIT, json.dumps(hidden_event, ensure_ascii=False).encode("utf-8"))
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_release_dock_command(req.input.text):
@@ -4158,7 +4195,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_hostile_attack_command(req.input.text):
@@ -4168,12 +4205,12 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 world_snapshot=reasoning_snapshot,
                 agent=agent,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_protocol_blocked_command(req.input.text):
             resp = _build_protocol_block_response(req=req, mode=mode)
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_station_hail_command(req.input.text):
@@ -4182,7 +4219,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_docking_corridor_command(req.input.text):
@@ -4191,7 +4228,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_attitude_stabilize_command(req.input.text):
@@ -4201,7 +4238,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 world_snapshot=reasoning_snapshot,
                 sensor_snapshot=agent.context.sensor_snapshot,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         if _is_station_approach_command(req.input.text):
@@ -4210,7 +4247,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
-            await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
         proposals = list(agent.context.proposals or [])
@@ -4232,7 +4269,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
             warnings=[],
             error=None,
         )
-        await nc.publish(responses_subject, resp.model_dump_json(ensure_ascii=False).encode("utf-8"))
+        await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
 
     await nc.subscribe(intents_subject, cb=handler)
     logger.info("Subscribed QIKI intents: %s -> %s", intents_subject, responses_subject)
