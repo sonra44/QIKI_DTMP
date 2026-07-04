@@ -40,6 +40,7 @@ from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, l
 from qiki.services.qiki_chat.handler import build_invalid_request_response_model, handle_chat_request
 from qiki.services.faststream_bridge.mode_store import get_mode, set_mode
 from qiki.shared.nats_subjects import RADAR_GUARD_ALERTS, SYSTEM_MODE_EVENT
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 try:
     import nats  # type: ignore
@@ -59,7 +60,7 @@ RADAR_TRACKS_DURABLE = os.getenv("RADAR_TRACKS_DURABLE", RADAR_TRACKS_DURABLE_DE
 LAG_MONITOR_INTERVAL = float(os.getenv("RADAR_LAG_MONITOR_INTERVAL_SEC", "5"))
 RADAR_STREAM = os.getenv("RADAR_STREAM", RADAR_STREAM_NAME)
 
-broker = NatsBroker(NATS_URL)
+broker = NatsBroker(NATS_URL, **nats_auth_kwargs())
 app = FastStream(broker)
 
 
@@ -237,7 +238,7 @@ async def _publish_system_mode(mode: QikiMode, *, logger_: Logger) -> None:
     if nats is not None:
         nc = None
         try:
-            nc = await nats.connect(servers=[NATS_URL], connect_timeout=5)
+            nc = await nats.connect(servers=[NATS_URL], connect_timeout=5, **nats_auth_kwargs())
             js = nc.jetstream()
             await js.publish(SYSTEM_MODE_EVENT, json.dumps(payload).encode("utf-8"))
             return
@@ -277,7 +278,7 @@ async def _publish_system_mode_persisted_boot(mode: QikiMode, *, logger_: Logger
 
     nc = None
     try:
-        nc = await nats.connect(servers=[NATS_URL], connect_timeout=5)
+        nc = await nats.connect(servers=[NATS_URL], connect_timeout=5, **nats_auth_kwargs())
         js = nc.jetstream()
 
         deadline = time.time() + float(os.getenv("SYSTEM_MODE_BOOT_PERSIST_TIMEOUT_SEC", "20.0"))

@@ -15,6 +15,7 @@ except Exception:
     nats = None
 
 from qiki.shared.models.radar import RadarFrameModel, RadarDetectionModel, RangeBand
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class RadarNatsPublisher:
             return
         if self._nc is None:
             try:
-                self._nc = await nats.connect(self._nats_url)
+                self._nc = await nats.connect(self._nats_url, **nats_auth_kwargs())
             except Exception as exc:
                 logger.warning(f"Failed to connect to NATS {self._nats_url}: {exc}")
 

@@ -9,6 +9,7 @@ from typing import Optional
 
 from qiki.shared.events.cloudevents import build_cloudevent_headers
 from qiki.shared.nats_subjects import SYSTEM_TELEMETRY
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 try:
     import nats
@@ -45,7 +46,7 @@ class TelemetryNatsPublisher:
         if self._nc is not None:
             return
         try:
-            self._nc = await nats.connect(self._nats_url)
+            self._nc = await nats.connect(self._nats_url, **nats_auth_kwargs())
         except Exception as exc:  # pragma: no cover
             logger.warning("Failed to connect to NATS %s: %s", self._nats_url, exc)
 

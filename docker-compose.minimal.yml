@@ -109,6 +109,7 @@ services:
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
       - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_TOKEN=${NATS_TOKEN:-}
     command: bash -lc "bash tools/ensure_generated.sh && python -m qiki.services.q_sim_service.grpc_server"
     tty: true
     stdin_open: true
@@ -161,6 +162,7 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/workspace/src:/workspace
       - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_TOKEN=${NATS_TOKEN:-}
       - RADAR_STREAM=QIKI_RADAR_V1
       - RADAR_SUBJECTS=qiki.radar.v1.*
       - RADAR_DUPLICATE_WINDOW_SEC=120

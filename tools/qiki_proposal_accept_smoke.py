@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.nats_subjects import QIKI_INTENTS, QIKI_RESPONSES
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 async def _request_once(
@@ -68,6 +69,7 @@ async def main() -> int:
         connect_timeout=min(3.0, timeout_s),
         allow_reconnect=False,
         max_reconnect_attempts=0,
+        **nats_auth_kwargs(),
     )
     try:
         resp = await _request_once(

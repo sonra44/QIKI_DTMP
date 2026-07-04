@@ -4,6 +4,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from typing import List
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 try:
@@ -139,7 +140,7 @@ def build_consumer_params(consumer: JsConsumerConfig):
 async def _ensure_stream(cfg: JsConfig) -> int:
     if nats is None:  # pragma: no cover
         raise RuntimeError("nats-py is not installed")
-    nc = await nats.connect(cfg.nats_url)
+    nc = await nats.connect(cfg.nats_url, **nats_auth_kwargs())
     try:
         js = nc.jetstream()
         params = build_stream_params(cfg)
@@ -158,7 +159,7 @@ async def _ensure_consumers(cfg: JsConfig, consumers: List[JsConsumerConfig]) ->
     if nats is None or ConsumerConfig is None:  # pragma: no cover
         raise RuntimeError("nats-py with JetStream support is required")
 
-    nc = await nats.connect(cfg.nats_url)
+    nc = await nats.connect(cfg.nats_url, **nats_auth_kwargs())
     results: List[int] = []
     try:
         js = nc.jetstream()

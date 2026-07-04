@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1
 from qiki.shared.nats_subjects import QIKI_INTENTS, QIKI_RESPONSES
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 async def main() -> int:
@@ -37,6 +38,7 @@ async def main() -> int:
         connect_timeout=3,
         allow_reconnect=False,
         max_reconnect_attempts=0,
+        **nats_auth_kwargs(),
     )
     got: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
 

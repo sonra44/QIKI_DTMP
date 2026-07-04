@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiChatResponseV1, QikiMode
+from qiki.shared.nats_connect import nats_auth_kwargs
 from qiki.shared.nats_subjects import (
     EVENTS_STREAM_NAME,
     QIKI_INTENTS,
@@ -44,7 +45,7 @@ async def main() -> int:
     nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
     timeout_s = float(os.getenv("SYSTEM_MODE_SMOKE_TIMEOUT_SEC", "5.0"))
 
-    nc = await nats.connect(servers=[nats_url], connect_timeout=3, allow_reconnect=False)
+    nc = await nats.connect(servers=[nats_url], connect_timeout=3, allow_reconnect=False, **nats_auth_kwargs())
     js = nc.jetstream()
 
     async def get_persisted(*, deadline_epoch: float, expect_mode: QikiMode | None) -> dict[str, Any] | None:

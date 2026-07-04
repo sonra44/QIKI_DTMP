@@ -23,6 +23,7 @@ from faststream.nats import NatsBroker
 from qiki.services.registrar.core.codes import RegistrarCode
 from qiki.services.registrar.core.service import RegistrarService
 from qiki.shared.events import build_cloudevent_headers
+from qiki.shared.nats_connect import nats_auth_kwargs
 from qiki.shared.nats_subjects import (
     EVENTS_AUDIT,
     EVENTS_STREAM_NAME,
@@ -48,7 +49,7 @@ logger.info("🔧 Registrar Configuration: NATS_URL=%s", NATS_URL)
 registrar_service = RegistrarService(log_file="/var/log/qiki/registrar.log")
 
 # Initialize Broker
-broker = NatsBroker(NATS_URL)
+broker = NatsBroker(NATS_URL, **nats_auth_kwargs())
 app = FastStream(broker)
 
 

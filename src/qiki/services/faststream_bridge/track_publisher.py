@@ -14,6 +14,7 @@ except Exception:  # pragma: no cover
 
 from qiki.shared.events import build_cloudevent_headers
 from qiki.shared.models.radar import RadarTrackModel
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class RadarTrackPublisher:
                 return
         if self._nc is None:
             try:
-                self._nc = await nats.connect(self._nats_url)  # type: ignore
+                self._nc = await nats.connect(self._nats_url, **nats_auth_kwargs())  # type: ignore
                 logger.info("Connected to NATS at %s", self._nats_url)
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to connect to NATS %s: %s", self._nats_url, exc)

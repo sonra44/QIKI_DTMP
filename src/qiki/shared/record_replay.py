@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable, Literal
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ async def record_jsonl(
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    nc = await nats.connect(servers=[nats_url], connect_timeout=2)
+    nc = await nats.connect(servers=[nats_url], connect_timeout=2, **nats_auth_kwargs())
     started = asyncio.get_running_loop().time()
 
     counts = {
@@ -231,7 +232,7 @@ async def replay_jsonl(
     base_ts = min(float(x.ts_epoch) for x in parsed)
     started = asyncio.get_running_loop().time()
 
-    nc = await nats.connect(servers=[nats_url], connect_timeout=2)
+    nc = await nats.connect(servers=[nats_url], connect_timeout=2, **nats_auth_kwargs())
     published = 0
     try:
         for row in parsed:

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from qiki.services.faststream_bridge.metrics import set_consumer_lag
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 try:  # pragma: no cover - optional dependency resolved at runtime
     import nats  # type: ignore
@@ -52,7 +53,7 @@ class JetStreamLagMonitor:
         if self._task is not None:
             return
 
-        self._nc = await nats.connect(self._nats_url)  # type: ignore
+        self._nc = await nats.connect(self._nats_url, **nats_auth_kwargs())  # type: ignore
         self._js = self._nc.jetstream()
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())

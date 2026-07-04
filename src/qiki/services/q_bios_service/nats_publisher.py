@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 import nats
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 logger = logging.getLogger("q_bios_service.nats_publisher")
@@ -23,6 +24,7 @@ class NatsJsonPublisher:
             connect_timeout=5,
             reconnect_time_wait=1,
             max_reconnect_attempts=-1,
+            **nats_auth_kwargs(),
         )
 
     async def _close(self) -> None:

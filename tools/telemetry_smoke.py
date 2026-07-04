@@ -8,6 +8,7 @@ import sys
 from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 async def main() -> int:
@@ -44,7 +45,7 @@ async def main() -> int:
     subject = os.getenv("SYSTEM_TELEMETRY_SUBJECT", "qiki.telemetry")
     timeout_s = float(os.getenv("TELEMETRY_SMOKE_TIMEOUT_SEC", "3.0"))
 
-    nc = await nats.connect(servers=[nats_url], connect_timeout=2)
+    nc = await nats.connect(servers=[nats_url], connect_timeout=2, **nats_auth_kwargs())
     got: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
 
     async def handler(msg) -> None:

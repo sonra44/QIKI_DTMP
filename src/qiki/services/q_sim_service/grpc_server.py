@@ -30,6 +30,7 @@ from qiki.services.q_sim_service.service import QSimService
 from qiki.shared.config_models import QSimServiceConfig, load_config
 from qiki.shared.models.core import CommandMessage
 from qiki.shared.nats_subjects import COMMANDS_CONTROL, RESPONSES_CONTROL
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 def _build_control_response_payload(
@@ -139,7 +140,7 @@ async def control_commands_loop(sim_service: QSimService) -> None:
 
     nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
     try:
-        nc = await nats.connect(nats_url)
+        nc = await nats.connect(nats_url, **nats_auth_kwargs())
     except Exception as exc:
         logging.warning("Failed to connect to NATS %s for control commands: %s", nats_url, exc)
         return

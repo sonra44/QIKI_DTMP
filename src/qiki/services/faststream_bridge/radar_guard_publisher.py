@@ -10,6 +10,7 @@ from typing import Optional
 from uuid import uuid4
 
 from qiki.shared.events import build_cloudevent_headers
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 try:
     import nats  # type: ignore
@@ -53,7 +54,7 @@ class RadarGuardEventPublisher:
         if self._nc is not None:
             return
         try:
-            self._nc = await nats.connect(self._nats_url)  # type: ignore
+            self._nc = await nats.connect(self._nats_url, **nats_auth_kwargs())  # type: ignore
             logger.info("Connected to NATS at %s", self._nats_url)
         except Exception as exc:  # pragma: no cover
             logger.warning("Failed to connect to NATS %s: %s", self._nats_url, exc)

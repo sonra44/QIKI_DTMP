@@ -39,6 +39,7 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - NATS_URL=nats://nats:4222
+      - NATS_TOKEN=${NATS_TOKEN:-}
       - QIKI_INTENTS_SUBJECT=qiki.intents
       - QIKI_RESPONSES_SUBJECT=qiki.responses.qiki
       # Optional OpenAI config (disabled unless OPENAI_API_KEY is set)

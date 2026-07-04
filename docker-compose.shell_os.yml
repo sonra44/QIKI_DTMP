@@ -18,6 +18,7 @@ services:
       - TERM=xterm-256color
       - COLORTERM=truecolor
       - NATS_URL=nats://qiki-nats-phase1:4222
+      - NATS_TOKEN=${NATS_TOKEN:-}
     volumes:
       - ./src:/workspace/src:ro
       - ./generated:/workspace/generated:ro

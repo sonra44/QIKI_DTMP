@@ -13,6 +13,7 @@ import qiki.services.operator_console.orion_v.app as orion_v_app_module
 from qiki.services.operator_console.orion_v.app import OrionVApp
 from qiki.services.q_core_agent.qiki_orion_intents_service import _build_hostile_attack_block_response
 from qiki.shared.models.qiki_chat import QikiChatRequestV1, QikiMode
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 _INTENTS_SUBJECT = "qiki.intents.g2tactical"
 _RESPONSES_SUBJECT = "qiki.responses.qiki.g2tactical"
@@ -88,6 +89,7 @@ async def _responder(stop_event: asyncio.Event) -> None:
         connect_timeout=3,
         allow_reconnect=False,
         max_reconnect_attempts=0,
+        **nats_auth_kwargs(),
     )
 
     async def handler(msg) -> None:

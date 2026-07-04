@@ -38,6 +38,7 @@ from qiki.shared.nats_subjects import (
     SYSTEM_TELEMETRY,
 )
 from qiki.shared.nats_subjects import OPENAI_API_KEY_UPDATE
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 _STATION_OBJECT_TYPE = 3
 _UNSPECIFIED_OBJECT_TYPE = 0
@@ -3965,6 +3966,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
         connect_timeout=3,
         allow_reconnect=True,
         max_reconnect_attempts=-1,
+        **nats_auth_kwargs(),
     )
     logger.info("QIKI intents listener connected: %s", nats_url)
 

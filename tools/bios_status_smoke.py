@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from typing import Any
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 def _is_nonempty_str(value: object) -> bool:
@@ -77,7 +78,7 @@ async def main() -> int:
     subject = os.getenv("BIOS_STATUS_SUBJECT", "qiki.events.v1.bios_status")
     timeout_s = float(os.getenv("BIOS_STATUS_SMOKE_TIMEOUT_SEC", "5.0"))
 
-    nc = await nats.connect(servers=[nats_url], connect_timeout=5)
+    nc = await nats.connect(servers=[nats_url], connect_timeout=5, **nats_auth_kwargs())
     got: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
 
     async def handler(msg) -> None:

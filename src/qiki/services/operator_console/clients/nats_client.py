@@ -16,6 +16,7 @@ import nats
 from nats.js import JetStreamContext
 from nats.errors import TimeoutError, NoServersError
 
+from qiki.shared.nats_connect import nats_auth_kwargs
 from qiki.shared.nats_subjects import (
     EVENTS_STREAM_NAME,
     OPERATOR_CONSOLE_RADAR_LR_DURABLE,
@@ -121,6 +122,7 @@ class NATSClient:
                 disconnected_cb=_disconnected_cb,
                 reconnected_cb=_reconnected_cb,
                 closed_cb=_closed_cb,
+                **nats_auth_kwargs(),
             )
             self.js = self.nc.jetstream()
             await _emit_state("connected")

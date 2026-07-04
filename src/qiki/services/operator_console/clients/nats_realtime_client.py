@@ -16,6 +16,7 @@ from nats.js import JetStreamContext
 from nats.errors import TimeoutError, NoServersError
 
 from qiki.shared.nats_subjects import EVENTS_V1_WILDCARD, RADAR_FRAMES, SYSTEM_TELEMETRY
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 
 @dataclass
@@ -61,6 +62,7 @@ class RealtimeNATSClient:
                 connect_timeout=5,
                 reconnect_time_wait=1,
                 max_reconnect_attempts=-1,  # Infinite reconnect
+                **nats_auth_kwargs(),
             )
             self.js = self.nc.jetstream()
             print(f"✅ Connected to NATS at {self.url}")

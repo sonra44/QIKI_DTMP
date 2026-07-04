@@ -17,6 +17,7 @@ from uuid import UUID
 import nats
 
 from qiki.services.operator_console.orion_v.app import OrionVApp
+from qiki.shared.nats_connect import nats_auth_kwargs
 
 RESPONSES_SUBJECT = os.getenv("QIKI_RESPONSES_SUBJECT", "qiki.responses.qiki")
 
@@ -59,7 +60,7 @@ async def _main() -> None:
             label="NATS connection",
         )
         nats_url = os.getenv("NATS_URL", "nats://nats:4222")
-        nc = await nats.connect(servers=[nats_url], connect_timeout=3)
+        nc = await nats.connect(servers=[nats_url], connect_timeout=3, **nats_auth_kwargs())
         try:
             # 1) АТАКА: request_id консоль не выдавала -> ответ должен быть отклонён.
             spoofed_id = str(UUID(int=666))
