@@ -8577,71 +8577,12 @@ class OrionApp(App):
                     key_inline = parts[1].strip()
 
             if low_cmd in {"openai.key", "openai.api_key", "openai.apikey"} or key_inline is not None:
-                api_key_inline = key_inline
-                if api_key_inline is not None:
-                    nats = self.nats_client
-                    if nats is None:
-                        self._console_log(
-                            f"{I18N.bidi('NATS not initialized', 'NATS не инициализирован')}",
-                            level="warning",
-                        )
-                        return
-                    # Set key from command line; do not echo the key.
-                    payload = {"op": "set_key", "api_key": api_key_inline, "ts_epoch_ms": int(time.time() * 1000)}
-                    try:
-                        acked = False
-                        if nats.nc is not None:
-                            try:
-                                msg = await nats.nc.request(
-                                    OPENAI_API_KEY_UPDATE,
-                                    json.dumps(payload).encode("utf-8"),
-                                    timeout=1.5,
-                                )
-                                data = _safe_json_loads(
-                                    msg.data,
-                                    component="openai",
-                                    action="set_key_decode_ack",
-                                    subject=OPENAI_API_KEY_UPDATE,
-                                )
-                                acked = bool(isinstance(data, dict) and data.get("ok"))
-                            except Exception as exc:
-                                _log_critical_exception(
-                                    component="openai",
-                                    action="set_key_request",
-                                    exc=exc,
-                                    subject=OPENAI_API_KEY_UPDATE,
-                                )
-                                acked = False
-                        else:
-                            await nats.publish_command(OPENAI_API_KEY_UPDATE, payload)
-                        self._console_log(
-                            f"{I18N.bidi('OpenAI key set', 'OpenAI ключ установлен')}{' (ACK)' if acked else ''}",
-                            level="info" if acked else "warning",
-                        )
-                    except Exception as exc:
-                        _log_critical_exception(
-                            component="openai",
-                            action="set_key_publish",
-                            exc=exc,
-                            subject=OPENAI_API_KEY_UPDATE,
-                        )
-                        self._console_log(
-                            f"{I18N.bidi('Failed to send key', 'Не удалось отправить ключ')}: {exc}",
-                            level="warning",
-                        )
-                    return
-
-                # Enter secret mode: the next line will be treated as the key.
-                self._secret_entry_mode = "openai_api_key"
-                try:
-                    dock = self.query_one("#command-dock", Input)
-                    self._secret_entry_prev_password = bool(getattr(dock, "password", False))
-                    dock.password = True
-                    dock.value = ""
-                    dock.focus()
-                except Exception:
-                    logger.debug("orion_exception_swallowed", exc_info=True)
-                self._update_command_placeholder()
+                # M0a: secrets never travel over the bus; the key lives only in the
+                # responder's environment/secret-store.
+                self._console_log(
+                    f"{I18N.bidi('Key over bus disabled (M0a): set OPENAI_API_KEY in the service environment', 'Ключ по шине отключён (M0a): задайте OPENAI_API_KEY в окружении сервиса')}",
+                    level="warning",
+                )
                 return
 
             if low_cmd in {"openai.cancel", "openai.abort"}:

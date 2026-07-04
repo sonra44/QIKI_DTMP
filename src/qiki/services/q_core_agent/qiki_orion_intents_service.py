@@ -3897,6 +3897,54 @@ async def _refresh_agent_snapshot_until_target_track(
         logger.warning("Target-track warmup ended without track for %s: %s", target_designator, last_error)
 
 
+async def _secrets_bus_handler(msg, *, nc) -> None:
+    """Runtime secret status endpoint (M0a: secrets are never accepted from the bus).
+
+    Supported payload:
+    - {"op": "status"}: reports whether the responder already holds a key.
+    - {"op": "set_key", ...}: denied + audited; the key lives only in the
+      responder's environment/secret-store.
+
+    If msg.reply is set, responds with JSON ack/status.
+    """
+    try:
+        payload = json.loads(msg.data.decode("utf-8"))
+    except Exception:
+        return
+    if not isinstance(payload, dict):
+        return
+
+    op = str(payload.get("op") or "set_key")
+    denied = op == "set_key"
+    if denied:
+        logger.warning("Denied OpenAI API key update over bus: key is env/secret-store only")
+        audit_event = {
+            "event_schema_version": 1,
+            "source": "q_core_intents",
+            "subject": EVENTS_AUDIT,
+            "timestamp": _now_iso(),
+            "ts_epoch": float(time.time()),
+            "event_type": "SECRET_OVER_BUS_DENIED",
+            "op": op,
+            "reason_codes": ["SECRET_OVER_BUS_DENIED"],
+        }
+        try:
+            await nc.publish(EVENTS_AUDIT, json.dumps(audit_event, ensure_ascii=False).encode("utf-8"))
+        except Exception:
+            logger.exception("SECRET_OVER_BUS_DENIED audit publish failed")
+
+    if getattr(msg, "reply", ""):
+        key_set = bool(os.getenv("OPENAI_API_KEY", "").strip())
+        model = os.getenv("OPENAI_MODEL", "").strip() or None
+        resp: dict[str, Any] = {"ok": not denied, "op": op, "key_set": key_set, "model": model}
+        if denied:
+            resp["error"] = "secret_over_bus_denied"
+        try:
+            await nc.publish(msg.reply, json.dumps(resp).encode("utf-8"))
+        except Exception:
+            return
+
+
 async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataProvider) -> None:
     try:
         import nats
@@ -3921,36 +3969,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
     logger.info("QIKI intents listener connected: %s", nats_url)
 
     async def secrets_handler(msg) -> None:
-        """Runtime secret update/status.
-
-        Supported payload:
-        - {"op": "set_key", "api_key": "..."}
-        - {"op": "status"}
-
-        If msg.reply is set, responds with JSON ack/status.
-        """
-        try:
-            payload = json.loads(msg.data.decode("utf-8"))
-        except Exception:
-            return
-        if not isinstance(payload, dict):
-            return
-
-        op = str(payload.get("op") or "set_key")
-        if op == "set_key":
-            key = payload.get("api_key")
-            if isinstance(key, str) and key.strip():
-                os.environ["OPENAI_API_KEY"] = key.strip()
-                logger.info("Received OpenAI API key update")
-
-        if getattr(msg, "reply", ""):
-            key_set = bool(os.getenv("OPENAI_API_KEY", "").strip())
-            model = os.getenv("OPENAI_MODEL", "").strip() or None
-            resp = {"ok": True, "op": op, "key_set": key_set, "model": model}
-            try:
-                await nc.publish(msg.reply, json.dumps(resp).encode("utf-8"))
-            except Exception:
-                return
+        await _secrets_bus_handler(msg, nc=nc)
 
     async def objectives_handler(msg) -> None:
         try:
