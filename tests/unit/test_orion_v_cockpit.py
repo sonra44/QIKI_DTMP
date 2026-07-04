@@ -487,9 +487,12 @@ def test_cockpit_body_seed_not_claimed_operational_without_runtime() -> None:
         active_incidents=0,
         incidents=[],
     )
-    status = screen._compose_mfd_status_text("")
-    assert "КОРПУС: каркас (посев)" in status
-    assert "КОРПУС: в строю" not in status
+    # строка №5 убрана (T0); честность «каркас (посев)» живёт в правом MFD (systems)
+    right = screen._compose_right_mfd_text("")
+    assert "Корпус: каркас (посев)" in right
+    assert "Корпус: в строю" not in right
+    # и статус-блок при правом MFD «systems» пуст (виджет схлопывается)
+    assert screen._compose_mfd_status_text("") == ""
 
 
 def test_cockpit_guidance_compact_marks_partial_without_source() -> None:

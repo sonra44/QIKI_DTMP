@@ -133,12 +133,6 @@ def softkey_bar(extra: Iterable[str] = ()) -> str:
     return "ПЕРЕХОДЫ: " + "  ".join(f"[{key}]" for key in keys)
 
 
-def render_status_strip(*, mode: str, body: str, evidence: str, source: str) -> str:
-    return " | ".join(
-        (
-            f"РЕЖИМ: {mode}",
-            f"КОРПУС: {body}",
-            f"УЛИКИ: {evidence}",
-            f"ИСТОЧНИК: {source}",
-        )
-    )
+# render_status_strip удалён (DISPLAY_CANON строка №5, T0-значимость): постоянная
+# статус-строка была окаменевшим приёмочным heartbeat'ом evidence-трека; ИСТОЧНИК-
+# константа дезинформировала при живой телеметрии. Справочное ядро — в правом MFD.

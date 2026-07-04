@@ -37,7 +37,6 @@ from qiki.services.operator_console.orion_v.mfd_layout import (
     mfd_button_specs,
     mfd_page_label,
     normalize_mfd_page,
-    render_status_strip,
     section_lines,
     softkey_bar,
 )
@@ -698,7 +697,13 @@ class OrionVCockpitScreen(Static):
         # projections of already-derived view-model text; they do not create state.
         self._set_body_text(body_text)
         self._set_static_text("#orionv-cockpit-intervention", intervention_text)
-        self._set_static_text("#orionv-mfd-status", self._compose_mfd_status_text(body_text))
+        mfd_status_text = self._compose_mfd_status_text(body_text)
+        try:
+            # T0/dark cockpit: пустой статус-блок схлопывается целиком
+            self.query_one("#orionv-mfd-status", Static).display = bool(mfd_status_text.strip())
+        except NoMatches:
+            pass
+        self._set_static_text("#orionv-mfd-status", mfd_status_text)
         self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-right-screen", self._compose_right_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-qiki", self._compose_mfd_qiki_text(intervention_text))
@@ -731,24 +736,24 @@ class OrionVCockpitScreen(Static):
         self._set_static_text("#orionv-cockpit-body", text)
 
     def _compose_mfd_status_text(self, body_text: str) -> str:
+        # DISPLAY_CANON строка №5 (T0-значимость, оператор 2026-07-04): постоянная
+        # статус-строка убрана целиком — РЕЖИМ был тройным дублем, УЛИКИ/ИСТОЧНИК —
+        # приёмочный heartbeat разработчика (ИСТОЧНИК-константа дезинформировала при
+        # живой телеметрии), корпус/модули — справочные и живут в правом MFD.
+        # Блок показывается ТОЛЬКО когда правый MFD не на «systems» — тогда он несёт
+        # body/physics/power сводки (иначе пустой и виджет схлопывается).
+        if normalize_mfd_page("right", self._active_right_mfd_page) == "systems":
+            return ""
         body_vm = get_body_structure_console_view_model()
         physics_vm = get_body_physics_console_view_model(body_vm)
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
-        status = render_status_strip(
-            mode="КОКПИТ",
-            body=f"{body_seed_status_ru(body_vm.seed_status, body_vm.runtime_ready)} | модулей: {body_vm.attached_modules_count}",
-            evidence=body_vm.trust_status or "missing",
-            source="аудит/локальный посев",
+        return "\n".join(
+            (
+                format_body_structure_cockpit_line(body_vm),
+                format_body_physics_cockpit_line(physics_vm),
+                format_power_thermal_cockpit_line(power_vm),
+            )
         )
-        lines = [status]
-        # full body/physics/power lines only when the right MFD does not already
-        # show them (page "systems" carries all three sections); default view
-        # keeps the status box to the one-line delta strip
-        if normalize_mfd_page("right", self._active_right_mfd_page) != "systems":
-            lines.append(format_body_structure_cockpit_line(body_vm))
-            lines.append(format_body_physics_cockpit_line(physics_vm))
-            lines.append(format_power_thermal_cockpit_line(power_vm))
-        return "\n".join(lines)
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)
