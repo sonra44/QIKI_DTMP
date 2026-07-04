@@ -1397,6 +1397,8 @@ class OrionVApp(App[None]):
                 f"Анализ истории {'ВКЛ' if self._replay_mode else 'ВЫКЛ'} | событий={self._replay_store.count()}"
             )
             return
+        if self._try_sim_world_command(command):
+            return
         if command in {"ack", "acknowledge"}:
             self.action_ack_selected_incident()
             return
@@ -1427,6 +1429,7 @@ class OrionVApp(App[None]):
             "Фильтры sev <...> subsys <...> range <sec|all> | "
             "Страницы pgup/pgdn page next/prev | Подсистемы module <slug> | "
             "Процедуры proc list|proc run <name>|proc status | "
+            "Мир sim.start [скорость]|sim.pause|sim.stop | "
             "Анализ replay on [sec]|replay off|replay status | "
             "Журнал audit <all|actions|procedures|incidents|level|replay> | "
             "QIKI q: <запрос> q confirm q cancel | Review review confirm | Follow-up follow-up hold | "
@@ -1759,6 +1762,50 @@ class OrionVApp(App[None]):
                 },
             )
             self._request_refresh_ui()
+
+    def _try_sim_world_command(self, command: str) -> bool:
+        """Operator world-control commands: sim.start [speed] / sim.pause / sim.stop.
+
+        Vocabulary parity with the legacy console (simulation.start / симуляция.старт);
+        publishing goes through _publish_sim_command — the same ACK-awaited
+        CommandMessage path procedures use (ACK != effect confirmation).
+        Returns True when the command was consumed (even on argument errors).
+        """
+        parts = command.split()
+        if not parts:
+            return False
+        aliases = {
+            "sim.start": "sim.start",
+            "simulation.start": "sim.start",
+            "симуляция.старт": "sim.start",
+            "sim.pause": "sim.pause",
+            "simulation.pause": "sim.pause",
+            "симуляция.пауза": "sim.pause",
+            "sim.stop": "sim.stop",
+            "simulation.stop": "sim.stop",
+            "симуляция.стоп": "sim.stop",
+        }
+        name = aliases.get(parts[0])
+        if name is None:
+            return False
+        args = parts[1:]
+        parameters: dict[str, Any] = {}
+        if name == "sim.start" and args:
+            try:
+                speed = float(args[0].replace(",", "."))
+            except ValueError:
+                self._set_help_text(f"Мир: скорость должна быть числом, получено «{args[0]}»")
+                return True
+            if speed <= 0:
+                self._set_help_text("Мир: скорость должна быть больше нуля")
+                return True
+            parameters["speed"] = speed
+        elif args:
+            self._set_help_text(f"Мир: {name} не принимает аргументов")
+            return True
+        asyncio.create_task(self._publish_sim_command(name, parameters))
+        self._set_help_text(f"Мир: {name} отправлена — ждём ACK (ACK ≠ эффект)")
+        return True
 
     async def _publish_sim_command(self, command_name: str, parameters: dict[str, Any] | None = None) -> None:
         if self._replay_mode:
