@@ -114,7 +114,9 @@ class OrionVApp(App[None]):
         height: auto;
         margin: 0 1;
         padding: 0 1;
-        border: round $surface-lighten-1 30%;
+        /* DISPLAY_CANON (цвет, оператор 2026-07-04): верхняя «палуба» пульта —
+           янтарный акцент; severity живёт на кодах, рамка = оформление */
+        border: round #d6a65b 60%;
         background: $panel-darken-1 4%;
     }
 
@@ -123,7 +125,7 @@ class OrionVApp(App[None]):
         layout: vertical;
         margin: 0 1;
         padding: 0 1;
-        border: round $surface-lighten-1 30%;
+        border: round #d6a65b 60%;
         background: $panel 4%;
         border-title-style: bold;
         border-subtitle-style: italic;
