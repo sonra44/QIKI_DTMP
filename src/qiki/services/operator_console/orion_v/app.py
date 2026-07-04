@@ -75,6 +75,7 @@ from qiki.shared.models.qiki_chat_v2 import (
 )
 from qiki.shared.command_decision import (
     CommandIntent,
+    DecisionStatus,
     DecisionStore,
     authorize_publish,
     seal_decision,
@@ -2869,11 +2870,39 @@ class OrionVApp(App[None]):
         self._pending_decision_id = decision_id
         return decision_id
 
+    def _qiki_pending_is_approvable(self) -> tuple[bool, str]:
+        """M6: одобрить (и довести до шины) можно ТОЛЬКО allowed-ответ.
+
+        Кандидат провайдера без allowed-легальности и статусы deferred/blocked/
+        unsafe — не одобряемы: их нельзя подтвердить, значит они не достигают шины.
+        Отображаться в F5 как кандидат они при этом продолжают (candidate_only).
+        """
+        response = self._qiki_last_response
+        legality = response.legality if response is not None else None
+        if legality is None:
+            return False, "candidate_only"
+        if legality.status != "allowed":
+            return False, legality.status
+        return True, ""
+
     def _confirm_qiki_pending_action(self) -> None:
         action = self._qiki_pending_action
         if action is None:
             self._set_help_text("QIKI: нет действия для подтверждения")
             return
+        # M6: одобрение — блокирующий гейт. Неодобряемое до шины не доходит.
+        approvable, reason = self._qiki_pending_is_approvable()
+        if not approvable:
+            self._set_last_command_loop_state("blocked", f"Одобрение отклонено: {reason}")
+            self._set_help_text(f"QIKI: кандидат не одобряем — до шины не дойдёт [{reason}]")
+            self._request_refresh_ui()
+            return
+        # M6 идемпотентность: повторное одобрение уже проведённого решения — no-op.
+        if self._pending_decision_id is not None:
+            existing = self._decision_store.get(self._pending_decision_id)
+            if existing is not None and existing.status is DecisionStatus.PUBLISHED:
+                self._set_help_text("QIKI: решение уже проведено (идемпотентно)")
+                return
         # Пломбируем команду В МОМЕНТ показа подтверждения — то, что видит оператор.
         self._seal_pending_decision(action)
         title_ru = str(action.get("title_ru") or "выполнить действие QIKI")
@@ -3327,7 +3356,10 @@ class OrionVApp(App[None]):
         )
         self._qiki_pending_action = self._extract_qiki_pending_action(response)
         self._enrich_active_observation_with_live_public_track()
-        if self._qiki_pending_action is not None:
+        # M6: «awaiting_confirm» только для ОДОБРЯЕМОГО (allowed) действия. Кандидат
+        # с не-allowed легальностью показывается, но одобрить его нельзя.
+        approvable, _ = self._qiki_pending_is_approvable()
+        if self._qiki_pending_action is not None and approvable:
             pending_title = str(
                 self._qiki_pending_action.get("title_ru")
                 or self._qiki_pending_action.get("title_en")
@@ -3349,7 +3381,7 @@ class OrionVApp(App[None]):
                 "QIKI "
                 f"{response.legality.status}: {response.legality.reason.ru} [{response.legality.reason_code}]"
             )
-            if self._qiki_pending_action is not None:
+            if self._qiki_pending_action is not None and approvable:
                 help_text += " | q confirm"
             self._set_help_text(help_text)
         elif response.reply is not None:
