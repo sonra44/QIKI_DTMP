@@ -291,22 +291,24 @@ class OrionVCockpitScreen(Static):
             yield Static("", id="orionv-cockpit-intervention")
 
     def on_mount(self) -> None:
-        for selector, title, subtitle in (
-            ("#orionv-mfd-status", "ORION MFD / ГЛАВНЫЙ ЭКРАН", "правда | контекст | готовность"),
-            ("#orionv-mfd-left-screen", "ЛЕВЫЙ MFD", "внешний мир | радар | навигация"),
-            ("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "тело QIKI | системы | улики"),
-            ("#orionv-mfd-qiki", "QIKI / ОПЕРАТОР", "решение | подтверждение | доказательства"),
+        # DISPLAY_CANON: нижние подписи-дубли убраны у всех зон (решение №1);
+        # хинты честности MFD живут в tooltip рамки (решение №6, T0: справочная)
+        for selector, title, tooltip in (
+            ("#orionv-mfd-status", "ORION MFD / ГЛАВНЫЙ ЭКРАН", None),
+            ("#orionv-mfd-left-screen", "ЛЕВЫЙ MFD", "источник: телеметрия/цель/оболочка | фактов не выдумываем"),
+            ("#orionv-mfd-right-screen", "ПРАВЫЙ MFD", "станция улик: только чтение, не источник истины"),
+            ("#orionv-mfd-qiki", "QIKI / ОПЕРАТОР", None),
         ):
             try:
                 panel = self.query_one(selector, Static)
                 panel.border_title = title
-                panel.border_subtitle = subtitle
+                if tooltip:
+                    panel.tooltip = tooltip
             except NoMatches:
                 pass
         try:
             actions = self.query_one("#orionv-cockpit-actions", Container)
             actions.border_title = "SOFTKEYS / ПЕРЕХОДЫ"
-            actions.border_subtitle = "left/right MFD restored"
         except NoMatches:
             pass
         for selector, title, subtitle in (
@@ -704,6 +706,14 @@ class OrionVCockpitScreen(Static):
         except NoMatches:
             pass
         self._set_static_text("#orionv-mfd-status", mfd_status_text)
+        # DISPLAY_CANON №6: страница — в титуле рамки (динамический якорь)
+        try:
+            left_label = mfd_page_label("left", normalize_mfd_page("left", self._active_left_mfd_page))
+            self.query_one("#orionv-mfd-left-screen", Static).border_title = f"ЛЕВЫЙ MFD · {left_label}"
+            right_label = mfd_page_label("right", normalize_mfd_page("right", self._active_right_mfd_page))
+            self.query_one("#orionv-mfd-right-screen", Static).border_title = f"ПРАВЫЙ MFD · {right_label}"
+        except NoMatches:
+            pass
         self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-right-screen", self._compose_right_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-qiki", self._compose_mfd_qiki_text(intervention_text))
@@ -757,7 +767,6 @@ class OrionVCockpitScreen(Static):
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)
-        page_label = mfd_page_label("left", page)
         lines = body_text.splitlines()
         marker_map: dict[str, tuple[str, ...]] = {
             "radar": ("Общий статус", "Сенсоры", "Инциденты"),
@@ -769,17 +778,12 @@ class OrionVCockpitScreen(Static):
         wanted = _extract_mfd_sections(lines, marker_map.get(page, ()), chunk=6, limit=18)
         if not wanted:
             wanted = lines[:18]
-        return "\n".join(
-            [
-                f"ЛЕВЫЙ MFD / {page_label}",
-                "источник: телеметрия/цель/оболочка | фактов не выдумываем",
-                *section_lines(_left_mfd_page_title(page), wanted, limit=18),
-            ]
-        )
+        # DISPLAY_CANON №6 (T0): заголовок-дубль и хинт убраны (страница — в титуле
+        # рамки, хинт — в tooltip), секционный заголовок-дубль тоже — сразу контент.
+        return "\n".join(wanted) if wanted else "нет данных"
 
     def _compose_right_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("right", self._active_right_mfd_page)
-        page_label = mfd_page_label("right", page)
         body_vm = get_body_structure_console_view_model()
         physics_vm = get_body_physics_console_view_model(body_vm)
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
@@ -869,13 +873,8 @@ class OrionVCockpitScreen(Static):
                 "MFD page selection does not execute procedures",
             ],
         }
-        return "\n".join(
-            [
-                f"ПРАВЫЙ MFD / {page_label}",
-                "станция улик: только чтение, не источник истины",
-                *subsystem_sections.get(page, subsystem_sections["systems"]),
-            ]
-        )
+        # DISPLAY_CANON №6 (T0): заголовок-дубль и хинт убраны (титул рамки + tooltip)
+        return "\n".join(subsystem_sections.get(page, subsystem_sections["systems"]))
 
     def _compose_mfd_qiki_text(self, intervention_text: str) -> str:
         return "\n".join(
