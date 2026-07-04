@@ -44,23 +44,24 @@ def test_cockpit_playable_view_model_exposes_complete_normal_cycle() -> None:
 
     assert vm.selected_action_id == "power_refresh"
     assert vm.phase == "preview"
-    assert "Ф1 ЖИВОЙ ЦИКЛ" in lines
+    assert "Ф1 ЦИКЛ" in lines
     assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in lines
-    assert "команды кораблю НЕ отправляются" in lines
+    assert "команды боту НЕ отправляются" in lines
     # dedup contract: right MFD page "systems" already shows body/power state,
     # so the loop panel must NOT repeat those detail lines
     assert "ПИТАНИЕ: SoC_bat=" not in lines
     assert "КОРПУС: " not in lines
-    assert "ПАНЕЛИ | готово 6/6" in lines
-    assert "КОРПУС ✓ | ПИТАНИЕ ✓ | НАВ ✓ | СЕНСОРЫ ✓ | КОМАНДА ✓ | СОБЫТИЯ ✓" in lines
-    assert "СОБЫТИЯ: готово" in lines
-    assert "ФОКУС | панель: ПИТАНИЕ | действие: ОБНОВИТЬ ПИТАНИЕ" in lines
+    # DISPLAY_CANON №8а: acceptance-чеклист убран с экрана (живёт в panel-VM/тестах)
+    assert "ПАНЕЛИ | готово" not in lines
+    assert "СОБЫТИЯ: готово" not in lines
+    # №8б: фокус слит в строку Ф1 ЦИКЛ
+    assert "действие: ОБНОВИТЬ ПИТАНИЕ (2/5) | панель: ПИТАНИЕ" in lines
     assert "КЛАВИШИ |" in lines
     assert "B корпус | R сброс" in lines  # key map merged into the single HINT line
     assert "СПРАВКА | ОБНОВИТЬ ПИТАНИЕ" in lines
     assert "ПАЛИТРА | Ctrl+P" in lines
     assert "ПРЕДПРОСМОТР | цель: ПИТАНИЕ" in lines
-    assert "команда кораблю: НЕТ" in lines
+    assert "команда боту: НЕТ" in lines
 
     # ...and when the right MFD shows another page, the panel carries the state itself
     vm_other = build_cockpit_playable_loop_vm(
@@ -236,8 +237,8 @@ def test_cockpit_event_ticker_records_repeated_apply_cycles() -> None:
     assert "событие[1]: f1-loop:second | ОБНОВИТЬ ПИТАНИЕ → ПИТАНИЕ | power refreshed" in ticker
     assert "событие[2]: f1-loop:first | ПРОВЕРКА КОРПУСА → КОРПУС | body self-check registered" in ticker
     assert "ЛЕНТА СОБЫТИЙ | записей: 2" in lines
-    assert "СОБЫТИЯ: записано" in lines
-    assert "история: 2" in lines
+    # №8а: acceptance-строки (СОБЫТИЯ: записано | история) убраны из loop-рендера;
+    # машинная проверка — через format_cockpit_visible_acceptance_lines (тест выше)
 
 
 def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
@@ -275,11 +276,12 @@ def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
     # f1_keys hint removed: the key map is already the always-visible "КЛАВИШИ |" line
     assert {hint.hint_id for hint in hints} >= {"f1_panel", "f1_evidence_pending"}
     assert "f1_keys" not in {hint.hint_id for hint in hints}
-    assert "ФОКУС | панель: СЕНСОРЫ | действие: ФОКУС СЕНСОРОВ" in lines
+    loop_lines = "\n".join(format_cockpit_playable_loop_lines(vm))
+    assert "действие: ФОКУС СЕНСОРОВ (4/5) | панель: СЕНСОРЫ" in loop_lines
     assert "КЛАВИШИ | ←/→ действие | ↑/↓ панель" in lines
     assert "ПАЛИТРА | Ctrl+P" in lines
     assert "ПОДСКАЗКА [СЕНСОРЫ]" in lines
-    assert "команда кораблю не отправляется" in lines
+    assert "команда боту не отправляется" in lines
 
 
 def test_cockpit_focus_panel_cycle_is_stable_and_help_can_hide_context() -> None:
@@ -305,10 +307,14 @@ def test_cockpit_focus_panel_cycle_is_stable_and_help_can_hide_context() -> None
         active_incidents=0,
     )
     lines = "\n".join(format_cockpit_focus_hint_lines(vm))
+    loop_lines = "\n".join(format_cockpit_playable_loop_lines(vm))
 
-    assert "ФОКУС | панель: СОБЫТИЯ" in lines
-    assert "ПОДСКАЗКИ СКРЫТЫ | H — показать справку" in lines
-    assert "ПАЛИТРА | Ctrl+P" in lines
+    # №8б: при Help·OFF обучалка скрыта, остаётся одна строка-подсказка;
+    # фокус-панель виден в строке Ф1 ЦИКЛ
+    assert "панель: СОБЫТИЯ" in loop_lines
+    assert "H — справка | Ctrl+P — палитра" in lines
+    assert "КЛАВИШИ |" not in lines
+    assert "ПАЛИТРА | Ctrl+P | поиск" not in lines
 
 
 def test_f1_command_palette_is_enabled_and_exposes_discoverable_actions() -> None:
@@ -323,7 +329,7 @@ def test_f1_command_palette_is_enabled_and_exposes_discoverable_actions() -> Non
     assert "Ф1 Смена страницы НАВ" in app_source
     assert "Ф1 Фокус сенсоров" in app_source
     assert "Ф1 Репетиция команды" in app_source
-    assert "команда кораблю не отправляется" in app_source
+    assert "команда боту не отправляется" in app_source
 
 
 @pytest.mark.asyncio
@@ -351,12 +357,12 @@ async def test_f1_cockpit_renders_first_playable_loop_panel() -> None:
         await pilot.pause()
 
         text = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "Ф1 ЖИВОЙ ЦИКЛ" in text
+        assert "Ф1 ЦИКЛ" in text
         assert "фаза: выбор" in text
         assert "ПРОВЕРКА КОРПУСА" in text
         assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in text
-        assert "ПАНЕЛИ | готово 6/6" in text
-        assert "КОРПУС ✓ | ПИТАНИЕ ✓ | НАВ ✓ | СЕНСОРЫ ✓ | КОМАНДА ✓ | СОБЫТИЯ ✓" in text
+        assert "ПАНЕЛИ | готово" not in text  # №8а: acceptance убран с экрана
+        assert "КОРПУС ✓" not in text  # №8а: галки-чеклист убраны с экрана
 
 
 @pytest.mark.asyncio
@@ -378,21 +384,21 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         await pilot.pause()
 
         before = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "Ф1 ЖИВОЙ ЦИКЛ" in before
+        assert "Ф1 ЦИКЛ" in before
         assert "фаза: выбор" in before
-        assert "ФОКУС |" in before
+        assert "панель:" in before  # №8б: фокус слит в строку Ф1 ЦИКЛ
         assert "КЛАВИШИ |" in before
         assert "ПАЛИТРА | Ctrl+P" in before
 
         await pilot.click("#orionv-cockpit-focus-next")
         await pilot.pause()
         focused = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "ФОКУС | панель: ПИТАНИЕ" in focused
+        assert "панель: ПИТАНИЕ" in focused
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()
         hidden_help = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "ПОДСКАЗКИ СКРЫТЫ | H — показать справку" in hidden_help
+        assert "H — справка | Ctrl+P — палитра" in hidden_help  # №8б: одна строка вместо блока
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()
@@ -413,12 +419,12 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         applied = app.query_one("#orionv-mfd-qiki", Static).render().plain
         assert "фаза: улика на экране" in applied
         assert "f1-loop:" in applied
-        assert "СОБЫТИЯ: записано" in applied
+        assert "СОБЫТИЯ: записано" not in applied  # №8а: acceptance-строки убраны из loop-рендера
         assert "ЛЕНТА СОБЫТИЙ | записей: 1" in applied
         assert "событие[1]:" in applied
         assert "ОБНОВИТЬ ПИТАНИЕ → ПИТАНИЕ" in applied
-        assert "история: 1" in applied
-        assert "команды кораблю НЕ отправляются" in applied
+        assert "история: 1" not in applied  # №8а: acceptance-строки убраны из loop-рендера
+        assert "команды боту НЕ отправляются" in applied
 
         history = "\n".join(app._console_history)  # noqa: SLF001 - UI regression test
         assert "Ф1 применено: ОБНОВИТЬ ПИТАНИЕ" in history

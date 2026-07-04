@@ -199,7 +199,7 @@ _ACTIONS: tuple[CockpitPlayableActionVM, ...] = (
         label="РЕПЕТИЦИЯ КОМАНДЫ",
         key_hint="SPACE / ENTER",
         target_panel="КОМАНДНАЯ СТРОКА",
-        cycle_effect="показать цикл запрос→проверка→событие без отправки команды кораблю",
+        cycle_effect="показать цикл запрос→проверка→событие без отправки команды боту",
         source_owner="orion.f1_playable_loop",
         evidence_policy="только локальное операторское аудит-событие",
     ),
@@ -625,7 +625,7 @@ def build_cockpit_action_help_vm(vm: CockpitPlayableLoopVM) -> CockpitActionHelp
         target_panel=target_panel,
         summary=action.cycle_effect,
         preview_text=f"Предпросмотр {action.label}: {action.cycle_effect}.",
-        apply_text=f"Применение запишет локальное событие кокпита для панели {target_panel}; команда кораблю не отправляется.",
+        apply_text=f"Применение запишет локальное событие кокпита для панели {target_panel}; команда боту не отправляется.",
         result_text=f"Цель результата: {target_panel}; политика улик: {action.evidence_policy}.",
         runtime_claim_status="local_ui_loop_no_runtime_command",
     )
@@ -634,38 +634,32 @@ def build_cockpit_action_help_vm(vm: CockpitPlayableLoopVM) -> CockpitActionHelp
 def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...]:
     """Return visible focus/help/palette rows for F1."""
 
-    focus = build_cockpit_focus_vm(vm)
     action_help = build_cockpit_action_help_vm(vm)
     preview_line = (
         "ПРЕДПРОСМОТР | "
-        f"цель: {action_help.target_panel} | эффект: {action_help.summary} | команда кораблю: НЕТ"
+        f"цель: {action_help.target_panel} | эффект: {action_help.summary} | команда боту: НЕТ"
     )
     result_line = (
         "РЕЗУЛЬТАТ | "
         f"применено: {vm.last_action_label} | цель: {_PANEL_TITLE_BY_ID.get(vm.last_effect_panel_id, 'нет')} | "
         f"событие: {vm.last_event_id} | улика: {'готова (E)' if vm.last_event_id != 'none' else 'ожидается'}"
     )
-    lines = [
-        (
-            "ФОКУС | "
-            f"панель: {focus.focused_panel_title} | действие: {focus.focused_action_label} | "
-            f"улика: {'есть' if focus.can_open_evidence else 'ожидается'} | "
-            f"причина: {_ru(_FOCUS_REASON_RU, focus.focus_reason)}"
-        ),
-        (
-            # единственная полная карта клавиш Ф1
+    # DISPLAY_CANON №8б (T0): обучалка (клавиши/справка/палитра/подсказки) видна
+    # только при Help·ON; при OFF — одна строка-подсказка. Строка ФОКУС слита в
+    # заголовок Ф1 ЦИКЛ (панель там; улика — в РЕЗУЛЬТАТ; причина — служебная).
+    lines: list[str] = []
+    if vm.help_visible:
+        lines.append(
             "КЛАВИШИ | "
             "←/→ действие | ↑/↓ панель | SPACE предпросмотр | ENTER применить | "
             "B корпус | R сброс | E улики | H справка | [ / ] MFD | Ctrl+P палитра"
-        ),
-        (
+        )
+        lines.append(
             "СПРАВКА | "
             f"{action_help.action_label} → {action_help.summary}; "
-            "команда кораблю не отправляется"
-        ),
-        "ПАЛИТРА | Ctrl+P | поиск: корпус / питание / нав / сенсоры / команда",
-    ]
-    if vm.help_visible:
+            "команда боту не отправляется"
+        )
+        lines.append("ПАЛИТРА | Ctrl+P | поиск: корпус / питание / нав / сенсоры / команда")
         for hint in build_cockpit_hint_vms(vm):
             line = (
                 f"ПОДСКАЗКА [{_PANEL_TITLE_BY_ID.get(hint.panel_id, hint.panel_id.upper())}] | "
@@ -677,7 +671,7 @@ def format_cockpit_focus_hint_lines(vm: CockpitPlayableLoopVM) -> tuple[str, ...
                 line += f" | trust={hint.trust_status}"
             lines.append(line)
     else:
-        lines.append("ПОДСКАЗКИ СКРЫТЫ | H — показать справку")
+        lines.append("H — справка | Ctrl+P — палитра")
     # before the first preview HELP already describes the expected effect verbatim
     if vm.phase != "selected":
         lines.append(preview_line)
@@ -766,7 +760,8 @@ def format_cockpit_event_ticker_lines(vm: CockpitPlayableLoopVM) -> tuple[str, .
     """
 
     if not vm.action_history:
-        return ("ЛЕНТА СОБЫТИЙ | записей: 0 | пока пусто",)
+        # DISPLAY_CANON №8а (dark cockpit): пустая лента не занимает строку
+        return ()
     lines = [
         # в заголовке только счётчик: свежее событие — первой строкой ниже
         f"ЛЕНТА СОБЫТИЙ | записей: {len(vm.action_history)}"
@@ -807,9 +802,10 @@ def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, 
 
     lines: list[str] = [
         (
-            "Ф1 ЖИВОЙ ЦИКЛ | "
+            "Ф1 ЦИКЛ | "
             f"{_ru(_LOOP_STATUS_RU, vm.loop_status)} | фаза: {_ru(_PHASE_RU, vm.phase)} | "
-            f"выбрано: {vm.selected_action_label} ({vm.selected_action_index + 1}/{vm.actions_count})"
+            f"действие: {vm.selected_action_label} ({vm.selected_action_index + 1}/{vm.actions_count}) | "
+            f"панель: {vm.focused_panel_title}"
         ),
         *format_cockpit_focus_hint_lines(vm),
     ]
@@ -819,17 +815,14 @@ def format_cockpit_playable_loop_lines(vm: CockpitPlayableLoopVM) -> tuple[str, 
     if vm.right_mfd_page != "systems":
         lines.append(f"{vm.body_summary}")
         lines.append(f"{vm.power_summary}")
-    lines.append(f"{vm.sensor_summary}")
-    lines.append(f"{vm.command_summary}")
-    # action effect and last_event were verbatim repeats of HELP/PREVIEW and
-    # RESULT+ticker; the event id stays visible in RESULT and event[N] lines
+    # DISPLAY_CANON №8а (T0): СЕНСОРЫ/КОМАНДА-константы и acceptance-чеклист
+    # (ПАНЕЛИ 6/6 + галки) убраны с экрана — нулевая значимость для оператора;
+    # машинная полнота панелей осталась в build_cockpit_visible_panel_vms/тестах.
     lines.extend(format_cockpit_event_ticker_lines(vm))
-    lines.extend(format_cockpit_visible_acceptance_lines(vm))
-    # служебная граница цикла — внизу, а не над действием оператора (игровое поле,
-    # не дебаг-дамп); коды остаются в evidence/audit
-    lines.append("цикл: снимок → экран → предпросмотр → запрос → применение → событие → улика")
+    if vm.help_visible:
+        lines.append("цикл: снимок → экран → предпросмотр → запрос → применение → событие → улика")
     lines.append(
-        "— граница: локальный цикл интерфейса, команды кораблю НЕ отправляются | "
+        "— граница: локальный цикл интерфейса, команды боту НЕ отправляются | "
         f"источник: {vm.source} | доверие: {vm.trust_status}"
     )
     return tuple(lines)

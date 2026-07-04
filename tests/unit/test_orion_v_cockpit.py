@@ -150,8 +150,9 @@ async def test_cockpit_live_intervention_panel_is_compact_in_nominal_state() -> 
         assert "q: <команда>" in text
         assert "ДЕЙСТВИЕ" in text
         assert "ВВОД" in text
-        assert "PROCESS" in text
-        assert "FOCUS" in text
+        # №8 (оператор): PROCESS+FOCUS сжаты в одну строку ПРОЦЕСС
+        assert "ПРОЦЕСС" in text
+        assert "цель" in text
         assert "LEGALITY" not in text
 
 

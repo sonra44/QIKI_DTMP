@@ -214,7 +214,7 @@ class OrionVCockpitScreen(Static):
     #orionv-mfd-qiki {
         height: auto;
         min-height: 5;
-        max-height: 16;
+        max-height: 18;
         overflow-y: auto;
         border: round #9a7c3f;
         border-title-color: #d6b35f;
@@ -615,6 +615,17 @@ class OrionVCockpitScreen(Static):
                     playable_loop_lines,
                 ),
                 self._section_divider(),
+                # DISPLAY_CANON №8: ПРОЦЕСС выше — виден в кадре и при Help·ON (max-height зоны)
+                *self._panel_block(
+                    "Процесс / Контур",
+                    self._process_state_rows(
+                        process_severity=process_sev,
+                        procedure_status=self._qiki_procedure_status,
+                        scene_profile=scene_profile,
+                    ),
+                    extras=None,
+                ),
+                self._section_divider(),
                 *self._panel_block(
                     "QIKI / Решение",
                     self._qiki_recommendation_rows(
@@ -628,16 +639,6 @@ class OrionVCockpitScreen(Static):
                     self._operator_intervention_rows(
                         next_step=self._pick_next_step(qiki_lines, procedure_lines, process_lines),
                     ),
-                ),
-                self._section_divider(),
-                *self._panel_block(
-                    "Процесс / Контур",
-                    self._process_state_rows(
-                        process_severity=process_sev,
-                        procedure_status=self._qiki_procedure_status,
-                        scene_profile=scene_profile,
-                    ),
-                    extras=None,
                 ),
             ]
         )
@@ -876,13 +877,13 @@ class OrionVCockpitScreen(Static):
         return "\n".join(subsystem_sections.get(page, subsystem_sections["systems"]))
 
     def _compose_mfd_qiki_text(self, intervention_text: str) -> str:
-        return "\n".join(
-            [
-                softkey_bar(),
-                "─" * 48,
-                *intervention_text.splitlines()[:26],
-            ]
-        )
+        # DISPLAY_CANON №8б: чипы переходов (softkey_bar) — обучалка, видна при Help·ON
+        vm = self._last_playable_loop_vm
+        parts: list[str] = []
+        if vm is None or vm.help_visible:
+            parts.extend((softkey_bar(), "─" * 48))
+        parts.extend(intervention_text.splitlines()[:26])
+        return "\n".join(parts)
 
     def _set_mfd_button_classes(self) -> None:
         for spec in (*mfd_button_specs("left"), *mfd_button_specs("right")):
@@ -2525,9 +2526,9 @@ class OrionVCockpitScreen(Static):
             str(objective.get("target_designator") or objective.get("track_label") or "no active contour").strip()
             or "no active contour"
         )
+        # DISPLAY_CANON №8 (оператор): одна строка вместо PROCESS+FOCUS
         return [
-            ("PROCESS", proc_state, detail),
-            ("FOCUS", focus_state, focus_detail),
+            ("ПРОЦЕСС", proc_state, f"{detail} · цель {focus_state}: {focus_detail}"),
         ]
 
     @staticmethod
