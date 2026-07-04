@@ -245,7 +245,38 @@ services:
       - QIKI_INTENTS_SUBJECT=qiki.intents
       - QIKI_RESPONSES_SUBJECT=qiki.responses.qiki
       - OPENAI_MODEL=openai/gpt-5.2
+      # M3: LLM-трафик q-core заворачивается через gateway. Реальный ключ здесь
+      # НЕ живёт — только виртуальный; base_url указывает на gateway.
+      - OPENAI_BASE_URL=http://qiki-gateway:8090/v1
+      - OPENAI_API_KEY=${QIKI_GATEWAY_VKEY_QCORE:-}
     command: bash -lc "bash tools/ensure_generated.sh && python -m qiki.services.q_core_agent.qiki_orion_intents_service"
+
+  # M3: QIKI Gateway — единственное место, где живёт РЕАЛЬНЫЙ ключ провайдера.
+  qiki-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: qiki-gateway-phase1
+    volumes:
+      - ./src:/workspace/src
+      - ./tools:/workspace/tools
+      - ./requirements.txt:/workspace/requirements.txt:ro
+      - pip-cache-phase1:/root/.cache/pip
+    working_dir: /workspace
+    networks:
+      - qiki-network-phase1
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
+      - QIKI_GATEWAY_HOST=0.0.0.0
+      - QIKI_GATEWAY_PORT=8090
+      - QIKI_GATEWAY_MODE=${QIKI_GATEWAY_MODE:-audit}
+      - QIKI_GATEWAY_VKEYS=${QIKI_GATEWAY_VKEY_QCORE:-}
+      # Реальный ключ провайдера — ТОЛЬКО тут, из .env:
+      - OPENAI_API_KEY=${OPENAI_API_KEY_REAL:-}
+      - OPENAI_BASE_URL=${OPENAI_UPSTREAM_URL:-https://api.openai.com/v1}
+    command: python -m qiki.services.qiki_gateway.main
     restart: on-failure
 
   # Registrar service for event auditing
