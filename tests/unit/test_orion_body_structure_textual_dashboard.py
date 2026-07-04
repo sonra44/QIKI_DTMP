@@ -66,7 +66,7 @@ def test_systems_screen_mounts_textual_body_dashboard() -> None:
 def test_orion_app_has_textual_body_previous_hotkey_and_action() -> None:
     app = (ORION_V / "app.py").read_text()
     assert "BODY face prev" in app
-    assert '("p", "select_previous_body_structure_face"' in app
+    assert '("p,P", "select_previous_body_structure_face"' in app  # обе раскладки: подсказки пульта пишут P заглавной
     assert "action_select_previous_body_structure_face" in app
     assert "select_previous_body_structure_face" in app
 
