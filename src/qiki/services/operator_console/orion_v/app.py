@@ -61,6 +61,11 @@ from qiki.services.operator_console.orion_v.screens.evidence_stream import Orion
 from qiki.services.operator_console.orion_v.screens.raw import OrionVRawScreen
 from qiki.services.operator_console.orion_v.screens.systems import OrionVSystemsScreen
 from qiki.services.operator_console.orion_v.screens.audit import OrionVAuditScreen
+from qiki.services.operator_console.orion_v.screens.qiki_dialog import (
+    OrionVQikiDialogScreen,
+    QikiDialogLine,
+    merge_dialog_lines,
+)
 from qiki.services.operator_console.orion_v.screens.system_health import OrionVSystemHealthScreen
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import OrionVAlertsOverlay
 from qiki.services.operator_console.orion_v.widgets.action_bar import OrionVActionBar
@@ -190,6 +195,7 @@ class OrionVApp(App[None]):
         ("f2", "show_level('f2')", "Подсистемы"),
         ("f3", "show_level('f3')", "Глубокий анализ"),
         ("f4", "show_level('f4')", "Консоль"),
+        ("f5", "show_level('f5')", "QIKI/Диалог"),
         ("f6", "show_level('f6')", "Журнал"),
         ("f7", "show_level('f7')", "Система"),
         ("f8", "show_level('f8')", "Evidence"),
@@ -230,6 +236,7 @@ class OrionVApp(App[None]):
         "f2": {"label": "F2 Системы", "widget_id": "orionv-systems"},
         "f3": {"label": "F3 Глубокий анализ", "widget_id": "orionv-deep"},
         "f4": {"label": "F4 Консоль", "widget_id": "orionv-raw"},
+        "f5": {"label": "F5 QIKI / Диалог", "widget_id": "orionv-qiki-dialog"},
         "f6": {"label": "F6 Журнал", "widget_id": "orionv-audit"},
         "f7": {"label": "F7 Состояние системы", "widget_id": "orionv-health"},
         "f8": {"label": "F8 Улики", "widget_id": "orionv-evidence"},
@@ -276,6 +283,8 @@ class OrionVApp(App[None]):
         self._qiki_pending: dict[str, tuple[float, str]] = {}
         self._qiki_last_response: QikiChatResponseV1 | None = None
         self._qiki_voice_ledger: deque[QikiVoiceEntry] = deque(maxlen=20)
+        # F5 (M1): intent-лог оператора — реплики оператора для ленты диалога.
+        self._qiki_dialog_operator_ledger: deque[tuple[str, str]] = deque(maxlen=20)
         self._qiki_pending_action: dict[str, Any] | None = None
         self._active_observation_objective: dict[str, Any] | None = None
         self._event_timestamps: deque[float] = deque(maxlen=4000)
@@ -329,6 +338,7 @@ class OrionVApp(App[None]):
             yield OrionVSystemsScreen(id="orionv-systems", classes="orionv-level hidden")
             yield OrionVDeepDiveScreen(id="orionv-deep", classes="orionv-level hidden")
             yield OrionVRawScreen(id="orionv-raw", classes="orionv-level hidden")
+            yield OrionVQikiDialogScreen(id="orionv-qiki-dialog", classes="orionv-level hidden")
             yield OrionVEvidenceScreen(self._snapshot, id="orionv-evidence", classes="orionv-level hidden")
             yield OrionVAuditScreen(id="orionv-audit", classes="orionv-level hidden")
             yield OrionVSystemHealthScreen(id="orionv-health", classes="orionv-level hidden")
@@ -2040,6 +2050,9 @@ class OrionVApp(App[None]):
             return
         req = self._build_qiki_chat_request(text)
         self._qiki_pending[str(req.request_id)] = (time.time(), text)
+        self._qiki_dialog_operator_ledger.append(
+            (datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"), str(text or "").strip())
+        )
         self._set_last_command_loop_state("awaiting_qiki", f"QIKI intent sent: {text}")
         self._set_help_text(f"QIKI intent отправлен: {text}")
         try:
@@ -2078,6 +2091,29 @@ class OrionVApp(App[None]):
             f"{idx}. {self._format_procedure_step(step.command, step.parameters)} -> ack {step.expected_ack}"
             for idx, step in enumerate(definition.steps, start=1)
         ]
+
+    def _build_qiki_dialog_lines(self) -> list[QikiDialogLine]:
+        """Лента F5: реплики оператора (intent-лог) + голос QIKI (leджер №8в)."""
+        return merge_dialog_lines(
+            operator_lines=tuple(self._qiki_dialog_operator_ledger),
+            voice_entries=tuple(self._qiki_voice_ledger),
+        )
+
+    def _build_qiki_decision_preview_lines(self) -> list[str]:
+        """Предпросмотр решения для F5 (show-when: есть кандидат). Read-only.
+
+        M1: ступени ещё не исполняются — показываем цепочку проверок и статус
+        «—» на каждой ступени; схлопывать нельзя (ADR-0015, честность ступеней).
+        """
+        if self._qiki_pending_action is None:
+            return []
+        lines = ["проверки: доверие → питание → тепло → SAFE | шаг: q confirm",
+                 "validation: — | publish: — | ack: — | effect: — (не схлопывать)"]
+        plan = self._build_qiki_plan_preview_lines()
+        if plan:
+            lines.append("план процедуры:")
+            lines.extend(f"  {step}" for step in plan)
+        return lines
 
     @staticmethod
     def _format_procedure_step(command: str, parameters: dict[str, Any] | None) -> str:
@@ -3515,6 +3551,20 @@ class OrionVApp(App[None]):
             active_left_mfd_page=self._active_mfd_left_page,
             active_right_mfd_page=self._active_mfd_right_page,
             playable_loop_state=self._f1_playable_loop_state,
+        )
+
+        self.query_one("#orionv-qiki-dialog", OrionVQikiDialogScreen).set_state(
+            dialog_lines=self._build_qiki_dialog_lines(),
+            candidate_title=(
+                str(
+                    self._qiki_pending_action.get("title_ru")
+                    or self._qiki_pending_action.get("title_en")
+                    or "QIKI action"
+                ).strip()
+                if self._qiki_pending_action is not None
+                else None
+            ),
+            decision_preview_lines=self._build_qiki_decision_preview_lines(),
         )
 
         self.query_one("#orionv-systems", OrionVSystemsScreen).set_state(
