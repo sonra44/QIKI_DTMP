@@ -34,10 +34,11 @@ def test_header_renders_mission_strip_state() -> None:
     )
 
     text = header.last_render
-    # ADR-0016 slice 4: primary row = canon engineering codes only
-    # (WORLD/LINK/DATA/SENS + conditional CTRL); prose/detail → tooltip.
-    assert "[b]ORION V[/b]" in text
-    assert "[b]F1 Кокпит[/b]" in text
+    # DISPLAY_CANON решение №1: строка стрипа = только коды; бренд ORION V — над
+    # рамками (console brand), имя экрана — якорем в титуле зоны.
+    assert "ORION V" not in text
+    assert "F1 Кокпит" not in text
+    assert str(header.border_title) == "[F1] КОНТУР МИССИИ"
     assert "МИР [green]RUN[/green]" in text
     assert "СВЯЗЬ [green]OK[/green]" in text
     assert "АКТУАЛ [green]OK[/green]" in text

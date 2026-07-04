@@ -77,7 +77,10 @@ class OrionVHeader(Static):
             else:  # safe-mode / q-core authority strings
                 ctrl, ctrl_color = "SAFE", "red"
 
-        line_1 = f"[b]ORION V[/b] | [b]{self._state.level_label}[/b]"
+        # DISPLAY_CANON (решение строки №1): бренд ORION V живёт над рамками,
+        # имя экрана — якорем в титуле зоны; строка стрипа = только коды.
+        level_anchor = (self._state.level_label or "F1").split()[0].upper()
+        self.border_title = f"\\[{level_anchor}] КОНТУР МИССИИ"
         parts = [
             f"МИР [{world_color}]{world}[/{world_color}]",
             f"СВЯЗЬ [{link_color}]{link}[/{link_color}]",
@@ -86,7 +89,7 @@ class OrionVHeader(Static):
         ]
         if ctrl:
             parts.append(f"УПР [{ctrl_color}]{ctrl}[/{ctrl_color}]")
-        line_2 = " | ".join(parts)
+        line_2 = " · ".join(parts)
 
         # human wording + absorbed detail → tooltip (canon), click parity F7/F3/F6
         age_seconds = (
@@ -121,4 +124,4 @@ class OrionVHeader(Static):
             tooltip_parts.append(f"RX: {always_on.last_contact_timestamp}")
         tooltip_parts.append("клик/клавиши: МИР·СВЯЗЬ·АКТУАЛ → F7 | СЕНС → F3 | УПР → F6")
         self.tooltip = "\n".join(tooltip_parts)
-        self.update("\n".join((line_1, line_2)))
+        self.update(line_2)

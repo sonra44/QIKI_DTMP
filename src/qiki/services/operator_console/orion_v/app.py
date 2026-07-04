@@ -311,6 +311,9 @@ class OrionVApp(App[None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="orionv-root"):
+            # DISPLAY_CANON: бренд живёт НАД рамками (заголовок консоли), не в
+            # строке данных; внутримирово ORION V — терминал станции обслуживания.
+            yield Static("[dim][b]ORION V[/b] — терминал оператора[/dim]", id="orionv-console-brand")
             yield OrionVHeader(id="orionv-header")
             with Container(id="orionv-safety-strip"):
                 yield OrionVAlertsOverlay(id="orionv-overlay")
@@ -329,15 +332,13 @@ class OrionVApp(App[None]):
             self.add_class("ui-dense")
         else:
             self.add_class("ui-clean")
-        header = self.query_one("#orionv-header", OrionVHeader)
-        header.border_title = "MISSION CONTROL STRIP"
-        header.border_subtitle = "Контур миссии и живая связь"
+        # DISPLAY_CANON: зона = ОДИН русский титул (Союз/Буран-стиль), без нижней
+        # подписи-дубля (назначение зоны → tooltip). Титул хедера с якорем экрана
+        # ставит сам виджет (динамически, по текущему уровню).
         safety_strip = self.query_one("#orionv-safety-strip", Container)
-        safety_strip.border_title = "SAFETY & HEALTH STRIP"
-        safety_strip.border_subtitle = "Алерты и ключевые подсистемы"
+        safety_strip.border_title = "SAFETY & HEALTH STRIP"  # имя зоны — при её строке прохода
         actions = self.query_one("#orionv-actions", OrionVActionBar)
-        actions.border_title = "ACTION RAIL"
-        actions.border_subtitle = "Режим, хоткеи, переходы"
+        actions.border_title = "ACTION RAIL"  # имя зоны — при её строке прохода
         command = self.query_one("#orionv-command", Input)
         command.border_title = "ВВОД/INPUT"
         command.border_subtitle = "q: <команда> | q confirm | q cancel"
