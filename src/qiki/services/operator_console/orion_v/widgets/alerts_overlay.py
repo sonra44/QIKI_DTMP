@@ -46,10 +46,11 @@ class OrionVAlertsOverlay(Static):
     def _refresh_text(self) -> None:
         summary_state = self._state.always_on.alert_summary
         focus_alert = summary_state.focus_alert
+        # SAFETY_HEALTH_STRIP_CANON / ADR-0016 + DISPLAY_CANON строка №3 (dark
+        # cockpit): на номинале overlay не занимает даже пустой строки — виджет
+        # схлопывается целиком и появляется только с живым алертом.
+        self.display = focus_alert is not None
         if focus_alert is None:
-            # SAFETY_HEALTH_STRIP_CANON / ADR-0016: the nominal overlay duplicates
-            # the ALRT C0 W0 A0 counters in the title; show the overlay only on an
-            # actionable non-nominal alert, nothing on nominal.
             summary = ""
         else:
             next_hint = f" | дальше {focus_alert.next_action_hint}" if focus_alert.next_action_hint else ""

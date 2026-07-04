@@ -224,7 +224,7 @@ async def test_app_mounts_named_top_sections(monkeypatch: pytest.MonkeyPatch) ->
         command_open = app.query_one("#orionv-command-open")
 
         assert str(header.border_title) == "[F1] КОНТУР МИССИИ"
-        assert safety_strip.border_title == "SAFETY & HEALTH STRIP"
+        assert safety_strip.border_title == "СОСТОЯНИЕ БОРТА"
         assert actions.border_title == "ACTION RAIL"
         assert bars.border_title is None
         assert overlay.border_title is None

@@ -336,7 +336,7 @@ class OrionVApp(App[None]):
         # подписи-дубля (назначение зоны → tooltip). Титул хедера с якорем экрана
         # ставит сам виджет (динамически, по текущему уровню).
         safety_strip = self.query_one("#orionv-safety-strip", Container)
-        safety_strip.border_title = "SAFETY & HEALTH STRIP"  # имя зоны — при её строке прохода
+        safety_strip.border_title = "СОСТОЯНИЕ БОРТА"  # DISPLAY_CANON строка №3 (оператор)
         actions = self.query_one("#orionv-actions", OrionVActionBar)
         actions.border_title = "ACTION RAIL"  # имя зоны — при её строке прохода
         command = self.query_one("#orionv-command", Input)
