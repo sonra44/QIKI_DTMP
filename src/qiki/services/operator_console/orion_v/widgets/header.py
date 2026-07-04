@@ -35,15 +35,16 @@ class OrionVHeader(Static):
 
         # LINK/СВЯЗЬ — absorbs latency/loss (detail → tooltip); no-data → LOST (red)
         link_raw = str(always_on.link_status or "").strip().lower()
-        link = {
-            "connected": "OK",
-            "up": "OK",
-            "replay": "REPLAY",
-            "degraded": "WARN",
-            "reconnecting": "WARN",
-            "offline": "LOST",
-            "lost": "LOST",
-        }.get(link_raw, "LOST")
+        if link_raw in {"connected", "up", "online"}:
+            link = "OK"
+        elif link_raw == "replay":
+            link = "REPLAY"
+        elif link_raw in {"", "offline", "lost", "down"}:
+            link = "LOST"  # canon: no-data → LOST (red)
+        else:
+            # unknown-but-present link state (comms.link_state passthrough) is not
+            # evidence of a dead link — flag WARN, detail stays in the tooltip
+            link = "WARN"
         link_color = {"OK": "green", "REPLAY": "cyan", "WARN": "yellow", "LOST": "red"}[link]
 
         # DATA/АКТУАЛ — freshness code (slice 3); exact age → tooltip

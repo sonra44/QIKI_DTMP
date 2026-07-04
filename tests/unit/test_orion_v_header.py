@@ -73,6 +73,24 @@ def test_header_hides_ctrl_when_operator_holds_authority() -> None:
     assert "УПР" not in header.last_render
 
 
+def test_header_link_ok_with_live_comms_link_state() -> None:
+    # live-telemetry path: _link_status_label passes comms.link_state through
+    # ("online"), which must map to OK — regression for СВЯЗЬ LOST under flow
+    header = _CaptureHeader()
+    header.set_state(
+        build_operator_shell_state(
+            hardware_model=None,
+            telemetry={
+                "sim_state": {"fsm_state": "RUNNING"},
+                "comms": {"link": "online", "link_state": "online"},
+            },
+            nats_state="connected",
+            last_telemetry_received_wall=time.time(),
+        )
+    )
+    assert "СВЯЗЬ [green]OK[/green]" in header.last_render
+
+
 def test_header_world_wait_and_link_lost_without_sources() -> None:
     header = _CaptureHeader()
     header.set_state(build_operator_shell_state(hardware_model=None, telemetry={}))

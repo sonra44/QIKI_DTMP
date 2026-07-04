@@ -1282,6 +1282,13 @@ def _link_status_label(
     link_state = _field_text(hardware_model, "comms", "comms.link_state")
     if link_state:
         normalized = link_state.lower()
+        # collector's field value is operator display text (В РАБОТЕ/ДЕГРАДАЦИЯ/
+        # НЕТ ДАННЫХ for F2); fold it back so this truth-source stays code-valued
+        normalized = {
+            "в работе": "online",
+            "деградация": "degraded",
+            "нет данных": "offline",
+        }.get(normalized, normalized)
         if normalized in {"down", "offline"}:
             return "offline"
         if telemetry_age_ms is not None and telemetry_age_ms >= COMMS_AGE_WARN_S * 1000.0:

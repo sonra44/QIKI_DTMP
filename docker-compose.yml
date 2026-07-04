@@ -109,6 +109,8 @@ services:
       - PYTHONPATH=/workspace/src:/workspace:/workspace/generated
       - RADAR_ENABLED=1
       - RADAR_NATS_ENABLED=1
+      - TELEMETRY_NATS_ENABLED=1
+      - TELEMETRY_INTERVAL_SEC=1.0
       - NATS_URL=nats://qiki-nats-phase1:4222
     command: bash -lc "bash tools/ensure_generated.sh && python -m qiki.services.q_sim_service.grpc_server"
     tty: true
