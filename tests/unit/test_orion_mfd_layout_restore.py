@@ -52,7 +52,9 @@ def test_f1_cockpit_restores_left_right_mfd_shell_and_keeps_legacy_buttons() -> 
     assert "ЛЕВЫЙ MFD · {left_label}" in cockpit
 
     # App-level quick-jump buttons remain present for existing routing tests.
-    assert "orionv-cockpit-jump-power" in cockpit
+    # DISPLAY_CANON №7: jump-power убран (владелец — чип PWR); уникальные остались
+    assert "orionv-cockpit-jump-power" not in cockpit
+    assert "orionv-cockpit-jump-navigation" in cockpit
     assert "orionv-cockpit-jump-docking" in cockpit
     assert "orionv-cockpit-qiki-confirm" in cockpit
 

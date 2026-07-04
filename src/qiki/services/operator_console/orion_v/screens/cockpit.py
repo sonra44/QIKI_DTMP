@@ -266,13 +266,12 @@ class OrionVCockpitScreen(Static):
                     for spec in mfd_button_specs("right"):
                         yield Button(spec.label, id=spec.button_id, compact=True)
             with Container(id="orionv-cockpit-actions"):
+                # DISPLAY_CANON №7 (T0/T5): Питание/Тепло/Связь-переходы убраны —
+                # их владелец теперь чипы СОСТОЯНИЯ БОРТА (кликабельны, тот же
+                # _route_metric_action); остаются уникальные переходы одним рядом.
                 with Container(classes="orionv-cockpit-action-row"):
                     yield Button("", id="orionv-cockpit-jump-navigation", compact=True)
                     yield Button("", id="orionv-cockpit-jump-docking", compact=True)
-                    yield Button("", id="orionv-cockpit-jump-power", compact=True)
-                    yield Button("", id="orionv-cockpit-jump-thermal", compact=True)
-                with Container(classes="orionv-cockpit-action-row"):
-                    yield Button("", id="orionv-cockpit-jump-comms", compact=True)
                     yield Button("", id="orionv-cockpit-jump-incidents", compact=True)
                     yield Button("", id="orionv-cockpit-jump-procedures", compact=True)
                     yield Button("", id="orionv-cockpit-qiki-confirm", variant="primary", compact=True)
@@ -308,7 +307,7 @@ class OrionVCockpitScreen(Static):
                 pass
         try:
             actions = self.query_one("#orionv-cockpit-actions", Container)
-            actions.border_title = "SOFTKEYS / ПЕРЕХОДЫ"
+            actions.border_title = "ПЕРЕХОДЫ"  # DISPLAY_CANON №7
         except NoMatches:
             pass
         for selector, title, subtitle in (
@@ -914,9 +913,7 @@ class OrionVCockpitScreen(Static):
         button_specs = (
             ("#orionv-cockpit-jump-navigation", "Маршрут", motion_sev, "F2"),
             ("#orionv-cockpit-jump-docking", "Стыковка", docking_sev, "F2"),
-            ("#orionv-cockpit-jump-power", "Питание", energy_sev, "F2"),
-            ("#orionv-cockpit-jump-comms", "Связь", comms_sev, "F2"),
-            ("#orionv-cockpit-jump-thermal", "Тепло", thermal_sev, "F2"),
+
             ("#orionv-cockpit-jump-incidents", "Инциденты", incidents_sev, "F3"),
             ("#orionv-cockpit-jump-procedures", "Процедуры", procedure_sev, "F6"),
         )

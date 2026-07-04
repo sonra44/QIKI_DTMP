@@ -1669,7 +1669,8 @@ async def test_cockpit_power_click_opens_f2_and_selects_power(monkeypatch: pytes
     app = OrionVApp()
     async with app.run_test(size=(160, 48)) as pilot:
         await pilot.pause()
-        await pilot.click("#orionv-cockpit-jump-power")
+        # DISPLAY_CANON №7: переход к питанию теперь через чип PWR (единственный владелец)
+        await pilot.click("#orionv-status-power-action")
         await pilot.pause()
 
         assert app._current_level == "f2"
