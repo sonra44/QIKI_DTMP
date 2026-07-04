@@ -94,6 +94,9 @@ class SubsystemChip:
     short_summary: str
     hint: str
     numeric_anchor: float | None = None
+    # DISPLAY_CANON строка №4: готовый якорь для показа на чипе («100% ~262м»);
+    # проза short_summary живёт в tooltip
+    anchor_text: str = ""
     stale: bool = False
     degraded: bool = False
     action: str = "select_subsystem"
@@ -734,6 +737,9 @@ def _build_subsystem_chips(
     telemetry_age_ms: float | None,
 ) -> tuple[SubsystemChip, ...]:
     stale = telemetry_age_ms is not None and telemetry_age_ms >= COMMS_AGE_CRIT_S * 1000.0
+    # DISPLAY_CANON строка №4: PWR несёт двойной якорь «SoC% ~мин» (таймер жизни)
+    runtime_min = _field_num(hardware_model, "power", "power.runtime_min")
+    power_anchor_extra = f" ~{runtime_min:.0f}м" if runtime_min is not None else ""
     chips = [
         _subsystem_chip(
             hardware_model=hardware_model,
@@ -744,6 +750,7 @@ def _build_subsystem_chips(
             summary_fallback="no power truth",
             numeric_key="power.soc",
             stale=stale,
+            anchor_extra=power_anchor_extra,
         ),
         _subsystem_chip(
             hardware_model=hardware_model,
@@ -754,6 +761,7 @@ def _build_subsystem_chips(
             summary_fallback="no thermal truth",
             numeric_key="thermal.core_c",
             stale=stale,
+            anchor_unit="°",
         ),
         _subsystem_chip(
             hardware_model=hardware_model,
@@ -844,6 +852,8 @@ def _subsystem_chip(
     summary_fallback: str,
     numeric_key: str,
     stale: bool,
+    anchor_unit: str = "%",
+    anchor_extra: str = "",
 ) -> SubsystemChip:
     subsystem = _subsystem(hardware_model, subsystem_id)
     if subsystem is None:
@@ -864,6 +874,9 @@ def _subsystem_chip(
     status = _VIEW_STATUS_KEY.get(subsystem.status, "nodata")
     severity = _VIEW_STATUS_SEVERITY.get(subsystem.status, "unavailable")
     summary = str(subsystem.summary or "").strip() or summary_fallback
+    anchor_text = (
+        f"{numeric_anchor:.0f}{anchor_unit}{anchor_extra}" if numeric_anchor is not None else ""
+    )
     return SubsystemChip(
         slug=subsystem_id,
         label=label,
@@ -872,6 +885,7 @@ def _subsystem_chip(
         short_summary=summary[:36],
         hint=_chip_hint(subsystem),
         numeric_anchor=numeric_anchor,
+        anchor_text=anchor_text,
         stale=stale,
         degraded=status != "ok",
         action=action,

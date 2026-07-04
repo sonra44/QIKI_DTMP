@@ -123,21 +123,25 @@ class OrionVStatusBars(Static):
         )
         for chip in self._state.chips:
             button = self.query_one(f"#orionv-status-{chip.slug}-action", Button)
+            # DISPLAY_CANON строка №4: чип = метка + код + ОДИН якорь («PWR OK 100%
+            # ~262м»); проза short_summary уходит в tooltip. Один ряд, без переносов.
             details: list[str] = [chip.label, chip.status.upper()]
+            if chip.anchor_text:
+                details.append(chip.anchor_text)
             summary = (chip.short_summary or "").strip()
-            # skip the summary when it just restates the status ("NODATA" + "NO DATA")
-            if summary and summary.replace(" ", "").upper() != chip.status.replace("_", "").upper():
+            # QIKI-чип не имеет числового якоря — короткий статус-текст остаётся на чипе
+            if chip.slug == "qiki" and summary and summary.upper() != chip.status.upper():
                 details.append(summary)
             if chip.stale:
                 details.append("stale")
-            elif chip.severity != "normal" and isinstance(chip.numeric_anchor, (int, float)):
-                details.append(f"{chip.numeric_anchor:.1f}")
             # Leading marker + tooltip make the chip read as an actionable control
             # (the strip was clickable but gave no affordance — operator didn't know to click).
-            button.label = "▸ " + " | ".join(part for part in details if part)
+            button.label = "▸ " + " ".join(part for part in details if part)
             button.variant = _STATUS_VARIANT[chip.severity]
-            button.tooltip = (
+            click_hint = (
                 f"Клик → {chip.action}: {chip.target}"
                 if getattr(chip, "action", "")
                 else f"{chip.label}: открыть подсистему"
             )
+            # проза чипа живёт в tooltip (строка №4): полная сводка + переход
+            button.tooltip = f"{summary}\n{click_hint}" if summary else click_hint

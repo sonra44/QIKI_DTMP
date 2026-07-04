@@ -50,9 +50,10 @@ async def test_status_bars_render_compact_chips_from_hardware_model() -> None:
         assert "ALRT C0 W0 A0" in title
         assert "SAFE OK" in title
         assert "риск" not in title  # ADR-0016: риск cut from primary row to tooltip
-        assert "PWR | OK" in power_chip
-        assert "CPU | WARN" in compute_chip
-        assert "Уровень заряда" not in power_chip
+        # DISPLAY_CANON строка №4: чип = метка + код + якорь; проза → tooltip
+        assert "PWR OK" in power_chip
+        assert "CPU WARN" in compute_chip
+        assert "Уровень заряда" not in power_chip  # проза не на чипе (→ tooltip)
 
         # Affordance: chips read as actionable controls (leading marker + hover tooltip).
         power_button = app.query_one("#orionv-status-power-action", Button)
