@@ -82,7 +82,9 @@ class OrionVHeader(Static):
         level_anchor = (self._state.level_label or "F1").split()[0].upper()
         self.border_title = f"\\[{level_anchor}] КОНТУР МИССИИ"
         parts = [
-            f"МИР [{world_color}]{world}[/{world_color}]",
+            # DISPLAY_CANON строка №2: лор-имя «РЕПЛИКА» — оператор видит локальную
+            # репликацию мира станцией; PAUSE = заморозка реплики, не вселенной.
+            f"РЕПЛИКА [{world_color}]{world}[/{world_color}]",
             f"СВЯЗЬ [{link_color}]{link}[/{link_color}]",
             f"АКТУАЛ [{data_color}]{data}[/{data_color}]",
             f"СЕНС [{sens_color}]{sens}[/{sens_color}]",
@@ -110,7 +112,8 @@ class OrionVHeader(Static):
         )
         mode_value = str(always_on.vehicle_mode or "").strip()
         tooltip_parts = [
-            f"МИР: {always_on.mission_phase or 'нет данных'}",
+            f"РЕПЛИКА: {always_on.mission_phase or 'нет данных'} — локальная репликация "
+            "мира станцией; PAUSE = заморозка реплики, не вселенной",
             f"СВЯЗЬ: {link_raw or 'нет данных'} | задержка {latency} | потери {loss}",
             f"АКТУАЛ: возраст {age_hint}",
             f"СЕНС: {sens_raw or 'нет данных'}"
@@ -122,6 +125,6 @@ class OrionVHeader(Static):
             tooltip_parts.append(f"режим: {mode_value}")
         if always_on.last_contact_timestamp:
             tooltip_parts.append(f"RX: {always_on.last_contact_timestamp}")
-        tooltip_parts.append("клик/клавиши: МИР·СВЯЗЬ·АКТУАЛ → F7 | СЕНС → F3 | УПР → F6")
+        tooltip_parts.append("клик/клавиши: РЕПЛИКА·СВЯЗЬ·АКТУАЛ → F7 | СЕНС → F3 | УПР → F6")
         self.tooltip = "\n".join(tooltip_parts)
         self.update(line_2)

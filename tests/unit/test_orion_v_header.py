@@ -39,7 +39,7 @@ def test_header_renders_mission_strip_state() -> None:
     assert "ORION V" not in text
     assert "F1 Кокпит" not in text
     assert str(header.border_title) == "[F1] КОНТУР МИССИИ"
-    assert "МИР [green]RUN[/green]" in text
+    assert "РЕПЛИКА [green]RUN[/green]" in text
     assert "СВЯЗЬ [green]OK[/green]" in text
     assert "АКТУАЛ [green]OK[/green]" in text
     assert "СЕНС [yellow]WARN[/yellow]" in text  # no SensorFrameSnapshot → degraded → WARN
@@ -53,7 +53,7 @@ def test_header_renders_mission_strip_state() -> None:
     assert "операторский контур" not in text
     # detail lives in the tooltip (canon) with click parity
     tooltip = str(header.tooltip)
-    assert "МИР: RUNNING 1.00x" in tooltip
+    assert "РЕПЛИКА: RUNNING 1.00x" in tooltip
     assert "СОБЫТ: 12" in tooltip
     assert "режим: AUTO" in tooltip
     assert "СЕНС: degraded" in tooltip
@@ -96,6 +96,6 @@ def test_header_world_wait_and_link_lost_without_sources() -> None:
     header = _CaptureHeader()
     header.set_state(build_operator_shell_state(hardware_model=None, telemetry={}))
     text = header.last_render
-    assert "МИР [yellow]WAIT[/yellow]" in text  # canon: never «Нет данных»
+    assert "РЕПЛИКА [yellow]WAIT[/yellow]" in text  # canon: never «Нет данных»
     assert "СВЯЗЬ [red]LOST[/red]" in text  # nats_state lost → no-data is LOST (red)
     assert "АКТУАЛ [yellow]NODATA[/yellow]" in text
