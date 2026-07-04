@@ -43,6 +43,11 @@ from qiki.services.operator_console.orion_v.mfd_layout import (
 from qiki.services.operator_console.orion_v.thermal_evidence import thermal_to_evidence
 from qiki.services.operator_console.orion_v.thermal_telemetry_adapter import thermal_records_from_snapshot
 from qiki.services.operator_console.orion_v.ui_rich import semantic_update
+from qiki.services.operator_console.orion_v.qiki_voice import (
+    QikiVoiceEntry,
+    format_qiki_voice_lines,
+    format_qiki_voice_tooltip,
+)
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
@@ -241,6 +246,7 @@ class OrionVCockpitScreen(Static):
         self._observation_objective: dict[str, Any] | None = None
         self._objective_event_lines: list[str] = []
         self._qiki_response: QikiChatResponseV1 | None = None
+        self._qiki_voice_entries: tuple[QikiVoiceEntry, ...] = ()
         self._qiki_pending_action_title: str | None = None
         self._qiki_plan_preview_lines: list[str] = []
         self._qiki_procedure_status: str | None = None
@@ -334,6 +340,7 @@ class OrionVCockpitScreen(Static):
         observation_objective: dict[str, Any] | None = None,
         objective_event_lines: list[str] | None = None,
         qiki_response: QikiChatResponseV1 | None = None,
+        qiki_voice_entries: tuple[QikiVoiceEntry, ...] | None = None,
         qiki_pending_action_title: str | None = None,
         qiki_plan_preview_lines: list[str] | None = None,
         qiki_procedure_status: str | None = None,
@@ -351,6 +358,7 @@ class OrionVCockpitScreen(Static):
         self._observation_objective = dict(observation_objective or {}) or None
         self._objective_event_lines = list(objective_event_lines or [])
         self._qiki_response = qiki_response
+        self._qiki_voice_entries = tuple(qiki_voice_entries or ())
         self._qiki_pending_action_title = qiki_pending_action_title
         self._qiki_plan_preview_lines = list(qiki_plan_preview_lines or [])
         self._qiki_procedure_status = qiki_procedure_status
@@ -717,6 +725,13 @@ class OrionVCockpitScreen(Static):
         self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-right-screen", self._compose_right_mfd_text(body_text))
         self._set_static_text("#orionv-mfd-qiki", self._compose_mfd_qiki_text(intervention_text))
+        try:
+            # №8в: коды LEGALITY/TRUST новейшей реплики — tooltip рамки (решение оператора)
+            self.query_one("#orionv-mfd-qiki", Static).tooltip = format_qiki_voice_tooltip(
+                self._qiki_voice_entries
+            )
+        except NoMatches:
+            pass
 
     def _set_static_text(self, selector: str, text: str) -> None:
         try:
@@ -1564,17 +1579,14 @@ class OrionVCockpitScreen(Static):
             legality_bullet = (
                 f"{legality.status} [{legality.domain}] {legality.reason_code} — {legality.reason.ru}"
             )
-            legality_state_row = legality.status.strip().upper()
-            legality_detail_row = f"[{legality.domain}] {legality.reason_code}".strip()
             if legality.status in {"blocked", "unsafe"}:
                 severity = "warn"
             elif legality.status == "deferred":
                 severity = "degraded"
         else:
             legality_bullet = "нет данных/missing"
-            legality_state_row, legality_detail_row = "MISSING", "нет данных"
 
-        # Доверие/Trust — §2 (verbose [:2]; primary signal for the compact row)
+        # Доверие/Trust — §2 (verbose [:2]; компакт-ряд заменён tooltip-кодами ленты №8в)
         trust_bullets: list[str] = []
         if resp is not None and resp.trust_signals:
             for signal in resp.trust_signals[:2]:
@@ -1582,11 +1594,6 @@ class OrionVCockpitScreen(Static):
                     f"{signal.state} | {signal.label.ru}/{signal.label.en} | "
                     f"conf={signal.confidence:.2f} | src={signal.source}"
                 )
-            primary = resp.trust_signals[0]
-            trust_state_row = (primary.state or "PARTIAL").strip().upper()
-            trust_detail_row = f"{primary.label.ru} conf={primary.confidence:.2f}"
-        else:
-            trust_state_row, trust_detail_row = "PARTIAL", "явных сигналов нет"
 
         # Ожидает/Pending
         if pending_title:
@@ -1655,10 +1662,11 @@ class OrionVCockpitScreen(Static):
         # PENDING and EFFECT are shown ALWAYS when active (honest NONE / "no effect yet"), not
         # conditionally — G1 §3 requires the consequence state / absence of silent failure to be
         # visible on the main panel, not hidden when consequence is None.
+        # №8в (G-C): сырые ряды LEGALITY/TRUST заменены лентой QIKI ▸ (тип реплики несёт
+        # арбитраж, коды — в tooltip рамки); PENDING/EFFECT/NEXT остаются — G1 §3 требует
+        # видимый consequence без silent failure.
         rows: list[tuple[str, str, str]] = [("QIKI", qiki_state, qiki_detail)]
         if active:
-            rows.append(("LEGALITY", legality_state_row, legality_detail_row))
-            rows.append(("TRUST", trust_state_row, trust_detail_row))
             rows.append(("PENDING", pending_state_row, pending_detail_row))
             rows.append(("EFFECT", effect_state_row, effect_detail_row))
             rows.append(("NEXT", next_state_row, next_text))
@@ -2342,7 +2350,7 @@ class OrionVCockpitScreen(Static):
     def _panel_block(
         self,
         title: str,
-        rows: list[tuple[str, str, str]] | list[str],
+        rows: list[tuple[str, str, str]] | list[str] | list[tuple[str, str, str] | str],
         *,
         extras: list[str] | None = None,
     ) -> list[str]:
@@ -2482,12 +2490,14 @@ class OrionVCockpitScreen(Static):
         *,
         qiki_severity: str,
         qiki_lines: list[str],
-    ) -> list[tuple[str, str, str]]:
+    ) -> list[tuple[str, str, str] | str]:
         # Compact loop rows for the PRIMARY "QIKI / Решение" F1 panel — from the SAME loop
         # projection as the verbose [QIKI LOOP] block. No second derivation, no parsing of
         # rendered strings (the coupling that silently broke trust before). ACK is app-state.
         projection = self._qiki_loop_projection()
-        rows = list(projection.rows)
+        rows: list[tuple[str, str, str] | str] = list(projection.rows)
+        # №8в (G-C): лента реплик QIKI ▸ сразу после головного ряда — голос, не статус-дамп
+        rows[1:1] = format_qiki_voice_lines(self._qiki_voice_entries)
         if projection.active:
             always_on = getattr(self._operator_shell_state, "always_on", None)
             ack_state = "OPEN" if getattr(always_on, "human_ack_required", False) else "CLEAR"

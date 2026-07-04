@@ -13,6 +13,10 @@ from qiki.services.operator_console.orion_v.screens.cockpit import (
 )
 from qiki.services.operator_console.orion_v.operator_state import build_operator_shell_state
 from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.services.operator_console.orion_v.qiki_voice import (
+    build_qiki_voice_entry,
+    format_qiki_voice_tooltip,
+)
 from qiki.shared.models.qiki_chat import (
     BilingualText,
     QikiChatResponseV1,
@@ -625,45 +629,54 @@ def test_cockpit_renders_qiki_legality_trust_and_consequence_block() -> None:
     assert "QIKI, действие, контур." in text
 
 
-def test_qiki_recommendation_trust_row_reflects_signal_state() -> None:
-    # Regression: the compact QIKI recommendation TRUST row must read the trust state
-    # from the response data, not by parsing the [QIKI LOOP] rendered lines (that coupling
-    # silently fell back to PARTIAL when the block was reformatted with a "• " bullet).
+def test_qiki_voice_replaces_raw_rows_and_keeps_trust_state_in_tooltip() -> None:
+    # №8в (G-C): сырые ряды LEGALITY/TRUST заменены лентой QIKI ▸. Намерение прежней
+    # TRUST-регрессии сохранено: состояние доверия берётся из данных ответа (не
+    # PARTIAL-фолбэк) и остаётся доступным оператору — коды новейшей реплики в tooltip.
+    response = QikiChatResponseV1(
+        request_id="00000000-0000-0000-0000-000000000009",
+        ok=True,
+        mode=QikiMode.FACTORY,
+        legality=QikiLegalityV1(
+            status="deferred",
+            domain="trust",
+            reason_code="STATION_TRACK_LOW_QUALITY",
+            reason=BilingualText(en="low quality", ru="низкое качество"),
+        ),
+        trust_signals=[
+            QikiTrustSignalV1(
+                label=BilingualText(en="Station radar track", ru="Радарный трек станции"),
+                state="degraded",
+                source="sensor",
+                confidence=0.32,
+                reason_code="STATION_TRACK_LOW_QUALITY",
+                reason=BilingualText(en="noisy", ru="зашумлён"),
+            )
+        ],
+    )
+    voice_entry = build_qiki_voice_entry(response, received_at="04:11:07Z")
     screen = _CaptureCockpit()
     screen.set_state(
         telemetry={},
         nats_connected=True,
         active_incidents=0,
         incidents=[],
-        qiki_response=QikiChatResponseV1(
-            request_id="00000000-0000-0000-0000-000000000009",
-            ok=True,
-            mode=QikiMode.FACTORY,
-            legality=QikiLegalityV1(
-                status="deferred",
-                domain="trust",
-                reason_code="STATION_TRACK_LOW_QUALITY",
-                reason=BilingualText(en="low quality", ru="низкое качество"),
-            ),
-            trust_signals=[
-                QikiTrustSignalV1(
-                    label=BilingualText(en="Station radar track", ru="Радарный трек станции"),
-                    state="degraded",
-                    source="sensor",
-                    confidence=0.32,
-                    reason_code="STATION_TRACK_LOW_QUALITY",
-                    reason=BilingualText(en="noisy", ru="зашумлён"),
-                )
-            ],
-        ),
+        qiki_response=response,
+        qiki_voice_entries=(voice_entry,),
     )
     rows = screen._qiki_recommendation_rows(qiki_severity="warn", qiki_lines=[])
-    trust_rows = [row for row in rows if row[0] == "TRUST"]
-    assert trust_rows, "TRUST row must be present when a QIKI response exists"
-    assert trust_rows[0][1] == "DEGRADED"  # real signal state, not the PARTIAL fallback
+    # сырых рядов больше нет — их несёт лента (тип реплики) + tooltip (коды)
+    assert not any(isinstance(row, tuple) and row[0] in {"LEGALITY", "TRUST"} for row in rows)
+    voice_lines = [row for row in rows if isinstance(row, str)]
+    # deferred — арбитраж, не подтверждение: тип REJECT, не ACK
+    assert voice_lines and voice_lines[0] == "QIKI ▸ 04:11:07Z REJECT | низкое качество"
+    # реальное состояние сигнала (degraded conf=0.32), не PARTIAL-фолбэк
+    assert format_qiki_voice_tooltip((voice_entry,)) == (
+        "LEGALITY deferred [trust] STATION_TRACK_LOW_QUALITY · TRUST degraded conf=0.32"
+    )
     # G1 §3 (no silent failure): consequence state stays visible on the main panel even when
     # this response has no consequence — EFFECT row is shown always-when-active, honest NONE.
-    effect_rows = [row for row in rows if row[0] == "EFFECT"]
+    effect_rows = [row for row in rows if isinstance(row, tuple) and row[0] == "EFFECT"]
     assert effect_rows and effect_rows[0][1] == "NONE"
 
 

@@ -32,6 +32,7 @@ from qiki.services.operator_console.orion_v.events_store import BoundedEventsSto
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
 from qiki.services.operator_console.orion_v.hardware_view_model.types import HardwareViewModel
 from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
+from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry, build_qiki_voice_entry
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
     reset_body_structure_interactive_state,
     run_body_structure_interactive_self_check,
@@ -255,6 +256,7 @@ class OrionVApp(App[None]):
         self._nats_client = NATSClient(url=self._nats_url)
         self._nats_client.set_lifecycle_callback(self._on_nats_lifecycle_state)
         self._subscriptions_started = False
+        self._subscribed_keys: set[str] = set()
         self._selected_incident_id: str | None = None
         self._selected_system_module_slug: str | None = None
         self._events_page_size = max(10, int(os.getenv("ORIONV_EVENTS_PAGE_SIZE", "50")))
@@ -273,6 +275,7 @@ class OrionVApp(App[None]):
         self._ack_wait_started_mono: float | None = None
         self._qiki_pending: dict[str, tuple[float, str]] = {}
         self._qiki_last_response: QikiChatResponseV1 | None = None
+        self._qiki_voice_ledger: deque[QikiVoiceEntry] = deque(maxlen=20)
         self._qiki_pending_action: dict[str, Any] | None = None
         self._active_observation_objective: dict[str, Any] | None = None
         self._event_timestamps: deque[float] = deque(maxlen=4000)
@@ -364,12 +367,25 @@ class OrionVApp(App[None]):
                 await self._nats_client.connect()
             self._nats_state = self._nats_client.connection_state
             if not self._subscriptions_started:
-                await self._nats_client.subscribe_system_telemetry(self._on_telemetry)
-                await self._nats_client.subscribe_tracks(self._on_track)
-                await self._nats_client.subscribe_events(self._on_event)
-                await self._nats_client.subscribe_control_responses(self._on_control_response)
-                await self._nats_client.subscribe_qiki_responses(self._on_qiki_response)
-                self._subscriptions_started = True
+                # Подписки изолированы: провал одной (например, tracks-durable уже
+                # занят первой консолью в этом же контейнере) не хоронит остальные —
+                # инцидент 2026-07-04: вторая консоль жила без events/control/qiki.
+                subscription_plan: tuple[tuple[str, Any], ...] = (
+                    ("telemetry", lambda: self._nats_client.subscribe_system_telemetry(self._on_telemetry)),
+                    ("tracks", lambda: self._nats_client.subscribe_tracks(self._on_track)),
+                    ("events", lambda: self._nats_client.subscribe_events(self._on_event)),
+                    ("control_responses", lambda: self._nats_client.subscribe_control_responses(self._on_control_response)),
+                    ("qiki_responses", lambda: self._nats_client.subscribe_qiki_responses(self._on_qiki_response)),
+                )
+                for key, subscribe in subscription_plan:
+                    if key in self._subscribed_keys:
+                        continue
+                    try:
+                        await subscribe()
+                        self._subscribed_keys.add(key)
+                    except Exception:
+                        logger.debug("orion_v_subscribe_failed key=%s", key, exc_info=True)
+                self._subscriptions_started = len(self._subscribed_keys) == len(subscription_plan)
         except Exception:
             self._nats_state = "lost"
             logger.debug("orion_v_connect_or_subscribe_failed", exc_info=True)
@@ -3164,6 +3180,13 @@ class OrionVApp(App[None]):
 
         self._qiki_pending.pop(str(response.request_id), None)
         self._qiki_last_response = response
+        # №8в: голос QIKI — каждая реплика в ленту с временем приёма и типом
+        self._qiki_voice_ledger.append(
+            build_qiki_voice_entry(
+                response,
+                received_at=datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"),
+            )
+        )
         self._qiki_pending_action = self._extract_qiki_pending_action(response)
         self._enrich_active_observation_with_live_public_track()
         if self._qiki_pending_action is not None:
@@ -3464,6 +3487,7 @@ class OrionVApp(App[None]):
             observation_objective=self._active_observation_objective,
             objective_event_lines=self._build_objective_timeline_lines(source_store),
             qiki_response=self._qiki_last_response,
+            qiki_voice_entries=tuple(self._qiki_voice_ledger),
             qiki_plan_preview_lines=self._build_qiki_plan_preview_lines(),
             qiki_procedure_status=(
                 self._procedure_status_line()
