@@ -15,6 +15,8 @@ from qiki.services.q_core_agent.core.agent_logger import logger, setup_logging
 from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
 from qiki.shared.config_models import QCoreAgentConfig, load_config
 from qiki.shared.models.core import Proposal, SensorTypeEnum
+from qiki.services.q_core_agent.core.body_structure import KNOWN_MOUNT_CLASSES
+from qiki.shared.module_catalog import CatalogResult, load_module_catalog
 from qiki.shared.models.qiki_chat import (
     BilingualText,
     QikiChatRequestV1,
@@ -657,6 +659,20 @@ def _is_attach_module_command(text: str) -> bool:
         "установи сенсорный модуль",
         "attach module",
         "install module",
+    )
+    return any(trigger in low for trigger in triggers)
+
+
+def _is_cargo_list_command(text: str) -> bool:
+    low = " ".join((text or "").strip().lower().split())
+    triggers = (
+        "доложи отсек",
+        "доложи грузовой отсек",
+        "какие модули",
+        "список модулей",
+        "что в отсеке",
+        "cargo list",
+        "list modules",
     )
     return any(trigger in low for trigger in triggers)
 
@@ -3670,6 +3686,75 @@ def _build_release_dock_response(
     )
 
 
+def _build_cargo_list_response(
+    *,
+    req: QikiChatRequestV1,
+    mode: QikiMode,
+    catalog: CatalogResult | None = None,
+) -> QikiChatResponseV1:
+    """P1 (ADR-0019): доклад по грузовому отсеку из каталога, per-request.
+
+    Fail-closed: каталог не читается -> честный отказ с кодом, никаких выдумок.
+    Список — информация, не команда: без proposals/actions.
+    """
+    result = catalog if catalog is not None else load_module_catalog(known_classes=KNOWN_MOUNT_CLASSES)
+    if not result.ok:
+        reason = BilingualText(
+            en=f"Cargo manifest is unavailable [{result.error_code}].",
+            ru=f"Манифест отсека недоступен [{result.error_code}].",
+        )
+        return QikiChatResponseV1(
+            request_id=req.request_id,
+            ok=True,
+            mode=mode,
+            reply=QikiReplyV1(
+                title=BilingualText(en="Cargo bay unavailable", ru="Отсек недоступен"),
+                body=reason,
+            ),
+            legality=QikiLegalityV1(
+                status="deferred",
+                domain="trust",
+                reason_code=result.error_code or "CATALOG_UNAVAILABLE",
+                reason=reason,
+            ),
+            trust_signals=[],
+            consequence=QikiConsequenceV1(
+                status="not_sent",
+                summary=BilingualText(
+                    en="No catalog data; nothing was invented.",
+                    ru="Данных каталога нет; ничего не выдумано.",
+                ),
+            ),
+            proposals=[],
+            warnings=[],
+            error=None,
+        )
+
+    lines_ru = [
+        f"{entry.display_name_ru} | {entry.module_id} | класс {entry.module_class} | остаток {entry.quantity}"
+        for entry in result.entries
+    ]
+    lines_en = [
+        f"{entry.module_id} | class {entry.module_class} | qty {entry.quantity}"
+        for entry in result.entries
+    ]
+    return QikiChatResponseV1(
+        request_id=req.request_id,
+        ok=True,
+        mode=mode,
+        reply=QikiReplyV1(
+            title=BilingualText(en="Cargo bay report", ru="Доклад по грузовому отсеку"),
+            body=BilingualText(en="\n".join(lines_en), ru="\n".join(lines_ru)),
+        ),
+        legality=None,
+        trust_signals=[],
+        consequence=None,
+        proposals=[],
+        warnings=[],
+        error=None,
+    )
+
+
 def _build_attach_module_response(
     *,
     req: QikiChatRequestV1,
@@ -4289,6 +4374,11 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
+            return
+
+        if _is_cargo_list_command(req.input.text):
+            resp = _build_cargo_list_response(req=req, mode=mode)
             await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 

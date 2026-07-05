@@ -55,6 +55,10 @@ PASSPORT_VALIDATOR_OWNER = "q_core_agent.core.body_structure.passport_validator"
 _FIXTURE_ALLOWED_MOUNT_CLASSES: tuple[str, ...] = ("sensor", "antenna", "science")
 _FIXTURE_FORBIDDEN_MOUNT_CLASSES: tuple[str, ...] = ("reactor-class", "heavy-power", "rcs-cluster")
 
+# Публичный словарь известных mount-классов (ADR-0019 §4): единственный владелец —
+# тело; policy/каталог валидируются по нему, своих копий не заводят.
+KNOWN_MOUNT_CLASSES: tuple[str, ...] = (*_FIXTURE_ALLOWED_MOUNT_CLASSES, *_FIXTURE_FORBIDDEN_MOUNT_CLASSES)
+
 # Honest source owner of the rejection (runtime/policy, not the operator console).
 SOURCE_OWNER = "q_core_agent.core.body_structure.attach_policy"
 

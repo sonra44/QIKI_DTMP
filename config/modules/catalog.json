@@ -1,0 +1,42 @@
+{
+  "catalog_version": 1,
+  "comment": "Грузовой отсек (ADR-0019): что есть, то и ставим. display_name_ru — только UI; evidence/audit несут module_id и коды.",
+  "modules": [
+    {
+      "module_id": "test_sensor_module_001",
+      "module_class": "sensor",
+      "provided_capabilities": ["basic_sensor_read"],
+      "display_name_ru": "Сенсорный модуль (штатный)",
+      "quantity": 2
+    },
+    {
+      "module_id": "comm_antenna_module_001",
+      "module_class": "antenna",
+      "provided_capabilities": ["comms_relay_extend"],
+      "display_name_ru": "Антенна связи",
+      "quantity": 1
+    },
+    {
+      "module_id": "science_probe_module_001",
+      "module_class": "science",
+      "provided_capabilities": ["science_sampling"],
+      "display_name_ru": "Научный зонд",
+      "quantity": 1
+    },
+    {
+      "module_id": "rcs_cluster_module_001",
+      "module_class": "rcs-cluster",
+      "provided_capabilities": ["rcs_aux_thrust"],
+      "display_name_ru": "Кластер RCS (запрещён к установке на грани)",
+      "quantity": 1
+    },
+    {
+      "module_id": "salvage_sensor_damaged_001",
+      "module_class": "sensor",
+      "provided_capabilities": [],
+      "display_name_ru": "Сенсор (манифест повреждён радиацией)",
+      "quantity": 1,
+      "passport_damaged": true
+    }
+  ]
+}
