@@ -151,3 +151,32 @@ async def test_action_bar_renders_last_five_console_lines() -> None:
         assert "message 1" not in strip
         assert "message 2" in strip
         assert "message 6" in strip
+
+
+@pytest.mark.asyncio
+async def test_console_strip_hidden_on_f5_not_duplicating_dialog() -> None:
+    pytest.importorskip("textual")
+
+    app = _ActionBarApp()
+    async with app.run_test(size=(180, 24)) as pilot:
+        await pilot.pause()
+
+        actions = app.query_one("#orionv-actions", OrionVActionBar)
+        strip = app.query_one("#orionv-console-strip", Static)
+
+        # F5: стрип скрыт — лента диалога сама владеет беседой (T5, без дублей)
+        actions.set_state(build_operator_shell_state(
+            hardware_model=None, current_level="f5",
+            console_lines=("QIKI intent отправлен: доложи отсек", "УСТАНОВКА ▸ S3 перенос 1/2"),
+        ))
+        await pilot.pause()
+        assert strip.display is False
+
+        # F2: стрип виден — глобальный фидбек на прочих экранах (И3)
+        actions.set_state(build_operator_shell_state(
+            hardware_model=None, current_level="f2",
+            console_lines=("Неизвестная команда: вв", "Мир: команда отправлена"),
+        ))
+        await pilot.pause()
+        assert strip.display is True
+        assert "КОНСОЛЬ/CONSOLE" in strip.render().plain

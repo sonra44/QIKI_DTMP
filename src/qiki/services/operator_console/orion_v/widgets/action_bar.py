@@ -143,13 +143,20 @@ class OrionVActionBar(Static):
         )
 
         console = self.query_one("#orionv-console-strip", Static)
-        console_lines = self._state.console_lines[-5:]
-        if console_lines:
-            rendered_lines = ["КОНСОЛЬ/CONSOLE"]
-            rendered_lines.extend(f"- {escape(line)}" for line in console_lines)
-            console.update("\n".join(rendered_lines))
+        # На F5 лента диалога САМА показывает беседу/процедуру/реплики — стрип
+        # КОНСОЛЬ там дублировал бы её (T5, один владелец). Прячем только на F5;
+        # на остальных экранах стрип остаётся глобальным фидбеком (И3).
+        if loop.current_level == "f5":
+            console.display = False
         else:
-            console.update("КОНСОЛЬ/CONSOLE: история пуста")
+            console.display = True
+            console_lines = self._state.console_lines[-5:]
+            if console_lines:
+                rendered_lines = ["КОНСОЛЬ/CONSOLE"]
+                rendered_lines.extend(f"- {escape(line)}" for line in console_lines)
+                console.update("\n".join(rendered_lines))
+            else:
+                console.update("КОНСОЛЬ/CONSOLE: история пуста")
 
         shell = self.query_one("#orionv-command-shell", Static)
         shell.update(

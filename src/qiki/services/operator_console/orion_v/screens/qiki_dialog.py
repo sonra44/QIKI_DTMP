@@ -234,15 +234,16 @@ class OrionVQikiDialogScreen(Static):
         """Перенос тела реплики по ширине колонки, сохраняя слова и абзацы."""
         out: list[str] = []
         for paragraph in str(text).split("\n"):
-            words = paragraph.split(" ")
             cur = indent
-            for word in words:
-                if len(cur) + len(word) + 1 > self._WRAP_WIDTH and cur.strip():
-                    out.append(cur.rstrip())
+            has_word = False  # был ли на текущей строке хоть один word (не пробел от индента)
+            for word in [w for w in paragraph.split(" ") if w]:
+                if has_word and len(cur) + 1 + len(word) > self._WRAP_WIDTH:
+                    out.append(cur)
                     cur = indent + word
                 else:
-                    cur = (cur + " " + word) if cur.strip() else (indent + word)
-            out.append(cur.rstrip() or indent.rstrip())
+                    cur = (cur + " " + word) if has_word else (indent + word)
+                has_word = True
+            out.append(cur if has_word else indent.rstrip())
         return out or [indent.rstrip()]
 
     @staticmethod
