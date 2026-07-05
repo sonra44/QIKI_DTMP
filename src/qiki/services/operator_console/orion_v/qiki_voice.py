@@ -50,8 +50,8 @@ def build_qiki_voice_entry(response: QikiChatResponseV1, *, received_at: str) ->
         text = (response.error.message.ru or response.error.message.en or "").strip()
     if not text:
         text = "ответ без текста"
-    if len(text) > _TEXT_MAX_CHARS:
-        text = text[: _TEXT_MAX_CHARS - 1] + "…"
+    # W1: полный текст хранится в леджере (F5 показывает целиком); усечение —
+    # только на компактном F1-рендере (format_qiki_voice_lines).
 
     legality_code = (
         f"{legality.status} [{legality.domain}] {legality.reason_code}" if legality is not None else None
@@ -74,7 +74,12 @@ def format_qiki_voice_lines(
     entries: Sequence[QikiVoiceEntry], *, limit: int = QIKI_VOICE_VISIBLE_LIMIT
 ) -> list[str]:
     recent = list(entries)[-limit:][::-1]  # хвост = новейшие; самая свежая — сверху
-    return [f"QIKI ▸ {entry.received_at} {entry.kind} | {entry.text}" for entry in recent]
+
+    def _compact(text: str) -> str:
+        # F1 — 3-строчный компакт: режем длинный текст; F5 берёт полный из entry
+        return text if len(text) <= _TEXT_MAX_CHARS else text[: _TEXT_MAX_CHARS - 1] + "…"
+
+    return [f"QIKI ▸ {entry.received_at} {entry.kind} | {_compact(entry.text)}" for entry in recent]
 
 
 def format_qiki_voice_tooltip(entries: Sequence[QikiVoiceEntry]) -> str | None:

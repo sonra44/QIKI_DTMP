@@ -128,7 +128,10 @@ class OrionVQikiDialogScreen(Static):
                 head = f"{line.speaker} ▸ {line.received_at}"
                 if line.kind:
                     head += f" {line.kind}"
-                body.append(f"{head} | {line.text}")
+                # W1: реплика видна ЦЕЛИКОМ — шапка отдельной строкой, тело с
+                # переносом и отступом (узкая колонка F5 больше не режет текст)
+                body.append(head)
+                body.extend(self._wrap_body(line.text, indent="  "))
                 codes = self._codes_line(line)
                 if codes:
                     body.append(f"  └ {codes}")
@@ -152,7 +155,27 @@ class OrionVQikiDialogScreen(Static):
         # Зона УЛИКИ (всегда).
         body.extend(["", "── УЛИКИ ──", "детали: F8 | журнал: F6 | системы: F2"])
 
+        # W1: постоянная строка ввода в самом чате (полноценное поле — след. срез)
+        body.extend(["", "── ВВОД ──", "'/' или ':' → печатать QIKI · q: <текст> — свободный вопрос"])
+
         return "\n".join(body)
+
+    _WRAP_WIDTH = 110
+
+    def _wrap_body(self, text: str, *, indent: str = "  ") -> list[str]:
+        """Перенос тела реплики по ширине колонки, сохраняя слова и абзацы."""
+        out: list[str] = []
+        for paragraph in str(text).split("\n"):
+            words = paragraph.split(" ")
+            cur = indent
+            for word in words:
+                if len(cur) + len(word) + 1 > self._WRAP_WIDTH and cur.strip():
+                    out.append(cur.rstrip())
+                    cur = indent + word
+                else:
+                    cur = (cur + " " + word) if cur.strip() else (indent + word)
+            out.append(cur.rstrip() or indent.rstrip())
+        return out or [indent.rstrip()]
 
     @staticmethod
     def _codes_line(line: QikiDialogLine) -> str:
