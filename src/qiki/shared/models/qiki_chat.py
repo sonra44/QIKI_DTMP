@@ -103,7 +103,8 @@ class QikiConsequenceV1(_StrictModel):
 
 
 class QikiProposedActionV1(_StrictModel):
-    kind: Literal["NATS_COMMAND", "ORION_PROCEDURE"] = "NATS_COMMAND"
+    # BODY_ATTACH: локальный body-конвейер консоли, не шина (ADR-0018)
+    kind: Literal["NATS_COMMAND", "ORION_PROCEDURE", "BODY_ATTACH"] = "NATS_COMMAND"
     subject: str
     name: str
     parameters: dict[str, Any] = Field(default_factory=dict)

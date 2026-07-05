@@ -647,6 +647,20 @@ def _is_release_dock_command(text: str) -> bool:
     return any(trigger in low for trigger in triggers)
 
 
+def _is_attach_module_command(text: str) -> bool:
+    low = " ".join((text or "").strip().lower().split())
+    triggers = (
+        "установи модуль",
+        "установить модуль",
+        "поставь модуль",
+        "смонтируй модуль",
+        "установи сенсорный модуль",
+        "attach module",
+        "install module",
+    )
+    return any(trigger in low for trigger in triggers)
+
+
 def _is_station_approach_command(text: str) -> bool:
     low = " ".join((text or "").strip().lower().split())
     triggers = (
@@ -3656,6 +3670,86 @@ def _build_release_dock_response(
     )
 
 
+def _build_attach_module_response(
+    *,
+    req: QikiChatRequestV1,
+    mode: QikiMode,
+) -> QikiChatResponseV1:
+    """BODY_ATTACH-кандидат (ADR-0018): установка штатного сенсорного модуля.
+
+    Policy отдаёт решение/легальность; runtime-правда тела (гнездо занято,
+    предусловия питания/тепла) решается локальным body-конвейером консоли
+    через мост M7-M9 — здесь она не заявляется.
+    """
+    reason = BilingualText(
+        en="Deterministic policy allows preparing a standard sensor-module attach candidate.",
+        ru="Детерминированная policy разрешает подготовить кандидат установки штатного сенсорного модуля.",
+    )
+    action = QikiProposedActionV1(
+        kind="BODY_ATTACH",
+        subject="orionv.body",
+        name="attach.module",
+        parameters={"module_id": "test_sensor_module_001", "mount": "F06"},
+        dry_run=False,
+    )
+    return QikiChatResponseV1(
+        request_id=req.request_id,
+        ok=True,
+        mode=mode,
+        reply=QikiReplyV1(
+            title=BilingualText(en="Module attach ready", ru="Установка модуля готова"),
+            body=BilingualText(
+                en=(
+                    "QIKI prepared a body attach candidate. The body pipeline will check "
+                    "power/thermal preconditions and the mount state before any effect."
+                ),
+                ru=(
+                    "QIKI подготовила кандидат установки модуля на тело. Конвейер тела проверит "
+                    "предусловия питания/тепла и состояние гнезда до какого-либо эффекта."
+                ),
+            ),
+        ),
+        legality=QikiLegalityV1(
+            status="allowed",
+            domain="physics",
+            reason_code="BODY_ATTACH_READY",
+            reason=reason,
+            allowed_when=BilingualText(
+                en="Use the explicit ORION confirmation step; preconditions are enforced by the body pipeline.",
+                ru="Используйте явный шаг подтверждения в ORION; предусловия проверит конвейер тела.",
+            ),
+        ),
+        trust_signals=[],
+        consequence=QikiConsequenceV1(
+            status="pending",
+            summary=BilingualText(
+                en="The attach candidate is prepared and waiting for explicit operator confirmation.",
+                ru="Кандидат установки подготовлен и ждёт явного подтверждения оператора.",
+            ),
+            telemetry_confirmation=BilingualText(
+                en="No body command has been executed; the mount state is decided by the live body pipeline.",
+                ru="Команда телу не исполнялась; состояние гнезда решает живой конвейер тела.",
+            ),
+        ),
+        proposals=[
+            QikiProposalV1(
+                proposal_id=f"qiki-body-attach-{req.request_id}",
+                title=BilingualText(en="Confirm module attach", ru="Подтвердить установку модуля"),
+                justification=BilingualText(
+                    en="Attach runs only through the sealed decision and the live body pipeline.",
+                    ru="Установка идёт только через запломбированное решение и живой конвейер тела.",
+                ),
+                confidence=1.0,
+                priority=85,
+                suggested_questions=[],
+                proposed_actions=[action],
+            )
+        ],
+        warnings=[],
+        error=None,
+    )
+
+
 def _build_protocol_block_response(*, req: QikiChatRequestV1, mode: QikiMode) -> QikiChatResponseV1:
     blocked_reason = BilingualText(
         en="Auto-actions are disabled in the current QIKI MVP policy.",
@@ -4195,6 +4289,11 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 mode=mode,
                 world_snapshot=reasoning_snapshot,
             )
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
+            return
+
+        if _is_attach_module_command(req.input.text):
+            resp = _build_attach_module_response(req=req, mode=mode)
             await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 

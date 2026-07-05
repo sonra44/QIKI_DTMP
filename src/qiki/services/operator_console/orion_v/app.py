@@ -35,6 +35,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model.types import Har
 from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
 from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry, build_qiki_voice_entry
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
+    get_body_structure_interactive_controller,
     reset_body_structure_interactive_state,
     run_body_structure_interactive_self_check,
     select_next_body_structure_face,
@@ -79,6 +80,13 @@ from qiki.shared.command_decision import (
     DecisionStore,
     authorize_publish,
     seal_decision,
+)
+from qiki.shared.decision_body_bridge import (
+    bridge_decision_to_body,
+    decision_trace_record,
+)
+from qiki.services.operator_console.orion_v.power_thermal_view_model import (
+    build_power_thermal_console_view_model_from_telemetry,
 )
 from qiki.services.operator_console.orion_v.screens.system_health import OrionVSystemHealthScreen
 from qiki.services.operator_console.orion_v.widgets.alerts_overlay import OrionVAlertsOverlay
@@ -2965,6 +2973,128 @@ class OrionVApp(App[None]):
             self._request_refresh_ui()
         return auth.allowed
 
+    def _body_attach_runner(self) -> tuple[bool, str]:
+        """Тонкая обёртка над ЖИВЫМ конвейером тела (тот же путь, что клавиша B)."""
+        snapshot = get_body_structure_interactive_controller().run_attach_self_check()
+        attached = str(snapshot.interaction_state) == "attached"
+        audit_event_id = ""
+        if snapshot.decision is not None:
+            audit_event_id = str(getattr(snapshot.decision, "audit_event_id", "") or "")
+        return attached, audit_event_id
+
+    def _body_attach_preconditions(self) -> tuple[bool, bool, tuple[str, ...]]:
+        """Флаги предусловий из готовых view-model'ей (fail-closed, ADR-0018 §2).
+
+        power: принятый truth-source G2-QIKI-008 (load_shedding/pdu_throttled);
+        отсутствие power-телеметрии = блок (предусловия недоступны -> deferred).
+        thermal: thermal_status готовой VM; unknown = блок (fail-closed).
+        """
+        detail: list[str] = []
+        snapshot = self._snapshot if isinstance(self._snapshot, dict) else {}
+        power = snapshot.get("power")
+        if not isinstance(power, dict) or not power:
+            power_blocked = True
+            detail.append("POWER_TELEM_MISSING")
+        else:
+            power_blocked = bool(power.get("load_shedding")) or bool(power.get("pdu_throttled"))
+            if power_blocked:
+                detail.append("load_shedding" if power.get("load_shedding") else "pdu_throttled")
+        vm = build_power_thermal_console_view_model_from_telemetry(snapshot)
+        thermal_blocked = vm.thermal_status not in {"green"}
+        if thermal_blocked:
+            detail.append(f"thermal_{vm.thermal_status}")
+        return power_blocked, thermal_blocked, tuple(detail)
+
+    async def _execute_qiki_body_attach(self, action: dict[str, Any]) -> None:
+        decision = (
+            self._decision_store.get(self._pending_decision_id) if self._pending_decision_id else None
+        )
+        if decision is None:
+            self._set_help_text("QIKI: нет пломбы решения — команда телу отклонена [CMD_NO_DECISION]")
+            self._qiki_pending_action = None
+            return
+
+        power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
+        result = bridge_decision_to_body(
+            decision,
+            power_blocked=power_blocked,
+            thermal_blocked=thermal_blocked,
+            attach_runner=self._body_attach_runner,
+        )
+        self._decision_store.put(result.decision)
+        self._qiki_pending_action = None
+
+        effect_ok = result.reached_body and result.decision.stages.effect.value == "ok"
+        # ADR-0017: runtime_effect_confirmed только при подтверждённом эффекте.
+        runtime_claim = "runtime_effect_confirmed" if effect_ok else "runtime_command_pending"
+        trace = decision_trace_record(
+            result.decision,
+            extra={
+                "kind_event": "qiki_body_attach_decision",
+                "runtime_claim_status": runtime_claim,
+                "reached_body": result.reached_body,
+                "bridge_reason_codes": list(result.reason_codes),
+                "precondition_detail": list(precond_detail),
+            },
+        )
+        asyncio.create_task(self._publish_audit_event(EVENTS_AUDIT, trace))
+
+        if not result.reached_body:
+            # Канон 06_INTERFACE_CONTROL §6: немой отказ недопустим — коды оператору.
+            codes = ",".join((*result.reason_codes, *precond_detail)) or "BRIDGE_DEFERRED"
+            summary_ru = f"Команда телу отложена предусловиями [{codes}]"
+            self._set_last_command_loop_state("blocked", summary_ru)
+            self._set_help_text(f"QIKI: {summary_ru}")
+            if self._qiki_last_response is not None:
+                self._qiki_last_response = self._qiki_last_response.model_copy(
+                    update={
+                        "consequence": QikiConsequenceV1(
+                            status="not_sent",
+                            summary=BilingualText(
+                                en=f"Body command deferred by preconditions [{codes}].",
+                                ru=summary_ru,
+                            ),
+                        ),
+                        "proposals": [],
+                    }
+                )
+            self._request_refresh_ui()
+            return
+
+        stages = result.decision.stages
+        if effect_ok:
+            summary_ru = f"Модуль установлен; аудит={trace['decision_id']}"
+            self._set_last_command_loop_state("ok", "Body attach confirmed by audit")
+            self._set_help_text("QIKI: команда телу исполнена — улики в F2/F8")
+            consequence_status = "confirmed"
+            summary_en = "Module attached through the live body pipeline."
+            telemetry = BilingualText(
+                en=f"Attach audit stage={stages.audit.value}; evidence in F2/F8.",
+                ru=f"Ступень аудита={stages.audit.value}; улики в F2/F8.",
+            )
+        else:
+            summary_ru = "Конвейер тела не установил модуль (см. подсказку корпуса; R — сброс)"
+            self._set_last_command_loop_state("failed", "Body attach pipeline did not attach")
+            self._set_help_text(f"QIKI: {summary_ru}")
+            consequence_status = "failed"
+            summary_en = "The body pipeline did not attach the module."
+            telemetry = BilingualText(
+                en=f"Effect stage={stages.effect.value}; body state unchanged claim not made.",
+                ru=f"Ступень effect={stages.effect.value}; состояние тела не заявляется.",
+            )
+        if self._qiki_last_response is not None:
+            self._qiki_last_response = self._qiki_last_response.model_copy(
+                update={
+                    "consequence": QikiConsequenceV1(
+                        status=consequence_status,
+                        summary=BilingualText(en=summary_en, ru=summary_ru),
+                        telemetry_confirmation=telemetry,
+                    ),
+                    "proposals": [],
+                }
+            )
+        self._request_refresh_ui()
+
     async def _wait_for_qiki_effect(self, command_name: str, timeout_s: float) -> BilingualText | None:
         deadline = time.monotonic() + timeout_s
         command = command_name.strip().lower()
@@ -3070,6 +3200,10 @@ class OrionVApp(App[None]):
         parameters = action.get("parameters")
         if action_kind == "ORION_PROCEDURE":
             await self._execute_qiki_pending_procedure(command_name)
+            return
+        if action_kind == "BODY_ATTACH":
+            # ADR-0018: команда телу исполняется локальным body-конвейером, не шиной.
+            await self._execute_qiki_body_attach(action)
             return
         if subject != COMMANDS_CONTROL or not command_name:
             self._set_help_text("QIKI: неподдерживаемый тип исполняемого действия")
