@@ -83,6 +83,7 @@ class OrionVActionBar(Static):
         ("clear", "Снять"),
         ("page_prev", "< Стр"),
         ("page_next", "Стр >"),
+        ("world_toggle", "⏸ Мир"),
         ("attach_toggle", "⏸ Установка"),
     )
 
@@ -184,6 +185,14 @@ class OrionVActionBar(Static):
                 button.display = loop.page_controls_visible
                 button.disabled = not loop.page_controls_visible
                 button.variant = "default"
+                continue
+
+            if action == "world_toggle":
+                # Игровая пауза — постоянный операторский орган (виден всегда)
+                button.display = True
+                button.disabled = loop.replay_mode
+                button.label = "▶ Мир" if loop.world_paused else "⏸ Мир"
+                button.variant = "warning" if loop.world_paused else "default"
                 continue
 
             if action == "attach_toggle":

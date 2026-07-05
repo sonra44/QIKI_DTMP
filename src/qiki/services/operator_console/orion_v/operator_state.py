@@ -191,6 +191,8 @@ class OperatorLoopState:
     # ADR-0020: кнопка Пауза/Старт процедуры установки (show-when: active)
     attach_procedure_active: bool = False
     attach_procedure_paused: bool = False
+    # Игровая (активная) пауза: состояние времени реплики для кнопки ⏸/▶ Мир
+    world_paused: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +216,7 @@ def build_operator_shell_state(
     hardware_model: HardwareViewModel | None,
     attach_procedure_active: bool = False,
     attach_procedure_paused: bool = False,
+    world_paused: bool = False,
     telemetry: dict[str, Any] | None = None,
     safe_mode: dict[str, Any] | None = None,
     observation_objective: dict[str, Any] | None = None,
@@ -268,6 +271,7 @@ def build_operator_shell_state(
     operator_loop = _build_operator_loop_state(
         attach_procedure_active=attach_procedure_active,
         attach_procedure_paused=attach_procedure_paused,
+        world_paused=world_paused,
         current_level=current_level,
         replay_mode=replay_mode,
         selected_incident_id=selected_incident_id,
@@ -826,6 +830,7 @@ def _build_operator_loop_state(
     last_command_summary: str | None,
     attach_procedure_active: bool = False,
     attach_procedure_paused: bool = False,
+    world_paused: bool = False,
 ) -> OperatorLoopState:
     operator_action_required = human_ack_required or alert_summary.action_required
     level = current_level.strip().lower()
@@ -850,6 +855,7 @@ def _build_operator_loop_state(
         page_controls_visible=level in {"f3", "f6"},
         attach_procedure_active=attach_procedure_active,
         attach_procedure_paused=attach_procedure_paused,
+        world_paused=world_paused,
     )
 
 

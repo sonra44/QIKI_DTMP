@@ -1285,6 +1285,9 @@ class OrionVApp(App[None]):
         if action in {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"}:
             self.action_show_level(action)
             return
+        if action == "world_toggle":
+            asyncio.create_task(self._toggle_world_pause())
+            return
         if action == "attach_toggle":
             proc = self._attach_procedure
             if proc is not None and proc.paused:
@@ -1426,6 +1429,9 @@ class OrionVApp(App[None]):
             return
         if command in {"q hold", "q pause"}:
             self._hold_attach_procedure()
+            return
+        if command in {"пауза", "pause", "старт", "start"}:
+            asyncio.create_task(self._world_pause_command(command))
             return
         if command in {"review confirm", "review ack", "review acknowledge"}:
             self.action_ack_observation_review()
@@ -3329,6 +3335,37 @@ class OrionVApp(App[None]):
         )
         self._request_refresh_ui()
 
+    def _world_is_paused(self) -> bool:
+        sim_state = self._snapshot.get("sim_state") if isinstance(self._snapshot, dict) else None
+        return bool(sim_state.get("paused")) if isinstance(sim_state, dict) else False
+
+    async def _publish_world_time_command(self, command: str) -> None:
+        """Игровая (активная) пауза: команда времени реплики. ACK ≠ effect —
+        эффект подтверждает чип РЕПЛИКА по телеметрии (ADR-0015)."""
+        if self._replay_mode:
+            self._set_help_text("РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО")
+            return
+        await self._publish_sim_command(command, {})
+        ack_ok = await self._wait_for_ack(command, 2.0)
+        if not ack_ok:
+            self._set_last_command_loop_state("failed", f"Ack timeout for {command}")
+            self._set_help_text(f"РЕПЛИКА: нет ack для {command} — состояние не заявляется")
+            self._request_refresh_ui()
+            return
+        verb = "пауза" if command == "sim.pause" else "запуск"
+        self._console_history.append(f"РЕПЛИКА ▸ {verb}: ACK получен; эффект подтвердит телеметрия")
+        self._set_last_command_loop_state("acknowledged", f"{command}: ack ok, effect pending")
+        self._set_help_text(f"РЕПЛИКА: {verb} — ACK получен, эффект подтвердит чип РЕПЛИКА")
+        self._request_refresh_ui()
+
+    async def _toggle_world_pause(self) -> None:
+        command = "sim.start" if self._world_is_paused() else "sim.pause"
+        await self._publish_world_time_command(command)
+
+    async def _world_pause_command(self, word: str) -> None:
+        command = "sim.pause" if word in {"пауза", "pause"} else "sim.start"
+        await self._publish_world_time_command(command)
+
     def _hold_attach_procedure(self) -> None:
         proc = self._attach_procedure
         if proc is None or proc.status != STATUS_RUNNING or proc.stage != STAGE_S3_TRANSFER:
@@ -4247,6 +4284,7 @@ class OrionVApp(App[None]):
         self._operator_shell_state = build_operator_shell_state(
             attach_procedure_active=bool(attach_proc is not None and attach_proc.active),
             attach_procedure_paused=bool(attach_proc is not None and attach_proc.paused),
+            world_paused=self._world_is_paused(),
             hardware_model=self.hardware_model,
             telemetry=self._telemetry,
             safe_mode=self._safe_mode_state,
