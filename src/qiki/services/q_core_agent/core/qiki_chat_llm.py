@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -43,6 +44,8 @@ QIKI_SYSTEM_PROMPT_RU = (
 
 _TIMEOUT_S = float(os.getenv("QIKI_CHAT_LLM_TIMEOUT_S", "25"))
 _MAX_TOKENS = int(os.getenv("QIKI_CHAT_LLM_MAX_TOKENS", "220"))
+_ATTEMPTS = int(os.getenv("QIKI_CHAT_LLM_ATTEMPTS", "2"))  # 1 ретрай на прогрев-транзиент
+_RETRY_BACKOFF_S = float(os.getenv("QIKI_CHAT_LLM_RETRY_BACKOFF_S", "0.6"))
 
 
 def llm_dialog_enabled() -> bool:
@@ -73,21 +76,23 @@ def generate_qiki_reply(user_text: str, *, context_note: str = "") -> str | None
         {"model": model, "messages": messages, "max_tokens": _MAX_TOKENS, "temperature": 0.3},
         ensure_ascii=False,
     ).encode("utf-8")
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=body,
-        method="POST",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-        return None
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    try:
-        content = payload["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        return None
-    content = (content or "").strip()
-    return content or None
+    # Один ретрай: diffusion-провайдер (Mercury) на первом вызове после паузы
+    # иногда спотыкается (прогрев/транзиент 5xx). Смягчаем, оставаясь fail-closed.
+    for attempt in range(_ATTEMPTS):
+        request = urllib.request.Request(
+            f"{base_url}/chat/completions", data=body, method="POST", headers=headers
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            content = payload["choices"][0]["message"]["content"]
+            content = (content or "").strip()
+            if content:
+                return content
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError, KeyError, IndexError, TypeError):
+            pass
+        if attempt + 1 < _ATTEMPTS:
+            time.sleep(_RETRY_BACKOFF_S)
+    return None

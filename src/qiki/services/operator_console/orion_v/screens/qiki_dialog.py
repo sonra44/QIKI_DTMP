@@ -124,14 +124,18 @@ class OrionVQikiDialogScreen(Static):
         # Зона ДИАЛОГ (всегда).
         body.append("── ДИАЛОГ ──")
         if self._dialog_lines:
-            for line in self._dialog_lines:
+            for idx, line in enumerate(self._dialog_lines):
+                if idx:
+                    body.append("")  # пустая строка между ходами (не рамки)
+                # W1: асимметрия голосов — оператор плоским отступом, QIKI с
+                # акцентной чертой ┃ (тело видно целиком, коды остаются кодами)
+                is_qiki = line.speaker.upper().startswith("QIKI")
                 head = f"{line.speaker} ▸ {line.received_at}"
                 if line.kind:
                     head += f" {line.kind}"
-                # W1: реплика видна ЦЕЛИКОМ — шапка отдельной строкой, тело с
-                # переносом и отступом (узкая колонка F5 больше не режет текст)
                 body.append(head)
-                body.extend(self._wrap_body(line.text, indent="  "))
+                indent = "┃ " if is_qiki else "  "
+                body.extend(self._wrap_body(line.text, indent=indent))
                 codes = self._codes_line(line)
                 if codes:
                     body.append(f"  └ {codes}")
@@ -155,8 +159,8 @@ class OrionVQikiDialogScreen(Static):
         # Зона УЛИКИ (всегда).
         body.extend(["", "── УЛИКИ ──", "детали: F8 | журнал: F6 | системы: F2"])
 
-        # W1: постоянная строка ввода в самом чате (полноценное поле — след. срез)
-        body.extend(["", "── ВВОД ──", "'/' или ':' → печатать QIKI · q: <текст> — свободный вопрос"])
+        # W1: поле ввода на F5 открыто постоянно — подсказка отражает это
+        body.extend(["", "── ВВОД ──", "печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус"])
 
         return "\n".join(body)
 
