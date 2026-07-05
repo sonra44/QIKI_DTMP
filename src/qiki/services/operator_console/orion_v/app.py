@@ -81,6 +81,7 @@ from qiki.shared.command_decision import (
     authorize_publish,
     seal_decision,
 )
+from qiki.services.q_core_agent.core.body_structure import ModulePassport
 from qiki.shared.decision_body_bridge import (
     bridge_decision_to_body,
     decision_trace_record,
@@ -309,6 +310,8 @@ class OrionVApp(App[None]):
         self._qiki_dialog_operator_ledger: deque[tuple[str, str]] = deque(maxlen=20)
         # M5: реестр решений + текущая пломба (связка одобрение↔точная команда, Д3).
         self._decision_store = DecisionStore()
+        # ADR-0019 §5: рантайм-леджер отсека — потрачено по effect=confirmed
+        self._cargo_spent: dict[str, int] = {}
         self._pending_decision_id: str | None = None
         # M4: конверт v2 под feature-flag; token_id — отпечаток, не секрет.
         self._qiki_envelope_v2 = os.getenv("ORION_QIKI_ENVELOPE_V2", "0").strip() == "1"
@@ -2974,8 +2977,39 @@ class OrionVApp(App[None]):
         return auth.allowed
 
     def _body_attach_runner(self) -> tuple[bool, str]:
-        """Тонкая обёртка над ЖИВЫМ конвейером тела (тот же путь, что клавиша B)."""
-        snapshot = get_body_structure_interactive_controller().run_attach_self_check()
+        """Живой конвейер тела; запрос строится ТОЛЬКО из пломбы решения (P3).
+
+        Каталог при исполнении НЕ перечитывается (ADR-0019 §2: TOCTOU закрыт —
+        паспорт собирается из запломбированного шаблона). passport_damaged →
+        паспорт не собирается → канонный отказ конвейера со своим аудитом.
+        """
+        decision = (
+            self._decision_store.get(self._pending_decision_id) if self._pending_decision_id else None
+        )
+        if decision is None:
+            self._set_help_text("QIKI: нет пломбы решения — тело не тронуто [CMD_NO_DECISION]")
+            return False, ""
+        _, _, _, params = decision.sealed_command
+        module_id = str(params.get("module_id") or "").strip()
+        mount_point = str(params.get("mount") or "").strip()
+        module_class = str(params.get("module_class") or "").strip()
+        capabilities = tuple(
+            str(item) for item in (params.get("provided_capabilities") or []) if isinstance(item, str)
+        )
+        passport = None
+        if module_id and module_class and not bool(params.get("passport_damaged")):
+            passport = ModulePassport(
+                module_id=module_id,
+                module_class=module_class,
+                mount_point=mount_point,
+                provided_capabilities=capabilities,
+            )
+        snapshot = get_body_structure_interactive_controller().attach_module(
+            module_id=module_id,
+            mount_point=mount_point,
+            passport=passport,
+            request_id=f"qiki-decision:{decision.decision_id}",
+        )
         attached = str(snapshot.interaction_state) == "attached"
         audit_event_id = ""
         if snapshot.decision is not None:
@@ -3013,6 +3047,33 @@ class OrionVApp(App[None]):
             self._set_help_text("QIKI: нет пломбы решения — команда телу отклонена [CMD_NO_DECISION]")
             self._qiki_pending_action = None
             return
+
+        _, _, _, sealed_params = decision.sealed_command
+        ledger_module_id = str(sealed_params.get("module_id") or "").strip()
+        ledger_quantity = sealed_params.get("quantity")
+        if isinstance(ledger_quantity, int) and not isinstance(ledger_quantity, bool):
+            spent = self._cargo_spent.get(ledger_module_id, 0)
+            if spent >= ledger_quantity:
+                # fail-closed на исполнении: отсек пуст по леджеру (ADR-0019 §5)
+                summary_ru = f"{ledger_module_id}: экземпляры исчерпаны [MODULE_DEPLETED] (потрачено {spent}/{ledger_quantity})"
+                self._set_last_command_loop_state("blocked", summary_ru)
+                self._set_help_text(f"QIKI: {summary_ru}")
+                self._qiki_pending_action = None
+                if self._qiki_last_response is not None:
+                    self._qiki_last_response = self._qiki_last_response.model_copy(
+                        update={
+                            "consequence": QikiConsequenceV1(
+                                status="not_sent",
+                                summary=BilingualText(
+                                    en=f"{ledger_module_id}: cargo depleted [MODULE_DEPLETED].",
+                                    ru=summary_ru,
+                                ),
+                            ),
+                            "proposals": [],
+                        }
+                    )
+                self._request_refresh_ui()
+                return
 
         power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
         result = bridge_decision_to_body(
@@ -3063,6 +3124,8 @@ class OrionVApp(App[None]):
 
         stages = result.decision.stages
         if effect_ok:
+            if ledger_module_id:
+                self._cargo_spent[ledger_module_id] = self._cargo_spent.get(ledger_module_id, 0) + 1
             summary_ru = f"Модуль установлен; аудит={trace['decision_id']}"
             self._set_last_command_loop_state("ok", "Body attach confirmed by audit")
             self._set_help_text("QIKI: команда телу исполнена — улики в F2/F8")
@@ -3511,6 +3574,10 @@ class OrionVApp(App[None]):
             )
         )
         self._qiki_pending_action = self._extract_qiki_pending_action(response)
+        if self._qiki_pending_action is not None:
+            # Новый кандидат = новое решение: старая (проведённая) пломба не должна
+            # глушить одобрение идемпотентностью M6 (дефект пойман P4-smoke живьём)
+            self._pending_decision_id = None
         self._enrich_active_observation_with_live_public_track()
         # M6: «awaiting_confirm» только для ОДОБРЯЕМОГО (allowed) действия. Кандидат
         # с не-allowed легальностью показывается, но одобрить его нельзя.

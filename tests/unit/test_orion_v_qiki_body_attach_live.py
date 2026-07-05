@@ -29,7 +29,14 @@ def _body_action() -> dict:
         "title_en": "Confirm module attach",
         "subject": "orionv.body",
         "name": "attach.module",
-        "parameters": {"module_id": "test_sensor_module_001", "mount": "F06"},
+        "parameters": {
+            "module_id": "test_sensor_module_001",
+            "mount": "F06",
+            "module_class": "sensor",
+            "provided_capabilities": ["basic_sensor_read"],
+            "quantity": 2,
+            "passport_damaged": False,
+        },
         "dry_run": False,
     }
 
@@ -163,17 +170,33 @@ def test_green_approved_attach_reaches_body_with_audit() -> None:
 
 
 def test_green_live_runner_uses_real_body_pipeline() -> None:
-    """GREEN: настоящий runner зовёт живой конвейер (тот же, что клавиша B)."""
+    """GREEN: runner зовёт живой конвейер, параметры — ТОЛЬКО из пломбы (P3)."""
     from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
+        get_body_structure_interactive_controller,
         reset_body_structure_interactive_state,
     )
+    from qiki.shared.command_decision import authorize_publish
 
     reset_body_structure_interactive_state()
     try:
         app = OrionVApp()
+        app._set_help_text = lambda *a, **k: None  # type: ignore
+        # без пломбы тело не трогается
+        assert app._body_attach_runner() == (False, "")
+
+        app._seal_pending_decision(_body_action())
+        sealed = app._decision_store.get(app._pending_decision_id)
+        kind, subject, name, params = sealed.sealed_command
+        app._decision_store.put(
+            authorize_publish(
+                sealed, candidate_kind=kind, candidate_subject=subject,
+                candidate_name=name, candidate_parameters=params,
+            ).decision
+        )
         attached, audit_event_id = app._body_attach_runner()
-        assert attached is True
-        assert audit_event_id
+        assert attached is True and audit_event_id
+        body = get_body_structure_interactive_controller().snapshot().body
+        assert [str(m.get("module_id")) for m in body.modules] == ["test_sensor_module_001"]
     finally:
         reset_body_structure_interactive_state()
 

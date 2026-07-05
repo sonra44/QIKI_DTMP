@@ -84,9 +84,19 @@ class BodyStructureInteractiveController:
             return self._snapshot
 
     def reset(self) -> BodyStructureInteractiveSnapshot:
-        """Return the visible body-structure seed to the pre-action state."""
+        """Return the visible body-structure seed to the pre-action state.
+
+        ADR-0019 §3: сброс — не молчаливый detach; событие фиксируется в новом
+        store (старый in-memory store уничтожается вместе со своей историей).
+        """
         with self._lock:
+            detached = [str(m.get("module_id")) for m in self._body.modules]
             self._store = EventStore(backend="memory")
+            self._store.append_new(
+                subsystem="body_structure",
+                event_type="body_structure_reset",
+                payload={"detached_modules": detached, "source": "operator_reset"},
+            )
             self._body = BodyConfigSnapshot.skeleton()
             self._selected_face_id = DEFAULT_SELECTED_FACE_ID
             self._snapshot = self._waiting_snapshot(last_action="reset")
@@ -205,6 +215,52 @@ class BodyStructureInteractiveController:
                 can_run=False,
                 can_reset=True,
                 operator_hint="самопроверка установки завершена; R — сброс",
+                decision=decision,
+                audit_event=audit_event,
+                evidence_card=evidence_card,
+            )
+            return self._snapshot
+
+    def attach_module(
+        self,
+        *,
+        module_id: str,
+        mount_point: str,
+        passport: ModulePassport | None,
+        request_id: str,
+    ) -> BodyStructureInteractiveSnapshot:
+        """P3 (ADR-0019 §3): установка модуля по ПЛОМБЕ решения.
+
+        Без шорткатов: занятость гнезда, класс грани и паспорт решает конвейер
+        (у каждого отказа — СВОЁ аудит-событие). can_run не запирается — 
+        допустимость следующей установки решает конвейер, не снапшот.
+        """
+        with self._lock:
+            before_body = self._body
+            before_modules = len(before_body.modules)
+            before_mount = str(before_body.face_occupancy.get(mount_point) or "unknown")
+            request = ModuleAttachRequest(
+                request_id=request_id,
+                module_id=module_id,
+                mount_point=mount_point,
+                passport=passport,
+            )
+            decision, updated_body = run_attach_pipeline(before_body, request, store=self._store)
+            audit_event = self._find_audit_event(decision.audit_event_id)
+            evidence_card = evidence_card_from_audit_event(audit_event) if audit_event is not None else None
+            self._body = updated_body
+            self._snapshot = BodyStructureInteractiveSnapshot(
+                interaction_state=decision.status,
+                last_action="attach_module",
+                body=updated_body,
+                before_modules_count=before_modules,
+                after_modules_count=len(updated_body.modules),
+                before_mount_state=before_mount,
+                after_mount_state=str(updated_body.face_occupancy.get(mount_point) or "unknown"),
+                selected_face_id=self._selected_face_id,
+                can_run=True,
+                can_reset=True,
+                operator_hint=f"установка {module_id} @ {mount_point}: {decision.status}",
                 decision=decision,
                 audit_event=audit_event,
                 evidence_card=evidence_card,
