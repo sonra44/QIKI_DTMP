@@ -17,6 +17,8 @@ from typing import Any, Sequence
 
 from textual.widgets import Static
 
+from rich.text import Text
+
 from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry
 
 _EMPTY_DIALOG = (
@@ -107,7 +109,14 @@ class OrionVQikiDialogScreen(Static):
 
     def _refresh_text(self) -> None:
         self._last_text = self._build_text()
-        self.update(self._last_text)
+        # Markup глотает квадратные скобки кодов ([OPERATOR_HOLD] и т.п.) —
+        # рендерим plain Text: коды остаются кодами (пойман live-проверкой).
+        try:
+            self.update(Text(self._last_text))
+        except Exception:  # noqa: BLE001 - NoActiveAppError и т.п.
+            # вне смонтированного app (юнит-тесты) рендер не нужен;
+            # правда текста живёт в rendered_text()
+            pass
 
     def _build_text(self) -> str:
         body: list[str] = ["[F5] QIKI / ДИАЛОГ", ""]
