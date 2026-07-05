@@ -81,6 +81,18 @@ from qiki.shared.command_decision import (
     authorize_publish,
     seal_decision,
 )
+from qiki.services.operator_console.orion_v.attach_procedure import (
+    STAGE_S1_INSPECT,
+    STAGE_S2_PREPARE,
+    STAGE_S5_DOCK,
+    STATUS_ABORTED,
+    STATUS_AWAITING,
+    STATUS_DONE,
+    STATUS_FAILED,
+    STATUS_HOLDING,
+    STATUS_RUNNING,
+    AttachProcedure,
+)
 from qiki.services.q_core_agent.core.body_structure import ModulePassport
 from qiki.shared.decision_body_bridge import (
     bridge_decision_to_body,
@@ -312,6 +324,8 @@ class OrionVApp(App[None]):
         self._decision_store = DecisionStore()
         # ADR-0019 §5: рантайм-леджер отсека — потрачено по effect=confirmed
         self._cargo_spent: dict[str, int] = {}
+        # ADR-0020: активная процедура установки (одна за раз)
+        self._attach_procedure: AttachProcedure | None = None
         self._pending_decision_id: str | None = None
         # M4: конверт v2 под feature-flag; token_id — отпечаток, не секрет.
         self._qiki_envelope_v2 = os.getenv("ORION_QIKI_ENVELOPE_V2", "0").strip() == "1"
@@ -924,6 +938,10 @@ class OrionVApp(App[None]):
 
     def action_run_body_structure_self_check(self) -> None:
         """Run the visible local body-structure attach loop and refresh F1/F2/F8."""
+        if self._attach_procedure is not None and self._attach_procedure.active:
+            # ADR-0020 §5: второй attach любой формы блокируется
+            self._set_help_text("КОРПУС: идёт установка [PROCEDURE_BUSY] — B недоступна")
+            return
         snapshot = run_body_structure_interactive_self_check()
         decision = snapshot.decision
         if decision is None:
@@ -962,6 +980,10 @@ class OrionVApp(App[None]):
 
     def action_reset_body_structure_self_check(self) -> None:
         """Reset the visible local body-structure loop to modules=0/F06=free."""
+        if self._attach_procedure is not None and self._attach_procedure.active:
+            # ADR-0020 §5: R — не «мягкий abort»; прерывание только явной командой
+            self._set_help_text("КОРПУС: идёт установка [PROCEDURE_ACTIVE] — сброс недоступен, q abort для прерывания")
+            return
         reset_body_structure_interactive_state()
         summary = "КОРПУС: сброс проверки — модулей 0; F06 свободна"
         self._console_history.append(summary)
@@ -1254,6 +1276,13 @@ class OrionVApp(App[None]):
         if action in {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"}:
             self.action_show_level(action)
             return
+        if action == "attach_toggle":
+            proc = self._attach_procedure
+            if proc is not None and proc.paused:
+                asyncio.create_task(self._resume_attach_procedure())
+            else:
+                self._set_help_text("УСТАНОВКА: пауза доступна на протяжённых стадиях (перенос)")
+            return
         if action == "incident_next":
             self.action_incident_next()
             return
@@ -1379,6 +1408,12 @@ class OrionVApp(App[None]):
             return
         if command in {"q cancel", "q clear"}:
             self._cancel_qiki_pending_action()
+            return
+        if command == "q abort":
+            self._abort_attach_procedure()
+            return
+        if command in {"q resume", "q start"}:
+            asyncio.create_task(self._resume_attach_procedure())
             return
         if command in {"review confirm", "review ack", "review acknowledge"}:
             self.action_ack_observation_review()
@@ -2977,12 +3012,7 @@ class OrionVApp(App[None]):
         return auth.allowed
 
     def _body_attach_runner(self) -> tuple[bool, str]:
-        """Живой конвейер тела; запрос строится ТОЛЬКО из пломбы решения (P3).
-
-        Каталог при исполнении НЕ перечитывается (ADR-0019 §2: TOCTOU закрыт —
-        паспорт собирается из запломбированного шаблона). passport_damaged →
-        паспорт не собирается → канонный отказ конвейера со своим аудитом.
-        """
+        """Совместимость: runner по ТЕКУЩЕЙ пломбе (контракт «пломба==тело»)."""
         decision = (
             self._decision_store.get(self._pending_decision_id) if self._pending_decision_id else None
         )
@@ -2990,6 +3020,15 @@ class OrionVApp(App[None]):
             self._set_help_text("QIKI: нет пломбы решения — тело не тронуто [CMD_NO_DECISION]")
             return False, ""
         _, _, _, params = decision.sealed_command
+        return self._attach_runner_from_params(dict(params), decision_id=decision.decision_id)
+
+    def _attach_runner_from_params(self, params: dict[str, Any], *, decision_id: str) -> tuple[bool, str]:
+        """Живой конвейер тела; запрос строится ТОЛЬКО из переданной пломбы.
+
+        Каталог при исполнении НЕ перечитывается (ADR-0019 §2: TOCTOU закрыт —
+        паспорт собирается из запломбированного шаблона). passport_damaged →
+        паспорт не собирается → канонный отказ конвейера со своим аудитом.
+        """
         module_id = str(params.get("module_id") or "").strip()
         mount_point = str(params.get("mount") or "").strip()
         module_class = str(params.get("module_class") or "").strip()
@@ -3008,7 +3047,7 @@ class OrionVApp(App[None]):
             module_id=module_id,
             mount_point=mount_point,
             passport=passport,
-            request_id=f"qiki-decision:{decision.decision_id}",
+            request_id=f"qiki-decision:{decision_id}",
         )
         attached = str(snapshot.interaction_state) == "attached"
         audit_event_id = ""
@@ -3040,6 +3079,12 @@ class OrionVApp(App[None]):
         return power_blocked, thermal_blocked, tuple(detail)
 
     async def _execute_qiki_body_attach(self, action: dict[str, Any]) -> None:
+        """ADR-0020: единственный путь установки — процедура (мгновенный удалён)."""
+        if self._attach_procedure is not None and self._attach_procedure.active:
+            self._set_help_text("QIKI: установка уже идёт [PROCEDURE_BUSY] — q abort, чтобы прервать")
+            self._set_last_command_loop_state("blocked", "Attach procedure busy")
+            self._request_refresh_ui()
+            return
         decision = (
             self._decision_store.get(self._pending_decision_id) if self._pending_decision_id else None
         )
@@ -3049,12 +3094,12 @@ class OrionVApp(App[None]):
             return
 
         _, _, _, sealed_params = decision.sealed_command
-        ledger_module_id = str(sealed_params.get("module_id") or "").strip()
-        ledger_quantity = sealed_params.get("quantity")
+        params = dict(sealed_params)
+        ledger_module_id = str(params.get("module_id") or "").strip()
+        ledger_quantity = params.get("quantity")
         if isinstance(ledger_quantity, int) and not isinstance(ledger_quantity, bool):
             spent = self._cargo_spent.get(ledger_module_id, 0)
             if spent >= ledger_quantity:
-                # fail-closed на исполнении: отсек пуст по леджеру (ADR-0019 §5)
                 summary_ru = f"{ledger_module_id}: экземпляры исчерпаны [MODULE_DEPLETED] (потрачено {spent}/{ledger_quantity})"
                 self._set_last_command_loop_state("blocked", summary_ru)
                 self._set_help_text(f"QIKI: {summary_ru}")
@@ -3075,18 +3120,136 @@ class OrionVApp(App[None]):
                 self._request_refresh_ui()
                 return
 
+        origin_request_id = ""
+        if self._qiki_last_response is not None:
+            origin_request_id = str(self._qiki_last_response.request_id)
+        # ADR-0020 §1: процедура ЗАХВАТЫВАЕТ решение; глобальные переменные дальше
+        # остаются указателями на «кандидата в approve» и не читаются процедурой.
+        self._attach_procedure = AttachProcedure(
+            decision=decision,
+            origin_request_id=origin_request_id,
+            params=params,
+        )
+        self._qiki_pending_action = None
+        await self._advance_attach_procedure()
+
+    async def _publish_attach_stage_audit(self, *, stage: str, outcome: str, codes: tuple[str, ...] = ()) -> None:
+        proc = self._attach_procedure
+        if proc is None:
+            return
+        await self._publish_audit_event(
+            EVENTS_AUDIT,
+            {
+                "kind_event": "qiki_attach_stage",
+                "decision_id": proc.decision.decision_id,
+                "module_id": proc.module_id(),
+                "mount": proc.mount(),
+                "stage": stage,
+                "outcome": outcome,
+                "reason_codes": list(codes),
+            },
+        )
+
+    def _schedule_attach_stage_audit(self, *, stage: str, outcome: str, codes: tuple[str, ...] = ()) -> None:
+        coro = self._publish_attach_stage_audit(stage=stage, outcome=outcome, codes=codes)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(coro)
+        else:
+            asyncio.create_task(coro)
+
+    def _attach_stage_note(self, text: str) -> None:
+        proc = self._attach_procedure
+        if proc is None:
+            return
+        proc.stage_log.append(text)
+        self._console_history.append(f"УСТАНОВКА ▸ {text}")
+
+    async def _advance_attach_procedure(self) -> None:
+        """Авто-продвижение зелёных стадий; стоп только на развилке/hold (§2)."""
+        proc = self._attach_procedure
+        if proc is None or not proc.active:
+            return
+        proc.status = STATUS_RUNNING
+
+        while True:
+            if proc.stage == STAGE_S1_INSPECT:
+                # Нон-авторитетное чтение (P2 ревизии): может только прервать рано.
+                body = get_body_structure_interactive_controller().snapshot().body
+                mount = proc.mount()
+                occupancy = str(body.face_occupancy.get(mount) or "")
+                if mount not in body.face_ids or (occupancy and occupancy != "free"):
+                    code = "MOUNT_POINT_UNKNOWN" if mount not in body.face_ids else "MOUNT_POINT_OCCUPIED"
+                    proc.status = STATUS_ABORTED
+                    proc.complication = code
+                    self._attach_stage_note(f"S1 осмотр: гнездо {mount} [{code}] — прервано")
+                    await self._publish_attach_stage_audit(stage=STAGE_S1_INSPECT, outcome="aborted", codes=(code,))
+                    self._set_help_text(f"QIKI: установка прервана на осмотре [{code}]")
+                    self._request_refresh_ui()
+                    return
+                self._attach_stage_note(f"S1 осмотр: гнездо {mount} свободно")
+                await self._publish_attach_stage_audit(stage=STAGE_S1_INSPECT, outcome="ok")
+                proc.stage = STAGE_S2_PREPARE
+                continue
+
+            if proc.stage == STAGE_S2_PREPARE:
+                if bool(proc.params.get("passport_damaged")):
+                    # Развилка §3: консоль НЕ предсказывает исход конвейера.
+                    proc.status = STATUS_AWAITING
+                    proc.complication = "PASSPORT_DAMAGED"
+                    self._attach_stage_note("S2 подготовка: манифест повреждён — исход решит конвейер")
+                    await self._publish_attach_stage_audit(
+                        stage=STAGE_S2_PREPARE, outcome="awaiting_operator", codes=("PASSPORT_DAMAGED",)
+                    )
+                    self._set_help_text(
+                        "QIKI: манифест модуля повреждён [PASSPORT_DAMAGED] — ▶/q resume: продолжить без паспорта | q abort: вернуть в отсек"
+                    )
+                    self._request_refresh_ui()
+                    return
+                self._attach_stage_note("S2 подготовка: паспорт собран из пломбы")
+                await self._publish_attach_stage_audit(stage=STAGE_S2_PREPARE, outcome="ok")
+                proc.stage = STAGE_S5_DOCK
+                continue
+
+            if proc.stage == STAGE_S5_DOCK:
+                await self._attach_procedure_dock()
+                return
+
+            return
+
+    async def _attach_procedure_dock(self) -> None:
+        """S5: единственная мутация — мост → конвейер; один момент чтения предусловий."""
+        proc = self._attach_procedure
+        if proc is None:
+            return
         power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
         result = bridge_decision_to_body(
-            decision,
+            proc.decision,
             power_blocked=power_blocked,
             thermal_blocked=thermal_blocked,
-            attach_runner=self._body_attach_runner,
+            attach_runner=lambda: self._attach_runner_from_params(
+                dict(proc.params), decision_id=proc.decision.decision_id
+            ),
         )
         self._decision_store.put(result.decision)
-        self._qiki_pending_action = None
 
-        effect_ok = result.reached_body and result.decision.stages.effect.value == "ok"
-        # ADR-0017: runtime_effect_confirmed только при подтверждённом эффекте.
+        if not result.reached_body:
+            # Окно закрыто (deferred) — hold ДО моста фактического исполнения (§4);
+            # решение осталось непроведённым, retry легален (P0-тест моста).
+            codes = (*result.reason_codes, *precond_detail)
+            proc.status = STATUS_HOLDING
+            proc.complication = ",".join(codes) or "BRIDGE_DEFERRED"
+            self._attach_stage_note(f"S5 стыковка отложена [{proc.complication}]")
+            await self._publish_attach_stage_audit(stage=STAGE_S5_DOCK, outcome="holding", codes=codes)
+            self._set_help_text(
+                f"QIKI: окно закрыто [{proc.complication}] — ▶/q resume: повторить | q abort: вернуть в отсек"
+            )
+            self._request_refresh_ui()
+            return
+
+        proc.decision = result.decision
+        effect_ok = result.decision.stages.effect.value == "ok"
         runtime_claim = "runtime_effect_confirmed" if effect_ok else "runtime_command_pending"
         trace = decision_trace_record(
             result.decision,
@@ -3100,63 +3263,83 @@ class OrionVApp(App[None]):
         )
         asyncio.create_task(self._publish_audit_event(EVENTS_AUDIT, trace))
 
-        if not result.reached_body:
-            # Канон 06_INTERFACE_CONTROL §6: немой отказ недопустим — коды оператору.
-            codes = ",".join((*result.reason_codes, *precond_detail)) or "BRIDGE_DEFERRED"
-            summary_ru = f"Команда телу отложена предусловиями [{codes}]"
-            self._set_last_command_loop_state("blocked", summary_ru)
-            self._set_help_text(f"QIKI: {summary_ru}")
-            if self._qiki_last_response is not None:
-                self._qiki_last_response = self._qiki_last_response.model_copy(
-                    update={
-                        "consequence": QikiConsequenceV1(
-                            status="not_sent",
-                            summary=BilingualText(
-                                en=f"Body command deferred by preconditions [{codes}].",
-                                ru=summary_ru,
-                            ),
-                        ),
-                        "proposals": [],
-                    }
-                )
-            self._request_refresh_ui()
-            return
-
-        stages = result.decision.stages
         if effect_ok:
-            if ledger_module_id:
-                self._cargo_spent[ledger_module_id] = self._cargo_spent.get(ledger_module_id, 0) + 1
-            summary_ru = f"Модуль установлен; аудит={trace['decision_id']}"
+            module_id = proc.module_id()
+            if module_id:
+                self._cargo_spent[module_id] = self._cargo_spent.get(module_id, 0) + 1
+            proc.status = STATUS_DONE
+            self._attach_stage_note(f"S5 стыковка: {module_id} установлен @ {proc.mount()}")
+            await self._publish_attach_stage_audit(stage=STAGE_S5_DOCK, outcome="ok")
             self._set_last_command_loop_state("ok", "Body attach confirmed by audit")
-            self._set_help_text("QIKI: команда телу исполнена — улики в F2/F8")
+            self._set_help_text("QIKI: модуль установлен — улики в F2/F8")
             consequence_status = "confirmed"
+            summary_ru = f"Модуль {module_id} установлен; улики в F2/F8"
             summary_en = "Module attached through the live body pipeline."
-            telemetry = BilingualText(
-                en=f"Attach audit stage={stages.audit.value}; evidence in F2/F8.",
-                ru=f"Ступень аудита={stages.audit.value}; улики в F2/F8.",
-            )
         else:
-            summary_ru = "Конвейер тела не установил модуль (см. подсказку корпуса; R — сброс)"
-            self._set_last_command_loop_state("failed", "Body attach pipeline did not attach")
-            self._set_help_text(f"QIKI: {summary_ru}")
-            consequence_status = "failed"
-            summary_en = "The body pipeline did not attach the module."
-            telemetry = BilingualText(
-                en=f"Effect stage={stages.effect.value}; body state unchanged claim not made.",
-                ru=f"Ступень effect={stages.effect.value}; состояние тела не заявляется.",
+            proc.status = STATUS_FAILED
+            snap = get_body_structure_interactive_controller().snapshot()
+            reason = ""
+            if snap.decision is not None:
+                reason = str(getattr(snap.decision, "reason_code", "") or "")
+            proc.complication = reason
+            self._attach_stage_note(f"S5 стыковка: отказ конвейера [{reason or 'REJECTED'}]")
+            await self._publish_attach_stage_audit(
+                stage=STAGE_S5_DOCK, outcome="failed", codes=(reason,) if reason else ()
             )
-        if self._qiki_last_response is not None:
+            self._set_last_command_loop_state("failed", "Body attach pipeline did not attach")
+            self._set_help_text(f"QIKI: конвейер отказал [{reason or 'REJECTED'}] — детали в F8")
+            consequence_status = "failed"
+            summary_ru = f"Конвейер тела отказал [{reason or 'REJECTED'}]"
+            summary_en = "The body pipeline refused the attach."
+
+        # C2 ревизии: consequence пишется в диалог ТОЛЬКО если ответ, породивший
+        # процедуру, всё ещё текущий (чужие реплики не мутируются).
+        if (
+            self._qiki_last_response is not None
+            and str(self._qiki_last_response.request_id) == proc.origin_request_id
+        ):
             self._qiki_last_response = self._qiki_last_response.model_copy(
                 update={
                     "consequence": QikiConsequenceV1(
                         status=consequence_status,
                         summary=BilingualText(en=summary_en, ru=summary_ru),
-                        telemetry_confirmation=telemetry,
                     ),
                     "proposals": [],
                 }
             )
         self._request_refresh_ui()
+
+    def _abort_attach_procedure(self) -> None:
+        proc = self._attach_procedure
+        if proc is None or proc.status in {STATUS_DONE, STATUS_FAILED, STATUS_ABORTED}:
+            # Точка невозврата §4: после исхода abort честно опоздал.
+            self._set_help_text("QIKI: прерывать нечего [ABORT_TOO_LATE]")
+            return
+        proc.status = STATUS_ABORTED
+        self._attach_stage_note(f"установка прервана оператором на {proc.stage}")
+        self._schedule_attach_stage_audit(stage=proc.stage, outcome="aborted", codes=("OPERATOR_ABORT",))
+        self._set_help_text("QIKI: установка прервана — модуль остался в отсеке")
+        self._set_last_command_loop_state("blocked", "Attach procedure aborted by operator")
+        self._request_refresh_ui()
+
+    async def _resume_attach_procedure(self) -> None:
+        proc = self._attach_procedure
+        if proc is None or not proc.paused:
+            self._set_help_text("QIKI: продолжать нечего — нет остановленной установки")
+            return
+        if proc.complication == "PASSPORT_DAMAGED":
+            # Осознанное решение оператора: продолжить БЕЗ паспорта (исход — у конвейера).
+            self._attach_stage_note("S2: оператор продолжил без паспорта")
+            proc.complication = ""
+            proc.stage = STAGE_S5_DOCK
+            proc.status = STATUS_RUNNING
+            await self._advance_attach_procedure()
+            return
+        # holding после отложенной стыковки: повторный заход S5.
+        proc.complication = ""
+        proc.stage = STAGE_S5_DOCK
+        proc.status = STATUS_RUNNING
+        await self._advance_attach_procedure()
 
     async def _wait_for_qiki_effect(self, command_name: str, timeout_s: float) -> BilingualText | None:
         deadline = time.monotonic() + timeout_s
@@ -3831,7 +4014,10 @@ class OrionVApp(App[None]):
             self._selected_incident_id = active_incidents[0]["id"] if active_incidents else None
 
         level_label = self.LEVEL_META[self._current_level]["label"]
+        attach_proc = self._attach_procedure
         self._operator_shell_state = build_operator_shell_state(
+            attach_procedure_active=bool(attach_proc is not None and attach_proc.active),
+            attach_procedure_paused=bool(attach_proc is not None and attach_proc.paused),
             hardware_model=self.hardware_model,
             telemetry=self._telemetry,
             safe_mode=self._safe_mode_state,

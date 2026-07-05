@@ -1,16 +1,15 @@
-"""P4 live-proof (ADR-0019): параметризованная установка — полный цикл + негативы.
+"""Live-proof процедурной установки (ADR-0019 P4 + ADR-0020 P1).
 
 Живой контур: реальная шина, живой policy, живой конвейер тела, реальный
 EVENTS_AUDIT. Сценарии:
-1) антенна → F03: полный цикл, модуль на грани, леджер списан;
-2) повторная антенна: policy разрешает (статический остаток), консоль
-   блокирует ЛЕДЖЕРОМ [MODULE_DEPLETED] — fail-closed на исполнении;
-3) rcs-кластер (запрещённый класс): approve проходит, ТЕЛО отказывает через
-   конвейер (правда у тела), effect failed, свой аудит;
-4) битый паспорт: канонный отказ конвейера;
-5) занятое гнездо F03: отказ через конвейер (без шортката);
-6) deferred-окно: предусловия ИНЪЕЦИРОВАНЫ (load_shedding=true — прототипная
-   инъекция снапшота, помечено) → мост не пускает, коды в аудит.
+1) антенна → F03: зелёные стадии авто-проходят, модуль на грани, леджер списан;
+2) повторная антенна: леджер блокирует исполнение [MODULE_DEPLETED];
+3) rcs-кластер (запрещённый класс): правда у тела — отказ конвейера на S5;
+4) битый паспорт: РАЗВИЛКА S2 (процедура ждёт оператора) → resume без
+   паспорта → канонный отказ конвейера;
+5) занятое гнездо: ранний abort осмотром S1 [MOUNT_POINT_OCCUPIED];
+6) deferred-окно (инъекция load_shedding, помечено) → hold → «остывание» →
+   resume → установлен: hold-окно прожито живьём.
 """
 
 from __future__ import annotations
@@ -67,6 +66,7 @@ async def _main() -> None:
 
     nats_url = os.getenv("NATS_URL", "nats://qiki-nats-phase1:4222")
     traces: list[dict[str, Any]] = []
+    stage_events: list[dict[str, Any]] = []
     audit_nc = await nats.connect(servers=[nats_url], connect_timeout=3, allow_reconnect=False,
                                   **nats_auth_kwargs())
 
@@ -75,8 +75,12 @@ async def _main() -> None:
             payload = json.loads(msg.data.decode("utf-8"))
         except Exception:
             return
-        if isinstance(payload, dict) and payload.get("kind_event") == "qiki_body_attach_decision":
+        if not isinstance(payload, dict):
+            return
+        if payload.get("kind_event") == "qiki_body_attach_decision":
             traces.append(payload)
+        elif payload.get("kind_event") == "qiki_attach_stage":
+            stage_events.append(payload)
 
     sub = await audit_nc.subscribe(EVENTS_AUDIT, cb=_handler)
     reset_body_structure_interactive_state()
@@ -113,31 +117,53 @@ async def _main() -> None:
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
             print("[smoke] 3: rcs-кластер отклонён ТЕЛОМ (класс запрещён), effect failed, аудит свой")
 
-            # 4) битый паспорт
+            # 4) битый паспорт: развилка S2 (ADR-0020) -> оператор продолжает без паспорта
             before = len(traces)
             await _ask_and_confirm(app, "установи salvage_sensor_damaged_001 на F01")
+            await _wait_until(
+                lambda: app._attach_procedure is not None
+                and app._attach_procedure.complication == "PASSPORT_DAMAGED",
+                timeout_s=10.0, label="S2 fork #4",
+            )
+            print("[smoke] 4a: развилка S2 — манифест повреждён, процедура ждёт оператора")
+            await app._resume_attach_procedure()
             await _wait_until(lambda: len(traces) > before, timeout_s=10.0, label="trace #4")
-            assert app._qiki_last_response.consequence.status == "failed"
-            print("[smoke] 4: битый манифест -> канонный отказ конвейера (паспорт не собран)")
+            assert app._attach_procedure.status == "failed"
+            print("[smoke] 4b: продолжено без паспорта -> канонный отказ конвейера")
 
-            # 5) занятое гнездо F03 — через конвейер, без шортката
-            before = len(traces)
+            # 5) занятое гнездо F03 — ранний abort осмотром S1 (нон-авторитетное чтение)
             await _ask_and_confirm(app, "установи test_sensor_module_001 на F03")
-            await _wait_until(lambda: len(traces) > before, timeout_s=10.0, label="trace #5")
-            assert app._qiki_last_response.consequence.status == "failed"
+            await _wait_until(
+                lambda: app._attach_procedure is not None
+                and app._attach_procedure.status == "aborted",
+                timeout_s=10.0, label="S1 abort #5",
+            )
+            assert app._attach_procedure.complication == "MOUNT_POINT_OCCUPIED"
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
-            print("[smoke] 5: F03 занято антенной -> отказ через конвейер, свой аудит")
+            print("[smoke] 5: F03 занято антенной -> осмотр S1 прервал рано [MOUNT_POINT_OCCUPIED]")
 
-            # 6) deferred-окно (предусловия ИНЪЕЦИРОВАНЫ: load_shedding=true)
-            before = len(traces)
+            # 6) deferred-окно (инъекция load_shedding) -> hold -> resume -> done
             await _ask_and_confirm(app, "установи test_sensor_module_001 на F04", healthy=False)
-            await _wait_until(lambda: len(traces) > before, timeout_s=10.0, label="trace #6")
-            assert traces[-1]["reached_body"] is False
-            assert "BRIDGE_POWER_BLOCK" in traces[-1]["bridge_reason_codes"]
+            await _wait_until(
+                lambda: app._attach_procedure is not None
+                and app._attach_procedure.status == "holding",
+                timeout_s=10.0, label="holding #6",
+            )
+            assert any(
+                "BRIDGE_POWER_BLOCK" in (e.get("reason_codes") or []) for e in stage_events
+            ), stage_events[-3:]
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
-            print("[smoke] 6: deferred-окно (инъекция load_shedding) -> мост не пустил, коды в аудите")
+            print("[smoke] 6a: окно закрыто (инъекция load_shedding) -> процедура в hold, коды в аудите")
+            app._snapshot.update(HEALTHY)  # «остыло»
+            await app._resume_attach_procedure()
+            await _wait_until(
+                lambda: app._attach_procedure is not None and app._attach_procedure.status == "done",
+                timeout_s=10.0, label="resume done #6",
+            )
+            assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 2
+            print("[smoke] 6b: resume после остывания -> модуль установлен (hold-окно прожито живьём)")
 
-            print("[smoke] P4 LIVE PASS: параметризованный цикл + 5 негативов на живом контуре")
+            print("[smoke] P4 LIVE PASS: процедурный цикл ADR-0020 + развилки/hold на живом контуре")
     finally:
         await sub.unsubscribe()
         await audit_nc.close()

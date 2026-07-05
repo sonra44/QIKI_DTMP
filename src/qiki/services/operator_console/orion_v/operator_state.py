@@ -188,6 +188,9 @@ class OperatorLoopState:
     has_selected_incident: bool = False
     incident_controls_visible: bool = False
     page_controls_visible: bool = False
+    # ADR-0020: кнопка Пауза/Старт процедуры установки (show-when: active)
+    attach_procedure_active: bool = False
+    attach_procedure_paused: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +212,8 @@ class OperatorShellState:
 def build_operator_shell_state(
     *,
     hardware_model: HardwareViewModel | None,
+    attach_procedure_active: bool = False,
+    attach_procedure_paused: bool = False,
     telemetry: dict[str, Any] | None = None,
     safe_mode: dict[str, Any] | None = None,
     observation_objective: dict[str, Any] | None = None,
@@ -261,6 +266,8 @@ def build_operator_shell_state(
         human_ack_required=qiki_pending_action is not None,
     )
     operator_loop = _build_operator_loop_state(
+        attach_procedure_active=attach_procedure_active,
+        attach_procedure_paused=attach_procedure_paused,
         current_level=current_level,
         replay_mode=replay_mode,
         selected_incident_id=selected_incident_id,
@@ -817,6 +824,8 @@ def _build_operator_loop_state(
     alert_summary: AlertSummary,
     last_command_status: str | None,
     last_command_summary: str | None,
+    attach_procedure_active: bool = False,
+    attach_procedure_paused: bool = False,
 ) -> OperatorLoopState:
     operator_action_required = human_ack_required or alert_summary.action_required
     level = current_level.strip().lower()
@@ -839,6 +848,8 @@ def _build_operator_loop_state(
         has_selected_incident=has_selected_incident,
         incident_controls_visible=level in {"f1", "f3"},
         page_controls_visible=level in {"f3", "f6"},
+        attach_procedure_active=attach_procedure_active,
+        attach_procedure_paused=attach_procedure_paused,
     )
 
 

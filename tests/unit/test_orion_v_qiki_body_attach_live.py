@@ -101,11 +101,11 @@ def _app(snapshot: dict | None) -> tuple[OrionVApp, dict]:
     app._set_last_command_loop_state = lambda *a, **k: None  # type: ignore
     app._request_refresh_ui = lambda: None  # type: ignore
 
-    def _stub_runner() -> tuple[bool, str]:
+    def _stub_runner(params=None, *, decision_id="") -> tuple[bool, str]:
         calls["runner"] += 1
         return True, "audit-evt-1"
 
-    app._body_attach_runner = _stub_runner  # type: ignore
+    app._attach_runner_from_params = _stub_runner  # type: ignore
 
     async def _capture_audit(subject: str, payload: dict) -> None:
         calls["audit"].append((subject, payload))
@@ -139,11 +139,10 @@ def test_red_power_precondition_blocks_body() -> None:
     _seal(app, _body_action())
     asyncio.run(app._execute_qiki_pending_action())
     assert calls["runner"] == 0, "power block не остановил тело"
-    assert app._qiki_last_response.consequence.status == "not_sent"
-    # немой отказ недопустим (канон §6): трасса ушла в аудит с причинами
-    assert calls["audit"], "нет аудит-события"
-    payload = calls["audit"][0][1]
-    assert "BRIDGE_POWER_BLOCK" in payload["bridge_reason_codes"]
+    # ADR-0020: окно закрыто -> процедура holding, отказ не немой (стадийный аудит)
+    assert app._attach_procedure is not None and app._attach_procedure.status == "holding"
+    stage_events = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_attach_stage"]
+    assert any("BRIDGE_POWER_BLOCK" in (e.get("reason_codes") or []) for e in stage_events)
 
 
 def test_red_missing_power_telemetry_fail_closed() -> None:
@@ -152,8 +151,9 @@ def test_red_missing_power_telemetry_fail_closed() -> None:
     _seal(app, _body_action())
     asyncio.run(app._execute_qiki_pending_action())
     assert calls["runner"] == 0, "отсутствие телеметрии не заблокировало тело"
-    payload = calls["audit"][0][1]
-    assert "POWER_TELEM_MISSING" in payload["precondition_detail"]
+    assert app._attach_procedure is not None and app._attach_procedure.status == "holding"
+    stage_events = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_attach_stage"]
+    assert any("POWER_TELEM_MISSING" in (e.get("reason_codes") or []) for e in stage_events)
 
 
 def test_green_approved_attach_reaches_body_with_audit() -> None:
@@ -163,7 +163,9 @@ def test_green_approved_attach_reaches_body_with_audit() -> None:
     asyncio.run(app._execute_qiki_pending_action())
     assert calls["runner"] == 1
     assert app._qiki_last_response.consequence.status == "confirmed"
-    subject, payload = calls["audit"][0]
+    decision_traces = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_body_attach_decision"]
+    assert decision_traces, "нет трассы решения в аудите"
+    payload = decision_traces[0]
     assert payload["runtime_claim_status"] == "runtime_effect_confirmed"
     assert payload["stages"]["effect"] == "ok"
     assert payload["stages"]["audit"] == "ok"

@@ -83,6 +83,7 @@ class OrionVActionBar(Static):
         ("clear", "Снять"),
         ("page_prev", "< Стр"),
         ("page_next", "Стр >"),
+        ("attach_toggle", "⏸ Установка"),
     )
 
     def __init__(self, **kwargs: Any) -> None:
@@ -183,6 +184,14 @@ class OrionVActionBar(Static):
                 button.display = loop.page_controls_visible
                 button.disabled = not loop.page_controls_visible
                 button.variant = "default"
+                continue
+
+            if action == "attach_toggle":
+                # ADR-0020: Пауза/Старт процедуры установки — show-when: активна
+                button.display = loop.attach_procedure_active
+                button.disabled = not loop.attach_procedure_active
+                button.label = "▶ Установка" if loop.attach_procedure_paused else "⏸ Установка"
+                button.variant = "warning" if loop.attach_procedure_paused else "default"
                 continue
 
             button.display = True
