@@ -15,7 +15,7 @@ from qiki.services.q_core_agent.core.agent_logger import logger, setup_logging
 from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
 from qiki.shared.config_models import QCoreAgentConfig, load_config
 from qiki.shared.models.core import Proposal, SensorTypeEnum
-from qiki.services.q_core_agent.core.body_structure import KNOWN_MOUNT_CLASSES
+from qiki.services.q_core_agent.core.body_structure import FACE_IDS, KNOWN_MOUNT_CLASSES
 from qiki.shared.module_catalog import CatalogResult, load_module_catalog
 from qiki.shared.models.qiki_chat import (
     BilingualText,
@@ -650,17 +650,11 @@ def _is_release_dock_command(text: str) -> bool:
 
 
 def _is_attach_module_command(text: str) -> bool:
+    """P2: глагол установки + любой объект установки (модуль/класс/id)."""
     low = " ".join((text or "").strip().lower().split())
-    triggers = (
-        "установи модуль",
-        "установить модуль",
-        "поставь модуль",
-        "смонтируй модуль",
-        "установи сенсорный модуль",
-        "attach module",
-        "install module",
-    )
-    return any(trigger in low for trigger in triggers)
+    verbs = ("установи", "установить", "поставь", "смонтируй", "attach", "install")
+    objects = ("модул", "сенсор", "антенн", "зонд", "научн", "module", "sensor", "antenna", "probe", "science", "rcs")
+    return any(verb in low for verb in verbs) and any(obj in low for obj in objects)
 
 
 def _is_cargo_list_command(text: str) -> bool:
@@ -3755,26 +3749,149 @@ def _build_cargo_list_response(
     )
 
 
+def _parse_attach_request_text(text: str, entries) -> tuple[object | None, str, str | None]:
+    """P2 (ADR-0019): детерминированный разбор «установи <модуль> на <гнездо>».
+
+    Матч модуля — ТОЛЬКО по module_id / однозначному префиксу id / классу
+    (фиксированные RU-синонимы классов ниже — словарь policy, не данные
+    каталога). display_name_ru в матче не участвует.
+    Возвращает (entry|None, mount, err_code|None). err MODULE_AMBIGUOUS несёт
+    уточнение у оператора, не отказ.
+    """
+    low = " ".join((text or "").strip().lower().split())
+
+    mount = "F06"
+    mount_match = re.search(r"\b[fF](\d{2})\b", low)
+    if mount_match:
+        mount = f"F{mount_match.group(1)}"
+
+    # 1) точный module_id в тексте
+    for entry in entries:
+        if entry.module_id.lower() in low:
+            return entry, mount, None
+
+    # 2) однозначный префикс id (токены длиной >= 6, чтобы не ловить мусор)
+    tokens = [t for t in re.split(r"[^a-z0-9_]+", low) if len(t) >= 6]
+    for token in tokens:
+        matched = [e for e in entries if e.module_id.lower().startswith(token)]
+        if len(matched) == 1:
+            return matched[0], mount, None
+
+    # 3) класс по фиксированным синонимам policy
+    class_synonyms = {
+        "sensor": ("сенсор", "sensor"),
+        "antenna": ("антенн", "antenna"),
+        "science": ("зонд", "научн", "science"),
+        "rcs-cluster": ("rcs",),
+    }
+    for module_class, synonyms in class_synonyms.items():
+        if any(syn in low for syn in synonyms):
+            matched = [e for e in entries if e.module_class == module_class]
+            if len(matched) == 1:
+                return matched[0], mount, None
+            if len(matched) > 1:
+                return None, mount, "MODULE_AMBIGUOUS"
+            return None, mount, "MODULE_UNKNOWN"
+
+    # 4) без уточнения — штатный сенсор (поведение B2 сохранено)
+    for entry in entries:
+        if entry.module_id == "test_sensor_module_001":
+            return entry, mount, None
+    return None, mount, "MODULE_UNKNOWN"
+
+
+def _attach_refusal(req, mode, *, status, code, ru, en, allowed_when_ru=None, allowed_when_en=None):
+    reason = BilingualText(en=en, ru=ru)
+    allowed_when = None
+    if allowed_when_ru:
+        allowed_when = BilingualText(en=allowed_when_en or allowed_when_ru, ru=allowed_when_ru)
+    return QikiChatResponseV1(
+        request_id=req.request_id,
+        ok=True,
+        mode=mode,
+        reply=QikiReplyV1(title=BilingualText(en="Attach refused", ru="Установка не подготовлена"), body=reason),
+        legality=QikiLegalityV1(status=status, domain="physics", reason_code=code, reason=reason, allowed_when=allowed_when),
+        trust_signals=[],
+        consequence=QikiConsequenceV1(
+            status="not_sent",
+            summary=BilingualText(en="No body command was prepared.", ru="Команда телу не готовилась."),
+        ),
+        proposals=[],
+        warnings=[],
+        error=None,
+    )
+
+
 def _build_attach_module_response(
     *,
     req: QikiChatRequestV1,
     mode: QikiMode,
+    catalog: CatalogResult | None = None,
 ) -> QikiChatResponseV1:
-    """BODY_ATTACH-кандидат (ADR-0018): установка штатного сенсорного модуля.
+    """BODY_ATTACH-кандидат (ADR-0018/0019 P2): параметризованная установка.
 
-    Policy отдаёт решение/легальность; runtime-правда тела (гнездо занято,
-    предусловия питания/тепла) решается локальным body-конвейером консоли
-    через мост M7-M9 — здесь она не заявляется.
+    Policy отдаёт решение/легальность и ПОЛНЫЙ паспорт-шаблон в parameters
+    (пломба M5 покрывает весь паспорт — TOCTOU на каталоге закрыт). Runtime-
+    правда тела (занятость гнезда, класс грани, предусловия) здесь не
+    заявляется — её решает конвейер через мост M7-M9.
     """
+    result = catalog if catalog is not None else load_module_catalog(known_classes=KNOWN_MOUNT_CLASSES)
+    if not result.ok:
+        return _attach_refusal(
+            req, mode, status="deferred", code=result.error_code or "CATALOG_UNAVAILABLE",
+            ru=f"Манифест отсека недоступен [{result.error_code}] — установка не готовится.",
+            en=f"Cargo manifest unavailable [{result.error_code}]; attach is not prepared.",
+            allowed_when_ru="Повтори, когда манифест отсека снова будет читаться.",
+            allowed_when_en="Retry when the cargo manifest becomes readable again.",
+        )
+
+    entry, mount, err = _parse_attach_request_text(req.input.text, result.entries)
+    if err == "MODULE_AMBIGUOUS":
+        options = "; ".join(f"{e.module_id} (остаток {e.quantity})" for e in result.entries)
+        return _attach_refusal(
+            req, mode, status="deferred", code="MODULE_AMBIGUOUS",
+            ru=f"Запрос неоднозначен — уточни module_id. В отсеке: {options}.",
+            en="Ambiguous module request; specify module_id.",
+            allowed_when_ru="Повтори запрос с точным module_id.",
+            allowed_when_en="Repeat with an exact module_id.",
+        )
+    if entry is None:
+        return _attach_refusal(
+            req, mode, status="blocked", code="MODULE_UNKNOWN",
+            ru="Такого модуля нет в грузовом отсеке — ничего не выдумываю.",
+            en="No such module in the cargo bay; nothing is invented.",
+            allowed_when_ru="Спроси «доложи отсек» и выбери из списка.",
+            allowed_when_en="Ask for the cargo report and pick from it.",
+        )
+    if mount not in FACE_IDS:
+        return _attach_refusal(
+            req, mode, status="blocked", code="MOUNT_POINT_UNKNOWN",
+            ru=f"Гнездо {mount} вне граней тела (F00..F11).",
+            en=f"Mount {mount} is outside body faces (F00..F11).",
+        )
+    if entry.quantity <= 0:
+        return _attach_refusal(
+            req, mode, status="blocked", code="MODULE_DEPLETED",
+            ru=f"{entry.module_id}: остаток 0 — в отсеке не осталось экземпляров.",
+            en=f"{entry.module_id}: quantity 0 in the cargo bay.",
+        )
+
     reason = BilingualText(
-        en="Deterministic policy allows preparing a standard sensor-module attach candidate.",
-        ru="Детерминированная policy разрешает подготовить кандидат установки штатного сенсорного модуля.",
+        en=f"Policy allows preparing attach of {entry.module_id} to {mount}.",
+        ru=f"Policy разрешает подготовить установку {entry.module_id} на {mount}.",
     )
     action = QikiProposedActionV1(
         kind="BODY_ATTACH",
         subject="orionv.body",
         name="attach.module",
-        parameters={"module_id": "test_sensor_module_001", "mount": "F06"},
+        parameters={
+            "module_id": entry.module_id,
+            "mount": mount,
+            "module_class": entry.module_class,
+            "provided_capabilities": list(entry.provided_capabilities),
+            "quantity": entry.quantity,
+            "passport_damaged": entry.passport_damaged,
+        },
         dry_run=False,
     )
     return QikiChatResponseV1(
@@ -3785,12 +3902,14 @@ def _build_attach_module_response(
             title=BilingualText(en="Module attach ready", ru="Установка модуля готова"),
             body=BilingualText(
                 en=(
-                    "QIKI prepared a body attach candidate. The body pipeline will check "
-                    "power/thermal preconditions and the mount state before any effect."
+                    f"QIKI prepared an attach candidate: {entry.module_id} -> {mount}. "
+                    "The body pipeline will check passport, face class, occupancy and "
+                    "power/thermal preconditions before any effect. Detach is not available."
                 ),
                 ru=(
-                    "QIKI подготовила кандидат установки модуля на тело. Конвейер тела проверит "
-                    "предусловия питания/тепла и состояние гнезда до какого-либо эффекта."
+                    f"QIKI подготовила кандидат установки: {entry.module_id} → {mount}. "
+                    "Конвейер тела проверит паспорт, класс грани, занятость и предусловия "
+                    "питания/тепла до какого-либо эффекта. Снятие невозможно."
                 ),
             ),
         ),
@@ -3801,7 +3920,7 @@ def _build_attach_module_response(
             reason=reason,
             allowed_when=BilingualText(
                 en="Use the explicit ORION confirmation step; preconditions are enforced by the body pipeline.",
-                ru="Используйте явный шаг подтверждения в ORION; предусловия проверит конвейер тела.",
+                ru="Используй явный шаг подтверждения в ORION; предусловия проверит конвейер тела.",
             ),
         ),
         trust_signals=[],
@@ -3833,7 +3952,6 @@ def _build_attach_module_response(
         warnings=[],
         error=None,
     )
-
 
 def _build_protocol_block_response(*, req: QikiChatRequestV1, mode: QikiMode) -> QikiChatResponseV1:
     blocked_reason = BilingualText(
