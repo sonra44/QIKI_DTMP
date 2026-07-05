@@ -66,6 +66,7 @@ from qiki.services.operator_console.orion_v.screens.audit import OrionVAuditScre
 from qiki.services.operator_console.orion_v.screens.qiki_dialog import (
     OrionVQikiDialogScreen,
     QikiDialogLine,
+    TrustCard,
     merge_dialog_lines,
 )
 from qiki.shared.models.qiki_chat_v2 import (
@@ -2223,6 +2224,50 @@ class OrionVApp(App[None]):
             f"{idx}. {self._format_procedure_step(step.command, step.parameters)} -> ack {step.expected_ack}"
             for idx, step in enumerate(definition.steps, start=1)
         ]
+
+    def _build_qiki_trust_card(self) -> TrustCard | None:
+        """W2: Trust/Legality-карта — только из готовых VM (И5, ноль деривов).
+
+        Show-when: активная процедура установки (приоритет) или кандидат.
+        """
+        proc = self._attach_procedure
+        if proc is not None and proc.active:
+            return TrustCard(
+                action_title=f"УСТАНОВКА {proc.module_id()} → {proc.mount()}",
+                action_command="",
+                source="policy (детерминированная)",
+                legality_code=f"{proc.status} [{proc.stage}]"
+                + (f" {proc.complication}" if proc.complication else ""),
+                legality_status="allowed" if proc.status == "running" else "deferred",
+                trust_code="",
+                unlock_condition=self._attach_admissibility_condition(),
+            )
+        action = self._qiki_pending_action
+        response = self._qiki_last_response
+        if action is None or response is None:
+            return None
+        legality = response.legality
+        legality_code = (
+            f"{legality.status} [{legality.domain}] {legality.reason_code}"
+            if legality is not None else "candidate_only"
+        )
+        legality_status = legality.status if legality is not None else "deferred"
+        trust_code = ""
+        if response.trust_signals:
+            primary = response.trust_signals[0]
+            trust_code = f"{primary.state} conf={primary.confidence:.2f}"
+        unlock = ""
+        if legality is not None and legality.allowed_when is not None:
+            unlock = (legality.allowed_when.ru or legality.allowed_when.en or "").strip()
+        return TrustCard(
+            action_title=str(action.get("title_ru") or action.get("title_en") or "QIKI action").strip(),
+            action_command=self._pending_command_summary(action),
+            source="провайдер (карантин)" if not response.proposals else "policy (кандидат)",
+            legality_code=legality_code,
+            legality_status=legality_status,
+            trust_code=trust_code,
+            unlock_condition=unlock,
+        )
 
     def _build_qiki_dialog_lines(self) -> list[QikiDialogLine]:
         """Лента F5: реплики оператора (intent-лог) + голос QIKI (leджер №8в)."""
@@ -4399,6 +4444,7 @@ class OrionVApp(App[None]):
                 else None
             ),
             decision_preview_lines=self._build_qiki_decision_preview_lines(),
+            trust_card=self._build_qiki_trust_card(),
         )
 
         self.query_one("#orionv-systems", OrionVSystemsScreen).set_state(

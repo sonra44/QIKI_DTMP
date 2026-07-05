@@ -39,6 +39,23 @@ class QikiDialogLine:
     trust_code: str | None = None
 
 
+@dataclass(frozen=True)
+class TrustCard:
+    """W2 (F5V2): Trust/Legality-карта текущего действия — «спина G1».
+
+    И5: собирается ТОЛЬКО из локальных view-model (никакого provider-markdown);
+    каждый ряд — готовый код из qiki_voice/legality, ноль новых деривов.
+    """
+
+    action_title: str
+    action_command: str  # реальная команда телу (B1)
+    source: str  # "провайдер (карантин)" | "policy" | ...
+    legality_code: str  # "blocked [zone] ZONE_DENY" | "allowed [physics] ..."
+    legality_status: str  # allowed|blocked|deferred|unsafe
+    trust_code: str  # "degraded conf=0.62" | "trusted conf=0.95" | ""
+    unlock_condition: str = ""  # G1 «условие допустимости»; пусто — строка скрыта
+
+
 def merge_dialog_lines(
     *,
     operator_lines: Sequence[tuple[str, str]],
@@ -84,6 +101,7 @@ class OrionVQikiDialogScreen(Static):
         self._candidate_title: str | None = None
         self._candidate_command: str | None = None
         self._decision_preview_lines: list[str] = []
+        self._trust_card: TrustCard | None = None
         self._last_text: str = ""
 
     def on_mount(self) -> None:
@@ -96,11 +114,13 @@ class OrionVQikiDialogScreen(Static):
         candidate_title: str | None,
         decision_preview_lines: Sequence[str],
         candidate_command: str | None = None,
+        trust_card: TrustCard | None = None,
     ) -> None:
         self._dialog_lines = list(dialog_lines)
         self._candidate_title = candidate_title
         self._candidate_command = candidate_command
         self._decision_preview_lines = list(decision_preview_lines)
+        self._trust_card = trust_card
         self._refresh_text()
 
     def rendered_text(self) -> str:
@@ -172,6 +192,25 @@ class OrionVQikiDialogScreen(Static):
             if self._candidate_command:
                 out.append((f"команда телу: {self._candidate_command}", self._DIM))
             out.append(("источник: провайдер | candidate_only | НЕ исполняется", self._DIM))
+
+        # W2: Trust/Legality-карта (show-when: есть текущее действие) — «спина G1».
+        if self._trust_card is not None:
+            card = self._trust_card
+            out.append(("", ""))
+            out.append(("── ДОВЕРИЕ/ЗАКОННОСТЬ ──", self._HEADER_STYLE))
+            out.append((f"ДЕЙСТВИЕ      {card.action_title}", ""))
+            if card.action_command:
+                out.append((f"команда телу  {card.action_command}", self._DIM))
+            out.append((f"ИСТОЧНИК      {card.source}", self._DIM))
+            legality_style = "" if card.legality_status == "allowed" else (
+                "bold red" if card.legality_status in {"blocked", "unsafe"} else "yellow"
+            )
+            out.append((f"ЗАКОННОСТЬ    {card.legality_code}", legality_style))
+            if card.trust_code:
+                trust_style = "" if card.trust_code.startswith("trusted") else "yellow"
+                out.append((f"ДОВЕРИЕ       {card.trust_code}", trust_style))
+            if card.unlock_condition:
+                out.append((f"РАЗБЛОКИРОВКА {card.unlock_condition}", "yellow"))
 
         # Зона РЕШЕНИЕ-предпросмотр (show-when: есть кандидат).
         if self._decision_preview_lines:
