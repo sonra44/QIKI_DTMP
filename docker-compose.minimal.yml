@@ -12,12 +12,14 @@ services:
       dockerfile: Dockerfile.nats
     container_name: qiki-nats-phase1
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     command:
       - "--jetstream"
       - "--http_port"
       - "8222"
+      - "--auth"
+      - "${NATS_TOKEN:?M2 auth: задай NATS_TOKEN в .env}"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
       interval: 10s

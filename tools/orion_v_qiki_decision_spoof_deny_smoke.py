@@ -60,7 +60,7 @@ async def _main() -> None:
         app._qiki_pending_action = _pending("sim.rcs.fire")
         await app._execute_qiki_pending_action()
         assert published == [], f"СПУФИНГ ПРОШЁЛ: опубликовано {published}"
-        print("[smoke] спуфинг OK: подменённая команда НЕ опубликована (Д3 закрыта)")
+        print("[smoke] пост-seal подмена OK: команда, изменённая ПОСЛЕ одобрения, НЕ опубликована")
 
     print("[smoke] M5 PASS: публикуется только команда, совпадающая с пломбой одобрения")
 
