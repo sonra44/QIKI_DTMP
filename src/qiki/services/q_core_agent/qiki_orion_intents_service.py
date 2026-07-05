@@ -16,6 +16,7 @@ from qiki.services.q_core_agent.core.grpc_data_provider import GrpcDataProvider
 from qiki.shared.config_models import QCoreAgentConfig, load_config
 from qiki.shared.models.core import Proposal, SensorTypeEnum
 from qiki.services.q_core_agent.core.body_structure import FACE_IDS, KNOWN_MOUNT_CLASSES
+from qiki.services.q_core_agent.core.qiki_chat_llm import generate_qiki_reply, llm_dialog_enabled
 from qiki.shared.module_catalog import CatalogResult, load_module_catalog
 from qiki.shared.models.qiki_chat import (
     BilingualText,
@@ -4557,6 +4558,49 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
             await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
+        # LLM-ветка свободной беседы (F5, CaMeL): вывод провайдера — ТОЛЬКО текст
+        # реплики; НИ ОДНОГО proposed_action из LLM (proposals=[] на этом пути).
+        if llm_dialog_enabled():
+            llm_text = await asyncio.to_thread(generate_qiki_reply, req.input.text)
+            if llm_text:
+                resp = QikiChatResponseV1(
+                    request_id=req.request_id,
+                    ok=True,
+                    mode=mode,
+                    reply=QikiReplyV1(title=BilingualText(en="QIKI", ru="QIKI"),
+                                      body=BilingualText(en=llm_text, ru=llm_text)),
+                    legality=None,
+                    trust_signals=[],
+                    consequence=None,
+                    proposals=[],  # CaMeL: провайдер не производит действий
+                    warnings=[],
+                    error=None,
+                )
+                await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
+                return
+            # LLM недоступен — честная структурная реплика (не немой сбой)
+            resp = QikiChatResponseV1(
+                request_id=req.request_id,
+                ok=True,
+                mode=mode,
+                reply=QikiReplyV1(
+                    title=BilingualText(en="QIKI", ru="QIKI"),
+                    body=BilingualText(
+                        en="QIKI dialogue channel is unavailable (provider gateway).",
+                        ru="Канал диалога QIKI недоступен (шлюз провайдера).",
+                    ),
+                ),
+                legality=None,
+                trust_signals=[],
+                consequence=None,
+                proposals=[],
+                warnings=[],
+                error=None,
+            )
+            await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
+            return
+
+        # Без LLM — детерминированная заглушка + текущие proposals агента.
         proposals = list(agent.context.proposals or [])
         top = [_proposal_to_qiki(p) for p in proposals[:3]]
 

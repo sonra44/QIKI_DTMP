@@ -33,6 +33,10 @@ from qiki.services.qiki_gateway.upstream import Forwarder, as_json, http_forward
 logger = logging.getLogger("qiki_gateway")
 
 _RESPONSES_PATH = "/v1/responses"
+# Allowlist форвардируемых upstream-путей (M3): Responses API (OpenAI-новый) и
+# chat/completions (Mercury/Inception и большинство совместимых). Форвардим
+# ТОЛЬКО эти — не открытый прокси. Весь конверт auth/rate/audit одинаков.
+_FORWARD_PATHS = ("/v1/responses", "/v1/chat/completions")
 _HEALTH_PATH = "/healthz"
 
 
@@ -95,7 +99,7 @@ def make_handler(
             self._send_json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:
-            if self.path != _RESPONSES_PATH:
+            if self.path not in _FORWARD_PATHS:
                 self._send_json(404, {"error": "not_found"})
                 return
 
@@ -115,7 +119,11 @@ def make_handler(
 
             length = int(self.headers.get("Content-Length") or 0)
             raw_body = self.rfile.read(length) if length > 0 else b""
-            requested_max_tokens = int(as_json(raw_body).get("max_output_tokens") or 0)
+            body_json = as_json(raw_body)
+            # chat/completions зовёт лимит max_tokens; responses — max_output_tokens
+            requested_max_tokens = int(
+                body_json.get("max_output_tokens") or body_json.get("max_tokens") or 0
+            )
 
             now = now_fn()
             requests_in_last_min, current_concurrency = state.snapshot_and_enter(now)
@@ -131,7 +139,9 @@ def make_handler(
                     self._send_json(429, {"error": "rate_limited", "reason": list(limit.violations)})
                     return
 
-                url = f"{config.upstream_base_url.rstrip('/')}/responses"
+                # Форвардим на ТОТ ЖЕ subpath, что запросил клиент (из allowlist).
+                subpath = self.path[len("/v1"):]  # "/responses" | "/chat/completions"
+                url = f"{config.upstream_base_url.rstrip('/')}{subpath}"
                 status, resp_body = forwarder(url, upstream_headers(config), raw_body, timeout_s)
                 # Страховка: секрет никогда не должен просочиться в ответ клиенту.
                 safe = redact_secret(resp_body.decode("utf-8", "replace"), config.real_api_key)

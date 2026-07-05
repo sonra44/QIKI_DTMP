@@ -244,7 +244,7 @@ services:
       - NATS_TOKEN=${NATS_TOKEN:-}
       - QIKI_INTENTS_SUBJECT=qiki.intents
       - QIKI_RESPONSES_SUBJECT=qiki.responses.qiki
-      - OPENAI_MODEL=openai/gpt-5.2
+      - OPENAI_MODEL=${OPENAI_MODEL:-openai/gpt-5.2}
       # M3: LLM-трафик q-core заворачивается через gateway. Реальный ключ здесь
       # НЕ живёт — только виртуальный; base_url указывает на gateway.
       - OPENAI_BASE_URL=http://qiki-gateway:8090/v1
