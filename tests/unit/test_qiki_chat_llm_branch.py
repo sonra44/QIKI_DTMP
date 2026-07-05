@@ -67,6 +67,8 @@ def test_parses_chat_completions_shape(monkeypatch) -> None:
 
 def test_system_prompt_is_machine_register() -> None:
     p = llm.QIKI_SYSTEM_PROMPT_RU
-    assert "машинн" in p.lower()
-    assert "не переводи" in p.lower()  # коды кодами
-    assert "не отдаёшь команды телу" in p.lower()  # CaMeL: не control flow
+    assert "не переводи" in p.lower()  # коды кодами (языковая рамка)
+    assert "не исполняешь действия" in p.lower()  # CaMeL: не control flow
+    assert "factory" in p.lower()  # честное текущее состояние (реальный режим)
+    assert "из первых уст" in p.lower()  # происхождение: функции определяются
+    assert "не изображай активную миссию" in p.lower()  # без оверклейма (Терта = цель)
