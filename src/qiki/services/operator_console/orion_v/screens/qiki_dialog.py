@@ -108,61 +108,86 @@ class OrionVQikiDialogScreen(Static):
         return self._last_text
 
     def _refresh_text(self) -> None:
-        self._last_text = self._build_text()
-        # Markup глотает квадратные скобки кодов ([OPERATOR_HOLD] и т.п.) —
-        # рендерим plain Text: коды остаются кодами (пойман live-проверкой).
+        lines = self._styled_lines()
+        self._last_text = "\n".join(text for text, _ in lines)
+        # HMI-цвет через Rich-СПАНЫ: Text.append(text, style) НЕ парсит markup —
+        # коды в [скобках] остаются кодами (инвариант plain-режима сохранён),
+        # но норма приглушена, отклонения крашены (ISA-101 / DISPLAY_CANON T7).
         try:
-            self.update(Text(self._last_text))
+            rich = Text()
+            for idx, (text, style) in enumerate(lines):
+                if idx:
+                    rich.append("\n")
+                rich.append(text, style=style or None)
+            self.update(rich)
         except Exception:  # noqa: BLE001 - NoActiveAppError и т.п.
             # вне смонтированного app (юнит-тесты) рендер не нужен;
             # правда текста живёт в rendered_text()
             pass
 
+    # HMI-палитра (dark cockpit: норма приглушена, цвет — только отклонению)
+    _HEADER_STYLE = "bold"
+    _DIM = "dim"
+    _KIND_STYLE = {"ACK": "green", "REJECT": "bold red", "INFO": ""}
+
     def _build_text(self) -> str:
-        body: list[str] = ["[F5] QIKI / ДИАЛОГ", ""]
+        return "\n".join(text for text, _ in self._styled_lines())
+
+    def _styled_lines(self) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = [("[F5] QIKI / ДИАЛОГ", self._HEADER_STYLE), ("", "")]
 
         # Зона ДИАЛОГ (всегда).
-        body.append("── ДИАЛОГ ──")
+        out.append(("── ДИАЛОГ ──", self._HEADER_STYLE))
         if self._dialog_lines:
             for idx, line in enumerate(self._dialog_lines):
                 if idx:
-                    body.append("")  # пустая строка между ходами (не рамки)
-                # W1: асимметрия голосов — оператор плоским отступом, QIKI с
-                # акцентной чертой ┃ (тело видно целиком, коды остаются кодами)
-                is_qiki = line.speaker.upper().startswith("QIKI")
-                head = f"{line.speaker} ▸ {line.received_at}"
-                if line.kind:
-                    head += f" {line.kind}"
-                body.append(head)
-                indent = "┃ " if is_qiki else "  "
-                body.extend(self._wrap_body(line.text, indent=indent))
+                    out.append(("", ""))  # пустая строка между ходами (не рамки)
+                speaker = line.speaker.upper()
+                is_bot = speaker.startswith("QIKI") or speaker.startswith("ПРОЦЕДУРА")
+                if is_bot:
+                    # штамп QIKI/ПРОЦЕДУРА — полный HH:MM:SSZ (канон 8в: freshness)
+                    head = f"{line.speaker} ▸ {line.received_at}"
+                    if line.kind:
+                        head += f" {line.kind}"
+                else:
+                    # оператор — компактный «я ▸ HH:MM» (F5V2 §2, асимметрия)
+                    head = f"я ▸ {line.received_at[:5]}"
+                # Заголовок QIKI крашен по типу арбитража (REJECT красный, ACK
+                # зелёный, INFO нейтральный); оператор — нейтральный.
+                head_style = self._KIND_STYLE.get(line.kind or "", "") if is_bot else ""
+                out.append((head, head_style))
+                indent = "┃ " if is_bot else "  "
+                for wrapped in self._wrap_body(line.text, indent=indent):
+                    out.append((wrapped, ""))
                 codes = self._codes_line(line)
                 if codes:
-                    body.append(f"  └ {codes}")
+                    out.append((f"  └ {codes}", self._DIM))  # машинные факты — dim
         else:
-            body.extend(_EMPTY_DIALOG.splitlines())
+            for ln in _EMPTY_DIALOG.splitlines():
+                out.append((ln, self._DIM))
 
         # Зона КАНДИДАТ (show-when: есть предложение провайдера).
         if self._candidate_title:
-            body.extend(["", "── КАНДИДАТ ──", self._candidate_title])
-            # B1: показать РЕАЛЬНУЮ команду телу, а не только заголовок.
+            out.extend([("", ""), ("── КАНДИДАТ ──", self._HEADER_STYLE), (self._candidate_title, "")])
             if self._candidate_command:
-                body.append(f"команда телу: {self._candidate_command}")
-            body.append("источник: провайдер | candidate_only | НЕ исполняется")
+                out.append((f"команда телу: {self._candidate_command}", self._DIM))
+            out.append(("источник: провайдер | candidate_only | НЕ исполняется", self._DIM))
 
         # Зона РЕШЕНИЕ-предпросмотр (show-when: есть кандидат).
         if self._decision_preview_lines:
-            body.append("")
-            body.append("── РЕШЕНИЕ (предпросмотр) ──")
-            body.extend(self._decision_preview_lines)
+            out.append(("", ""))
+            out.append(("── РЕШЕНИЕ (предпросмотр) ──", self._HEADER_STYLE))
+            for ln in self._decision_preview_lines:
+                out.append((ln, ""))
 
-        # Зона УЛИКИ (всегда).
-        body.extend(["", "── УЛИКИ ──", "детали: F8 | журнал: F6 | системы: F2"])
+        # Зона УЛИКИ (всегда) — dim-указатель.
+        out.extend([("", ""), ("── УЛИКИ ──", self._HEADER_STYLE),
+                    ("детали: F8 | журнал: F6 | системы: F2", self._DIM)])
 
-        # W1: поле ввода на F5 открыто постоянно — подсказка отражает это
-        body.extend(["", "── ВВОД ──", "печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус"])
-
-        return "\n".join(body)
+        # Поле ввода на F5 открыто постоянно — подсказка dim.
+        out.extend([("", ""), ("── ВВОД ──", self._HEADER_STYLE),
+                    ("печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус", self._DIM)])
+        return out
 
     _WRAP_WIDTH = 110
 
