@@ -84,6 +84,8 @@ from qiki.shared.command_decision import (
 from qiki.services.operator_console.orion_v.attach_procedure import (
     STAGE_S1_INSPECT,
     STAGE_S2_PREPARE,
+    STAGE_S3_TRANSFER,
+    STAGE_S4_POWER,
     STAGE_S5_DOCK,
     STATUS_ABORTED,
     STATUS_AWAITING,
@@ -92,6 +94,7 @@ from qiki.services.operator_console.orion_v.attach_procedure import (
     STATUS_HOLDING,
     STATUS_RUNNING,
     AttachProcedure,
+    transfer_ticks_for_mount,
 )
 from qiki.services.q_core_agent.core.body_structure import ModulePassport
 from qiki.shared.decision_body_bridge import (
@@ -413,6 +416,7 @@ class OrionVApp(App[None]):
         self._refresh_ui()
         self.set_interval(1.0, self._refresh_nats_state)
         self.set_interval(1.0, self._refresh_runtime_metrics)
+        self.set_interval(1.0, self._attach_procedure_stale_check)
 
     async def on_unmount(self) -> None:
         try:
@@ -509,6 +513,7 @@ class OrionVApp(App[None]):
             self._last_telemetry_received_wall = time.time()
             self._merge_snapshot(self._snapshot, payload)
             self.hardware_model = self.hardware_collector.update(self._snapshot)
+            self._attach_procedure_on_snapshot()
         self._request_refresh_ui()
 
     async def _on_track(self, envelope: dict[str, Any]) -> None:
@@ -1281,7 +1286,7 @@ class OrionVApp(App[None]):
             if proc is not None and proc.paused:
                 asyncio.create_task(self._resume_attach_procedure())
             else:
-                self._set_help_text("УСТАНОВКА: пауза доступна на протяжённых стадиях (перенос)")
+                self._hold_attach_procedure()
             return
         if action == "incident_next":
             self.action_incident_next()
@@ -1414,6 +1419,9 @@ class OrionVApp(App[None]):
             return
         if command in {"q resume", "q start"}:
             asyncio.create_task(self._resume_attach_procedure())
+            return
+        if command in {"q hold", "q pause"}:
+            self._hold_attach_procedure()
             return
         if command in {"review confirm", "review ack", "review acknowledge"}:
             self.action_ack_observation_review()
@@ -3159,6 +3167,103 @@ class OrionVApp(App[None]):
         else:
             asyncio.create_task(coro)
 
+    def _attach_procedure_on_snapshot(self) -> None:
+        """Тик процедуры (ADR-0020 §4): принятый снапшот с paused=false."""
+        proc = self._attach_procedure
+        if proc is None or proc.stage != STAGE_S3_TRANSFER:
+            return
+        sim_state = self._snapshot.get("sim_state") if isinstance(self._snapshot, dict) else None
+        paused = bool(sim_state.get("paused")) if isinstance(sim_state, dict) else False
+
+        if proc.status == STATUS_HOLDING:
+            if not proc.auto_hold:
+                return  # операторский/оконный hold снимает только оператор
+            if proc.complication == "WORLD_PAUSED" and paused:
+                return
+            # авто-hold снялся: мир пошёл / телеметрия ожила
+            proc.status = STATUS_RUNNING
+            proc.complication = ""
+            proc.auto_hold = False
+            self._attach_stage_note("S3 перенос: продолжен (мир идёт)")
+        elif proc.status != STATUS_RUNNING:
+            return
+
+        if paused:
+            proc.status = STATUS_HOLDING
+            proc.auto_hold = True
+            proc.complication = "WORLD_PAUSED"
+            self._attach_stage_note("S3 перенос: мир на паузе [WORLD_PAUSED] — время не идёт")
+            self._schedule_attach_stage_audit(
+                stage=STAGE_S3_TRANSFER, outcome="holding", codes=("WORLD_PAUSED",)
+            )
+            self._request_refresh_ui()
+            return
+
+        # Окно посреди переноса — операторская развилка (авто-resume запрещён)
+        power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
+        if power_blocked or thermal_blocked:
+            proc.status = STATUS_HOLDING
+            proc.auto_hold = False
+            proc.complication = ",".join(precond_detail) or "POWER_BLOCK"
+            self._attach_stage_note(f"S3 перенос: окно закрыто [{proc.complication}]")
+            self._schedule_attach_stage_audit(
+                stage=STAGE_S3_TRANSFER, outcome="holding", codes=tuple(precond_detail)
+            )
+            self._set_help_text(
+                f"QIKI: окно закрыто посреди переноса [{proc.complication}] — ▶/q resume | q abort"
+            )
+            self._request_refresh_ui()
+            return
+
+        proc.ticks_done += 1
+        self._attach_stage_note(f"S3 перенос: {proc.ticks_done}/{proc.ticks_required}")
+        if proc.ticks_done >= proc.ticks_required:
+            self._schedule_attach_stage_audit(stage=STAGE_S3_TRANSFER, outcome="ok")
+            proc.stage = STAGE_S4_POWER
+            self._schedule_attach_advance()
+        self._request_refresh_ui()
+
+    def _schedule_attach_advance(self) -> None:
+        coro = self._advance_attach_procedure()
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(coro)
+        else:
+            asyncio.create_task(coro)
+
+    def _attach_procedure_stale_check(self) -> None:
+        """TELEM_STALE: перенос не может идти по мёртвой телеметрии (ADR-0020 §3)."""
+        proc = self._attach_procedure
+        if proc is None or proc.stage != STAGE_S3_TRANSFER or proc.status != STATUS_RUNNING:
+            return
+        last = self._last_telemetry_received_wall
+        if last is None or (time.time() - last) <= 5.0:
+            return
+        proc.status = STATUS_HOLDING
+        proc.auto_hold = True
+        proc.complication = "TELEM_STALE"
+        self._attach_stage_note("S3 перенос: телеметрия мертва [TELEM_STALE] — время не идёт")
+        self._schedule_attach_stage_audit(
+            stage=STAGE_S3_TRANSFER, outcome="holding", codes=("TELEM_STALE",)
+        )
+        self._request_refresh_ui()
+
+    def _hold_attach_procedure(self) -> None:
+        proc = self._attach_procedure
+        if proc is None or proc.status != STATUS_RUNNING or proc.stage != STAGE_S3_TRANSFER:
+            self._set_help_text("УСТАНОВКА: пауза доступна только во время переноса")
+            return
+        proc.status = STATUS_HOLDING
+        proc.auto_hold = False
+        proc.complication = "OPERATOR_HOLD"
+        self._attach_stage_note("S3 перенос: пауза оператора [OPERATOR_HOLD]")
+        self._schedule_attach_stage_audit(
+            stage=STAGE_S3_TRANSFER, outcome="holding", codes=("OPERATOR_HOLD",)
+        )
+        self._set_help_text("УСТАНОВКА на паузе — ▶/q resume: продолжить | q abort: прервать")
+        self._request_refresh_ui()
+
     def _attach_stage_note(self, text: str) -> None:
         proc = self._attach_procedure
         if proc is None:
@@ -3209,6 +3314,38 @@ class OrionVApp(App[None]):
                     return
                 self._attach_stage_note("S2 подготовка: паспорт собран из пломбы")
                 await self._publish_attach_stage_audit(stage=STAGE_S2_PREPARE, outcome="ok")
+                proc.stage = STAGE_S3_TRANSFER
+                continue
+
+            if proc.stage == STAGE_S3_TRANSFER:
+                # P2: протяжённая стадия — тики двигает _attach_procedure_on_snapshot
+                if proc.ticks_required <= 0:
+                    proc.ticks_required = transfer_ticks_for_mount(proc.mount())
+                    proc.ticks_done = 0
+                    self._attach_stage_note(
+                        f"S3 перенос: старт (грань {proc.mount()}, {proc.ticks_required} тик.)"
+                    )
+                    await self._publish_attach_stage_audit(stage=STAGE_S3_TRANSFER, outcome="started")
+                return
+
+            if proc.stage == STAGE_S4_POWER:
+                # Граница S4: re-check предусловий; блок — операторская развилка
+                power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
+                if power_blocked or thermal_blocked:
+                    proc.status = STATUS_HOLDING
+                    proc.auto_hold = False
+                    proc.complication = ",".join(precond_detail) or "POWER_BLOCK"
+                    self._attach_stage_note(f"S4 питание: окно закрыто [{proc.complication}]")
+                    await self._publish_attach_stage_audit(
+                        stage=STAGE_S4_POWER, outcome="holding", codes=tuple(precond_detail)
+                    )
+                    self._set_help_text(
+                        f"QIKI: окно закрыто [{proc.complication}] — ▶/q resume: повторить | q abort"
+                    )
+                    self._request_refresh_ui()
+                    return
+                self._attach_stage_note("S4 питание: предусловия чисты")
+                await self._publish_attach_stage_audit(stage=STAGE_S4_POWER, outcome="ok")
                 proc.stage = STAGE_S5_DOCK
                 continue
 
@@ -3331,14 +3468,23 @@ class OrionVApp(App[None]):
             # Осознанное решение оператора: продолжить БЕЗ паспорта (исход — у конвейера).
             self._attach_stage_note("S2: оператор продолжил без паспорта")
             proc.complication = ""
-            proc.stage = STAGE_S5_DOCK
+            proc.stage = STAGE_S3_TRANSFER
             proc.status = STATUS_RUNNING
             await self._advance_attach_procedure()
             return
-        # holding после отложенной стыковки: повторный заход S5.
+        if proc.stage == STAGE_S3_TRANSFER:
+            # hold переноса (операторский или оконный): продолжаем с того же тика
+            proc.complication = ""
+            proc.auto_hold = False
+            proc.status = STATUS_RUNNING
+            self._attach_stage_note(f"S3 перенос: продолжен ({proc.ticks_done}/{proc.ticks_required})")
+            self._request_refresh_ui()
+            return
+        # holding на S4/S5: повторный заход стадии
         proc.complication = ""
-        proc.stage = STAGE_S5_DOCK
         proc.status = STATUS_RUNNING
+        if proc.stage not in {STAGE_S4_POWER, STAGE_S5_DOCK}:
+            proc.stage = STAGE_S5_DOCK
         await self._advance_attach_procedure()
 
     async def _wait_for_qiki_effect(self, command_name: str, timeout_s: float) -> BilingualText | None:

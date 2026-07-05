@@ -118,6 +118,14 @@ def _seal(app: OrionVApp, action: dict) -> None:
     app._seal_pending_decision(action)
 
 
+def _drive_ticks(app: OrionVApp, n: int = 8) -> None:
+    for _ in range(n):
+        proc = app._attach_procedure
+        if proc is None or proc.status != "running":
+            return
+        app._attach_procedure_on_snapshot()
+
+
 def test_red_spoofed_body_attach_does_not_reach_body() -> None:
     """RED: подмена команды после пломбы -> тело НЕ тронуто (M5 в BODY-пути)."""
     app, calls = _app(HEALTHY_SNAPSHOT)
@@ -138,11 +146,13 @@ def test_red_power_precondition_blocks_body() -> None:
     app, calls = _app(snapshot)
     _seal(app, _body_action())
     asyncio.run(app._execute_qiki_pending_action())
+    _drive_ticks(app)  # P2: окно ловится на тике переноса
     assert calls["runner"] == 0, "power block не остановил тело"
     # ADR-0020: окно закрыто -> процедура holding, отказ не немой (стадийный аудит)
     assert app._attach_procedure is not None and app._attach_procedure.status == "holding"
     stage_events = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_attach_stage"]
-    assert any("BRIDGE_POWER_BLOCK" in (e.get("reason_codes") or []) for e in stage_events)
+    # P2: окно ловится на тике переноса кодом источника (до моста не доходит)
+    assert any("load_shedding" in (e.get("reason_codes") or []) for e in stage_events)
 
 
 def test_red_missing_power_telemetry_fail_closed() -> None:
@@ -150,6 +160,7 @@ def test_red_missing_power_telemetry_fail_closed() -> None:
     app, calls = _app({})
     _seal(app, _body_action())
     asyncio.run(app._execute_qiki_pending_action())
+    _drive_ticks(app)
     assert calls["runner"] == 0, "отсутствие телеметрии не заблокировало тело"
     assert app._attach_procedure is not None and app._attach_procedure.status == "holding"
     stage_events = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_attach_stage"]
@@ -161,6 +172,7 @@ def test_green_approved_attach_reaches_body_with_audit() -> None:
     app, calls = _app(HEALTHY_SNAPSHOT)
     _seal(app, _body_action())
     asyncio.run(app._execute_qiki_pending_action())
+    _drive_ticks(app)
     assert calls["runner"] == 1
     assert app._qiki_last_response.consequence.status == "confirmed"
     decision_traces = [p for _, p in calls["audit"] if p.get("kind_event") == "qiki_body_attach_decision"]

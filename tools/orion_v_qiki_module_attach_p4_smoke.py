@@ -47,17 +47,12 @@ async def _wait_until(predicate, *, timeout_s: float, label: str) -> None:
     raise AssertionError(f"timeout: {label}")
 
 
-async def _ask_and_confirm(app, text: str, *, healthy: bool = True) -> None:
+async def _ask_and_confirm(app, text: str) -> None:
     app._qiki_pending_action = None
     await app._publish_qiki_intent(text)
     await _wait_until(lambda: app._qiki_pending_action is not None, timeout_s=10.0,
                       label=f"candidate for '{text}'")
-    if healthy:
-        app._snapshot.update(HEALTHY)
-    else:
-        unhealthy = json.loads(json.dumps(HEALTHY))
-        unhealthy["power"]["load_shedding"] = True
-        app._snapshot.update(unhealthy)
+    # P2: предусловия и тики питает ЖИВАЯ телеметрия; снапшот не инъецируем
     app._confirm_qiki_pending_action()
 
 
@@ -93,7 +88,7 @@ async def _main() -> None:
 
             # 1) антенна -> F03: полный цикл
             await _ask_and_confirm(app, "установи антенну на F03")
-            await _wait_until(lambda: traces, timeout_s=10.0, label="trace #1")
+            await _wait_until(lambda: traces, timeout_s=20.0, label="trace #1 (живые тики переноса)")
             body = get_body_structure_interactive_controller().snapshot().body
             installed = [str(m.get("module_id")) for m in body.modules]
             assert installed == ["comm_antenna_module_001"], installed
@@ -112,7 +107,7 @@ async def _main() -> None:
             # 3) запрещённый класс: правда у тела
             before = len(traces)
             await _ask_and_confirm(app, "установи rcs_cluster_module_001 на F02")
-            await _wait_until(lambda: len(traces) > before, timeout_s=10.0, label="trace #3")
+            await _wait_until(lambda: len(traces) > before, timeout_s=20.0, label="trace #3")
             assert app._qiki_last_response.consequence.status == "failed"
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
             print("[smoke] 3: rcs-кластер отклонён ТЕЛОМ (класс запрещён), effect failed, аудит свой")
@@ -127,7 +122,7 @@ async def _main() -> None:
             )
             print("[smoke] 4a: развилка S2 — манифест повреждён, процедура ждёт оператора")
             await app._resume_attach_procedure()
-            await _wait_until(lambda: len(traces) > before, timeout_s=10.0, label="trace #4")
+            await _wait_until(lambda: len(traces) > before, timeout_s=20.0, label="trace #4")
             assert app._attach_procedure.status == "failed"
             print("[smoke] 4b: продолжено без паспорта -> канонный отказ конвейера")
 
@@ -142,23 +137,25 @@ async def _main() -> None:
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
             print("[smoke] 5: F03 занято антенной -> осмотр S1 прервал рано [MOUNT_POINT_OCCUPIED]")
 
-            # 6) deferred-окно (инъекция load_shedding) -> hold -> resume -> done
-            await _ask_and_confirm(app, "установи test_sensor_module_001 на F04", healthy=False)
+            # 6) deferred-окно: предусловие ИНЪЕЦИРОВАНО методом (помечено в аудите)
+            original_preconditions = app._body_attach_preconditions
+            app._body_attach_preconditions = lambda: (True, False, ("load_shedding_injected",))  # type: ignore
+            await _ask_and_confirm(app, "установи test_sensor_module_001 на F04")
             await _wait_until(
                 lambda: app._attach_procedure is not None
                 and app._attach_procedure.status == "holding",
-                timeout_s=10.0, label="holding #6",
+                timeout_s=15.0, label="holding #6",
             )
             assert any(
-                "BRIDGE_POWER_BLOCK" in (e.get("reason_codes") or []) for e in stage_events
+                "load_shedding_injected" in (e.get("reason_codes") or []) for e in stage_events
             ), stage_events[-3:]
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
-            print("[smoke] 6a: окно закрыто (инъекция load_shedding) -> процедура в hold, коды в аудите")
-            app._snapshot.update(HEALTHY)  # «остыло»
+            print("[smoke] 6a: окно закрыто (инъекция предусловия) -> процедура в hold, коды в аудите")
+            app._body_attach_preconditions = original_preconditions  # type: ignore  # «остыло»
             await app._resume_attach_procedure()
             await _wait_until(
                 lambda: app._attach_procedure is not None and app._attach_procedure.status == "done",
-                timeout_s=10.0, label="resume done #6",
+                timeout_s=20.0, label="resume done #6",
             )
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 2
             print("[smoke] 6b: resume после остывания -> модуль установлен (hold-окно прожито живьём)")

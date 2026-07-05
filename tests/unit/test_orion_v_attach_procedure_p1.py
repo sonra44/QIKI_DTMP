@@ -59,6 +59,15 @@ def _app() -> tuple[OrionVApp, dict]:
     return app, calls
 
 
+def _drive_ticks(app: OrionVApp, n: int = 8) -> None:
+    """Прогнать до n тиков переноса (paused=false уже в HEALTHY-снапшоте)."""
+    for _ in range(n):
+        proc = app._attach_procedure
+        if proc is None or proc.status not in {"running"}:
+            return
+        app._attach_procedure_on_snapshot()
+
+
 def _seal_and_start(app: OrionVApp, action: dict) -> None:
     app._qiki_pending_action = dict(action)
     app._seal_pending_decision(action)
@@ -95,6 +104,7 @@ def test_red_new_candidate_does_not_change_procedure_seal() -> None:
     app._seal_pending_decision(app._qiki_pending_action)
     # Продолжаем процедуру (без паспорта) — тело должно получить ЗАХВАЧЕННЫЙ модуль
     asyncio.run(app._resume_attach_procedure())
+    _drive_ticks(app)  # P2: развилка ведёт в перенос, добиваем тиками
     proc = app._attach_procedure
     assert proc is not None and proc.status == "failed"  # без паспорта конвейер отказал
     snap_decision = get_body_structure_interactive_controller().snapshot().decision
@@ -149,6 +159,7 @@ def test_green_clean_module_runs_to_done_and_spends_ledger() -> None:
     app, calls = _app()
     _seal_and_start(app, _action(module_id="test_sensor_module_001", mount="F06",
                                  damaged=False, caps=("basic_sensor_read",)))
+    _drive_ticks(app)  # P2: перенос требует тиков
     proc = app._attach_procedure
     assert proc is not None and proc.status == "done"
     body = get_body_structure_interactive_controller().snapshot().body
@@ -162,6 +173,7 @@ def test_abort_after_done_is_too_late() -> None:
     app, calls = _app()
     _seal_and_start(app, _action(module_id="test_sensor_module_001", mount="F06",
                                  damaged=False, caps=("basic_sensor_read",)))
+    _drive_ticks(app)
     assert app._attach_procedure.status == "done"
     app._abort_attach_procedure()
     assert any("ABORT_TOO_LATE" in h for h in calls["help"])
