@@ -1008,6 +1008,15 @@ class OrionVApp(App[None]):
         self._events_page = 0
         self._audit_page = 0
         self._refresh_visible_level()
+        # W1 (И1): на F5 поле ввода постоянное — авто-открываем; вне F5 закрываем
+        try:
+            if key == "f5":
+                self.action_open_command_mode()
+                self._set_help_text("F5: пишите QIKI напрямую и Enter · q confirm/abort — команды")
+            elif self._command_mode_open:
+                self.action_close_command_mode()
+        except Exception:
+            logger.debug("orion_v_f5_input_autoopen_failed", exc_info=True)
         if key == "f8":
             self._prefer_f8_evidence_card_for_current_context()
         asyncio.create_task(
@@ -1403,8 +1412,13 @@ class OrionVApp(App[None]):
         raw_command = event.value.strip()
         command = raw_command.lower()
         event.input.value = ""
-        self.action_close_command_mode()
+        # W1 (И1): на F5 поле ввода не закрываем — беседа продолжается
+        on_f5 = self._current_level == "f5"
+        if not on_f5:
+            self.action_close_command_mode()
         if not command:
+            if on_f5:
+                self._reopen_f5_input()
             return
 
         is_qiki, qiki_text = self._parse_qiki_intent(raw_command)
@@ -1531,7 +1545,20 @@ class OrionVApp(App[None]):
             self.action_clear_acknowledged_incidents()
             return
 
+        if on_f5:
+            # W1 (И1): голый текст на F5 = свободный вопрос QIKI (без q:-префикса)
+            asyncio.create_task(self._publish_qiki_intent(raw_command))
+            self._reopen_f5_input()
+            return
+
         self._set_help_text(f"Неизвестная команда: {command}. Введите help.")
+
+    def _reopen_f5_input(self) -> None:
+        """Держать поле ввода F5 открытым и в фокусе после отправки (И1)."""
+        try:
+            self.action_open_command_mode()
+        except Exception:
+            logger.debug("orion_v_f5_input_reopen_failed", exc_info=True)
 
     @staticmethod
     def _parse_qiki_intent(raw: str) -> tuple[bool, str | None]:
