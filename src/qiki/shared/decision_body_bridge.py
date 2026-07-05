@@ -29,6 +29,8 @@ from qiki.shared.command_decision import (
 PRECOND_POWER_BLOCK = "BRIDGE_POWER_BLOCK"
 PRECOND_THERMAL_BLOCK = "BRIDGE_THERMAL_BLOCK"
 PRECOND_NOT_PUBLISHED = "BRIDGE_DECISION_NOT_PUBLISHED"
+# ADR-0020 P0: мост однократен — исполненное решение к телу не возвращается.
+DECISION_ALREADY_EXECUTED = "DECISION_ALREADY_EXECUTED"
 
 
 def preconditions_ok(*, power_blocked: bool, thermal_blocked: bool) -> tuple[bool, tuple[str, ...]]:
@@ -70,11 +72,16 @@ def bridge_decision_to_body(
     if decision.status is not DecisionStatus.PUBLISHED:
         return BridgeResult(decision=decision, reached_body=False, reason_codes=(PRECOND_NOT_PUBLISHED,))
 
+    # ADR-0020 P0: однократность — решение с тронутыми поздними ступенями
+    # уже жило у тела (или было принято), повторный заход запрещён.
+    if decision.stages.ack is not StageState.NONE or decision.stages.effect is not StageState.NONE:
+        return BridgeResult(decision=decision, reached_body=False, reason_codes=(DECISION_ALREADY_EXECUTED,))
+
     ok, codes = preconditions_ok(power_blocked=power_blocked, thermal_blocked=thermal_blocked)
     if not ok:
         # Предусловие не выполнено — эффект не инициируется, тело не трогается.
-        deferred = mark_stage(decision, ack=StageState.OK, effect=StageState.NONE)
-        return BridgeResult(decision=deferred, reached_body=False, reason_codes=codes)
+        # ADR-0020 P0: ack НЕ ставится — deferred не является принятием конвейером.
+        return BridgeResult(decision=decision, reached_body=False, reason_codes=codes)
 
     attached, audit_event_id = attach_runner()
     updated = mark_stage(
