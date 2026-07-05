@@ -179,7 +179,7 @@ class OperatorLoopState:
     pending_command_count: int = 0
     operator_action_required: bool = False
     command_mode_state: str = "standby"
-    hotkey_context: str = "F1/F2/F3/F4/F6/F7 — экраны | '/' ':' — команда"
+    hotkey_context: str = "'/' ':' — команда"
     status_text: str = "Команды: help"
     current_level: str = "f1"
     replay_mode: bool = False
@@ -1487,4 +1487,6 @@ def _hotkey_context(*, command_mode_open: bool, current_level: str, has_selected
         return "PgUp/PgDn — страницы | ↑/↓ — выбор инцидента"
     if has_selected_incident:
         return "A — квитировать инцидент | X — снять квитированные"
-    return "F1/F2/F3/F4/F6/F7 — экраны | '/' ':' — команда"
+    # без перечня экранов (DISPLAY_CANON строка №9): экраны показывают сами кнопки рейла;
+    # H не упоминаем — справка живёт только на F1
+    return "'/' ':' — команда"

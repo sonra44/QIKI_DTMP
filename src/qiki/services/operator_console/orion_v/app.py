@@ -1240,7 +1240,7 @@ class OrionVApp(App[None]):
         self._refresh_ui()
 
     def _handle_action_bar_action(self, action: str) -> None:
-        if action in {"f1", "f2", "f3", "f4", "f6", "f7", "f8"}:
+        if action in {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"}:
             self.action_show_level(action)
             return
         if action == "incident_next":
@@ -3875,15 +3875,6 @@ class OrionVApp(App[None]):
             self._last_telemetry_received_wall,
             tz=timezone.utc,
         ).strftime("%H:%M:%SZ")
-
-    def _action_rail_hint(self) -> str:
-        if self._command_mode_open:
-            return "Enter submit | Esc close | q: asks QIKI"
-        if self._current_level in {"f3", "f6"}:
-            return "PgUp/PgDn pages | Up/Down incident focus"
-        if self._selected_incident_id is not None:
-            return "A ack selected incident | X clear acknowledged"
-        return "F1/F2/F3/F4/F6/F7/F8 switch shells | '/' ':' open command"
 
     def _update_safe_mode_from_event(self, envelope: dict[str, Any]) -> None:
         subject = str(envelope.get("subject") or "")

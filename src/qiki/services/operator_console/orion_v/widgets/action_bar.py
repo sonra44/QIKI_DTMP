@@ -73,6 +73,7 @@ class OrionVActionBar(Static):
         ("f2", "F2 Системы"),
         ("f3", "F3 Анализ"),
         ("f4", "F4 Консоль"),
+        ("f5", "F5 QIKI"),
         ("f6", "F6 Журнал"),
         ("f7", "F7 Статус"),
         ("f8", "F8 Улики"),
@@ -159,24 +160,22 @@ class OrionVActionBar(Static):
 
         for action, _ in self._BUTTONS:
             button = self.query_one(f"#orionv-action-{action}", Button)
-            if action in {"f1", "f2", "f3", "f4", "f6", "f7", "f8"}:
+            if action in {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"}:
                 button.variant = "primary" if action == loop.current_level else "default"
                 button.disabled = False
                 continue
 
             if action in {"ack", "clear"}:
-                button.display = loop.incident_controls_visible
-                button.disabled = (
-                    not loop.incident_controls_visible
-                    or loop.replay_mode
-                    or not loop.has_selected_incident
-                )
+                # show-when (DISPLAY_CANON строка №9): без выбранного инцидента
+                # кнопки скрыты, а не торчат серыми
+                button.display = loop.incident_controls_visible and loop.has_selected_incident
+                button.disabled = not button.display or loop.replay_mode
                 button.variant = "warning" if action == "ack" else "default"
                 continue
 
             if action in {"incident_prev", "incident_next"}:
-                button.display = loop.incident_controls_visible
-                button.disabled = not loop.incident_controls_visible or not loop.has_selected_incident
+                button.display = loop.incident_controls_visible and loop.has_selected_incident
+                button.disabled = not button.display
                 button.variant = "default"
                 continue
 

@@ -23,6 +23,7 @@ async def test_action_bar_uses_compact_labels_for_dense_console_layout() -> None
 
         assert app.query_one("#orionv-action-f1", Button).label.plain == "F1 Кокпит"
         assert app.query_one("#orionv-action-f4", Button).label.plain == "F4 Консоль"
+        assert app.query_one("#orionv-action-f5", Button).label.plain == "F5 QIKI"
         assert app.query_one("#orionv-action-f8", Button).label.plain == "F8 Улики"
         assert app.query_one("#orionv-action-ack", Button).label.plain == "Подтв."
         assert app.query_one("#orionv-action-page_next", Button).label.plain == "Стр >"
@@ -44,6 +45,15 @@ async def test_action_bar_hides_irrelevant_controls_outside_context() -> None:
         assert app.query_one("#orionv-action-incident_prev", Button).display is False
         assert app.query_one("#orionv-action-ack", Button).display is False
         assert app.query_one("#orionv-action-page_prev", Button).display is False
+
+        # show-when (строка №9): на f3 без выбранного инцидента кнопки инцидентов
+        # скрыты (не торчат серыми), пагинация остаётся
+        actions.set_state(build_operator_shell_state(hardware_model=None, current_level="f3"))
+        await pilot.pause()
+
+        assert app.query_one("#orionv-action-incident_prev", Button).display is False
+        assert app.query_one("#orionv-action-ack", Button).display is False
+        assert app.query_one("#orionv-action-page_prev", Button).display is True
 
         actions.set_state(
             build_operator_shell_state(
