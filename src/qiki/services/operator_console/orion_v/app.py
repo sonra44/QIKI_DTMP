@@ -329,6 +329,10 @@ class OrionVApp(App[None]):
         self._cargo_spent: dict[str, int] = {}
         # ADR-0020: активная процедура установки (одна за раз)
         self._attach_procedure: AttachProcedure | None = None
+        # P3: записи «ПРОЦЕДУРА ▸» для ленты F5 (НЕ голос QIKI — ADR-0020 §6)
+        self._attach_procedure_ledger: deque[tuple[str, str]] = deque(maxlen=20)
+        # P3: короткая история худшей температуры для тренда в hold-строке
+        self._attach_thermal_trace: deque[float] = deque(maxlen=6)
         self._pending_decision_id: str | None = None
         # M4: конверт v2 под feature-flag; token_id — отпечаток, не секрет.
         self._qiki_envelope_v2 = os.getenv("ORION_QIKI_ENVELOPE_V2", "0").strip() == "1"
@@ -2192,7 +2196,71 @@ class OrionVApp(App[None]):
         return merge_dialog_lines(
             operator_lines=tuple(self._qiki_dialog_operator_ledger),
             voice_entries=tuple(self._qiki_voice_ledger),
+            procedure_lines=tuple(self._attach_procedure_ledger),
         )
+
+    _STAGE_TITLES_RU = {
+        STAGE_S1_INSPECT: "S1 ОСМОТР",
+        STAGE_S2_PREPARE: "S2 ПОДГОТОВКА",
+        STAGE_S3_TRANSFER: "S3 ПЕРЕНОС",
+        STAGE_S4_POWER: "S4 ПИТАНИЕ",
+        STAGE_S5_DOCK: "S5 СТЫКОВКА",
+    }
+
+    def _attach_admissibility_condition(self) -> str:
+        """G1 «условие допустимости»: что должно стать правдой, чтобы hold снялся."""
+        proc = self._attach_procedure
+        if proc is None:
+            return ""
+        code = proc.complication
+        if code == "WORLD_PAUSED":
+            return "условие: мир должен идти (paused=false)"
+        if code == "TELEM_STALE":
+            return "условие: живая телеметрия"
+        if code == "OPERATOR_HOLD":
+            return "пауза оператора — ▶ продолжит"
+        if code == "PASSPORT_DAMAGED":
+            return "развилка: ▶ продолжить без паспорта (исход решит конвейер) | q abort"
+        parts: list[str] = []
+        if any(token in code for token in ("load_shedding", "pdu_throttled", "POWER", "BRIDGE_POWER")):
+            parts.append("условие: PWR без load_shedding/throttle")
+        if "thermal" in code or "THERMAL" in code:
+            vm = build_power_thermal_console_view_model_from_telemetry(
+                self._snapshot if isinstance(self._snapshot, dict) else None
+            )
+            worst = next(
+                (node for node in vm.thermal_nodes if node.thermal_class not in {"green"}),
+                None,
+            )
+            now_part = ""
+            if worst is not None and worst.temperature_c is not None:
+                now_part = f" (сейчас {worst.node_id} {worst.temperature_c:.1f}°"
+                if len(self._attach_thermal_trace) >= 2:
+                    trend = self._attach_thermal_trace[-1] - self._attach_thermal_trace[-2]
+                    now_part += f" · тренд {trend:+.1f}°/тик"
+                now_part += ")"
+            parts.append(f"условие: THRM green{now_part}")
+        return " | ".join(parts)
+
+    def _build_attach_procedure_lines(self) -> list[str]:
+        """Строка УСТАНОВКА для зоны РЕШЕНИЕ (show-when: процедура активна)."""
+        proc = self._attach_procedure
+        if proc is None or not proc.active:
+            return []
+        stage_title = self._STAGE_TITLES_RU.get(proc.stage, proc.stage)
+        if proc.stage == STAGE_S3_TRANSFER and proc.status == STATUS_RUNNING:
+            head = f"УСТАНОВКА: {stage_title} ({proc.ticks_done}/{proc.ticks_required}) | ⏸ q hold | q abort"
+        elif proc.status == STATUS_HOLDING:
+            head = f"УСТАНОВКА: {stage_title} HOLD [{proc.complication}] | ▶ q resume | q abort"
+        elif proc.status == STATUS_AWAITING:
+            head = f"УСТАНОВКА: {stage_title} РАЗВИЛКА [{proc.complication}] | ▶ q resume | q abort"
+        else:
+            head = f"УСТАНОВКА: {stage_title} | {proc.module_id()} → {proc.mount()}"
+        lines = [head]
+        condition = self._attach_admissibility_condition()
+        if condition and proc.status in {STATUS_HOLDING, STATUS_AWAITING}:
+            lines.append(f"  {condition}")
+        return lines
 
     def _build_qiki_decision_preview_lines(self) -> list[str]:
         """Предпросмотр решения для F5 (show-when: есть кандидат). Read-only.
@@ -2200,10 +2268,11 @@ class OrionVApp(App[None]):
         M1: ступени ещё не исполняются — показываем цепочку проверок и статус
         «—» на каждой ступени; схлопывать нельзя (ADR-0015, честность ступеней).
         """
+        lines = self._build_attach_procedure_lines()
         if self._qiki_pending_action is None:
-            return []
-        lines = ["проверки: доверие → питание → тепло → SAFE | шаг: q confirm",
-                 "validation: — | publish: — | ack: — | effect: — (не схлопывать)"]
+            return lines
+        lines += ["проверки: доверие → питание → тепло → SAFE | шаг: q confirm",
+                  "validation: — | publish: — | ack: — | effect: — (не схлопывать)"]
         plan = self._build_qiki_plan_preview_lines()
         if plan:
             lines.append("план процедуры:")
@@ -3170,7 +3239,18 @@ class OrionVApp(App[None]):
     def _attach_procedure_on_snapshot(self) -> None:
         """Тик процедуры (ADR-0020 §4): принятый снапшот с paused=false."""
         proc = self._attach_procedure
-        if proc is None or proc.stage != STAGE_S3_TRANSFER:
+        if proc is None or not proc.active:
+            return
+        vm_trace = build_power_thermal_console_view_model_from_telemetry(
+            self._snapshot if isinstance(self._snapshot, dict) else None
+        )
+        worst_temp = max(
+            (node.temperature_c for node in vm_trace.thermal_nodes if node.temperature_c is not None),
+            default=None,
+        )
+        if worst_temp is not None:
+            self._attach_thermal_trace.append(float(worst_temp))
+        if proc.stage != STAGE_S3_TRANSFER:
             return
         sim_state = self._snapshot.get("sim_state") if isinstance(self._snapshot, dict) else None
         paused = bool(sim_state.get("paused")) if isinstance(sim_state, dict) else False
@@ -3270,6 +3350,9 @@ class OrionVApp(App[None]):
             return
         proc.stage_log.append(text)
         self._console_history.append(f"УСТАНОВКА ▸ {text}")
+        self._attach_procedure_ledger.append(
+            (datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"), text)
+        )
 
     async def _advance_attach_procedure(self) -> None:
         """Авто-продвижение зелёных стадий; стоп только на развилке/hold (§2)."""

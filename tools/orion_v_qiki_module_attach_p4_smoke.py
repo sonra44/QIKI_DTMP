@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from qiki.services.operator_console.orion_v.app import OrionVApp
+from qiki.services.operator_console.orion_v.screens.qiki_dialog import OrionVQikiDialogScreen
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
     get_body_structure_interactive_controller,
     reset_body_structure_interactive_state,
@@ -151,6 +152,17 @@ async def _main() -> None:
             ), stage_events[-3:]
             assert len(get_body_structure_interactive_controller().snapshot().body.modules) == 1
             print("[smoke] 6a: окно закрыто (инъекция предусловия) -> процедура в hold, коды в аудите")
+
+            # P3 визуальная правда: строка УСТАНОВКА и лента «ПРОЦЕДУРА» на экране F5
+            app.action_show_level("f5")
+            await asyncio.sleep(1.5)  # дать циклу UI отрисовать
+            screen = app.query_one("#orionv-qiki-dialog", OrionVQikiDialogScreen)
+            rendered = screen.rendered_text()
+            assert "УСТАНОВКА:" in rendered and "HOLD" in rendered, rendered[-400:]
+            assert "условие: PWR" in rendered, rendered[-400:]
+            assert "ПРОЦЕДУРА" in rendered, rendered[-400:]
+            print("[smoke] 6v: F5-экран РЕНДЕРИТ строку УСТАНОВКА HOLD + условие + ленту ПРОЦЕДУРА")
+
             app._body_attach_preconditions = original_preconditions  # type: ignore  # «остыло»
             await app._resume_attach_procedure()
             await _wait_until(

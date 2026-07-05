@@ -41,16 +41,22 @@ def merge_dialog_lines(
     *,
     operator_lines: Sequence[tuple[str, str]],
     voice_entries: Sequence[QikiVoiceEntry],
+    procedure_lines: Sequence[tuple[str, str]] = (),
 ) -> list[QikiDialogLine]:
-    """Свести реплики оператора и голос QIKI в одну ленту по времени приёма.
+    """Свести реплики оператора, голос QIKI и записи процедуры в одну ленту.
 
     Один владелец на каждый источник: operator_lines — intent-лог оператора,
-    voice_entries — leджер qiki_voice (№8в). Новых деривов не создаём.
+    voice_entries — leджер qiki_voice (№8в), procedure_lines — стадии установки
+    (ADR-0020 §6: НЕ голос QIKI — отдельный говорящий «ПРОЦЕДУРА»).
     """
     merged: list[QikiDialogLine] = [
         QikiDialogLine(received_at=ts, speaker="ОПЕРАТОР", kind="", text=text)
         for ts, text in operator_lines
     ]
+    merged.extend(
+        QikiDialogLine(received_at=ts, speaker="ПРОЦЕДУРА", kind="", text=text)
+        for ts, text in procedure_lines
+    )
     merged.extend(
         QikiDialogLine(
             received_at=entry.received_at,
