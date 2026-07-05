@@ -74,6 +74,7 @@ class OrionVQikiDialogScreen(Static):
         super().__init__(**kwargs)
         self._dialog_lines: list[QikiDialogLine] = []
         self._candidate_title: str | None = None
+        self._candidate_command: str | None = None
         self._decision_preview_lines: list[str] = []
         self._last_text: str = ""
 
@@ -86,9 +87,11 @@ class OrionVQikiDialogScreen(Static):
         dialog_lines: Sequence[QikiDialogLine],
         candidate_title: str | None,
         decision_preview_lines: Sequence[str],
+        candidate_command: str | None = None,
     ) -> None:
         self._dialog_lines = list(dialog_lines)
         self._candidate_title = candidate_title
+        self._candidate_command = candidate_command
         self._decision_preview_lines = list(decision_preview_lines)
         self._refresh_text()
 
@@ -119,14 +122,11 @@ class OrionVQikiDialogScreen(Static):
 
         # Зона КАНДИДАТ (show-when: есть предложение провайдера).
         if self._candidate_title:
-            body.extend(
-                [
-                    "",
-                    "── КАНДИДАТ ──",
-                    self._candidate_title,
-                    "источник: провайдер | candidate_only | НЕ исполняется",
-                ]
-            )
+            body.extend(["", "── КАНДИДАТ ──", self._candidate_title])
+            # B1: показать РЕАЛЬНУЮ команду телу, а не только заголовок.
+            if self._candidate_command:
+                body.append(f"команда телу: {self._candidate_command}")
+            body.append("источник: провайдер | candidate_only | НЕ исполняется")
 
         # Зона РЕШЕНИЕ-предпросмотр (show-when: есть кандидат).
         if self._decision_preview_lines:

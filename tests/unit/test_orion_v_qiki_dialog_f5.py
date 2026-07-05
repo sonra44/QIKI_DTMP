@@ -93,3 +93,18 @@ def test_screen_module_has_no_execute_path():
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
     assert not (called & forbidden), f"F5 screen must be read-only, found: {called & forbidden}"
+
+
+def test_candidate_zone_shows_real_command_b1():
+    """B1: зона КАНДИДАТ показывает реальную команду телу, не только заголовок."""
+    screen = OrionVQikiDialogScreen()
+    screen.set_state(
+        dialog_lines=[],
+        candidate_title="Возобновить наблюдение безопасно",
+        candidate_command="qiki.commands.control ▸ sim.dock.release | параметры: target=ALLY-1",
+        decision_preview_lines=[],
+    )
+    rendered = screen.rendered_text()
+    assert "команда телу:" in rendered
+    assert "sim.dock.release" in rendered
+    assert "target=ALLY-1" in rendered

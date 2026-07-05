@@ -131,3 +131,19 @@ def test_approve_idempotent_after_publish():
     # Повторное одобрение — no-op: новый decision_id не создаётся.
     app._confirm_qiki_pending_action()
     assert app._pending_decision_id == decision_id
+
+
+def test_pending_command_summary_formats_real_command_b1():
+    """B1: summary команды человекочитаема, коды кодами."""
+    app = OrionVApp()
+    nats_cmd = app._pending_command_summary({
+        "action_kind": "NATS_COMMAND", "subject": "qiki.commands.control",
+        "name": "sim.dock.release", "parameters": {"target": "ALLY-1", "port": "A"},
+    })
+    assert "qiki.commands.control ▸ sim.dock.release" in nats_cmd
+    assert "port=A" in nats_cmd and "target=ALLY-1" in nats_cmd
+    proc = app._pending_command_summary({
+        "action_kind": "ORION_PROCEDURE", "name": "safe_pause_resume", "parameters": {},
+    })
+    assert "процедура ▸ safe_pause_resume" in proc
+    assert "параметры: —" in proc

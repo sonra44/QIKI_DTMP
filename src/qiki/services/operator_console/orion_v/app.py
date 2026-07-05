@@ -2852,6 +2852,26 @@ class OrionVApp(App[None]):
         await self._publish_operator_event(OPERATOR_OBJECTIVES, payload)
         self._request_refresh_ui()
 
+    @staticmethod
+    def _pending_command_summary(action: dict[str, Any]) -> str:
+        """Человекочитаемое описание РЕАЛЬНОЙ команды (коды кодами) — то, что
+        произойдёт с телом. Оператор должен видеть её, а не только заголовок
+        (механика доверия: сказано≠сделано становится проверяемым)."""
+        kind = str(action.get("action_kind") or "NATS_COMMAND").strip()
+        subject = str(action.get("subject") or "").strip()
+        name = str(action.get("name") or "").strip() or "—"
+        params = action.get("parameters") or {}
+        params_txt = (
+            ", ".join(f"{k}={v}" for k, v in sorted(params.items()))
+            if isinstance(params, dict) and params
+            else "—"
+        )
+        if kind == "ORION_PROCEDURE":
+            head = f"процедура ▸ {name}"
+        else:
+            head = f"{subject or '—'} ▸ {name}"
+        return f"{head} | параметры: {params_txt}"
+
     def _seal_pending_decision(self, action: dict[str, Any]) -> str:
         """M5: запломбировать ТОЧНУЮ одобряемую команду (subject/name/params+title).
 
@@ -2907,8 +2927,10 @@ class OrionVApp(App[None]):
         self._seal_pending_decision(action)
         title_ru = str(action.get("title_ru") or "выполнить действие QIKI")
         self._set_last_command_loop_state("awaiting_confirm", f"Awaiting operator confirm: {title_ru}")
+        # B1: показать оператору РЕАЛЬНУЮ команду телу, а не только заголовок.
+        confirm_prompt = f"Подтвердить: {title_ru}?\n\nКоманда телу:\n  {self._pending_command_summary(action)}"
         self.push_screen(
-            ConfirmDialog(f"Подтвердить: {title_ru}?"),
+            ConfirmDialog(confirm_prompt),
             lambda confirmed: self._run_after_confirm(
                 confirmed,
                 lambda: asyncio.create_task(self._execute_qiki_pending_action()),
@@ -3687,6 +3709,11 @@ class OrionVApp(App[None]):
                     or self._qiki_pending_action.get("title_en")
                     or "QIKI action"
                 ).strip()
+                if self._qiki_pending_action is not None
+                else None
+            ),
+            candidate_command=(
+                self._pending_command_summary(self._qiki_pending_action)
                 if self._qiki_pending_action is not None
                 else None
             ),

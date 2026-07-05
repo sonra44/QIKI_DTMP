@@ -81,7 +81,19 @@ async def _main() -> None:
         assert app._qiki_pending_action is None, "F5-путь создал pending_action (не read-only!)"
         print("[smoke] read-only OK: pending_action не создан")
 
-    print("[smoke] M1 PASS: F5 монтируется, лента живая, execute-путь не добавлен")
+        # 4) B1: зона КАНДИДАТ показывает РЕАЛЬНУЮ команду телу, не только заголовок
+        app._qiki_pending_action = {
+            "action_kind": "NATS_COMMAND", "title_ru": "Отстыковка готова",
+            "subject": "qiki.commands.control", "name": "sim.dock.release",
+            "parameters": {"port": "A"},
+        }
+        app._request_refresh_ui()
+        await pilot.pause()
+        cand = screen.rendered_text()
+        assert "команда телу:" in cand and "sim.dock.release" in cand and "port=A" in cand, cand
+        print("[smoke] B1 OK: оператор видит реальную команду (subject/name/params), не только заголовок")
+
+    print("[smoke] M1+B1 PASS: F5 монтируется, лента живая, реальная команда видна, execute-путь не добавлен")
 
 
 if __name__ == "__main__":
