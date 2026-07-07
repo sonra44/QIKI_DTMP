@@ -193,6 +193,9 @@ class OperatorLoopState:
     attach_procedure_paused: bool = False
     # Игровая (активная) пауза: состояние времени реплики для кнопки ⏸/▶ Мир
     world_paused: bool = False
+    # Срез 1 (F5-рука): ЧИСТЫЙ флаг «есть QIKI-кандидат на подтверждение»
+    # (= qiki_pending_action ≠ None, БЕЗ примеси алертов) — show-when кнопки Выполнить.
+    qiki_action_pending: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -856,6 +859,7 @@ def _build_operator_loop_state(
         attach_procedure_active=attach_procedure_active,
         attach_procedure_paused=attach_procedure_paused,
         world_paused=world_paused,
+        qiki_action_pending=human_ack_required,
     )
 
 

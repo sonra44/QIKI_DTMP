@@ -1323,6 +1323,15 @@ class OrionVApp(App[None]):
         if action == "page_prev":
             self.action_events_page_prev()
             return
+        if action == "qiki_confirm":
+            # Срез 1 (F5-рука): подтверждение ПРЯМО на F5 — тот же канонический
+            # путь, что и кокпитный q confirm (пломба/M5/M6/ConfirmDialog/мост).
+            # Не второй execute-путь — второй триггер существующего.
+            self._confirm_qiki_pending_action()
+            return
+        if action == "qiki_cancel":
+            self._cancel_qiki_pending_action()
+            return
 
     def action_ack_selected_incident(self) -> None:
         if self._replay_mode:

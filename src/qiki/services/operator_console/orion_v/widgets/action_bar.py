@@ -85,6 +85,8 @@ class OrionVActionBar(Static):
         ("page_next", "Стр >"),
         ("world_toggle", "⏸ Мир"),
         ("attach_toggle", "⏸ Установка"),
+        ("qiki_confirm", "✓ Выполнить"),
+        ("qiki_cancel", "✗ Отмена"),
     )
 
     def __init__(self, **kwargs: Any) -> None:
@@ -208,6 +210,21 @@ class OrionVActionBar(Static):
                 button.disabled = not loop.attach_procedure_active
                 button.label = "▶ Установка" if loop.attach_procedure_paused else "⏸ Установка"
                 button.variant = "warning" if loop.attach_procedure_paused else "default"
+                continue
+
+            if action in {"qiki_confirm", "qiki_cancel"}:
+                # Срез 1 (F5-рука): подтверждение действия ПРЯМО на F5 — show-when:
+                # есть кандидат (human_ack_required = qiki_pending_action ≠ None).
+                # CaMeL: LLM-реплика идёт с proposals=[] → кандидата нет → кнопки нет.
+                # Триггер дёргает канонический _confirm/_cancel (пломба/M5/M6 на пути).
+                button.display = loop.qiki_action_pending
+                if action == "qiki_confirm":
+                    # действие телу — недоступно в режиме анализа истории
+                    button.disabled = not loop.qiki_action_pending or loop.replay_mode
+                    button.variant = "warning"
+                else:
+                    button.disabled = not loop.qiki_action_pending
+                    button.variant = "default"
                 continue
 
             button.display = True
