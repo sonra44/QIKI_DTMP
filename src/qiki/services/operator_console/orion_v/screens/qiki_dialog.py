@@ -17,6 +17,9 @@ from typing import Any, Sequence
 
 from textual.widgets import Static
 
+from rich.console import Group, RenderableType
+from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.text import Text
 
 from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry
@@ -128,22 +131,46 @@ class OrionVQikiDialogScreen(Static):
         return self._last_text
 
     def _refresh_text(self) -> None:
-        lines = self._styled_lines()
-        self._last_text = "\n".join(text for text, _ in lines)
-        # HMI-цвет через Rich-СПАНЫ: Text.append(text, style) НЕ парсит markup —
-        # коды в [скобках] остаются кодами (инвариант plain-режима сохранён),
-        # но норма приглушена, отклонения крашены (ISA-101 / DISPLAY_CANON T7).
+        blocks = self._render_blocks()
+        self._last_text = "\n".join(text for text, _ in self._styled_lines())
+        # HMI-цвет через Rich-СПАНЫ + подсветка синтаксиса (W7): «line»-блоки —
+        # Text.append(text, style) (НЕ парсит markup, коды в [скобках] живут); тело
+        # QIKI — «md»-блок через rich.Markdown (код-фенс/списки подсвечены; коды в
+        # скобках проверены — выживают). Норма приглушена, отклонения крашены.
         try:
-            rich = Text()
-            for idx, (text, style) in enumerate(lines):
-                if idx:
-                    rich.append("\n")
-                rich.append(text, style=style or None)
-            self.update(rich)
+            self.update(self._blocks_to_rich(blocks))
         except Exception:  # noqa: BLE001 - NoActiveAppError и т.п.
             # вне смонтированного app (юнит-тесты) рендер не нужен;
             # правда текста живёт в rendered_text()
             pass
+
+    def _blocks_to_rich(self, blocks: list[tuple[str, ...]]) -> RenderableType:
+        """Собрать составной renderable: Text-спаны + Markdown-тело QIKI (W7)."""
+        parts: list[RenderableType] = []
+        buf = Text()
+        buf_has = False
+
+        def flush() -> None:
+            nonlocal buf, buf_has
+            if buf_has:
+                parts.append(buf)
+                buf = Text()
+                buf_has = False
+
+        for block in blocks:
+            if block[0] == "md":
+                flush()
+                # отступ ┃-бара нет: Markdown-блок сам несёт визуальную структуру;
+                # 2 пробела слева — асимметрия голоса QIKI (F5V2 §2 сохранена стампом).
+                parts.append(Padding(Markdown(block[1]), pad=(0, 0, 0, 2)))
+                continue
+            _, text, style = block
+            if buf_has:
+                buf.append("\n")
+            buf.append(text, style=style or None)
+            buf_has = True
+        flush()
+        return Group(*parts) if parts else Text()
 
     # HMI-палитра (dark cockpit: норма приглушена, цвет — только отклонению)
     _HEADER_STYLE = "bold"
@@ -154,16 +181,42 @@ class OrionVQikiDialogScreen(Static):
         return "\n".join(text for text, _ in self._styled_lines())
 
     def _styled_lines(self) -> list[tuple[str, str]]:
-        out: list[tuple[str, str]] = [("[F5] QIKI / ДИАЛОГ", self._HEADER_STYLE), ("", "")]
+        """Плоский (text, style) для rendered_text и тестов.
+
+        Дериватив из `_render_blocks`: «line»-блоки — как есть; «md»-блок (тело
+        QIKI) переносится в plain-строки индентом «  » (≤ ширины), чтобы
+        rendered_text/снапшоты оставались текстовыми, а коды в скобках — живыми.
+        """
+        out: list[tuple[str, str]] = []
+        for block in self._render_blocks():
+            if block[0] == "md":
+                for wrapped in self._wrap_body(block[1], indent="  "):
+                    out.append((wrapped, ""))
+            else:
+                out.append((block[1], block[2]))
+        return out
+
+    def _render_blocks(self) -> list[tuple[str, ...]]:
+        """Блочная модель экрана: ("line", text, style) | ("md", md_source).
+
+        «md» — только свободное тело реплики QIKI (И4: Markdown лишь для голоса,
+        не для кодов/карты). Всё прочее — «line»-блоки с HMI-стилем.
+        """
+        out: list[tuple[str, ...]] = [
+            ("line", "[F5] QIKI / ДИАЛОГ", self._HEADER_STYLE),
+            ("line", "", ""),
+        ]
 
         # Зона ДИАЛОГ (всегда).
-        out.append(("── ДИАЛОГ ──", self._HEADER_STYLE))
+        out.append(("line", "── ДИАЛОГ ──", self._HEADER_STYLE))
         if self._dialog_lines:
             for idx, line in enumerate(self._dialog_lines):
                 if idx:
-                    out.append(("", ""))  # пустая строка между ходами (не рамки)
+                    out.append(("line", "", ""))  # пустая строка между ходами (не рамки)
                 speaker = line.speaker.upper()
-                is_bot = speaker.startswith("QIKI") or speaker.startswith("ПРОЦЕДУРА")
+                is_qiki = speaker.startswith("QIKI")
+                is_procedure = speaker.startswith("ПРОЦЕДУРА")
+                is_bot = is_qiki or is_procedure
                 if is_bot:
                     # штамп QIKI/ПРОЦЕДУРА — полный HH:MM:SSZ (канон 8в: freshness)
                     head = f"{line.speaker} ▸ {line.received_at}"
@@ -175,57 +228,64 @@ class OrionVQikiDialogScreen(Static):
                 # Заголовок QIKI крашен по типу арбитража (REJECT красный, ACK
                 # зелёный, INFO нейтральный); оператор — нейтральный.
                 head_style = self._KIND_STYLE.get(line.kind or "", "") if is_bot else ""
-                out.append((head, head_style))
-                indent = "┃ " if is_bot else "  "
-                for wrapped in self._wrap_body(line.text, indent=indent):
-                    out.append((wrapped, ""))
+                out.append(("line", head, head_style))
+                if is_qiki:
+                    # W7: свободное тело QIKI — Markdown-блок (подсветка синтаксиса);
+                    # без ┃-бара, отступ даёт _blocks_to_rich (Padding).
+                    out.append(("md", str(line.text)))
+                else:
+                    # ПРОЦЕДУРА — машинный леджер с ┃-баром; оператор — plain «  ».
+                    indent = "┃ " if is_procedure else "  "
+                    for wrapped in self._wrap_body(line.text, indent=indent):
+                        out.append(("line", wrapped, ""))
                 codes = self._codes_line(line)
                 if codes:
-                    out.append((f"  └ {codes}", self._DIM))  # машинные факты — dim
+                    out.append(("line", f"  └ {codes}", self._DIM))  # машинные факты — dim
         else:
             for ln in _EMPTY_DIALOG.splitlines():
-                out.append((ln, self._DIM))
+                out.append(("line", ln, self._DIM))
 
         # Зона КАНДИДАТ (show-when: есть предложение провайдера).
         if self._candidate_title:
-            out.extend([("", ""), ("── КАНДИДАТ ──", self._HEADER_STYLE), (self._candidate_title, "")])
+            out.extend([("line", "", ""), ("line", "── КАНДИДАТ ──", self._HEADER_STYLE),
+                        ("line", self._candidate_title, "")])
             if self._candidate_command:
-                out.append((f"команда телу: {self._candidate_command}", self._DIM))
-            out.append(("источник: провайдер | candidate_only | НЕ исполняется", self._DIM))
+                out.append(("line", f"команда телу: {self._candidate_command}", self._DIM))
+            out.append(("line", "источник: провайдер | candidate_only | НЕ исполняется", self._DIM))
 
         # W2: Trust/Legality-карта (show-when: есть текущее действие) — «спина G1».
         if self._trust_card is not None:
             card = self._trust_card
-            out.append(("", ""))
-            out.append(("── ДОВЕРИЕ/ЗАКОННОСТЬ ──", self._HEADER_STYLE))
-            out.append((f"ДЕЙСТВИЕ      {card.action_title}", ""))
+            out.append(("line", "", ""))
+            out.append(("line", "── ДОВЕРИЕ/ЗАКОННОСТЬ ──", self._HEADER_STYLE))
+            out.append(("line", f"ДЕЙСТВИЕ      {card.action_title}", ""))
             if card.action_command:
-                out.append((f"команда телу  {card.action_command}", self._DIM))
-            out.append((f"ИСТОЧНИК      {card.source}", self._DIM))
+                out.append(("line", f"команда телу  {card.action_command}", self._DIM))
+            out.append(("line", f"ИСТОЧНИК      {card.source}", self._DIM))
             legality_style = "" if card.legality_status == "allowed" else (
                 "bold red" if card.legality_status in {"blocked", "unsafe"} else "yellow"
             )
-            out.append((f"ЗАКОННОСТЬ    {card.legality_code}", legality_style))
+            out.append(("line", f"ЗАКОННОСТЬ    {card.legality_code}", legality_style))
             if card.trust_code:
                 trust_style = "" if card.trust_code.startswith("trusted") else "yellow"
-                out.append((f"ДОВЕРИЕ       {card.trust_code}", trust_style))
+                out.append(("line", f"ДОВЕРИЕ       {card.trust_code}", trust_style))
             if card.unlock_condition:
-                out.append((f"РАЗБЛОКИРОВКА {card.unlock_condition}", "yellow"))
+                out.append(("line", f"РАЗБЛОКИРОВКА {card.unlock_condition}", "yellow"))
 
         # Зона РЕШЕНИЕ-предпросмотр (show-when: есть кандидат).
         if self._decision_preview_lines:
-            out.append(("", ""))
-            out.append(("── РЕШЕНИЕ (предпросмотр) ──", self._HEADER_STYLE))
+            out.append(("line", "", ""))
+            out.append(("line", "── РЕШЕНИЕ (предпросмотр) ──", self._HEADER_STYLE))
             for ln in self._decision_preview_lines:
-                out.append((ln, ""))
+                out.append(("line", ln, ""))
 
         # Зона УЛИКИ (всегда) — dim-указатель.
-        out.extend([("", ""), ("── УЛИКИ ──", self._HEADER_STYLE),
-                    ("детали: F8 | журнал: F6 | системы: F2", self._DIM)])
+        out.extend([("line", "", ""), ("line", "── УЛИКИ ──", self._HEADER_STYLE),
+                    ("line", "детали: F8 | журнал: F6 | системы: F2", self._DIM)])
 
         # Поле ввода на F5 открыто постоянно — подсказка dim.
-        out.extend([("", ""), ("── ВВОД ──", self._HEADER_STYLE),
-                    ("печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус", self._DIM)])
+        out.extend([("line", "", ""), ("line", "── ВВОД ──", self._HEADER_STYLE),
+                    ("line", "печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус", self._DIM)])
         return out
 
     _WRAP_WIDTH = 110
