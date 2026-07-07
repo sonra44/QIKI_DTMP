@@ -3613,6 +3613,9 @@ class OrionVApp(App[None]):
             consequence_status = "confirmed"
             summary_ru = f"Модуль {module_id} установлен; улики в F2/F8"
             summary_en = "Module attached through the live body pipeline."
+            echo_kind, echo_ru = "ACK", (
+                f"Готово: {module_id} установлен в {proc.mount()}. Эффект подтверждён, улики в F2/F8."
+            )
         else:
             proc.status = STATUS_FAILED
             snap = get_body_structure_interactive_controller().snapshot()
@@ -3629,6 +3632,23 @@ class OrionVApp(App[None]):
             consequence_status = "failed"
             summary_ru = f"Конвейер тела отказал [{reason or 'REJECTED'}]"
             summary_en = "The body pipeline refused the attach."
+            echo_kind, echo_ru = "REJECT", (
+                f"Установка не удалась: конвейер отказал [{reason or 'REJECTED'}]. "
+                "Модуль остался в отсеке, детали в F8."
+            )
+
+        # Срез 2 (F5-эхо): исход возвращается в ленту ГОЛОСОМ QIKI (реплика в
+        # леджере голоса), а не только машинной стадией ПРОЦЕДУРЫ (ADR-0020 §6:
+        # разные говорящие). Текст локальный (view-model), не от провайдера — И5.
+        self._qiki_voice_ledger.append(
+            QikiVoiceEntry(
+                received_at=datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"),
+                kind=echo_kind,
+                text=echo_ru,
+                legality_code=None,
+                trust_code=None,
+            )
+        )
 
         # C2 ревизии: consequence пишется в диалог ТОЛЬКО если ответ, породивший
         # процедуру, всё ещё текущий (чужие реплики не мутируются).
