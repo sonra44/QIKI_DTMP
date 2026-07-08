@@ -142,6 +142,7 @@ class OrionVQikiDialogScreen(Static):
         self._decision_preview_lines: list[str] = []
         self._trust_card: TrustCard | None = None
         self._board_chips: tuple[Any, ...] = ()
+        self._thinking: bool = False
         self._last_text: str = ""
 
     def on_mount(self) -> None:
@@ -156,6 +157,7 @@ class OrionVQikiDialogScreen(Static):
         candidate_command: str | None = None,
         trust_card: TrustCard | None = None,
         board_chips: Sequence[Any] = (),
+        thinking: bool = False,
     ) -> None:
         self._dialog_lines = list(dialog_lines)
         self._candidate_title = candidate_title
@@ -163,6 +165,7 @@ class OrionVQikiDialogScreen(Static):
         self._decision_preview_lines = list(decision_preview_lines)
         self._trust_card = trust_card
         self._board_chips = tuple(board_chips)
+        self._thinking = bool(thinking)
         self._refresh_text()
 
     def rendered_text(self) -> str:
@@ -306,6 +309,11 @@ class OrionVQikiDialogScreen(Static):
         else:
             for ln in _EMPTY_DIALOG.splitlines():
                 out.append(("line", ln, self._DIM))
+
+        # Ожидание ответа: Mercury на свободе думает десятки секунд — оператор
+        # должен видеть, что запрос жив (исчезает с ответом/таймаутом).
+        if self._thinking:
+            out.extend([("line", "", ""), ("line", "QIKI ▸ думает…", self._DIM)])
 
         # Поле ввода на F5 открыто постоянно — подсказка dim (низ ленты).
         out.extend([("line", "", ""), ("line", "── ВВОД ──", self._HEADER_STYLE),

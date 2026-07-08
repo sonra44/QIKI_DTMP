@@ -136,3 +136,23 @@ def test_panel_without_chips_has_no_empty_board_block() -> None:
     screen = OrionVQikiDialogScreen()
     screen.set_state(dialog_lines=[], candidate_title=None, decision_preview_lines=[])
     assert "БОРТ" not in screen.panel_text()
+
+
+def test_thinking_indicator_show_when_pending() -> None:
+    """«QIKI думает…» виден пока ждём ответ; исчезает с ответом."""
+    screen = OrionVQikiDialogScreen()
+    screen.set_state(
+        dialog_lines=[QikiDialogLine("06:00:10Z", "ОПЕРАТОР", "", "расскажи о себе")],
+        candidate_title=None, decision_preview_lines=[], thinking=True,
+    )
+    ft = screen.feed_text()
+    assert "думает" in ft
+    # индикатор стоит ПОСЛЕ последней реплики, до зоны ВВОД
+    assert ft.index("расскажи о себе") < ft.index("думает") < ft.index("── ВВОД ──")
+
+    screen.set_state(
+        dialog_lines=[QikiDialogLine("06:00:10Z", "ОПЕРАТОР", "", "расскажи о себе"),
+                      QikiDialogLine("06:00:50Z", "QIKI", "INFO", "Готова.")],
+        candidate_title=None, decision_preview_lines=[], thinking=False,
+    )
+    assert "думает" not in screen.feed_text()
