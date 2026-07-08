@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import math
 import re
 import time
 from pathlib import Path
@@ -658,6 +659,10 @@ def _is_attach_module_command(text: str) -> bool:
     БЕЗ объекта установки — не команда (беседа).
     """
     low = " ".join((text or "").strip().lower().split())
+    # Отрицание/вопрос — беседа, не команда (ревью: кандидат на риторический
+    # вопрос запрещён; «не надо…» не должно готовить установку).
+    if "?" in low or re.search(r"\b(не|нельзя|можно ли|почему|зачем)\b", low):
+        return False
     verbs = (
         "установи", "установить", "поставь", "смонтируй", "attach", "install",
         "пристыкуй", "пристыковать", "приладь", "приладить", "воткни", "воткнуть",
@@ -3908,11 +3913,10 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     power = snapshot.get("power")
     if isinstance(power, dict):
         soc = power.get("soc_pct")
-        soc_txt = (
-            f"{float(soc):.0f}%"
-            if isinstance(soc, (int, float)) and not isinstance(soc, bool)
-            else "NODATA"
+        soc_ok = (
+            isinstance(soc, (int, float)) and not isinstance(soc, bool) and math.isfinite(float(soc))
         )
+        soc_txt = f"{float(soc):.0f}%" if soc_ok else "NODATA"
         seg = f"заряд батареи (SOC) {soc_txt}"
         if bool(power.get("load_shedding")):
             seg += ", сброс нагрузки активен"
@@ -3922,12 +3926,15 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
 
     thermal = snapshot.get("thermal")
     nodes = thermal.get("nodes") if isinstance(thermal, dict) else None
+    if not isinstance(nodes, list):  # кривая телеметрия не должна валить беседу
+        nodes = None
     temps = [
         float(n["temp_c"])
         for n in (nodes or [])
         if isinstance(n, dict)
         and isinstance(n.get("temp_c"), (int, float))
         and not isinstance(n.get("temp_c"), bool)
+        and math.isfinite(float(n["temp_c"]))
     ]
     if temps:
         tripped = sum(1 for n in nodes if isinstance(n, dict) and bool(n.get("tripped")))
@@ -3960,9 +3967,12 @@ async def _build_llm_free_reply(
     Вынесено из closure-хендлера ради тестируемости. Провайдер молчит →
     честная структурная реплика (не немой сбой).
     """
-    llm_text = await asyncio.to_thread(
-        generate_qiki_reply, req.input.text, context_note=_vision_note(reasoning_snapshot)
-    )
+    try:
+        note = _vision_note(reasoning_snapshot)
+    except Exception:  # noqa: BLE001 - кривая телеметрия НЕ должна онеметь консоль
+        logger.warning("vision_note_failed", exc_info=True)
+        note = "Состояние борта: NODATA (сводка недоступна)."
+    llm_text = await asyncio.to_thread(generate_qiki_reply, req.input.text, context_note=note)
     if llm_text:
         return QikiChatResponseV1(
             request_id=req.request_id,

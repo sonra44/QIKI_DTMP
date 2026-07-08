@@ -84,3 +84,23 @@ def test_verb_without_object_is_not_command() -> None:
     """Негатив: глагол без объекта установки — НЕ команда."""
     for phrase in ("подключи связь со станцией", "закрепи успех", "воткни музыку"):
         assert not _is_attach_module_command(phrase), f"ложная команда: {phrase!r}"
+
+
+def test_negation_is_not_command() -> None:
+    """Находка ревью [MED]: отрицание — беседа, не команда установки."""
+    for phrase in (
+        "не надо подключать антенну",
+        "не устанавливай сенсор",
+        "нельзя воткнуть модуль сюда",
+    ):
+        assert not _is_attach_module_command(phrase), f"отрицание принято за команду: {phrase!r}"
+
+
+def test_question_is_not_command() -> None:
+    """Вопрос — беседа, не команда (кандидат на риторический вопрос запрещён)."""
+    for phrase in (
+        "можно ли установить сенсор?",
+        "почему нельзя воткнуть модуль?",
+        "установить антенну — это долго?",
+    ):
+        assert not _is_attach_module_command(phrase), f"вопрос принят за команду: {phrase!r}"

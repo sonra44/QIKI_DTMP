@@ -120,3 +120,40 @@ def test_prompt_declares_board_facts_priority() -> None:
     """Факты борта важнее лора — иначе Mercury «примиряет» и галлюцинирует."""
     from qiki.services.q_core_agent.core.qiki_chat_llm import QIKI_SYSTEM_PROMPT_RU
     assert "приоритет" in QIKI_SYSTEM_PROMPT_RU.lower()
+
+
+def test_note_survives_hostile_snapshot_shapes() -> None:
+    """Находка ревью [HIGH]: кривая телеметрия не должна валить ветку беседы."""
+    hostile = [
+        {"thermal": {"nodes": 5}},  # nodes не list → падало TypeError
+        {"thermal": {"nodes": "boom"}},
+        {"power": {"soc_pct": float("nan")}},  # NaN не должен попасть в промпт
+        {"power": {"soc_pct": float("inf")}},
+        {"sim_state": {"fsm_state": ["RUNNING"]}},
+        {"radar_tracks": {"not": "a list"}},
+    ]
+    for snap in hostile:
+        note = svc._vision_note({**snap, "ts_unix_ms": NOW * 1000}, now_ts=NOW)
+        assert isinstance(note, str) and note
+        assert "nan" not in note.lower()
+        assert "inf" not in note.lower()
+
+
+def test_llm_free_reply_never_dies_on_hostile_snapshot() -> None:
+    """Страховка контура: даже если note кинет, ответ обязан уйти (не немота)."""
+    def _boom(snapshot, *, now_ts=None):
+        raise TypeError("boom")
+
+    orig_note = svc._vision_note
+    orig_reply, orig_enabled = svc.generate_qiki_reply, svc.llm_dialog_enabled
+    svc._vision_note = _boom  # type: ignore[assignment]
+    svc.generate_qiki_reply = lambda user_text, *, context_note="": "Отвечаю без видения."  # type: ignore[assignment]
+    svc.llm_dialog_enabled = lambda: True  # type: ignore[assignment]
+    try:
+        resp = asyncio.run(svc._build_llm_free_reply(
+            _req(), mode=QikiMode.FACTORY, reasoning_snapshot={"thermal": {"nodes": 5}},
+        ))
+    finally:
+        svc._vision_note = orig_note  # type: ignore[assignment]
+        svc.generate_qiki_reply, svc.llm_dialog_enabled = orig_reply, orig_enabled
+    assert resp.reply is not None  # ответ ушёл, консоль не немеет
