@@ -66,9 +66,11 @@ def test_parses_chat_completions_shape(monkeypatch) -> None:
 
 
 def test_system_prompt_is_machine_register() -> None:
+    # Ограничения стиля сняты приказом оператора 2026-07-08; пломба держит ЯДРО:
+    # коды кодами, не-актор, честный режим, первое лицо, без оверклейма полёта.
     p = llm.QIKI_SYSTEM_PROMPT_RU
     assert "не переводи" in p.lower()  # коды кодами (языковая рамка)
-    assert "не исполняешь действия" in p.lower()  # CaMeL: не control flow
+    assert "действий не совершаешь" in p.lower()  # не-актор: исполняет политика
     assert "factory" in p.lower()  # честное текущее состояние (реальный режим)
-    assert "из первых уст" in p.lower()  # происхождение: функции определяются
-    assert "не изображай активную миссию" in p.lower()  # без оверклейма (Терта = цель)
+    assert "от первого лица" in p.lower()  # голос самого бота
+    assert "не текущий полёт" in p.lower()  # без оверклейма (Терта = будущее)

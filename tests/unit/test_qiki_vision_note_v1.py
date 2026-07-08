@@ -191,9 +191,8 @@ def test_extended_enum_values_validated() -> None:
 
 
 def test_prompt_demands_no_fabrication_and_on_topic() -> None:
-    """Диета: отвечай на вопрос, не выдумывай состав, без непрошеных рекомендаций."""
+    """Ядро честности (канон, не стиль): не выдумывать состав; данные по уместности."""
     from qiki.services.q_core_agent.core.qiki_chat_llm import QIKI_SYSTEM_PROMPT_RU
     p = QIKI_SYSTEM_PROMPT_RU.lower()
-    assert "не выдумывай" in p  # состав/оборудование не сочинять
-    assert "заданный вопрос" in p  # отвечать по теме, не шаблоном
-    assert "без запроса" in p  # телеметрию/рекомендации не сыпать непрошено
+    assert "не выдумывай" in p  # состав/оборудование не сочинять (01_BODY_CANON)
+    assert "по уместности" in p  # данные борта не пересказывать не к месту
