@@ -651,10 +651,20 @@ def _is_release_dock_command(text: str) -> bool:
 
 
 def _is_attach_module_command(text: str) -> bool:
-    """P2: глагол установки + любой объект установки (модуль/класс/id)."""
+    """P2: глагол установки + любой объект установки (модуль/класс/id).
+
+    Срез 3 (понимание): живые глаголы оператора («пристыкуй», «приладь»,
+    «воткни»…) — фиксированный словарь policy, не LLM (CaMeL цел). Глагол
+    БЕЗ объекта установки — не команда (беседа).
+    """
     low = " ".join((text or "").strip().lower().split())
-    verbs = ("установи", "установить", "поставь", "смонтируй", "attach", "install")
-    objects = ("модул", "сенсор", "антенн", "зонд", "научн", "module", "sensor", "antenna", "probe", "science", "rcs")
+    verbs = (
+        "установи", "установить", "поставь", "смонтируй", "attach", "install",
+        "пристыкуй", "пристыковать", "приладь", "приладить", "воткни", "воткнуть",
+        "закрепи", "закрепить", "подключи", "подключить", "прикрути", "прикрутить",
+        "навесь", "навесить",
+    )
+    objects = ("модул", "сенсор", "датчик", "антенн", "зонд", "научн", "module", "sensor", "antenna", "probe", "science", "rcs")
     return any(verb in low for verb in verbs) and any(obj in low for obj in objects)
 
 
@@ -3780,7 +3790,7 @@ def _parse_attach_request_text(text: str, entries) -> tuple[object | None, str, 
 
     # 3) класс по фиксированным синонимам policy
     class_synonyms = {
-        "sensor": ("сенсор", "sensor"),
+        "sensor": ("сенсор", "sensor", "датчик"),  # Срез 3: живой синоним оператора
         "antenna": ("антенн", "antenna"),
         "science": ("зонд", "научн", "science"),
         "rcs-cluster": ("rcs",),
