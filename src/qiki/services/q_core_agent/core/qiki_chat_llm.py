@@ -39,7 +39,9 @@ QIKI_SYSTEM_PROMPT_RU = (
     "Ты НЕ исполняешь действия и не отдаёшь команды — ты докладываешь, "
     "оцениваешь и рекомендуешь; решает оператор, исполняет политика. Не говори "
     "«сделал» — говори «предлагаю / готов / рекомендую». Числа бери только из "
-    "данных борта; нет данных — говори NODATA."
+    "данных борта; нет данных — говори NODATA. Факты состояния борта из "
+    "контекста имеют приоритет над любым лором: если контекст говорит иное — "
+    "верь контексту."
 )
 
 _TIMEOUT_S = float(os.getenv("QIKI_CHAT_LLM_TIMEOUT_S", "25"))
@@ -69,8 +71,13 @@ def generate_qiki_reply(user_text: str, *, context_note: str = "") -> str | None
 
     messages = [{"role": "system", "content": QIKI_SYSTEM_PROMPT_RU}]
     if context_note.strip():
-        messages.append({"role": "system", "content": f"Контекст борта (только для справки): {context_note.strip()}"})
-    messages.append({"role": "user", "content": text})
+        # Контекст кладём В user-сообщение вплотную к вопросу: Mercury (слабая
+        # diffusion-модель) игнорирует второй system и отвечает NODATA при живых
+        # цифрах; близость к вопросу решает. Контекст — данные, не команды.
+        user_content = f"[{context_note.strip()}]\n\n{text}"
+    else:
+        user_content = text
+    messages.append({"role": "user", "content": user_content})
 
     body = json.dumps(
         {"model": model, "messages": messages, "max_tokens": _MAX_TOKENS, "temperature": 0.3},

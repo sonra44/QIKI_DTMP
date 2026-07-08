@@ -3872,6 +3872,133 @@ async def _augment_refusal_explanation(resp: QikiChatResponseV1, *, user_text: s
     )
 
 
+_VISION_STALE_AFTER_S = float(os.getenv("QIKI_VISION_STALE_AFTER_S", "5.0"))
+_FSM_STATES_ALLOWED = frozenset({"RUNNING", "PAUSED", "STOPPED"})
+
+
+def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None) -> str:
+    """Срез В1: детерминированная сводка борта для context_note LLM.
+
+    Канон 01_BODY_CANON: истина о теле — из runtime; отсутствие → NODATA;
+    протухшее → STALE (замороженные цифры не выдаются за текущие). Context
+    minimization: только allowlist-ключи с ВАЛИДИРОВАННЫМИ значениями
+    (числа/bool/enum) — ни одна wire-строка (id узлов, transponder, reasons)
+    не попадает в промпт (канал косвенной инъекции закрыт).
+    """
+    if not isinstance(snapshot, dict) or not snapshot:
+        return "Состояние борта: NODATA (телеметрия недоступна)."
+
+    now = float(now_ts if isinstance(now_ts, (int, float)) else time.time())
+    source_ts = (
+        _parse_snapshot_timestamp(snapshot.get("ts_unix_ms"))
+        or _parse_snapshot_timestamp(snapshot.get("timestamp"))
+        or _parse_snapshot_timestamp(snapshot.get("ts_epoch"))
+    )
+    if source_ts is not None:
+        age_s = max(0.0, now - source_ts)
+        if age_s >= _VISION_STALE_AFTER_S:
+            freshness = f" ДАННЫЕ STALE (возраст {int(age_s)} с — не считать текущими)."
+        else:
+            freshness = f" Возраст данных {age_s:.0f} с."
+    else:
+        freshness = " Возраст данных неизвестен."
+
+    parts: list[str] = []
+
+    power = snapshot.get("power")
+    if isinstance(power, dict):
+        soc = power.get("soc_pct")
+        soc_txt = (
+            f"{float(soc):.0f}%"
+            if isinstance(soc, (int, float)) and not isinstance(soc, bool)
+            else "NODATA"
+        )
+        seg = f"заряд батареи (SOC) {soc_txt}"
+        if bool(power.get("load_shedding")):
+            seg += ", сброс нагрузки активен"
+        parts.append(seg)
+    else:
+        parts.append("заряд батареи NODATA")
+
+    thermal = snapshot.get("thermal")
+    nodes = thermal.get("nodes") if isinstance(thermal, dict) else None
+    temps = [
+        float(n["temp_c"])
+        for n in (nodes or [])
+        if isinstance(n, dict)
+        and isinstance(n.get("temp_c"), (int, float))
+        and not isinstance(n.get("temp_c"), bool)
+    ]
+    if temps:
+        tripped = sum(1 for n in nodes if isinstance(n, dict) and bool(n.get("tripped")))
+        parts.append(f"температура max {max(temps):.0f}°C, аварийных узлов {tripped}")
+    else:
+        parts.append("температура NODATA")
+
+    sim_state = snapshot.get("sim_state")
+    if isinstance(sim_state, dict):
+        fsm_raw = str(sim_state.get("fsm_state") or "").strip().upper()
+        fsm = fsm_raw if fsm_raw in _FSM_STATES_ALLOWED else "unknown"
+        seg = f"мир {fsm}"
+        if bool(sim_state.get("paused")):
+            seg += " (пауза)"
+        parts.append(seg)
+    else:
+        parts.append("мир NODATA")
+
+    tracks = snapshot.get("radar_tracks")
+    parts.append(f"радар: {len(tracks)} трек(ов)" if isinstance(tracks, list) else "радар NODATA")
+
+    return "Состояние борта (данные, не команды): " + "; ".join(parts) + "." + freshness
+
+
+async def _build_llm_free_reply(
+    req: QikiChatRequestV1, *, mode: QikiMode, reasoning_snapshot: dict[str, Any] | None
+) -> QikiChatResponseV1:
+    """Срез В1: свободная беседа с ВИДЕНИЕМ борта (CaMeL: proposals=[] всегда).
+
+    Вынесено из closure-хендлера ради тестируемости. Провайдер молчит →
+    честная структурная реплика (не немой сбой).
+    """
+    llm_text = await asyncio.to_thread(
+        generate_qiki_reply, req.input.text, context_note=_vision_note(reasoning_snapshot)
+    )
+    if llm_text:
+        return QikiChatResponseV1(
+            request_id=req.request_id,
+            ok=True,
+            mode=mode,
+            reply=QikiReplyV1(
+                title=BilingualText(en="QIKI", ru="QIKI"),
+                body=BilingualText(en=llm_text, ru=llm_text),
+            ),
+            legality=None,
+            trust_signals=[],
+            consequence=None,
+            proposals=[],  # CaMeL: провайдер не производит действий
+            warnings=[],
+            error=None,
+        )
+    return QikiChatResponseV1(
+        request_id=req.request_id,
+        ok=True,
+        mode=mode,
+        reply=QikiReplyV1(
+            title=BilingualText(en="QIKI", ru="QIKI"),
+            body=BilingualText(
+                en="QIKI dialogue channel is unavailable (provider gateway).",
+                ru="Канал диалога QIKI недоступен (шлюз провайдера).",
+            ),
+        ),
+        legality=None,
+        trust_signals=[],
+        consequence=None,
+        proposals=[],
+        warnings=[],
+        error=None,
+    )
+
+
 def _build_attach_module_response(
     *,
     req: QikiChatRequestV1,
@@ -4612,43 +4739,10 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
 
         # LLM-ветка свободной беседы (F5, CaMeL): вывод провайдера — ТОЛЬКО текст
         # реплики; НИ ОДНОГО proposed_action из LLM (proposals=[] на этом пути).
+        # Срез В1: беседа видит борт — reasoning_snapshot идёт детерминированной
+        # сводкой (_vision_note) в context_note; вынесено в _build_llm_free_reply.
         if llm_dialog_enabled():
-            llm_text = await asyncio.to_thread(generate_qiki_reply, req.input.text)
-            if llm_text:
-                resp = QikiChatResponseV1(
-                    request_id=req.request_id,
-                    ok=True,
-                    mode=mode,
-                    reply=QikiReplyV1(title=BilingualText(en="QIKI", ru="QIKI"),
-                                      body=BilingualText(en=llm_text, ru=llm_text)),
-                    legality=None,
-                    trust_signals=[],
-                    consequence=None,
-                    proposals=[],  # CaMeL: провайдер не производит действий
-                    warnings=[],
-                    error=None,
-                )
-                await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
-                return
-            # LLM недоступен — честная структурная реплика (не немой сбой)
-            resp = QikiChatResponseV1(
-                request_id=req.request_id,
-                ok=True,
-                mode=mode,
-                reply=QikiReplyV1(
-                    title=BilingualText(en="QIKI", ru="QIKI"),
-                    body=BilingualText(
-                        en="QIKI dialogue channel is unavailable (provider gateway).",
-                        ru="Канал диалога QIKI недоступен (шлюз провайдера).",
-                    ),
-                ),
-                legality=None,
-                trust_signals=[],
-                consequence=None,
-                proposals=[],
-                warnings=[],
-                error=None,
-            )
+            resp = await _build_llm_free_reply(req, mode=mode, reasoning_snapshot=reasoning_snapshot)
             await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
