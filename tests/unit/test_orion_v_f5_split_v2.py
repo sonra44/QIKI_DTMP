@@ -1,0 +1,88 @@
+"""F5 экран пополам: чистая беседа слева | инфо-дисплей QIKI справа.
+
+Решение оператора №1 цело: правая панель показывает АРТЕФАКТЫ QIKI
+(кандидат, доверие/законность, решение-предпросмотр, улики) — то, что
+приходит от неё; консольные данные не подписываются как «видение QIKI».
+Контракты сохранены: rendered_text()/_styled_lines() — плоская правда
+обеих колонок (старые тесты W1/W2/W7 живут без правок).
+"""
+
+from __future__ import annotations
+
+import pytest
+from textual.app import App, ComposeResult
+from textual.widgets import Static
+
+from qiki.services.operator_console.orion_v.screens.qiki_dialog import (
+    OrionVQikiDialogScreen,
+    QikiDialogLine,
+    TrustCard,
+)
+
+
+def _card() -> TrustCard:
+    return TrustCard(
+        action_title="Установить модуль",
+        action_command="orionv.body ▸ attach.module",
+        source="policy (кандидат)",
+        legality_code="allowed [physics] BODY_ATTACH_READY",
+        legality_status="allowed",
+        trust_code="trusted conf=0.95",
+    )
+
+
+class _App(App[None]):
+    def compose(self) -> ComposeResult:
+        yield OrionVQikiDialogScreen(id="f5")
+
+
+@pytest.mark.asyncio
+async def test_split_two_columns_feed_left_panel_right() -> None:
+    """Экран состоит из двух колонок: лента и панель — раздельные виджеты."""
+    pytest.importorskip("textual")
+    app = _App()
+    async with app.run_test(size=(200, 40)) as pilot:
+        await pilot.pause()
+        screen = app.query_one("#f5", OrionVQikiDialogScreen)
+        feed = screen.query_one("#qiki-dialog-feed", Static)
+        panel = screen.query_one("#qiki-vision-panel", Static)
+
+        screen.set_state(
+            dialog_lines=[QikiDialogLine("06:00:10Z", "ОПЕРАТОР", "", "привет"),
+                          QikiDialogLine("06:00:12Z", "QIKI", "INFO", "Готова.")],
+            candidate_title="Установить модуль",
+            candidate_command="orionv.body ▸ attach.module",
+            decision_preview_lines=["шаг: q confirm"],
+            trust_card=_card(),
+        )
+        await pilot.pause()
+
+        feed_text = feed.render()  # renderable; правда текста ниже через хелперы
+        assert feed is not panel  # физически разные виджеты
+
+        # Лента: беседа есть, панельных зон нет
+        ft = screen.feed_text()
+        assert "── ДИАЛОГ ──" in ft and "Готова." in ft
+        assert "КАНДИДАТ" not in ft and "ДОВЕРИЕ/ЗАКОННОСТЬ" not in ft
+
+        # Панель: QIKI-артефакты есть, беседы нет
+        pt = screen.panel_text()
+        assert "── КАНДИДАТ ──" in pt and "── ДОВЕРИЕ/ЗАКОННОСТЬ ──" in pt
+        assert "── УЛИКИ ──" in pt
+        assert "Готова." not in pt
+
+
+def test_rendered_text_contract_covers_both_columns() -> None:
+    """Плоский rendered_text() несёт обе колонки — старые тесты живы."""
+    screen = OrionVQikiDialogScreen()
+    screen.set_state(
+        dialog_lines=[QikiDialogLine("06:00:12Z", "QIKI", "INFO", "Готова.")],
+        candidate_title="Установить модуль",
+        decision_preview_lines=[],
+        trust_card=_card(),
+    )
+    rendered = screen.rendered_text()
+    assert "Готова." in rendered
+    assert "КАНДИДАТ" in rendered
+    assert "ДОВЕРИЕ/ЗАКОННОСТЬ" in rendered
+    assert "УЛИКИ" in rendered

@@ -96,7 +96,36 @@ def merge_dialog_lines(
 
 
 class OrionVQikiDialogScreen(Static):
-    """F5: свободная беседа с QIKI + её видение систем (read-only)."""
+    """F5: свободная беседа с QIKI + её видение систем (read-only).
+
+    F5V2-сплит: чистая лента беседы слева | инфо-дисплей QIKI справа
+    (её артефакты: кандидат/доверие/решение/улики). Консольные данные
+    не подписываются как «видение QIKI» (решение оператора №1).
+    """
+
+    DEFAULT_CSS = """
+    OrionVQikiDialogScreen {
+        layout: horizontal;
+        height: 1fr;
+    }
+    OrionVQikiDialogScreen #qiki-dialog-feed {
+        width: 2fr;
+        height: 1fr;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+    OrionVQikiDialogScreen #qiki-vision-panel {
+        width: 1fr;
+        height: 1fr;
+        padding: 0 1;
+        border-left: solid $surface-lighten-2;
+        overflow-y: auto;
+    }
+    """
+
+    def compose(self):
+        yield Static("", id="qiki-dialog-feed")
+        yield Static("", id="qiki-vision-panel")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -130,18 +159,31 @@ class OrionVQikiDialogScreen(Static):
         """Последний собранный текст экрана (для тестов и снапшотов)."""
         return self._last_text
 
+    def feed_text(self) -> str:
+        """Плоская правда ЛЕВОЙ колонки (беседа) — для тестов."""
+        return "\n".join(t for t, _ in self._flatten_blocks(self._render_feed_blocks()))
+
+    def panel_text(self) -> str:
+        """Плоская правда ПРАВОЙ колонки (инфо-дисплей QIKI) — для тестов."""
+        return "\n".join(t for t, _ in self._flatten_blocks(self._render_panel_blocks()))
+
     def _refresh_text(self) -> None:
-        blocks = self._render_blocks()
         self._last_text = "\n".join(text for text, _ in self._styled_lines())
         # HMI-цвет через Rich-СПАНЫ + подсветка синтаксиса (W7): «line»-блоки —
         # Text.append(text, style) (НЕ парсит markup, коды в [скобках] живут); тело
         # QIKI — «md»-блок через rich.Markdown (код-фенс/списки подсвечены; коды в
         # скобках проверены — выживают). Норма приглушена, отклонения крашены.
+        # F5V2-сплит: лента и панель рендерятся в СВОИ виджеты (2fr | 1fr).
         try:
-            self.update(self._blocks_to_rich(blocks))
-        except Exception:  # noqa: BLE001 - NoActiveAppError и т.п.
+            self.query_one("#qiki-dialog-feed", Static).update(
+                self._blocks_to_rich(self._render_feed_blocks())
+            )
+            self.query_one("#qiki-vision-panel", Static).update(
+                self._blocks_to_rich(self._render_panel_blocks())
+            )
+        except Exception:  # noqa: BLE001 - NoActiveAppError/NoMatches и т.п.
             # вне смонтированного app (юнит-тесты) рендер не нужен;
-            # правда текста живёт в rendered_text()
+            # правда текста живёт в rendered_text()/feed_text()/panel_text()
             pass
 
     def _blocks_to_rich(self, blocks: list[tuple[str, ...]]) -> RenderableType:
@@ -181,14 +223,14 @@ class OrionVQikiDialogScreen(Static):
         return "\n".join(text for text, _ in self._styled_lines())
 
     def _styled_lines(self) -> list[tuple[str, str]]:
-        """Плоский (text, style) для rendered_text и тестов.
+        """Плоский (text, style) для rendered_text и тестов (обе колонки)."""
+        return self._flatten_blocks(self._render_blocks())
 
-        Дериватив из `_render_blocks`: «line»-блоки — как есть; «md»-блок (тело
-        QIKI) переносится в plain-строки индентом «  » (≤ ширины), чтобы
-        rendered_text/снапшоты оставались текстовыми, а коды в скобках — живыми.
-        """
+    def _flatten_blocks(self, blocks: list[tuple[str, ...]]) -> list[tuple[str, str]]:
+        """«line»-блоки — как есть; «md»-блок (тело QIKI) переносится в
+        plain-строки индентом «  » (≤ ширины): снапшоты текстовые, коды живые."""
         out: list[tuple[str, str]] = []
-        for block in self._render_blocks():
+        for block in blocks:
             if block[0] == "md":
                 for wrapped in self._wrap_body(block[1], indent="  "):
                     out.append((wrapped, ""))
@@ -197,7 +239,11 @@ class OrionVQikiDialogScreen(Static):
         return out
 
     def _render_blocks(self) -> list[tuple[str, ...]]:
-        """Блочная модель экрана: ("line", text, style) | ("md", md_source).
+        """Полная блочная модель (лента + панель) — контракт rendered_text."""
+        return self._render_feed_blocks() + [("line", "", "")] + self._render_panel_blocks()
+
+    def _render_feed_blocks(self) -> list[tuple[str, ...]]:
+        """ЛЕВАЯ колонка: чистая беседа. ("line", text, style) | ("md", md_source).
 
         «md» — только свободное тело реплики QIKI (И4: Markdown лишь для голоса,
         не для кодов/карты). Всё прочее — «line»-блоки с HMI-стилем.
@@ -245,9 +291,20 @@ class OrionVQikiDialogScreen(Static):
             for ln in _EMPTY_DIALOG.splitlines():
                 out.append(("line", ln, self._DIM))
 
+        # Поле ввода на F5 открыто постоянно — подсказка dim (низ ленты).
+        out.extend([("line", "", ""), ("line", "── ВВОД ──", self._HEADER_STYLE),
+                    ("line", "печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус", self._DIM)])
+        return out
+
+    def _render_panel_blocks(self) -> list[tuple[str, ...]]:
+        """ПРАВАЯ колонка: инфо-дисплей QIKI — её артефакты (кандидат, доверие,
+        решение, улики). Консольные данные сюда НЕ подписываются как «видение
+        QIKI» (решение оператора №1: её видение — её контур)."""
+        out: list[tuple[str, ...]] = []
+
         # Зона КАНДИДАТ (show-when: есть предложение провайдера).
         if self._candidate_title:
-            out.extend([("line", "", ""), ("line", "── КАНДИДАТ ──", self._HEADER_STYLE),
+            out.extend([("line", "── КАНДИДАТ ──", self._HEADER_STYLE),
                         ("line", self._candidate_title, "")])
             if self._candidate_command:
                 out.append(("line", f"команда телу: {self._candidate_command}", self._DIM))
@@ -256,7 +313,8 @@ class OrionVQikiDialogScreen(Static):
         # W2: Trust/Legality-карта (show-when: есть текущее действие) — «спина G1».
         if self._trust_card is not None:
             card = self._trust_card
-            out.append(("line", "", ""))
+            if out:
+                out.append(("line", "", ""))
             out.append(("line", "── ДОВЕРИЕ/ЗАКОННОСТЬ ──", self._HEADER_STYLE))
             out.append(("line", f"ДЕЙСТВИЕ      {card.action_title}", ""))
             if card.action_command:
@@ -280,12 +338,10 @@ class OrionVQikiDialogScreen(Static):
                 out.append(("line", ln, ""))
 
         # Зона УЛИКИ (всегда) — dim-указатель.
-        out.extend([("line", "", ""), ("line", "── УЛИКИ ──", self._HEADER_STYLE),
+        if out:
+            out.append(("line", "", ""))
+        out.extend([("line", "── УЛИКИ ──", self._HEADER_STYLE),
                     ("line", "детали: F8 | журнал: F6 | системы: F2", self._DIM)])
-
-        # Поле ввода на F5 открыто постоянно — подсказка dim.
-        out.extend([("line", "", ""), ("line", "── ВВОД ──", self._HEADER_STYLE),
-                    ("line", "печатайте QIKI и Enter · q confirm/abort — команды · Esc — снять фокус", self._DIM)])
         return out
 
     _WRAP_WIDTH = 110
