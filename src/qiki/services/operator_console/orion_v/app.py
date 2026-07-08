@@ -420,6 +420,8 @@ class OrionVApp(App[None]):
         await self._hydrate_last_observation_objective_from_jetstream()
         self._refresh_ui()
         self.set_interval(1.0, self._refresh_nats_state)
+        # «awaiting_qiki» не вечен: просроченные запросы закрываются честно
+        self.set_interval(5.0, self._expire_qiki_pending)
         self.set_interval(1.0, self._refresh_runtime_metrics)
         self.set_interval(1.0, self._attach_procedure_stale_check)
 
@@ -3472,6 +3474,47 @@ class OrionVApp(App[None]):
             (datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"), text)
         )
 
+    _QIKI_PENDING_TIMEOUT_S = 90.0  # > максимума LLM-пути (2×25с + очередь)
+
+    def _expire_qiki_pending(self) -> None:
+        """Просроченные запросы к QIKI закрываются честно (не вечное awaiting).
+
+        QIKI НЕ отвечала — слова ей не вкладываем: это системный факт консоли
+        (статус/подсказка), не реплика в леджер голоса.
+        """
+        now = time.time()
+        expired = [
+            rid for rid, (sent_ts, _text) in self._qiki_pending.items()
+            if now - sent_ts >= self._QIKI_PENDING_TIMEOUT_S
+        ]
+        if not expired:
+            return
+        for rid in expired:
+            self._qiki_pending.pop(rid, None)
+        self._set_last_command_loop_state(
+            "failed", f"QIKI response timeout ({len(expired)} req)"
+        )
+        self._set_help_text(
+            "QIKI: ответ не пришёл [QIKI_RESP_TIMEOUT] — проверь канал/сервис (F7)"
+        )
+        self._request_refresh_ui()
+
+    def _qiki_voice_echo(self, *, kind: str, text: str) -> None:
+        """Исход действия возвращается в ленту ГОЛОСОМ QIKI (Срез 2, все пути).
+
+        Текст локальный (view-model, И5), не от провайдера; kind по HMI
+        (ACK=сделано, REJECT=не исполнено, INFO=промежуточная правда).
+        """
+        self._qiki_voice_ledger.append(
+            QikiVoiceEntry(
+                received_at=datetime.now(tz=timezone.utc).strftime("%H:%M:%SZ"),
+                kind=kind,  # type: ignore[arg-type]
+                text=text,
+                legality_code=None,
+                trust_code=None,
+            )
+        )
+
     async def _advance_attach_procedure(self) -> None:
         """Авто-продвижение зелёных стадий; стоп только на развилке/hold (§2)."""
         proc = self._attach_procedure
@@ -3492,6 +3535,10 @@ class OrionVApp(App[None]):
                     self._attach_stage_note(f"S1 осмотр: гнездо {mount} [{code}] — прервано")
                     await self._publish_attach_stage_audit(stage=STAGE_S1_INSPECT, outcome="aborted", codes=(code,))
                     self._set_help_text(f"QIKI: установка прервана на осмотре [{code}]")
+                    self._qiki_voice_echo(
+                        kind="REJECT",
+                        text=f"Установка прервана: гнездо {mount} [{code}]. Модуль остался в отсеке.",
+                    )
                     self._request_refresh_ui()
                     return
                 self._attach_stage_note(f"S1 осмотр: гнездо {mount} свободно")
@@ -3678,6 +3725,10 @@ class OrionVApp(App[None]):
         self._schedule_attach_stage_audit(stage=proc.stage, outcome="aborted", codes=("OPERATOR_ABORT",))
         self._set_help_text("QIKI: установка прервана — модуль остался в отсеке")
         self._set_last_command_loop_state("blocked", "Attach procedure aborted by operator")
+        self._qiki_voice_echo(
+            kind="INFO",
+            text=f"Установка прервана оператором на {proc.stage}. Модуль остался в отсеке.",
+        )
         self._request_refresh_ui()
 
     async def _resume_attach_procedure(self) -> None:
@@ -3845,6 +3896,10 @@ class OrionVApp(App[None]):
             self._qiki_pending_action = None
             self._set_last_command_loop_state("failed", f"Ack timeout for {command_name}")
             self._set_help_text(f"QIKI execution failed: нет ack для {command_name}")
+            self._qiki_voice_echo(
+                kind="REJECT",
+                text=f"Команда {command_name} не подтверждена (нет ACK) — не исполнена.",
+            )
             self._request_refresh_ui()
             return
 
@@ -3875,6 +3930,10 @@ class OrionVApp(App[None]):
                 f"Ack received for {command_name}; awaiting telemetry effect",
             )
             self._set_help_text(f"QIKI execution pending: ack получен для {command_name}, ждём телеметрию")
+            self._qiki_voice_echo(
+                kind="INFO",
+                text=f"Команда {command_name} принята (ACK); телеметрия эффект пока не подтвердила.",
+            )
             self._request_refresh_ui()
             return
 
@@ -3895,6 +3954,10 @@ class OrionVApp(App[None]):
         self._qiki_pending_action = None
         self._set_last_command_loop_state("confirmed", f"Telemetry confirmed: {command_name}")
         self._set_help_text(f"QIKI execution confirmed: {command_name}")
+        self._qiki_voice_echo(
+            kind="ACK",
+            text=f"Готово: {command_name} применена, эффект подтверждён телеметрией.",
+        )
         self._request_refresh_ui()
 
     async def _wait_for_procedure_completion(self, name: str, timeout_s: float) -> bool:
