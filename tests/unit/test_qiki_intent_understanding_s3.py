@@ -104,3 +104,19 @@ def test_question_is_not_command() -> None:
         "установить антенну — это долго?",
     ):
         assert not _is_attach_module_command(phrase), f"вопрос принят за команду: {phrase!r}"
+
+
+def test_russian_undock_verbs_recognized() -> None:
+    """B4-ru: русские формы отстыковки распознаются, не только «release dock»."""
+    from qiki.services.q_core_agent.qiki_orion_intents_service import _is_release_dock_command
+    for phrase in ("отстыкуйся", "расстыкуйся от станции", "отстыкуй нас"):
+        assert _is_release_dock_command(phrase), f"не распознано: {phrase!r}"
+
+
+def test_imperative_docking_hits_protocol_block() -> None:
+    """B5: императив стыковки → протокол-блок; вопрос о стыковке — нет."""
+    from qiki.services.q_core_agent.qiki_orion_intents_service import _is_protocol_blocked_command
+    for phrase in ("выполни стыковку", "начни стыковку со станцией", "состыкуйся со станцией"):
+        assert _is_protocol_blocked_command(phrase), f"не заблокировано: {phrase!r}"
+    for phrase in ("расскажи про стыковку", "что такое стыковка?", "как проходит стыковка"):
+        assert not _is_protocol_blocked_command(phrase), f"ложный блок: {phrase!r}"

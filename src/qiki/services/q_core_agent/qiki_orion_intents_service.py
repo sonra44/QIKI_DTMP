@@ -634,8 +634,14 @@ def _build_invalid_request_response(*, raw_request_id: str | None, mode: QikiMod
 
 
 def _is_protocol_blocked_command(text: str) -> bool:
-    low = (text or "").strip().lower()
-    return low.startswith(("dock", "undock", "стыков", "расстыков", "стыковка", "разстыковка"))
+    low = " ".join((text or "").strip().lower().split())
+    # Вопрос о стыковке — беседа, не команда (B5-фикс: без ложных блоков)
+    if "?" in low or re.search(r"\b(расскажи|что такое|как|почему|можно ли)\b", low):
+        return False
+    if low.startswith(("dock", "undock", "стыков", "расстыков", "стыковка", "разстыковка")):
+        return True
+    # Императив стыковки в любом месте фразы («выполни стыковку», «состыкуйся»)
+    return bool(re.search(r"\b(выполни|начни|сделай|произведи)\b.{0,30}\bстыковк", low)) or "состыкуйся" in low
 
 
 def _is_release_dock_command(text: str) -> bool:
@@ -647,6 +653,9 @@ def _is_release_dock_command(text: str) -> bool:
         "отстыков",
         "расстыков",
         "отстыковаться",
+        # B4-ru: живые русские формы («отстыкуйся», «отстыкуй нас», «расстыкуйся»)
+        "отстыкуй",
+        "расстыкуй",
     )
     return any(trigger in low for trigger in triggers)
 

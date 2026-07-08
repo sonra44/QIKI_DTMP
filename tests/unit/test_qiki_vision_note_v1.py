@@ -265,3 +265,10 @@ def test_prompt_forbids_fabricated_absence_reasons() -> None:
     from qiki.services.q_core_agent.core.qiki_chat_llm import QIKI_SYSTEM_PROMPT_RU
     p = QIKI_SYSTEM_PROMPT_RU.lower()
     assert "не переданы" in p or "не передано" in p
+
+
+def test_prompt_forbids_confirming_unperformed_actions() -> None:
+    """B6: текст не подтверждает невыполненное («установка одобрена и выполнена»)."""
+    from qiki.services.q_core_agent.core.qiki_chat_llm import QIKI_SYSTEM_PROMPT_RU
+    p = QIKI_SYSTEM_PROMPT_RU.lower()
+    assert "не подтверждай" in p and ("не было" in p or "не выполнял" in p or "аудит" in p)
