@@ -244,6 +244,10 @@ services:
       - NATS_TOKEN=${NATS_TOKEN:-}
       - QIKI_INTENTS_SUBJECT=qiki.intents
       - QIKI_RESPONSES_SUBJECT=qiki.responses.qiki
+      # Волна 0 Ф1: intents не владеет FSM-правдой; без сидированного fsm_state
+      # refresh мира абортится ДО ingest сенсоров -> world_snapshot (радар) пуст
+      # навсегда. Fallback ЯВНО помечен (is_fallback, warning в лог).
+      - QIKI_ALLOW_INTERFACE_FALLBACK=true
       - OPENAI_MODEL=${OPENAI_MODEL:-openai/gpt-5.2}
       # M3: LLM-трафик q-core заворачивается через gateway. Реальный ключ здесь
       # НЕ живёт — только виртуальный; base_url указывает на gateway.

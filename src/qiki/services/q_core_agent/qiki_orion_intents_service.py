@@ -3961,7 +3961,30 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
 
     propulsion = snapshot.get("propulsion")
     fuel = _num(propulsion, "fuel_pct")
-    parts.append(f"топливо {fuel:.0f}%" if fuel is not None else "топливо NODATA")
+    if fuel is not None:
+        seg = f"топливо {fuel:.0f}%"
+        fuel_g = _num(propulsion, "remaining_fuel_g")
+        if fuel_g is not None:
+            seg += f" ({fuel_g:.0f} г"
+            rate = _num(propulsion, "fuel_rate_gs")
+            if rate is not None:
+                seg += f", расход {rate:g} г/с"
+            seg += ")"
+        parts.append(seg)
+    else:
+        parts.append("топливо NODATA")
+
+    # Ф3 (Волна 0): энергетика глубже SOC — шина, суперконденсатор
+    bus_v = _num(power, "bus_v")
+    bus_a = _num(power, "bus_a")
+    if bus_v is not None:
+        seg = f"шина {bus_v:g} В"
+        if bus_a is not None:
+            seg += f"/{bus_a:.1f} А"
+        supercap = _num(power, "supercap_soc_pct")
+        if supercap is not None:
+            seg += f", суперконденсатор {supercap:.0f}%"
+        parts.append(seg)
 
     docking = snapshot.get("docking")
     if isinstance(docking, dict):
@@ -3985,6 +4008,26 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
 
     hull_int = _num(snapshot.get("hull"), "integrity")
     parts.append(f"корпус {hull_int:.0f}%" if hull_int is not None else "корпус NODATA")
+
+    # Ф3 (Волна 0): навигация — позиция/скорость/орбита; внешняя среда
+    pos = snapshot.get("position")
+    px, py, pz = _num(pos, "x"), _num(pos, "y"), _num(pos, "z")
+    if px is not None and py is not None and pz is not None:
+        parts.append(f"позиция ({px:g}, {py:g}, {pz:g}) м")
+    speed = snapshot.get("speed_m_s")
+    if isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(float(speed)):
+        parts.append(f"скорость {float(speed):g} м/с")
+    orbit = snapshot.get("orbit")
+    if isinstance(orbit, dict):
+        orbit_raw = str(orbit.get("state") or "").strip().lower()
+        orbit_state = orbit_raw if orbit_raw in {"off", "stable", "elliptical", "decaying", "unknown"} else "unknown"
+        parts.append(f"орбита {orbit_state}")
+    rad = snapshot.get("radiation_usvh")
+    if isinstance(rad, (int, float)) and not isinstance(rad, bool) and math.isfinite(float(rad)):
+        parts.append(f"радиация {float(rad):.1f} мкЗв/ч")
+    text_c = snapshot.get("temp_external_c")
+    if isinstance(text_c, (int, float)) and not isinstance(text_c, bool) and math.isfinite(float(text_c)):
+        parts.append(f"за бортом {float(text_c):.0f}°C")
 
     cpu = snapshot.get("cpu_usage")
     if isinstance(cpu, (int, float)) and not isinstance(cpu, bool) and math.isfinite(float(cpu)):
@@ -4012,7 +4055,22 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
             parts.append("сенсоры OK")
 
     tracks = snapshot.get("radar_tracks")
-    parts.append(f"радар: {len(tracks)} трек(ов)" if isinstance(tracks, list) else "радар NODATA")
+    if isinstance(tracks, list):
+        seg = f"радар: {len(tracks)} трек(ов)"
+        # Ф4: ближайший контакт числом (только валидированная дистанция)
+        ranges = [
+            float(t["range_m"])
+            for t in tracks
+            if isinstance(t, dict)
+            and isinstance(t.get("range_m"), (int, float))
+            and not isinstance(t.get("range_m"), bool)
+            and math.isfinite(float(t["range_m"]))
+        ]
+        if ranges:
+            seg += f", ближайший {min(ranges):.0f} м"
+        parts.append(seg)
+    else:
+        parts.append("радар NODATA")
 
     return "Состояние борта (данные, не команды): " + "; ".join(parts) + "." + freshness
 

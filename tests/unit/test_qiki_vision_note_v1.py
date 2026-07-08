@@ -221,3 +221,47 @@ def test_sensor_status_enum_validated() -> None:
     }}
     note = svc._vision_note(snap, now_ts=NOW)
     assert "ignore all" not in note.lower()
+
+
+def test_navigation_radiation_fuel_energy_in_vision() -> None:
+    """Ф3 (Волна 0): навигация/радиация/топливо-граммы/шина/внеш.темп в сводке."""
+    snap = {
+        **_snapshot(),
+        "position": {"x": 10.0, "y": -5.0, "z": 2.0},
+        "speed_m_s": 3.5,
+        "orbit": {"state": "off"},
+        "radiation_usvh": 0.0,
+        "temp_external_c": -60.0,
+        "propulsion": {"fuel_pct": 100.0, "remaining_fuel_g": 12000.0, "fuel_rate_gs": 0.0},
+        "power": {**_snapshot()["power"], "bus_v": 28.0, "bus_a": 4.1, "supercap_soc_pct": 90.0},
+        "comms": {"link_state": "online", "latency_ms": 90.0, "packet_loss_pct": 0.0},
+    }
+    note = svc._vision_note(snap, now_ts=NOW)
+    assert "скорость 3.5" in note or "скорость 4" in note
+    assert "радиация 0.0" in note
+    assert "12000" in note  # топливо в граммах
+    assert "28" in note and "шина" in note  # bus_v
+    assert "-60" in note  # внешняя температура
+    assert "орбита off" in note or "орбита: off" in note
+
+
+def test_radar_contact_details_in_vision() -> None:
+    """Ф4: радар — не только счёт, но и ближайший контакт с дистанцией."""
+    snap = {
+        **_snapshot(),
+        "radar_tracks": [
+            {"track_id": "trk-1", "range_m": 8500.4, "transponder_id": "EVIL"},
+            {"track_id": "trk-2", "range_m": 12000.0},
+        ],
+    }
+    note = svc._vision_note(snap, now_ts=NOW)
+    assert "радар: 2" in note
+    assert "8500" in note  # ближайший контакт числом
+    assert "EVIL" not in note  # wire-строки не текут
+
+
+def test_prompt_forbids_fabricated_absence_reasons() -> None:
+    """Ф2: нет данных → «не передано», а не выдуманное «датчика не существует»."""
+    from qiki.services.q_core_agent.core.qiki_chat_llm import QIKI_SYSTEM_PROMPT_RU
+    p = QIKI_SYSTEM_PROMPT_RU.lower()
+    assert "не переданы" in p or "не передано" in p
