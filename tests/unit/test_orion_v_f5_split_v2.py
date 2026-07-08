@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from qiki.services.operator_console.orion_v.screens.qiki_dialog import (
@@ -44,8 +45,8 @@ async def test_split_two_columns_feed_left_panel_right() -> None:
     async with app.run_test(size=(200, 40)) as pilot:
         await pilot.pause()
         screen = app.query_one("#f5", OrionVQikiDialogScreen)
-        feed = screen.query_one("#qiki-dialog-feed", Static)
-        panel = screen.query_one("#qiki-vision-panel", Static)
+        feed = screen.query_one("#qiki-dialog-feed", VerticalScroll)
+        panel = screen.query_one("#qiki-vision-panel", VerticalScroll)
 
         screen.set_state(
             dialog_lines=[QikiDialogLine("06:00:10Z", "ОПЕРАТОР", "", "привет"),
@@ -57,7 +58,6 @@ async def test_split_two_columns_feed_left_panel_right() -> None:
         )
         await pilot.pause()
 
-        feed_text = feed.render()  # renderable; правда текста ниже через хелперы
         assert feed is not panel  # физически разные виджеты
 
         # Лента: беседа есть, панельных зон нет
@@ -86,3 +86,23 @@ def test_rendered_text_contract_covers_both_columns() -> None:
     assert "КАНДИДАТ" in rendered
     assert "ДОВЕРИЕ/ЗАКОННОСТЬ" in rendered
     assert "УЛИКИ" in rendered
+
+
+@pytest.mark.asyncio
+async def test_feed_autoscrolls_to_latest_reply() -> None:
+    """Свежий ответ QIKI виден без ручной прокрутки (лента прилипает к низу)."""
+    pytest.importorskip("textual")
+    app = _App()
+    async with app.run_test(size=(120, 24)) as pilot:  # низкий экран → лента переполняется
+        await pilot.pause()
+        screen = app.query_one("#f5", OrionVQikiDialogScreen)
+        lines = []
+        for i in range(30):
+            lines.append(QikiDialogLine(f"06:{i:02d}:00Z", "ОПЕРАТОР", "", f"вопрос {i}"))
+            lines.append(QikiDialogLine(f"06:{i:02d}:30Z", "QIKI", "INFO", f"ответ номер {i}"))
+        screen.set_state(dialog_lines=lines, candidate_title=None, decision_preview_lines=[])
+        await pilot.pause()
+        await pilot.pause()  # scroll_end уходит через call_after_refresh
+        feed = screen.query_one("#qiki-dialog-feed", VerticalScroll)
+        assert feed.max_scroll_y > 0  # контент реально переполнил колонку
+        assert feed.scroll_offset.y == feed.max_scroll_y  # прилипли к последней реплике

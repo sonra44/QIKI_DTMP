@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from rich.console import Group, RenderableType
@@ -112,20 +113,26 @@ class OrionVQikiDialogScreen(Static):
         width: 2fr;
         height: 1fr;
         padding: 0 1;
-        overflow-y: auto;
     }
     OrionVQikiDialogScreen #qiki-vision-panel {
         width: 1fr;
         height: 1fr;
         padding: 0 1;
         border-left: solid $surface-lighten-2;
-        overflow-y: auto;
+    }
+    OrionVQikiDialogScreen #qiki-dialog-feed-content,
+    OrionVQikiDialogScreen #qiki-vision-panel-content {
+        height: auto;
     }
     """
 
     def compose(self):
-        yield Static("", id="qiki-dialog-feed")
-        yield Static("", id="qiki-vision-panel")
+        # VerticalScroll, не Static с overflow: у Static виртуальный размер не
+        # растёт с renderable (диагноз 2026-07-08: virtual=viewport, скролла нет).
+        with VerticalScroll(id="qiki-dialog-feed"):
+            yield Static("", id="qiki-dialog-feed-content")
+        with VerticalScroll(id="qiki-vision-panel"):
+            yield Static("", id="qiki-vision-panel-content")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -175,12 +182,18 @@ class OrionVQikiDialogScreen(Static):
         # скобках проверены — выживают). Норма приглушена, отклонения крашены.
         # F5V2-сплит: лента и панель рендерятся в СВОИ виджеты (2fr | 1fr).
         try:
-            self.query_one("#qiki-dialog-feed", Static).update(
+            feed = self.query_one("#qiki-dialog-feed", VerticalScroll)
+            # Прилипание к низу: свежая реплика видна БЕЗ ручной прокрутки;
+            # если оператор ушёл вверх по истории — не дёргаем его.
+            stick = feed.is_vertical_scroll_end
+            self.query_one("#qiki-dialog-feed-content", Static).update(
                 self._blocks_to_rich(self._render_feed_blocks())
             )
-            self.query_one("#qiki-vision-panel", Static).update(
+            self.query_one("#qiki-vision-panel-content", Static).update(
                 self._blocks_to_rich(self._render_panel_blocks())
             )
+            if stick:
+                self.call_after_refresh(lambda: feed.scroll_end(animate=False))
         except Exception:  # noqa: BLE001 - NoActiveAppError/NoMatches и т.п.
             # вне смонтированного app (юнит-тесты) рендер не нужен;
             # правда текста живёт в rendered_text()/feed_text()/panel_text()

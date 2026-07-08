@@ -45,7 +45,11 @@ QIKI_SYSTEM_PROMPT_RU = (
 )
 
 _TIMEOUT_S = float(os.getenv("QIKI_CHAT_LLM_TIMEOUT_S", "25"))
-_MAX_TOKENS = int(os.getenv("QIKI_CHAT_LLM_MAX_TOKENS", "220"))
+# 900, не 220: Mercury-2 тратит ~200-230 токенов бюджета на ВНУТРЕННИЕ
+# рассуждения (reasoning_tokens) — при 220 finish_reason=length и на сам ответ
+# остаётся 0..огрызок (обрывы «на полуслове» и пустые реплики → ложный
+# «канал недоступен»). Диагноз живыми вызовами 2026-07-08.
+_MAX_TOKENS = int(os.getenv("QIKI_CHAT_LLM_MAX_TOKENS", "900"))
 _ATTEMPTS = int(os.getenv("QIKI_CHAT_LLM_ATTEMPTS", "2"))  # 1 ретрай на прогрев-транзиент
 _RETRY_BACKOFF_S = float(os.getenv("QIKI_CHAT_LLM_RETRY_BACKOFF_S", "0.6"))
 
