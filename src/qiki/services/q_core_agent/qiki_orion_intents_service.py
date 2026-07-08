@@ -3833,6 +3833,45 @@ def _attach_refusal(req, mode, *, status, code, ru, en, allowed_when_ru=None, al
     )
 
 
+async def _augment_refusal_explanation(resp: QikiChatResponseV1, *, user_text: str) -> QikiChatResponseV1:
+    """Срез 4: Mercury поясняет «почему» ПОВЕРХ решённого политикой отказа.
+
+    Решение уже принято (legality/коды/proposals) и НЕ меняется — провайдер
+    получает его только как ДАННЫЕ и возвращает 1-2 человеческих предложения
+    (CaMeL). Только отказы/переспросы; fail-open: молчит → ответ как есть.
+    Источник помечен («Пояснение (провайдер):» — ADR-0015: текст ≠ решение).
+    """
+    if not llm_dialog_enabled():
+        return resp
+    legality = resp.legality
+    if legality is None or legality.status == "allowed" or resp.proposals or resp.reply is None:
+        return resp
+    context_note = (
+        "Решение УЖЕ принято политикой борта, его нельзя менять и обсуждать. "
+        f"Статус: {legality.status}, код {legality.reason_code}. "
+        f"Причина политики: {(legality.reason.ru or legality.reason.en or '').strip()} "
+        "Задача: 1-2 коротких предложения по-русски — объясни оператору простыми словами, "
+        "почему так и что уточнить/сделать дальше. Не предлагай команд, не выдумывай данных."
+    )
+    explanation = await asyncio.to_thread(generate_qiki_reply, user_text, context_note=context_note)
+    explanation = (explanation or "").strip()
+    if not explanation:
+        return resp  # fail-open: структура нетронута
+    body = resp.reply.body
+    return resp.model_copy(
+        update={
+            "reply": resp.reply.model_copy(
+                update={
+                    "body": BilingualText(
+                        en=f"{body.en}\n\nProvider note: {explanation}",
+                        ru=f"{body.ru}\n\nПояснение (провайдер): {explanation}",
+                    )
+                }
+            )
+        }
+    )
+
+
 def _build_attach_module_response(
     *,
     req: QikiChatRequestV1,
@@ -4513,6 +4552,9 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
 
         if _is_attach_module_command(req.input.text):
             resp = _build_attach_module_response(req=req, mode=mode)
+            # Срез 4: отказ/переспрос получает человеческое «почему» от провайдера
+            # (решение/коды/proposals не меняются — пояснение только данные).
+            resp = await _augment_refusal_explanation(resp, user_text=req.input.text)
             await nc.publish(responses_subject, _encode_chat_response(resp, request_version=req_version))
             return
 
