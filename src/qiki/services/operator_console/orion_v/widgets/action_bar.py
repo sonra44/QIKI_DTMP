@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from rich.markup import escape
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.message import Message
@@ -22,6 +23,8 @@ class OrionVActionBar(Static):
 
     OrionVActionBar #orionv-help {
         height: auto;
+        max-height: 3;
+        overflow-y: hidden;
         color: $text;
     }
 
@@ -127,7 +130,10 @@ class OrionVActionBar(Static):
         subsystem_text = loop.selected_subsystem or "none"
         mode_text = "REPLAY" if loop.replay_mode else "LIVE"
         required_text = "required" if loop.operator_action_required else "standby"
-        feedback.update(
+        # plain Text, НЕ markup-строка: LLM-текст со скобками ([OPERATOR_HOLD])
+        # не должен парситься (rich.escape не спасает — Textual-парсер ест и
+        # «не-rich» теги; урок a58fd97: правда живёт в plain).
+        feedback.update(Text(
             " | ".join(
                 (
                     f"M {mode_text}",
@@ -142,7 +148,7 @@ class OrionVActionBar(Static):
                     f"LAST {loop.last_command_summary}",
                 )
             )
-        )
+        ))
 
         console = self.query_one("#orionv-console-strip", Static)
         # На F5 лента диалога САМА показывает беседу/процедуру/реплики — стрип

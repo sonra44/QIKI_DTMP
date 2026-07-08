@@ -2126,8 +2126,15 @@ class OrionVApp(App[None]):
         )
         self._request_refresh_ui()
 
+    @staticmethod
+    def _one_line(text: str, limit: int) -> str:
+        """Статусные каналы — однострочники (инцидент 2026-07-08: 4000-токенный
+        ответ в LAST съел экран). Первая строка + жёсткий кап; не для ленты F5."""
+        first = str(text).strip().splitlines()[0].strip() if str(text).strip() else ""
+        return first if len(first) <= limit else first[: limit - 1] + "…"
+
     def _set_help_text(self, text: str) -> None:
-        normalized = str(text).strip()
+        normalized = self._one_line(text, 160)
         if normalized:
             if not self._console_history or self._console_history[-1] != normalized:
                 self._console_history.append(normalized)
@@ -2139,9 +2146,14 @@ class OrionVApp(App[None]):
         normalized_status = str(status or "idle").strip().lower() or "idle"
         self._last_command_status = normalized_status
         if summary is not None:
-            text = str(summary).strip()
+            text = self._one_line(summary, 120)
             if text:
                 self._last_command_summary = text
+
+    def _apply_reply_ready_status(self, reply: Any) -> None:
+        """Ответ бота НЕ льётся в LAST: короткий указатель — полный текст живёт
+        в ленте F5 (один владелец факта)."""
+        self._set_last_command_loop_state("reply_ready", "Ответ QIKI готов — F5")
 
     def _build_qiki_chat_request(self, text: str) -> QikiChatRequestV1:
         freshness = TelemetryFreshness.FRESH if self._telemetry else TelemetryFreshness.UNKNOWN
@@ -4208,8 +4220,7 @@ class OrionVApp(App[None]):
                 f"QIKI legality: {response.legality.status} [{response.legality.reason_code}]",
             )
         elif response.reply is not None:
-            reply_body = str(response.reply.body.ru or response.reply.body.en or "").strip() or "QIKI reply ready"
-            self._set_last_command_loop_state("reply_ready", reply_body)
+            self._apply_reply_ready_status(response.reply)
         else:
             self._set_last_command_loop_state("reply_ready", "QIKI response received")
         if response.legality is not None:
