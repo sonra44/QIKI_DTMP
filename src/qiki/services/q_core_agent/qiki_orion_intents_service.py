@@ -3953,6 +3953,43 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     else:
         parts.append("мир NODATA")
 
+    def _num(section: Any, key: str) -> float | None:
+        v = section.get(key) if isinstance(section, dict) else None
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+            return float(v)
+        return None
+
+    propulsion = snapshot.get("propulsion")
+    fuel = _num(propulsion, "fuel_pct")
+    parts.append(f"топливо {fuel:.0f}%" if fuel is not None else "топливо NODATA")
+
+    docking = snapshot.get("docking")
+    if isinstance(docking, dict):
+        state_raw = str(docking.get("state") or "").strip().lower()
+        state = state_raw if state_raw in {"docked", "undocked", "docking", "undocking", "disabled"} else "unknown"
+        parts.append(f"стыковка {state}")
+    else:
+        parts.append("стыковка NODATA")
+
+    comms = snapshot.get("comms")
+    if isinstance(comms, dict):
+        link_raw = str(comms.get("link_state") or comms.get("link") or "").strip().lower()
+        link = link_raw if link_raw in {"online", "offline", "degraded", "down"} else "unknown"
+        seg = f"связь {link}"
+        latency = _num(comms, "latency_ms")
+        if latency is not None:
+            seg += f" ({latency:.0f} мс)"
+        parts.append(seg)
+    else:
+        parts.append("связь NODATA")
+
+    hull_int = _num(snapshot.get("hull"), "integrity")
+    parts.append(f"корпус {hull_int:.0f}%" if hull_int is not None else "корпус NODATA")
+
+    cpu = snapshot.get("cpu_usage")
+    if isinstance(cpu, (int, float)) and not isinstance(cpu, bool) and math.isfinite(float(cpu)):
+        parts.append(f"CPU {float(cpu):.0f}%")
+
     tracks = snapshot.get("radar_tracks")
     parts.append(f"радар: {len(tracks)} трек(ов)" if isinstance(tracks, list) else "радар NODATA")
 
