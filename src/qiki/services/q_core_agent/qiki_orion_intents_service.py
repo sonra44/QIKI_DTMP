@@ -3990,6 +3990,27 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     if isinstance(cpu, (int, float)) and not isinstance(cpu, bool) and math.isfinite(float(cpu)):
         parts.append(f"CPU {float(cpu):.0f}%")
 
+    # Алерты мачты: не-ok сенсоры видны боту (имена по allowlist, статусы по enum)
+    sensor_plane = snapshot.get("sensor_plane")
+    if isinstance(sensor_plane, dict):
+        issues: list[str] = []
+        seen = 0
+        for name in ("imu", "radiation", "star_tracker", "proximity", "solar"):
+            sub = sensor_plane.get(name)
+            if not isinstance(sub, dict):
+                continue
+            status_raw = str(sub.get("status") or "").strip().lower()
+            if not status_raw:
+                continue
+            status = status_raw if status_raw in {"ok", "warn", "degraded", "failed", "crit", "na", "off"} else "unknown"
+            seen += 1
+            if status not in {"ok", "na", "off"}:
+                issues.append(f"{name} {status}")
+        if issues:
+            parts.append("ВНИМАНИЕ сенсоры: " + ", ".join(issues))
+        elif seen:
+            parts.append("сенсоры OK")
+
     tracks = snapshot.get("radar_tracks")
     parts.append(f"радар: {len(tracks)} трек(ов)" if isinstance(tracks, list) else "радар NODATA")
 

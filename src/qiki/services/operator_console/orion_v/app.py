@@ -4548,6 +4548,7 @@ class OrionVApp(App[None]):
             ),
             decision_preview_lines=self._build_qiki_decision_preview_lines(),
             trust_card=self._build_qiki_trust_card(),
+            board_chips=self._operator_shell_state.chips,
         )
 
         self.query_one("#orionv-systems", OrionVSystemsScreen).set_state(

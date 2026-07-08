@@ -106,3 +106,33 @@ async def test_feed_autoscrolls_to_latest_reply() -> None:
         feed = screen.query_one("#qiki-dialog-feed", VerticalScroll)
         assert feed.max_scroll_y > 0  # контент реально переполнил колонку
         assert feed.scroll_offset.y == feed.max_scroll_y  # прилипли к последней реплике
+
+
+def test_panel_shows_board_chips_with_hmi_style() -> None:
+    """Правая панель наполнена: блок БОРТ из чипов мачты, отклонения крашены."""
+    from qiki.services.operator_console.orion_v.operator_state import SubsystemChip
+
+    chips = (
+        SubsystemChip(slug="power", label="PWR", status="OK", severity="info",
+                      short_summary="", hint="", anchor_text="100% ~262м"),
+        SubsystemChip(slug="thermal", label="THRM", status="WARN", severity="warning",
+                      short_summary="", hint="", anchor_text="74°"),
+    )
+    screen = OrionVQikiDialogScreen()
+    screen.set_state(dialog_lines=[], candidate_title=None,
+                     decision_preview_lines=[], board_chips=chips)
+    pt = screen.panel_text()
+    assert "БОРТ" in pt
+    assert "PWR" in pt and "100% ~262м" in pt
+    assert "THRM" in pt and "74°" in pt
+    styles = {t: s for t, s in screen._flatten_blocks(screen._render_panel_blocks())}
+    warn_row = next(t for t in styles if "THRM" in t)
+    ok_row = next(t for t in styles if "PWR" in t)
+    assert "yellow" in styles[warn_row]  # отклонение крашено
+    assert "red" not in styles[ok_row] and "yellow" not in styles[ok_row]  # норма тиха
+
+
+def test_panel_without_chips_has_no_empty_board_block() -> None:
+    screen = OrionVQikiDialogScreen()
+    screen.set_state(dialog_lines=[], candidate_title=None, decision_preview_lines=[])
+    assert "БОРТ" not in screen.panel_text()

@@ -141,6 +141,7 @@ class OrionVQikiDialogScreen(Static):
         self._candidate_command: str | None = None
         self._decision_preview_lines: list[str] = []
         self._trust_card: TrustCard | None = None
+        self._board_chips: tuple[Any, ...] = ()
         self._last_text: str = ""
 
     def on_mount(self) -> None:
@@ -154,12 +155,14 @@ class OrionVQikiDialogScreen(Static):
         decision_preview_lines: Sequence[str],
         candidate_command: str | None = None,
         trust_card: TrustCard | None = None,
+        board_chips: Sequence[Any] = (),
     ) -> None:
         self._dialog_lines = list(dialog_lines)
         self._candidate_title = candidate_title
         self._candidate_command = candidate_command
         self._decision_preview_lines = list(decision_preview_lines)
         self._trust_card = trust_card
+        self._board_chips = tuple(board_chips)
         self._refresh_text()
 
     def rendered_text(self) -> str:
@@ -310,13 +313,34 @@ class OrionVQikiDialogScreen(Static):
         return out
 
     def _render_panel_blocks(self) -> list[tuple[str, ...]]:
-        """ПРАВАЯ колонка: инфо-дисплей QIKI — её артефакты (кандидат, доверие,
-        решение, улики). Консольные данные сюда НЕ подписываются как «видение
-        QIKI» (решение оператора №1: её видение — её контур)."""
+        """ПРАВАЯ колонка: блок БОРТ (чипы мачты, честная подпись источника) +
+        артефакты QIKI (кандидат, доверие, решение, улики). Данные мачты НЕ
+        подписываются как «видение QIKI» (решение оператора №1)."""
         out: list[tuple[str, ...]] = []
+
+        # БОРТ: готовые чипы мачты (show-when: есть данные). Dark cockpit:
+        # норма приглушена, цвет только отклонению (warning→yellow, alarm→red).
+        if self._board_chips:
+            out.append(("line", "── БОРТ (мачта ORION) ──", self._HEADER_STYLE))
+            for chip in self._board_chips:
+                severity = str(getattr(chip, "severity", "") or "").lower()
+                style = (
+                    "bold red" if severity in {"alarm", "critical", "error"}
+                    else "yellow" if severity in {"warning", "warn"}
+                    else self._DIM
+                )
+                label = str(getattr(chip, "label", "") or "")
+                status = str(getattr(chip, "status", "") or "")
+                anchor = str(getattr(chip, "anchor_text", "") or "")
+                row = f"{label:<5} {status:<7} {anchor}".rstrip()
+                if bool(getattr(chip, "stale", False)):
+                    row += "  [STALE]"
+                out.append(("line", row, style))
 
         # Зона КАНДИДАТ (show-when: есть предложение провайдера).
         if self._candidate_title:
+            if out:
+                out.append(("line", "", ""))
             out.extend([("line", "── КАНДИДАТ ──", self._HEADER_STYLE),
                         ("line", self._candidate_title, "")])
             if self._candidate_command:
