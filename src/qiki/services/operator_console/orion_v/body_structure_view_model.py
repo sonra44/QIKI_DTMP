@@ -288,6 +288,11 @@ def _build_view_model(
 # Screen formatting helpers.
 
 
+# Канон-константа идентичности (bot_source_of_truth, READER_MANUAL §6):
+# граней у додекаэдра ВСЕГДА 12 — это «кто я», не состояние посева.
+DODECAHEDRON_FACES = 12
+
+
 def format_qiki_identity_line(
     vm: BodyStructureConsoleViewModel | None = None,
     *,
@@ -299,18 +304,23 @@ def format_qiki_identity_line(
     додекаэдрический корпус, 12 функциональных граней; модульность не
     создаёт нового робота. Серийник — суррогат из hardware_profile_hash
     (отдельного id пока нет, спека Z3); нет телеметрии → честное «—».
+    Аудит 0049: «12 граней» и знаменатель — канон-константа, не
+    vm.faces_total (сломанный посев не должен рождать «додекаэдр · 0
+    граней»); из vm — только фактический счётчик модулей.
     """
     vm = vm or get_body_structure_console_view_model()
     serial = "—"
-    hash_text = str(hardware_profile_hash or "").strip()
+    # Аудит 0049 (F4): не-строковый hash (dict/list из битой телеметрии)
+    # давал мусорный серийник через str()-коэрцию — доверяем только str.
+    hash_text = hardware_profile_hash.strip() if isinstance(hardware_profile_hash, str) else ""
     if hash_text:
         # Формат producer'а: "sha256:<64 hex>" — серийник берём из digest,
         # не из имени алгоритма (живой смок поймал «QIKI-SHA256»)
         digest = hash_text.rsplit(":", 1)[-1]
         serial = digest[:6].upper() if digest else "—"
     return (
-        f"QIKI-{serial} | додекаэдр · {vm.faces_total} граней"
-        f" | модулей {vm.attached_modules_count}/{vm.faces_total}"
+        f"QIKI-{serial} | додекаэдр · {DODECAHEDRON_FACES} граней"
+        f" | модулей {vm.attached_modules_count}/{DODECAHEDRON_FACES}"
     )
 
 

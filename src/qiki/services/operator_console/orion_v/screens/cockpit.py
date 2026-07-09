@@ -677,11 +677,8 @@ class OrionVCockpitScreen(Static):
         self._set_body_text(body_text)
         self._set_static_text("#orionv-cockpit-intervention", intervention_text)
         mfd_status_text = self._compose_mfd_status_text(body_text)
-        try:
-            # T0/dark cockpit: пустой статус-блок схлопывается целиком
-            self.query_one("#orionv-mfd-status", Static).display = bool(mfd_status_text.strip())
-        except NoMatches:
-            pass
+        # Этап 7 (аудит 0049, F5): блок всегда непуст — identity-строка «кто я»
+        # видна постоянно; старое схлопывание пустого блока отменено осознанно.
         self._set_static_text("#orionv-mfd-status", mfd_status_text)
         try:
             # Этап 7 (Z3): evidence-мета идентичности — tooltip рамки, не строка
@@ -767,8 +764,12 @@ class OrionVCockpitScreen(Static):
 
     def _hardware_profile_hash(self) -> str | None:
         telemetry = self._telemetry if isinstance(self._telemetry, dict) else {}
-        value = str(telemetry.get("hardware_profile_hash") or "").strip()
-        return value or None
+        value = telemetry.get("hardware_profile_hash")
+        # Аудит 0049 (F4): только str — dict/list из битой телеметрии давали
+        # мусорный серийник через str()-коэрцию
+        if not isinstance(value, str):
+            return None
+        return value.strip() or None
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)

@@ -1,9 +1,12 @@
 """Этап 7 live-smoke: строка идентичности QIKI на F1 против живого стека.
 
 Живой NATS/телеметрия: статус-блок F1 начинается с «QIKI-<серийник>»
-(серийник — первые 6 hex из hardware_profile_hash реальной телеметрии),
-несёт канонную идентичность «додекаэдр · 12 граней» и счёт модулей;
-лента QIKI ▸ (G-C) видна на панели QIKI / ОПЕРАТОР после реплики.
+(серийник — первые 6 hex digest'а hardware_profile_hash реальной
+телеметрии), несёт канонную идентичность «додекаэдр · 12 граней» и счёт
+модулей; evidence-мета — в tooltip рамки. Плюс постоянная honesty-строка
+панели QIKI (Z7). Лента QIKI ▸ требует реплики (LLM-контур) — она покрыта
+юнитами test_orion_qiki_voice и живым F5-контуром, НЕ этим смоком
+(аудит 0049: докстринг раньше заявлял её проверку — overclaim убран).
 """
 
 from __future__ import annotations
@@ -53,6 +56,12 @@ async def main() -> int:
         tooltip = str(app.query_one("#orionv-mfd-status", Static).tooltip or "")
         assert "hardware_profile_hash" in tooltip and "суррогат" in tooltip
         print("[smoke] evidence-мета в tooltip рамки (источник серийника назван) ✓")
+
+        qiki_panel = app.query_one("#orionv-mfd-qiki", Static).render().plain
+        assert "— граница:" in qiki_panel and "доверие:" in qiki_panel, (
+            "honesty-строка панели QIKI (Z7) не найдена"
+        )
+        print("[smoke] панель QIKI: honesty-строка (граница | источник | доверие) на месте ✓")
     print("[smoke] Этап 7 PASS: идентичность QIKI честна на живом стеке")
     return 0
 
