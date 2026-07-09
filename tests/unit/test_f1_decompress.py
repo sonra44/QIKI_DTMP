@@ -28,7 +28,8 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     build_power_thermal_console_view_model_from_telemetry,
 )
 from qiki.services.operator_console.orion_v.screens.cockpit import (
-    MFD_PAGE_SWITCH_SUBTITLE,
+    MFD_PAGE_SWITCH_SUBTITLE_LEFT,
+    MFD_PAGE_SWITCH_SUBTITLE_RIGHT,
     OrionVCockpitScreen,
 )
 
@@ -99,4 +100,7 @@ def test_body_structure_header_localized() -> None:
 # ── Z6-подпись: рамки MFD несут подсказку переключения страниц ───────────────
 
 def test_mfd_page_switch_subtitle_wording() -> None:
-    assert MFD_PAGE_SWITCH_SUBTITLE == "перекл. страниц: [ / ]"
+    # UI-ревью P1: «[ / ]» на обеих рамках учил неверной модели —
+    # [ листает только левый MFD, ] только правый
+    assert MFD_PAGE_SWITCH_SUBTITLE_LEFT == "страницы: ["
+    assert MFD_PAGE_SWITCH_SUBTITLE_RIGHT == "страницы: ]"

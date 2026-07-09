@@ -33,9 +33,9 @@ ORION_UI_COLORS: dict[str, str] = {
 _STATUS_RE = re.compile(
     r"(?P<token>"
     r"OK|READY|fresh|TRUSTED|trusted|healthy|nominal|validated|attached|audit[-_ ]backed|"
-    r"DEGRADED|degraded|WARN|WARNING|ВНИМ|pending|limited|PEAK_LIMITED|seed_only|seed-only|"
+    r"DEGRADED|degraded|WARNING|WARN|ВНИМ|pending|limited|PEAK_LIMITED|seed_only|seed-only|"
     r"target-only|calculation-required|not claimed|not_evaluated|not-evaluated|"
-    r"CRIT|CRITICAL|FAILED|ERROR|BLOCKED|denied|rejected|CAP_LOW|CAP_HOT|BAT_LOW|"
+    r"CRITICAL|CRIT|FAILED|ERROR|BLOCKED|denied|rejected|CAP_LOW|CAP_HOT|BAT_LOW|"
     r"PDU_PEAK_DENIED|PDU_NOT_IMPLEMENTED|THERMAL_BLOCK|POWER_TELEM_MISSING|POWER_TELEM_STALE|"
     r"RTG_NOT_PEAK_SOURCE|REACTOR_EXTERNAL_ONLY|SAFE_LOCKED|BUS_UNSTABLE|LOAD_SHED_ACTIVE|"
     r"SOURCE_UNAVAILABLE|bus_unstable|load_shedding|overcurrent|stale|conflicting|"
@@ -43,6 +43,7 @@ _STATUS_RE = re.compile(
     r"MODULE_PASSPORT_MISSING|MODULE_PASSPORT_INVALID|MOUNT_POINT_UNKNOWN|"
     r"MOUNT_POINT_OCCUPIED|MODULE_MOUNT_CLASS_FORBIDDEN|"
     r"NODATA|NO DATA|Нет данных|UNKNOWN|unknown|absent|missing|TBD|not implemented|"
+    r"FRND|FOE|UNK|"
     r"ACTIVE|inactive|STANDBY|STOPPED|RUNNING|PAUSED|"
     r"NEXT|Действие|ПОСЛЕДСТВИЕ|Proof|PROOF|Truth|BOUNDARY|Boundary|RAW FACTS|WARNINGS|SENSOR ROWS"
     r")",
@@ -253,6 +254,7 @@ def _style_for_token(token: str) -> str:
     normalized = token.strip().lower().replace("_", "-")
     if normalized in {
         "ok",
+        "frnd",
         "ready",
         "fresh",
         "trusted",
@@ -266,6 +268,7 @@ def _style_for_token(token: str) -> str:
         return f"bold {ORION_UI_COLORS['ok']}"
     if normalized in {
         "degraded",
+        "unk",
         "warn",
         "warning",
         "вним",
@@ -284,6 +287,7 @@ def _style_for_token(token: str) -> str:
     if normalized in {
         "crit",
         "critical",
+        "foe",
         "failed",
         "error",
         "blocked",

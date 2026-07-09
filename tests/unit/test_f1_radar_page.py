@@ -82,10 +82,35 @@ def test_track_row_renders_all_six_fields() -> None:
     assert "риск" in line
 
 
-def test_risk_marked_derived() -> None:
+def test_risk_marked_derived_in_footer() -> None:
     vm = build_radar_page_vm({"t1": _wire_track(range_m=100.0, vr_mps=-20.0)})
+    lines = format_radar_track_row_lines(vm)
+    assert "CRIT" in lines[0] and "t_cpa" in lines[0]
+    # derived-пометка одна на страницу (footer), не мусор в каждом ряду
+    assert "(derived)" not in lines[0]
+    assert any("derived" in line for line in lines[1:])
+    # строки треков не начинаются с '#' — ui_rich красит #-буллеты в muted,
+    # и главная T0-страница становилась серой (UI-ревью P1)
+    assert not lines[0].startswith("#")
+
+
+def test_zero_values_render_honestly() -> None:
+    """0.0 — это данные, а не их отсутствие (falsy-zero через or-цепочки)."""
+    vm = build_radar_page_vm({"t1": _wire_track(bearing_deg=0.0, quality=0.0)})
+    row = vm.rows[0]
+    assert row.bearing_deg == 0.0 and row.quality == 0.0
     line = format_radar_track_row_lines(vm)[0]
-    assert "CRIT" in line and "(derived)" in line and "t_cpa" in line
+    assert "пеленг 000°" in line and "кач 0.00" in line
+
+
+def test_missing_kinematics_show_unknown_risk() -> None:
+    """Без range/vr риск честно «—», а не «OK (derived)»."""
+    vm = build_radar_page_vm({"t1": {"track_label": "TGT-1"}})
+    row = vm.rows[0]
+    assert row.risk_level == "none"
+    lines = format_radar_track_row_lines(vm)
+    assert "риск —" in lines[0]
+    assert not any("derived" in line for line in lines)  # нечего derive'ить
 
 
 # ── Пустой эфир ──────────────────────────────────────────────────────────────
@@ -133,15 +158,20 @@ def test_sort_crit_first_then_range_and_limit() -> None:
         "crit": _wire_track(range_m=100.0, vr_mps=-20.0),
         "near_ok": _wire_track(range_m=500.0, vr_mps=2.0),
     }
+    tracks["no_kinematics"] = {"track_label": "GHOST-1"}
     vm = build_radar_page_vm(tracks)
     assert [row.risk_level for row in vm.rows[:1]] == ["crit"]
+    levels = [row.risk_level for row in vm.rows]
+    # неизвестный риск выше подтверждённого ok (не хоронить неопределённость)
+    assert levels.index("none") < levels.index("ok")
     ok_ranges = [row.range_m for row in vm.rows if row.risk_level == "ok"]
     assert ok_ranges == sorted(ok_ranges)
 
     many = {f"t{i}": _wire_track(range_m=1000.0 + i) for i in range(12)}
     vm = build_radar_page_vm(many, limit=9)
     assert len(vm.rows) == 9 and vm.hidden_count == 3
-    assert any("+ 3" in line for line in format_radar_track_row_lines(vm))
+    overflow = [line for line in format_radar_track_row_lines(vm) if "+ 3" in line]
+    assert overflow and "F8" not in overflow[0]  # F8 не знает деталей треков
 
 
 # ── Канонический рендерер MFD использует view-model ──────────────────────────

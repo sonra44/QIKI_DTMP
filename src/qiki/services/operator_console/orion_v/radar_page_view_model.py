@@ -10,6 +10,7 @@ derived из range/vr через shared-владельца порогов (`qiki
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -62,9 +63,31 @@ def is_lost_status(value: Any) -> bool:
 
 def _num(value: Any) -> float | None:
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(result):
+        return None  # NaN/inf с провода — не данные
+    return result
+
+
+def _first_num(track: Mapping[str, Any], *keys: str) -> float | None:
+    """Первый ключ с ЧИСЛОМ. Не `or`-цепочка: 0.0 — данные (пеленг ровно по
+    носу, качество 0.0), falsy-провал в fallback терял их (аудит-находка)."""
+    for key in keys:
+        if key in track:
+            value = _num(track.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _first_present(track: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = track.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +115,8 @@ class RadarPageVM:
     perception_mode_label: str = PERCEPTION_MODE_LABEL
 
 
-_RISK_SORT_ORDER = {"crit": 0, "warn": 1, "ok": 2}
+# «none» (нет кинематики) выше подтверждённого ok: неопределённость не хоронится.
+_RISK_SORT_ORDER = {"crit": 0, "warn": 1, "none": 2, "ok": 3}
 
 
 def build_radar_page_vm(
@@ -107,13 +131,14 @@ def build_radar_page_vm(
             continue
         if is_lost_status(track.get("status")):
             continue  # защита в глубину поверх эвикции в _on_track
-        range_m = _num(track.get("range_m") or track.get("range") or track.get("distance_m"))
-        vr_mps = _num(track.get("vr_mps"))
-        if range_m is not None and vr_mps is not None:
+        range_m = _first_num(track, "range_m", "range", "distance_m")
+        vr_mps = _first_num(track, "vr_mps")
+        if range_m is not None and range_m >= 0.0 and vr_mps is not None:
             risk_level, t_cpa_s = classify_approach_risk(range_m, vr_mps)
         else:
-            risk_level, t_cpa_s = "ok", None
-        age_s = _num(track.get("age_s") or track.get("age"))
+            # нет кинематики — риск честно неизвестен, а не «OK (derived)»
+            risk_level, t_cpa_s = "none", None
+        age_s = _first_num(track, "age_s", "age")
         if age_s is None and now_unix_s is not None:
             source_ts = _num(track.get("_orion_source_timestamp_unix_s"))
             if source_ts is not None:
@@ -128,11 +153,11 @@ def build_radar_page_vm(
             RadarTrackRowVM(
                 track_id=str(track_id),
                 label=label,
-                bearing_deg=_num(track.get("bearing_deg") or track.get("bearing")),
+                bearing_deg=_first_num(track, "bearing_deg", "bearing"),
                 range_m=range_m,
                 vr_mps=vr_mps,
-                iff_code=iff_code(track.get("iff") or track.get("iff_class") or track.get("iffClass")),
-                quality=_num(track.get("quality") or track.get("confidence")),
+                iff_code=iff_code(_first_present(track, "iff", "iff_class", "iffClass")),
+                quality=_first_num(track, "quality", "confidence"),
                 age_s=age_s,
                 risk_level=risk_level,
                 t_cpa_s=t_cpa_s,
@@ -167,14 +192,18 @@ def format_radar_track_row_lines(vm: RadarPageVM) -> list[str]:
     if vm.empty:
         return [EMPTY_AIR_ROW]
     lines: list[str] = []
+    classified = False
     for index, row in enumerate(vm.rows, start=1):
-        risk = _RISK_CODE.get(row.risk_level, row.risk_level.upper())
-        risk_text = f"риск {risk}"
-        if row.t_cpa_s is not None and row.risk_level in {"warn", "crit"}:
-            risk_text += f" t_cpa={row.t_cpa_s:.0f}с"
-        risk_text += f" ({row.risk_source})"
+        if row.risk_level == "none":
+            risk_text = "риск —"
+        else:
+            classified = True
+            risk_text = f"риск {_RISK_CODE.get(row.risk_level, row.risk_level.upper())}"
+            if row.t_cpa_s is not None and row.risk_level in {"warn", "crit"}:
+                risk_text += f" t_cpa={row.t_cpa_s:.0f}с"
+        # без '#'-префикса: ui_rich красит #-буллеты в muted, страница серела
         lines.append(
-            f"#{index} {row.label}"
+            f"{index:>2} {row.label}"
             f" | пеленг {_fmt(row.bearing_deg, '03.0f', '°')}"
             f" | дальн {_fmt(row.range_m, '.0f', ' м')}"
             f" | скор {_fmt(row.vr_mps, '.1f', ' м/с')}"
@@ -183,7 +212,10 @@ def format_radar_track_row_lines(vm: RadarPageVM) -> list[str]:
             f" | {risk_text}"
         )
     if vm.hidden_count > 0:
-        lines.append(f"+ {vm.hidden_count} ещё — детали: F8")
+        lines.append(f"+ {vm.hidden_count} ещё")
+    if classified:
+        # derived-пометка одна на страницу — честность без мусора в рядах
+        lines.append("риск: derived (range/vr)")
     return lines
 
 

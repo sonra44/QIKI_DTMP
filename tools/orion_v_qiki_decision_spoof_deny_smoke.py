@@ -35,7 +35,7 @@ async def _main() -> None:
         async def _capture(command_name, parameters):
             published.append(command_name)
 
-        async def _ack_ok(command_name, timeout_s):
+        async def _ack_ok(command_name, timeout_s, command_id=None):
             return True
 
         async def _effect(command_name, timeout_s):

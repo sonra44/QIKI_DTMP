@@ -104,7 +104,7 @@ async def main() -> int:
         text = await _wait_for(
             app,
             pilot,
-            lambda t: "ALLY-SMK001" in t and "IFF FRND" in t and "(derived)" in t,
+            lambda t: "ALLY-SMK001" in t and "IFF FRND" in t and "риск: derived" in t,
             label="строка трека с IFF и derived-риском",
         )
         row = next(line for line in text.splitlines() if "ALLY-SMK001" in line)

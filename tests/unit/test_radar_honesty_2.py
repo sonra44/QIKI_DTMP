@@ -77,6 +77,30 @@ def test_rotation_gives_no_radar_when_unpowered(monkeypatch) -> None:
     assert int(ProtoSensorType.RADAR) not in _rotation_types(sim)
 
 
+def test_pause_from_stopped_is_rejected(monkeypatch) -> None:
+    """sim.pause не «оживляет» STOPPED-мир: иначе _sim_running=True открывал
+    ротацию радара для мира, который никогда не стартовал (край M4)."""
+    from uuid import uuid4
+
+    from qiki.shared.models.core import CommandMessage, MessageMetadata
+
+    sim = _sim(monkeypatch)
+    assert not sim._sim_running
+    cmd = CommandMessage(
+        command_name="sim.pause",
+        parameters={},
+        metadata=MessageMetadata(
+            correlation_id=uuid4(),
+            message_type="control_command",
+            source="test",
+            destination="q_sim_service",
+        ),
+    )
+    assert sim.apply_control_command(cmd) is False  # честный отказ
+    assert not sim._sim_running
+    assert int(ProtoSensorType.RADAR) not in _rotation_types(sim)
+
+
 def test_rotation_gives_radar_when_running_and_powered(monkeypatch) -> None:
     sim = _sim(monkeypatch)
     sim._sim_running = True

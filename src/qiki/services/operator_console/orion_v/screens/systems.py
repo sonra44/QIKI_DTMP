@@ -1241,8 +1241,11 @@ class OrionVSystemsScreen(Static):
 
     #orionv-systems-mfd-left-buttons Button.mfd-active,
     #orionv-systems-mfd-right-buttons Button.mfd-active {
-        border: heavy #f2b84b;
-        color: #f6e7b4;
+        /* UI-ревью P1: heavy-рамка съедала height:1 кнопки (border-box) и
+           расходилась со стилем F1 — активная страница выглядит одинаково */
+        background: #16343a;
+        color: #f0f7f2;
+        border: none;
     }
 
     #orionv-systems-mfd-softkeys {

@@ -99,7 +99,7 @@ async def _main() -> None:
             telemetry = qsim._build_telemetry_payload(qsim.world_model.get_state())
             await app._on_telemetry({"data": telemetry})
 
-        async def ack_ok(command_name: str, timeout_s: float) -> bool:
+        async def ack_ok(command_name: str, timeout_s: float, command_id=None) -> bool:
             return bool(command_name) and timeout_s > 0
 
         app._publish_sim_command = publish_local_sim_command  # type: ignore[method-assign]

@@ -232,7 +232,11 @@ class QSimService:
             return True
 
         if name == "sim.pause":
-            self._sim_running = True
+            # Край M4 (пост-ревью аудит): пауза замораживает только РАБОТАВШИЙ
+            # мир; из STOPPED она не «оживляет» сим (_sim_running=True открывал
+            # ротацию радара для мира, который никогда не стартовал).
+            if not self._sim_running:
+                return False
             self._sim_paused = True
             return True
 

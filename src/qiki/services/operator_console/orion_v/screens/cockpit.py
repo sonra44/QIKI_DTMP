@@ -115,8 +115,10 @@ def _left_mfd_page_title(page: str) -> str:
 # picker silently miss the line and fall back to the default.
 _NEXT_STEP_PREFIX = "Следующий шаг/Next:"
 
-# Этап 5 (G-A, Z6-подпись): рамки MFD несут подсказку переключения страниц.
-MFD_PAGE_SWITCH_SUBTITLE = "перекл. страниц: [ / ]"
+# Этап 5 (G-A, Z6-подпись) + UI-ревью P1: подписи раздельные — «[» листает
+# только левый MFD, «]» только правый; общая «[ / ]» учила неверной модели.
+MFD_PAGE_SWITCH_SUBTITLE_LEFT = "страницы: ["
+MFD_PAGE_SWITCH_SUBTITLE_RIGHT = "страницы: ]"
 
 
 class OrionVCockpitScreen(Static):
@@ -302,9 +304,9 @@ class OrionVCockpitScreen(Static):
                     yield Button("", id="orionv-cockpit-loop-apply", variant="primary", compact=True)
                     yield Button("", id="orionv-cockpit-loop-next", compact=True)
                 with Container(classes="orionv-cockpit-action-row"):
-                    yield Button("Panel ▲", id="orionv-cockpit-focus-prev", compact=True)
-                    yield Button("Help", id="orionv-cockpit-help-toggle", compact=True)
-                    yield Button("Panel ▼", id="orionv-cockpit-focus-next", compact=True)
+                    yield Button("Панель ▲", id="orionv-cockpit-focus-prev", compact=True)
+                    yield Button("Справка H", id="orionv-cockpit-help-toggle", compact=True)
+                    yield Button("Панель ▼", id="orionv-cockpit-focus-next", compact=True)
             yield Static("", id="orionv-mfd-qiki")
             yield Static("", id="orionv-cockpit-body")
             yield Static("", id="orionv-cockpit-intervention")
@@ -746,11 +748,11 @@ class OrionVCockpitScreen(Static):
             left_label = mfd_page_label("left", normalize_mfd_page("left", self._active_left_mfd_page))
             left_screen = self.query_one("#orionv-mfd-left-screen", Static)
             left_screen.border_title = f"ЛЕВЫЙ MFD · {left_label}"
-            left_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE
+            left_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE_LEFT
             right_label = mfd_page_label("right", normalize_mfd_page("right", self._active_right_mfd_page))
             right_screen = self.query_one("#orionv-mfd-right-screen", Static)
             right_screen.border_title = f"ПРАВЫЙ MFD · {right_label}"
-            right_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE
+            right_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE_RIGHT
         except NoMatches:
             pass
         self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
@@ -1012,7 +1014,7 @@ class OrionVCockpitScreen(Static):
             button.variant = "primary" if highlighted else "default"
         focus_buttons = (
             ("#orionv-cockpit-focus-prev", "Panel ▲"),
-            ("#orionv-cockpit-help-toggle", "Help · ON" if playable_loop_vm.help_visible else "Help · OFF"),
+            ("#orionv-cockpit-help-toggle", "Справка · ON" if playable_loop_vm.help_visible else "Справка · OFF"),
             ("#orionv-cockpit-focus-next", "Panel ▼"),
         )
         for selector, label in focus_buttons:
