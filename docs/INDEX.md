@@ -21,6 +21,7 @@ part of this published documentation set.
 - [QIKI Body v0.2.2 Documentation Package](design/hardware_and_physics/qiki_body_v0_2_2/00_INDEX.md) — target documentation canon for QIKI machine body, hardware / physics, calculation frame, interface control, ADR and acceptance checks. Runtime conformance is not claimed.
 - `docs/design/q-core-agent/` - QIKI core-agent design notes.
 - `docs/design/operator_console/` - ORION operator-console contracts and interaction design.
+- [ORION Playable F1-F5 v1 Documentation Package](design/operator_console/orion_playable_f1_f5_v1/00_INDEX.md) — target spec for bringing the ORION console (zones F1-F5) to a playable state: defect baseline from the 2026-07-09 audit, per-zone specs, acceptance criteria, work sequence, and agent handoff. Runtime conformance is not claimed.
 - `docs/design/canon/ADR/` - architecture and design decisions.
 
 ## Runtime And Operations
