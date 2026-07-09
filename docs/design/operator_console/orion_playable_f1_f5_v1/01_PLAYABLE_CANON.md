@@ -30,8 +30,9 @@
 - SYNC-мета «что я потеряю при смерти» (нужен отдельный ADR, гэп G-E).
 - EMCON/сигнатура (G7), режим восприятия R.L.S.M как runtime (G8 — только
   target-only метка).
-- BRAKE OVERRIDE как прямой путь мимо диалога (открытый вопрос Q8 в
-  `_support/CLARIFICATION_REQUEST_001.md`).
+- BRAKE OVERRIDE как аварийный путь мимо диалога (но через пломбу/legality/
+  аудит) — решён Q8: отдельный ADR, design-only, после Блока 0, до этапа 9
+  (`_support/CLARIFICATION_REPLY_002.md`).
 - Security-контуры Д1/Д2 (v2 auth_context, наружный NATS-порт) — отдельный трек.
 
 ## Правила честности (наследуются, не пересматриваются)
