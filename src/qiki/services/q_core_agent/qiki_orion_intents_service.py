@@ -4336,6 +4336,22 @@ def _refresh_agent_snapshot(*, agent: QCoreAgent, data_provider: GrpcDataProvide
     agent._evaluate_proposals()
 
 
+async def _refresh_agent_snapshot_async(
+    *,
+    agent: QCoreAgent,
+    data_provider: GrpcDataProvider,
+    lock: asyncio.Lock | None = None,
+) -> None:
+    """Аудит 2026-07-09 (0.8): refresh — блокирующий sync gRPC+HTTP (таймауты
+    до 10 с); в event loop NATS он уходит ТОЛЬКО через поток. lock сериализует
+    мутации agent.context между конкурентными refresh'ами."""
+    if lock is not None:
+        async with lock:
+            await asyncio.to_thread(_refresh_agent_snapshot, agent=agent, data_provider=data_provider)
+        return
+    await asyncio.to_thread(_refresh_agent_snapshot, agent=agent, data_provider=data_provider)
+
+
 async def _refresh_agent_snapshot_until_target_track(
     *,
     agent: QCoreAgent,
@@ -4349,6 +4365,7 @@ async def _refresh_agent_snapshot_until_target_track(
     timeout_s: float = 8.0,
     step_s: float = 0.2,
     label_settle_s: float = 1.0,
+    lock: asyncio.Lock | None = None,
 ) -> None:
     """Best-effort warmup for observation commands that need live radar truth."""
     if not target_designator:
@@ -4357,12 +4374,14 @@ async def _refresh_agent_snapshot_until_target_track(
     objective_id = str(objective_id or "").strip()
     preferred_track_id = str(preferred_track_id or "").strip()
     preferred_public_track_id = str(preferred_public_track_id or "").strip()
-    previous_radar_sensor_id = ""
+    # 0.2-фоллоу: sensor_id радара теперь СТАБИЛЕН между кадрами — «свежесть»
+    # определяется по timestamp чтения, а не по смене sensor_id.
+    previous_radar_ts = ""
     if require_fresh_radar:
         latest_sensor = getattr(agent.context, "latest_sensor_data", None)
         latest_sensor_type = getattr(latest_sensor, "sensor_type", None)
         if latest_sensor_type == SensorTypeEnum.RADAR:
-            previous_radar_sensor_id = str(getattr(latest_sensor, "sensor_id", "") or "").strip()
+            previous_radar_ts = str(getattr(latest_sensor, "timestamp", "") or "")
     contour_snapshot = _observation_track_snapshot(
         None,
         fallback_snapshot={
@@ -4375,14 +4394,14 @@ async def _refresh_agent_snapshot_until_target_track(
     contour_public_track_id = str(contour_snapshot.get("public_track_id") or "").strip()
     previous_track_label = str(contour_snapshot.get("observation_track_label") or "").strip()
     allow_designator_fallback = not bool(contour_track_id) or bool(contour_public_track_id)
-    last_fresh_radar_sensor_id = previous_radar_sensor_id
+    last_fresh_radar_ts = previous_radar_ts
     fresh_radar_started_mono: float | None = None
 
     deadline = time.monotonic() + timeout_s
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            _refresh_agent_snapshot(agent=agent, data_provider=data_provider)
+            await _refresh_agent_snapshot_async(agent=agent, data_provider=data_provider, lock=lock)
             matched_track, selection_source = _select_target_track_for_resume(
                 agent.context.world_snapshot,
                 target_designator=target_designator,
@@ -4393,13 +4412,14 @@ async def _refresh_agent_snapshot_until_target_track(
             latest_sensor = getattr(agent.context, "latest_sensor_data", None)
             latest_sensor_type = getattr(latest_sensor, "sensor_type", None)
             latest_sensor_id = str(getattr(latest_sensor, "sensor_id", "") or "").strip()
+            latest_radar_ts = str(getattr(latest_sensor, "timestamp", "") or "")
             fresh_radar_ready = (
                 latest_sensor_type == SensorTypeEnum.RADAR
-                and bool(latest_sensor_id)
-                and latest_sensor_id != previous_radar_sensor_id
+                and bool(latest_radar_ts)
+                and latest_radar_ts != previous_radar_ts
             )
-            if fresh_radar_ready and latest_sensor_id != last_fresh_radar_sensor_id:
-                last_fresh_radar_sensor_id = latest_sensor_id
+            if fresh_radar_ready and latest_radar_ts != last_fresh_radar_ts:
+                last_fresh_radar_ts = latest_radar_ts
                 if fresh_radar_started_mono is None:
                     fresh_radar_started_mono = time.monotonic()
             current_track_label = (
@@ -4440,7 +4460,7 @@ async def _refresh_agent_snapshot_until_target_track(
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             try:
-                agent._ingest_sensor_data(data_provider)
+                await asyncio.to_thread(agent._ingest_sensor_data, data_provider)
                 matched_track, selection_source = _select_target_track_for_resume(
                     agent.context.world_snapshot,
                     target_designator=target_designator,
@@ -4450,13 +4470,14 @@ async def _refresh_agent_snapshot_until_target_track(
                 latest_sensor = getattr(agent.context, "latest_sensor_data", None)
                 latest_sensor_type = getattr(latest_sensor, "sensor_type", None)
                 latest_sensor_id = str(getattr(latest_sensor, "sensor_id", "") or "").strip()
+                latest_radar_ts = str(getattr(latest_sensor, "timestamp", "") or "")
                 fresh_radar_ready = (
                     latest_sensor_type == SensorTypeEnum.RADAR
-                    and bool(latest_sensor_id)
-                    and latest_sensor_id != previous_radar_sensor_id
+                    and bool(latest_radar_ts)
+                    and latest_radar_ts != previous_radar_ts
                 )
-                if fresh_radar_ready and latest_sensor_id != last_fresh_radar_sensor_id:
-                    last_fresh_radar_sensor_id = latest_sensor_id
+                if fresh_radar_ready and latest_radar_ts != last_fresh_radar_ts:
+                    last_fresh_radar_ts = latest_radar_ts
                     if fresh_radar_started_mono is None:
                         fresh_radar_started_mono = time.monotonic()
                 current_track_label = (
@@ -4691,11 +4712,11 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
             return
 
         # Best-effort: refresh context right before answering.
-        async with snapshot_lock:
-            try:
-                _refresh_agent_snapshot(agent=agent, data_provider=data_provider)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to refresh agent snapshot: %s", exc)
+        # 0.8: блокирующий sync gRPC+HTTP уходит в поток — loop NATS не встаёт.
+        try:
+            await _refresh_agent_snapshot_async(agent=agent, data_provider=data_provider, lock=snapshot_lock)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to refresh agent snapshot: %s", exc)
 
         reasoning_snapshot = _current_reasoning_snapshot(
             agent=agent,
@@ -4709,6 +4730,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                 data_provider=data_provider,
                 target_designator=target_designator,
                 require_fresh_radar=True,
+                lock=snapshot_lock,
             )
             reasoning_snapshot = _current_reasoning_snapshot(
                 agent=agent,
@@ -4771,6 +4793,7 @@ async def _run_orion_intents_loop(*, agent: QCoreAgent, data_provider: GrpcDataP
                     else None
                 ),
                 require_fresh_radar=True,
+                lock=snapshot_lock,
             )
             reasoning_snapshot = _current_reasoning_snapshot(
                 agent=agent,

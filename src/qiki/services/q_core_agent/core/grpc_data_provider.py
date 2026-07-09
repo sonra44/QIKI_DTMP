@@ -196,24 +196,31 @@ class GrpcDataProvider(IDataProvider):
         logger.debug("Received sensor data via gRPC: %s", sensor_id)
         return sensor_data
 
-    def send_actuator_command(self, command: ActuatorCommand):
-        """Отправляет команду актуатору через gRPC"""
+    def send_actuator_command(self, command: ActuatorCommand) -> bool:
+        """Отправляет команду актуатору через gRPC.
+
+        Аудит 2026-07-09 (0.7): провал доставки/отказ НЕ глотаются — иначе
+        вызывающий путь записывал «accepted» и SAFE-режим не срабатывал.
+        RpcError → ConnectionError (SAFE-ветка агента), отказ → ValueError.
+        """
         try:
             proto_command = pydantic_actuator_command_to_proto_actuator_command(command)
             response = self.stub.SendActuatorCommand(
                 SendActuatorCommandRequest(command=proto_command),
                 timeout=10.0,
             )
-            if response.accepted:
-                logger.info(f"Sent actuator command via gRPC: {command.actuator_id}")
-            else:
-                logger.warning(
-                    "Actuator command rejected via gRPC: %s (%s)",
-                    command.actuator_id,
-                    response.message,
-                )
         except grpc.RpcError as e:
             logger.error(f"Failed to send actuator command via gRPC: {e}")
+            raise ConnectionError(f"gRPC actuator send failed: {e}") from e
+        if not response.accepted:
+            logger.warning(
+                "Actuator command rejected via gRPC: %s (%s)",
+                command.actuator_id,
+                response.message,
+            )
+            raise ValueError(f"actuator command rejected: {response.message}")
+        logger.info(f"Sent actuator command via gRPC: {command.actuator_id}")
+        return True
 
     def __del__(self):
         """Закрывает gRPC соединение при уничтожении объекта"""

@@ -24,6 +24,28 @@ from qiki.shared.models.core import (
     FsmStateEnum,
 )
 
+# Аудит 2026-07-09 (0.6): значения agent-домена и shared-домена НЕ совпадают
+# (ERROR_STATE(4) vs PAUSED(4), SHUTDOWN(5) vs ERROR(5)) — IntEnum-коэрция по
+# значению превращала аварию в паузу. Только явный маппинг.
+_AGENT_TO_SHARED_STATE: dict[FsmState, FsmStateEnum] = {
+    FsmState.UNSPECIFIED: FsmStateEnum.OFFLINE,
+    FsmState.BOOTING: FsmStateEnum.BOOTING,
+    FsmState.IDLE: FsmStateEnum.IDLE,
+    FsmState.ACTIVE: FsmStateEnum.RUNNING,
+    FsmState.ERROR_STATE: FsmStateEnum.ERROR,
+    FsmState.SHUTDOWN: FsmStateEnum.TERMINATING,
+}
+# PAUSED отсутствует в agent-домене намеренно: пауза — операторское состояние,
+# стандартные правила агента её не трогают.
+_SHARED_TO_AGENT_STATE: dict[FsmStateEnum, FsmState] = {
+    FsmStateEnum.OFFLINE: FsmState.UNSPECIFIED,
+    FsmStateEnum.BOOTING: FsmState.BOOTING,
+    FsmStateEnum.IDLE: FsmState.IDLE,
+    FsmStateEnum.RUNNING: FsmState.ACTIVE,
+    FsmStateEnum.ERROR: FsmState.ERROR_STATE,
+    FsmStateEnum.TERMINATING: FsmState.SHUTDOWN,
+}
+
 
 class FSMHandler(IFSMHandler):
     def __init__(self, context: "AgentContext", world_model: Optional["WorldModel"] = None):
@@ -73,11 +95,19 @@ class FSMHandler(IFSMHandler):
                     previous_state=FsmStateEnum.OFFLINE,
                 )
 
+            # 0.6: правила работают ТОЛЬКО в agent-домене; вход/выход — через
+            # явный маппинг. PAUSED не мапится — операторскую паузу правила
+            # не трогают (раньше PAUSED(4)==ERROR_STATE(4) «лечился» в IDLE).
+            agent_state = _SHARED_TO_AGENT_STATE.get(state.current_state)
+            if agent_state is None:
+                return state
+
             guard_event = self._select_guard_event()
             if guard_event:
-                next_state, event = self._apply_guard_event(guard_event, state.current_state)
+                next_agent_state, event = self._apply_guard_event(guard_event, agent_state)
             else:
-                next_state, event = self._apply_standard_rules(state.current_state)
+                next_agent_state, event = self._apply_standard_rules(agent_state)
+            next_state = _AGENT_TO_SHARED_STATE[FsmState(next_agent_state)]
 
             if next_state != state.current_state:
                 transition = PydanticFsmTransition(

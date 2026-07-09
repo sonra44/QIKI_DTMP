@@ -2621,6 +2621,14 @@ class WorldModel:
             "radiation_usvh": self.radiation_usvh,
             "temp_external_c": self.temp_external_c,
             "temp_core_c": self.temp_core_c,
+            # Аудит 2026-07-09 (0.11): эти значения — fixture-константы
+            # симуляции, НЕ измерения; Truth/Quality contract требует, чтобы
+            # потребитель мог отличить источник (никаких «живых» 100%/0.0).
+            "field_sources": {
+                "hull_integrity": "fixture",
+                "radiation_usvh": "fixture",
+                "temp_external_c": "fixture",
+            },
             "cpu_usage": self.cpu_usage,
             "memory_usage": self.memory_usage,
             "thermal": {
