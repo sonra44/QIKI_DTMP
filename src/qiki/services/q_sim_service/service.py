@@ -381,19 +381,24 @@ class QSimService:
                 is_valid=True,
             )
         if sensor_type == int(ProtoSensorType.RADAR) and self._radar_rotation_allowed():
-            frame = self.generate_radar_frame()
-            proto_frame = model_frame_to_proto(frame)
-            sr = SensorReading(
-                sensor_id=pydantic_uuid_to_proto_uuid(frame.sensor_id),
-                sensor_type=ProtoSensorType.RADAR,
-                timestamp=proto_frame.timestamp,
-                radar_data=proto_frame,
-                is_valid=True,
-                encoding="qiki.radar.v1",
-                source_module="q_sim_service",
-            )
-            sr.signal_strength = 1.0
-            return sr
+            # Пауза↔xpdr (пост-ревью): ротация читает тот же кадр, что и
+            # внешние потребители — на паузе это замороженный последний
+            # опубликованный, а не свежая генерация с живым xpdr-состоянием
+            # (иначе два потребителя видят разные миры).
+            frame = self.radar_frame_for_external_read()
+            if frame is not None:
+                proto_frame = model_frame_to_proto(frame)
+                sr = SensorReading(
+                    sensor_id=pydantic_uuid_to_proto_uuid(frame.sensor_id),
+                    sensor_type=ProtoSensorType.RADAR,
+                    timestamp=proto_frame.timestamp,
+                    radar_data=proto_frame,
+                    is_valid=True,
+                    encoding="qiki.radar.v1",
+                    source_module="q_sim_service",
+                )
+                sr.signal_strength = 1.0
+                return sr
 
         timestamp = Timestamp()
         timestamp.GetCurrentTime()

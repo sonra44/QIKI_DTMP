@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from typing import Dict, List, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
 from qiki.shared.models.core import SensorData, SensorTypeEnum
 from qiki.shared.models.radar import FriendFoeEnum, RadarTrackModel, RadarTrackStatusEnum
+from qiki.shared.radar_freshness import RADAR_TRACK_DEAD_S
 
 from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, GuardTable
 from qiki.services.q_core_agent.core.metrics import publish_world_model_metrics
@@ -26,12 +28,40 @@ class WorldModel:
         # Аудит 2026-07-09 (0.2): владение frame-derived треками ключуется по
         # сенсору — кадр одного радара не сносит треки другого.
         self._frame_derived_track_ids: Dict[str, Set[str]] = {}
+        # M5 (пост-фикс аудит): время последнего приёма трека — треки
+        # замолчавшего сенсора смертны (иначе фантом в guard-зоне держит
+        # вечный critical-гвард). Порог — shared radar_freshness.
+        self._track_last_ingest_ts: Dict[str, float] = {}
         self._guard_results: List[GuardEvaluationResult] = []
         self._active_guard_keys: Set[Tuple[str, str]] = set()
         self._active_warning_keys: Set[Tuple[str, str]] = set()
 
-    def ingest_sensor_data(self, sensor_data: SensorData) -> None:
+    def _evict_dead_tracks(self, now_ts: float | None = None) -> None:
+        """M5: смерть по возрасту — контакт без свежих данных дольше
+        RADAR_TRACK_DEAD_S выселяется, его гварды пересчитываются."""
+        now = time.time() if now_ts is None else float(now_ts)
+        dead_ids = [
+            track_id
+            for track_id in self._radar_tracks
+            if now - self._track_last_ingest_ts.get(track_id, now) > RADAR_TRACK_DEAD_S
+        ]
+        if not dead_ids:
+            return
+        for track_id in dead_ids:
+            self._radar_tracks.pop(track_id, None)
+            self._track_last_ingest_ts.pop(track_id, None)
+            for owned_ids in self._frame_derived_track_ids.values():
+                owned_ids.discard(track_id)
+        self._frame_derived_track_ids = {
+            key: ids for key, ids in self._frame_derived_track_ids.items() if ids
+        }
+        self._recalculate_guards()
+
+    def ingest_sensor_data(self, sensor_data: SensorData, *, now_ts: float | None = None) -> None:
         """Update world model state from incoming sensor data."""
+
+        now = time.time() if now_ts is None else float(now_ts)
+        self._evict_dead_tracks(now)
 
         if sensor_data.sensor_type != SensorTypeEnum.RADAR:
             return
@@ -42,10 +72,12 @@ class WorldModel:
 
             if track.status == RadarTrackStatusEnum.LOST:
                 self._radar_tracks.pop(track_id, None)
+                self._track_last_ingest_ts.pop(track_id, None)
                 for owned_ids in self._frame_derived_track_ids.values():
                     owned_ids.discard(track_id)
             else:
                 self._radar_tracks[track_id] = track
+                self._track_last_ingest_ts[track_id] = now
 
             self._recalculate_guards()
             return
@@ -80,7 +112,10 @@ class WorldModel:
         previous_owned = set(self._frame_derived_track_ids.get(sensor_key, set()))
         for track_id in previous_owned - set(updated_tracks):
             self._radar_tracks.pop(track_id, None)
+            self._track_last_ingest_ts.pop(track_id, None)
         self._radar_tracks.update(updated_tracks)
+        for track_id in updated_tracks:
+            self._track_last_ingest_ts[track_id] = now
         # M6+LOW (пост-фикс аудит): свой ключ снимается ЦЕЛИКОМ — кадр сенсора
         # начисто определяет его владение. Перевставка ниже освежает позицию в
         # словаре (LRU: живой сенсор не выселяется флудом «плавающих» id),
@@ -104,6 +139,7 @@ class WorldModel:
             oldest_key = next(key for key in self._frame_derived_track_ids if key != active_key)
             for track_id in self._frame_derived_track_ids.pop(oldest_key):
                 self._radar_tracks.pop(track_id, None)
+                self._track_last_ingest_ts.pop(track_id, None)
 
     def _recalculate_guards(self) -> None:
         evaluations = self._guard_table.evaluate_tracks(self._radar_tracks.values())
@@ -135,13 +171,18 @@ class WorldModel:
         self._active_guard_keys = active_keys
         self._active_warning_keys = warning_keys
 
-    def active_radar_tracks(self) -> List[RadarTrackModel]:
+    def active_radar_tracks(self, *, now_ts: float | None = None) -> List[RadarTrackModel]:
+        self._evict_dead_tracks(now_ts)
         return list(self._radar_tracks.values())
 
-    def guard_results(self) -> List[GuardEvaluationResult]:
+    def guard_results(self, *, now_ts: float | None = None) -> List[GuardEvaluationResult]:
+        # M5: фантомный гвард не переживает смерть трека и на чистом чтении
+        # (agent.py читает гварды каждый тик — с ingest'ом или без).
+        self._evict_dead_tracks(now_ts)
         return list(self._guard_results)
 
-    def snapshot(self) -> dict:
+    def snapshot(self, *, now_ts: float | None = None) -> dict:
+        self._evict_dead_tracks(now_ts)
         return {
             "active_track_count": len(self._radar_tracks),
             "critical_guard_count": sum(1 for result in self._guard_results if result.severity == "critical"),
@@ -150,7 +191,8 @@ class WorldModel:
             "guard_results": [result.model_dump() for result in self._guard_results],
         }
 
-    def most_critical_guard(self) -> Optional[GuardEvaluationResult]:
+    def most_critical_guard(self, *, now_ts: float | None = None) -> Optional[GuardEvaluationResult]:
+        self._evict_dead_tracks(now_ts)
         if not self._guard_results:
             return None
         return self._guard_results[0]

@@ -15,6 +15,13 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from qiki.shared.models.radar import FriendFoeEnum, RadarTrackStatusEnum
+from qiki.shared.radar_freshness import (
+    DEAD,
+    FRESH,
+    RADAR_TRACK_DEAD_S,
+    STALE,
+    classify_track_freshness,
+)
 from qiki.shared.radar_risk import classify_approach_risk
 
 # Wire-коды остаются кодами (канон): значения IFF показываются латинскими
@@ -103,6 +110,11 @@ class RadarTrackRowVM:
     risk_level: str
     t_cpa_s: float | None
     risk_source: str = "derived"
+    # Свежесть по времени ПРИЁМА консолью (wire age_s всегда 0.0 — дефолт
+    # модели, для staleness не годится). Неизвестный возраст → fresh без
+    # пометки: боевой путь всегда штампует _orion_received_at_unix_s.
+    freshness: str = FRESH
+    staleness_age_s: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +125,9 @@ class RadarPageVM:
     empty: bool
     coverage_label: str = "360°"
     perception_mode_label: str = PERCEPTION_MODE_LABEL
+    # Треки без данных дольше RADAR_TRACK_DEAD_S: скрыты из рядов, но не
+    # замолчаны — честный счётчик вместо «живого» призрака или «эфир чист».
+    dead_count: int = 0
 
 
 # «none» (нет кинематики) выше подтверждённого ok: неопределённость не хоронится.
@@ -126,11 +141,25 @@ def build_radar_page_vm(
     limit: int = 9,
 ) -> RadarPageVM:
     rows: list[RadarTrackRowVM] = []
+    dead_count = 0
     for track_id, track in (latest_radar_tracks or {}).items():
         if not isinstance(track, Mapping):
             continue
         if is_lost_status(track.get("status")):
             continue  # защита в глубину поверх эвикции в _on_track
+        # Свежесть — по времени приёма консолью (после sim.stop поток трека
+        # умирает, а LOST не придёт: без этого призрак «жил» вечно).
+        staleness_age_s: float | None = None
+        if now_unix_s is not None:
+            received_ts = _first_num(
+                track, "_orion_received_at_unix_s", "_orion_source_timestamp_unix_s"
+            )
+            if received_ts is not None:
+                staleness_age_s = max(0.0, now_unix_s - received_ts)
+        freshness = FRESH if staleness_age_s is None else classify_track_freshness(staleness_age_s)
+        if freshness == DEAD:
+            dead_count += 1
+            continue
         range_m = _first_num(track, "range_m", "range", "distance_m")
         vr_mps = _first_num(track, "vr_mps")
         if range_m is not None and range_m >= 0.0 and vr_mps is not None:
@@ -161,6 +190,8 @@ def build_radar_page_vm(
                 age_s=age_s,
                 risk_level=risk_level,
                 t_cpa_s=t_cpa_s,
+                freshness=freshness,
+                staleness_age_s=staleness_age_s,
             )
         )
 
@@ -177,7 +208,10 @@ def build_radar_page_vm(
         rows=tuple(shown),
         total_tracks=total,
         hidden_count=total - len(shown),
-        empty=total == 0,
+        # «эфир чист» — только когда контактов нет ВООБЩЕ; умершие по
+        # возрасту — это «данных нет», а не «целей нет».
+        empty=total == 0 and dead_count == 0,
+        dead_count=dead_count,
     )
 
 
@@ -191,6 +225,9 @@ def format_radar_track_row_lines(vm: RadarPageVM) -> list[str]:
     """Строки треков для section_lines-рамок (systems/target/sensors-пути)."""
     if vm.empty:
         return [EMPTY_AIR_ROW]
+    if not vm.rows and vm.dead_count > 0:
+        # все контакты умерли по возрасту — «эфир чист» был бы ложью
+        return [f"радар молчит | свежих контактов нет | скрыто устаревших: {vm.dead_count}"]
     lines: list[str] = []
     classified = False
     for index, row in enumerate(vm.rows, start=1):
@@ -201,6 +238,9 @@ def format_radar_track_row_lines(vm: RadarPageVM) -> list[str]:
             risk_text = f"риск {_RISK_CODE.get(row.risk_level, row.risk_level.upper())}"
             if row.t_cpa_s is not None and row.risk_level in {"warn", "crit"}:
                 risk_text += f" t_cpa={row.t_cpa_s:.0f}с"
+        stale_text = ""
+        if row.freshness == STALE and row.staleness_age_s is not None:
+            stale_text = f" | уст {row.staleness_age_s:.0f}с"
         # без '#'-префикса: ui_rich красит #-буллеты в muted, страница серела
         lines.append(
             f"{index:>2} {row.label}"
@@ -210,9 +250,14 @@ def format_radar_track_row_lines(vm: RadarPageVM) -> list[str]:
             f" | IFF {row.iff_code}"
             f" | кач {_fmt(row.quality, '.2f')}"
             f" | {risk_text}"
+            f"{stale_text}"
         )
     if vm.hidden_count > 0:
         lines.append(f"+ {vm.hidden_count} ещё")
+    if vm.dead_count > 0:
+        lines.append(
+            f"скрыто устаревших: {vm.dead_count} (нет данных > {RADAR_TRACK_DEAD_S:.0f}с)"
+        )
     if classified:
         # derived-пометка одна на страницу — честность без мусора в рядах
         lines.append("риск: derived (range/vr)")

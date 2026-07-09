@@ -7,6 +7,7 @@ transport, or turn local seeds into flight truth.
 """
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -99,7 +100,11 @@ def _radar_track_lines(
 ) -> list[str]:
     # Этап 6 (Z4): один владелец радар-строк — radar_page_view_model
     # (пеленг|дальность|скорость|IFF|качество|риск derived; пусто → «эфир чист»).
-    return format_radar_track_row_lines(build_radar_page_vm(radar_tracks or {}, limit=limit))
+    # now_unix_s обязателен: без него свежесть (уст./скрытие мёртвых) мертва
+    # на systems/target/sensors-путях.
+    return format_radar_track_row_lines(
+        build_radar_page_vm(radar_tracks or {}, now_unix_s=time.time(), limit=limit)
+    )
 
 
 def _objective_lines(objective: Mapping[str, Any] | None) -> list[str]:
