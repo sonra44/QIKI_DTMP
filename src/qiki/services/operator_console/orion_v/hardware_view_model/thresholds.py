@@ -1,106 +1,91 @@
+"""Тонкая обёртка над единым владельцем порогов (qiki.shared.body_status).
+
+Срез 0 SelfModel (2026-07-09): числовые пороги и compare-логика переехали в
+qiki/shared — иначе самоперцепция мозга стала бы «вторым выводом правды».
+Здесь остаётся только конверсия нейтрального статуса в консольный ViewStatus;
+все импорт-сайты консоли живут без изменений.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+# Константы и спецификация — реэкспорт единого владельца (не копия).
+from qiki.shared.body_status import (  # noqa: F401
+    COMMS_AGE_CRIT_S,
+    COMMS_AGE_WARN_S,
+    COMMS_LAT_CRIT_MS,
+    COMMS_LAT_WARN_MS,
+    COMMS_LOSS_CRIT_PCT,
+    COMMS_LOSS_WARN_PCT,
+    COMPUTE_CPU_CRIT_PCT,
+    COMPUTE_CPU_WARN_PCT,
+    COMPUTE_HEARTBEAT_CRIT_S,
+    COMPUTE_HEARTBEAT_WARN_S,
+    COMPUTE_RAM_CRIT_PCT,
+    COMPUTE_RAM_WARN_PCT,
+    COMPUTE_TEMP_CRIT_C,
+    COMPUTE_TEMP_WARN_C,
+    DEFAULT_BATTERY_CAPACITY_WH,
+    DEFAULT_FUEL_TOTAL_G,
+    DOCK_MAX_ALIGN_CRIT_DEG,
+    DOCK_MAX_ALIGN_WARN_DEG,
+    DOCK_MAX_SPEED_CRIT_MPS,
+    DOCK_MAX_SPEED_WARN_MPS,
+    DOCK_MIN_DISTANCE_CAPTURE_M,
+    EPSILON_POWER_W,
+    HULL_INTEGRITY_CRIT_PCT,
+    HULL_INTEGRITY_WARN_PCT,
+    HULL_SECTOR_DAMAGE_CRIT_PCT,
+    HULL_SECTOR_DAMAGE_WARN_PCT,
+    HULL_STRESS_CRIT,
+    HULL_STRESS_WARN,
+    NAV_CONFIDENCE_CRIT,
+    NAV_CONFIDENCE_LOW,
+    NAV_CONFIDENCE_WARN,
+    POWER_BUS_CRIT_V,
+    POWER_BUS_WARN_V,
+    POWER_RUNTIME_CRIT_MIN,
+    POWER_RUNTIME_WARN_MIN,
+    POWER_SOC_CRIT_PCT,
+    POWER_SOC_WARN_PCT,
+    PROPULSION_BURN_CRIT_MIN,
+    PROPULSION_BURN_WARN_MIN,
+    PROPULSION_FUEL_CRIT_PCT,
+    PROPULSION_FUEL_WARN_PCT,
+    PROPULSION_MOTOR_TEMP_CRIT_C,
+    PROPULSION_MOTOR_TEMP_WARN_C,
+    SHIELDS_LEVEL_CRIT_PCT,
+    SHIELDS_LEVEL_WARN_PCT,
+    THERMAL_CORE_CRIT_C,
+    THERMAL_CORE_WARN_C,
+    THERMAL_DELTA_CRIT_C,
+    THERMAL_DELTA_WARN_C,
+    THERMAL_TREND_WARN_C,
+    ComparisonMode,
+    NodeStatus,
+    ThresholdSpec,
+)
+from qiki.shared.body_status import (
+    status_by_max as _shared_status_by_max,
+    status_by_min as _shared_status_by_min,
+    status_by_range as _shared_status_by_range,
+)
 
 from .types import ViewStatus
 
-ComparisonMode = Literal["min", "max", "range"]
-
-# Power/EPS defaults and thresholds (stage 8.3.2)
-DEFAULT_BATTERY_CAPACITY_WH = 500.0
-EPSILON_POWER_W = 1e-6
-
-POWER_SOC_WARN_PCT = 20.0
-POWER_SOC_CRIT_PCT = 15.0
-POWER_BUS_WARN_V = 22.0
-POWER_BUS_CRIT_V = 20.0
-POWER_RUNTIME_WARN_MIN = 20.0
-POWER_RUNTIME_CRIT_MIN = 10.0
-
-# Propulsion defaults and thresholds (stage 8.3.3)
-DEFAULT_FUEL_TOTAL_G = 10000.0
-PROPULSION_FUEL_WARN_PCT = 20.0
-PROPULSION_FUEL_CRIT_PCT = 10.0
-PROPULSION_BURN_WARN_MIN = 20.0
-PROPULSION_BURN_CRIT_MIN = 10.0
-PROPULSION_MOTOR_TEMP_WARN_C = 80.0
-PROPULSION_MOTOR_TEMP_CRIT_C = 95.0
-
-# Navigation thresholds (stage 8.3.4)
-NAV_CONFIDENCE_WARN = 0.8
-NAV_CONFIDENCE_LOW = 0.5
-NAV_CONFIDENCE_CRIT = 0.2
-
-# Comms thresholds (stage 8.3.9)
-COMMS_LAT_WARN_MS = 200.0
-COMMS_LAT_CRIT_MS = 500.0
-COMMS_LOSS_WARN_PCT = 2.0
-COMMS_LOSS_CRIT_PCT = 5.0
-COMMS_AGE_WARN_S = 10.0
-COMMS_AGE_CRIT_S = 30.0
-
-# Thermal thresholds (stage 8.3.10)
-THERMAL_CORE_WARN_C = 80.0
-THERMAL_CORE_CRIT_C = 95.0
-THERMAL_DELTA_WARN_C = 10.0
-THERMAL_DELTA_CRIT_C = 20.0
-THERMAL_TREND_WARN_C = 2.0
-
-# Compute thresholds (stage 8.3.11)
-COMPUTE_HEARTBEAT_WARN_S = 15.0
-COMPUTE_HEARTBEAT_CRIT_S = 30.0
-COMPUTE_CPU_WARN_PCT = 80.0
-COMPUTE_CPU_CRIT_PCT = 95.0
-COMPUTE_RAM_WARN_PCT = 85.0
-COMPUTE_RAM_CRIT_PCT = 95.0
-COMPUTE_TEMP_WARN_C = 80.0
-COMPUTE_TEMP_CRIT_C = 95.0
-
-# Docking thresholds (stage 8.3.6)
-DOCK_MAX_ALIGN_WARN_DEG = 5.0
-DOCK_MAX_ALIGN_CRIT_DEG = 10.0
-DOCK_MAX_SPEED_WARN_MPS = 0.20
-DOCK_MAX_SPEED_CRIT_MPS = 0.40
-DOCK_MIN_DISTANCE_CAPTURE_M = 0.5
-
-# Hull + Shields thresholds (stage 8.3.7)
-HULL_INTEGRITY_WARN_PCT = 70.0
-HULL_INTEGRITY_CRIT_PCT = 40.0
-HULL_SECTOR_DAMAGE_WARN_PCT = 60.0
-HULL_SECTOR_DAMAGE_CRIT_PCT = 80.0
-HULL_STRESS_WARN = 0.8
-HULL_STRESS_CRIT = 1.2
-
-SHIELDS_LEVEL_WARN_PCT = 30.0
-SHIELDS_LEVEL_CRIT_PCT = 10.0
-
-
-@dataclass(frozen=True, slots=True)
-class ThresholdSpec:
-    mode: ComparisonMode
-    warn: float | tuple[float, float]
-    crit: float | tuple[float, float]
+_STATUS_MAP: dict[str, ViewStatus] = {
+    "ok": ViewStatus.OK,
+    "warn": ViewStatus.WARN,
+    "crit": ViewStatus.CRIT,
+    "no_data": ViewStatus.NO_DATA,
+}
 
 
 def status_by_min(value: float | None, warn_min: float, crit_min: float) -> ViewStatus:
-    if value is None:
-        return ViewStatus.NO_DATA
-    if value <= crit_min:
-        return ViewStatus.CRIT
-    if value <= warn_min:
-        return ViewStatus.WARN
-    return ViewStatus.OK
+    return _STATUS_MAP[_shared_status_by_min(value, warn_min, crit_min)]
 
 
 def status_by_max(value: float | None, warn_max: float, crit_max: float) -> ViewStatus:
-    if value is None:
-        return ViewStatus.NO_DATA
-    if value >= crit_max:
-        return ViewStatus.CRIT
-    if value >= warn_max:
-        return ViewStatus.WARN
-    return ViewStatus.OK
+    return _STATUS_MAP[_shared_status_by_max(value, warn_max, crit_max)]
 
 
 def status_by_range(
@@ -109,13 +94,4 @@ def status_by_range(
     ok_max: float,
     warn_band: float | tuple[float, float],
 ) -> ViewStatus:
-    if value is None:
-        return ViewStatus.NO_DATA
-    lower_band, upper_band = (warn_band, warn_band) if isinstance(warn_band, (int, float)) else warn_band
-    warn_min = ok_min - lower_band
-    warn_max = ok_max + upper_band
-    if ok_min <= value <= ok_max:
-        return ViewStatus.OK
-    if warn_min <= value <= warn_max:
-        return ViewStatus.WARN
-    return ViewStatus.CRIT
+    return _STATUS_MAP[_shared_status_by_range(value, ok_min, ok_max, warn_band)]

@@ -18,6 +18,13 @@ from qiki.shared.config_models import QCoreAgentConfig, load_config
 from qiki.shared.models.core import Proposal, SensorTypeEnum
 from qiki.services.q_core_agent.core.body_structure import FACE_IDS, KNOWN_MOUNT_CLASSES
 from qiki.services.q_core_agent.core.qiki_chat_llm import generate_qiki_reply, llm_dialog_enabled
+from qiki.shared.body_status import (
+    DOCKING_STATES,
+    FSM_STATES,
+    LINK_STATES,
+    ORBIT_STATES,
+    SENSOR_STATUSES,
+)
 from qiki.shared.module_catalog import CatalogResult, load_module_catalog
 from qiki.shared.models.qiki_chat import (
     BilingualText,
@@ -3887,7 +3894,6 @@ async def _augment_refusal_explanation(resp: QikiChatResponseV1, *, user_text: s
 
 
 _VISION_STALE_AFTER_S = float(os.getenv("QIKI_VISION_STALE_AFTER_S", "5.0"))
-_FSM_STATES_ALLOWED = frozenset({"RUNNING", "PAUSED", "STOPPED"})
 
 
 def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None) -> str:
@@ -3954,7 +3960,7 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     sim_state = snapshot.get("sim_state")
     if isinstance(sim_state, dict):
         fsm_raw = str(sim_state.get("fsm_state") or "").strip().upper()
-        fsm = fsm_raw if fsm_raw in _FSM_STATES_ALLOWED else "unknown"
+        fsm = fsm_raw if fsm_raw in FSM_STATES else "unknown"
         seg = f"мир {fsm}"
         if bool(sim_state.get("paused")):
             seg += " (пауза)"
@@ -3998,7 +4004,7 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     docking = snapshot.get("docking")
     if isinstance(docking, dict):
         state_raw = str(docking.get("state") or "").strip().lower()
-        state = state_raw if state_raw in {"docked", "undocked", "docking", "undocking", "disabled"} else "unknown"
+        state = state_raw if state_raw in DOCKING_STATES else "unknown"
         parts.append(f"стыковка {state}")
     else:
         parts.append("стыковка NODATA")
@@ -4006,7 +4012,7 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     comms = snapshot.get("comms")
     if isinstance(comms, dict):
         link_raw = str(comms.get("link_state") or comms.get("link") or "").strip().lower()
-        link = link_raw if link_raw in {"online", "offline", "degraded", "down"} else "unknown"
+        link = link_raw if link_raw in LINK_STATES else "unknown"
         seg = f"связь {link}"
         latency = _num(comms, "latency_ms")
         if latency is not None:
@@ -4029,7 +4035,7 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
     orbit = snapshot.get("orbit")
     if isinstance(orbit, dict):
         orbit_raw = str(orbit.get("state") or "").strip().lower()
-        orbit_state = orbit_raw if orbit_raw in {"off", "stable", "elliptical", "decaying", "unknown"} else "unknown"
+        orbit_state = orbit_raw if orbit_raw in ORBIT_STATES else "unknown"
         parts.append(f"орбита {orbit_state}")
     rad = snapshot.get("radiation_usvh")
     if isinstance(rad, (int, float)) and not isinstance(rad, bool) and math.isfinite(float(rad)):
@@ -4054,7 +4060,7 @@ def _vision_note(snapshot: dict[str, Any] | None, *, now_ts: float | None = None
             status_raw = str(sub.get("status") or "").strip().lower()
             if not status_raw:
                 continue
-            status = status_raw if status_raw in {"ok", "warn", "degraded", "failed", "crit", "na", "off"} else "unknown"
+            status = status_raw if status_raw in SENSOR_STATUSES else "unknown"
             seen += 1
             if status not in {"ok", "na", "off"}:
                 issues.append(f"{name} {status}")
