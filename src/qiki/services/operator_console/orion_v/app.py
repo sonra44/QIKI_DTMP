@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from collections import deque
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Coroutine, Iterable
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
@@ -316,6 +316,9 @@ class OrionVApp(App[None]):
         self._replay_mode = False
         self._procedure_engine = ProcedureEngine()
         self._procedure_task: asyncio.Task[None] | None = None
+        # Аудит 2026-07-09 (блок 1): фоновые задачи держатся здесь — GC не убьёт,
+        # исключения не теряются (_spawn_task вместо голого create_task).
+        self._bg_tasks: set[asyncio.Task[Any]] = set()
         self._control_acks: deque[dict[str, Any]] = deque(maxlen=100)
         self._pending_ack_command_id: str | None = None
         self._ack_wait_started_mono: float | None = None
@@ -576,7 +579,7 @@ class OrionVApp(App[None]):
                         incident_ts=incident_ts,
                     )
                     if incident_open_audit is not None:
-                        asyncio.create_task(self._publish_audit_event(OPERATOR_INCIDENTS, incident_open_audit))
+                        self._spawn_task(self._publish_audit_event(OPERATOR_INCIDENTS, incident_open_audit))
         self._request_refresh_ui()
 
     async def _on_control_response(self, envelope: dict[str, Any]) -> None:
@@ -927,7 +930,7 @@ class OrionVApp(App[None]):
             focus_reason="after_apply",
             increment_cycle=True,
         )
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_audit_event(
                 OPERATOR_ACTIONS,
                 {
@@ -1022,7 +1025,7 @@ class OrionVApp(App[None]):
             logger.debug("orion_v_f5_input_autoopen_failed", exc_info=True)
         if key == "f8":
             self._prefer_f8_evidence_card_for_current_context()
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_audit_event(
                 OPERATOR_ACTIONS,
                 {
@@ -1086,7 +1089,7 @@ class OrionVApp(App[None]):
             self._audit_page = 0
             self._refresh_visible_level()
         self._set_help_text(f"Подсистема выбрана/Subsystem selected: {slug}")
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_operator_action(
                 {
                     "kind": "subsystem_select",
@@ -1105,7 +1108,7 @@ class OrionVApp(App[None]):
             return
         self._selected_incident_id = selected
         self._set_help_text(f"Выбран/Selected incident: {selected}")
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_operator_action(
                 {
                     "kind": "incident_select",
@@ -1133,7 +1136,7 @@ class OrionVApp(App[None]):
     def on_orion_v_alerts_overlay_incident_selected(self, message: OrionVAlertsOverlay.IncidentSelected) -> None:
         self._selected_incident_id = message.incident_id
         self._set_help_text(f"Выбран/Selected incident: {message.incident_id}")
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_operator_action(
                 {
                     "kind": "incident_select",
@@ -1298,12 +1301,12 @@ class OrionVApp(App[None]):
             self.action_show_level(action)
             return
         if action == "world_toggle":
-            asyncio.create_task(self._toggle_world_pause())
+            self._spawn_task(self._toggle_world_pause())
             return
         if action == "attach_toggle":
             proc = self._attach_procedure
             if proc is not None and proc.paused:
-                asyncio.create_task(self._resume_attach_procedure())
+                self._spawn_task(self._resume_attach_procedure())
             else:
                 self._hold_attach_procedure()
             return
@@ -1438,7 +1441,7 @@ class OrionVApp(App[None]):
             if not qiki_text:
                 self._set_help_text("QIKI: пустой запрос. Используйте q: <команда>")
                 return
-            asyncio.create_task(self._publish_qiki_intent(qiki_text))
+            self._spawn_task(self._publish_qiki_intent(qiki_text))
             return
 
         if command in {"q confirm", "q execute"}:
@@ -1451,13 +1454,13 @@ class OrionVApp(App[None]):
             self._abort_attach_procedure()
             return
         if command in {"q resume", "q start"}:
-            asyncio.create_task(self._resume_attach_procedure())
+            self._spawn_task(self._resume_attach_procedure())
             return
         if command in {"q hold", "q pause"}:
             self._hold_attach_procedure()
             return
         if command in {"пауза", "pause", "старт", "start"}:
-            asyncio.create_task(self._world_pause_command(command))
+            self._spawn_task(self._world_pause_command(command))
             return
         if command in {"review confirm", "review ack", "review acknowledge"}:
             self.action_ack_observation_review()
@@ -1530,7 +1533,7 @@ class OrionVApp(App[None]):
             self._replay_mode = False
             self._request_refresh_ui()
             self._set_help_text("Анализ истории отключен (режим реального времени)")
-            asyncio.create_task(
+            self._spawn_task(
                 self._publish_audit_event(
                     OPERATOR_ACTIONS,
                     {"kind": "replay_mode", "action_type": "replay", "enabled": False, "operator": "orion_v"},
@@ -1559,7 +1562,7 @@ class OrionVApp(App[None]):
 
         if on_f5:
             # W1 (И1): голый текст на F5 = свободный вопрос QIKI (без q:-префикса)
-            asyncio.create_task(self._publish_qiki_intent(raw_command))
+            self._spawn_task(self._publish_qiki_intent(raw_command))
             self._reopen_f5_input()
             return
 
@@ -1610,7 +1613,7 @@ class OrionVApp(App[None]):
             ConfirmDialog("Подтвердить review связанного hidden fact?"),
             lambda confirmed: self._run_after_confirm(
                 confirmed,
-                lambda: asyncio.create_task(self._ack_observation_review()),
+                lambda: self._spawn_task(self._ack_observation_review()),
             ),
         )
 
@@ -1630,7 +1633,7 @@ class OrionVApp(App[None]):
             ConfirmDialog("Выбрать post-review follow-up: hold for recheck?"),
             lambda confirmed: self._run_after_confirm(
                 confirmed,
-                lambda: asyncio.create_task(self._select_observation_recheck_hold()),
+                lambda: self._spawn_task(self._select_observation_recheck_hold()),
             ),
         )
 
@@ -1650,7 +1653,7 @@ class OrionVApp(App[None]):
             ConfirmDialog("Возобновить observation contour после hold_for_recheck?"),
             lambda confirmed: self._run_after_confirm(
                 confirmed,
-                lambda: asyncio.create_task(self._resume_observation_follow_up()),
+                lambda: self._spawn_task(self._resume_observation_follow_up()),
             ),
         )
 
@@ -1821,7 +1824,7 @@ class OrionVApp(App[None]):
         if window_s <= 0:
             self._set_help_text("Окно анализа истории должно быть > 0")
             return
-        asyncio.create_task(self._load_replay(window_s))
+        self._spawn_task(self._load_replay(window_s))
         self._set_help_text(f"Загрузка анализа истории за последние {window_s}с ...")
 
     async def _load_replay(self, window_s: int) -> None:
@@ -1875,7 +1878,7 @@ class OrionVApp(App[None]):
             self._set_help_text("Процедура уже выполняется")
             return
         self._last_proc_start_mono = time.monotonic()
-        self._procedure_task = asyncio.create_task(self._run_procedure(definition.name))
+        self._procedure_task = self._spawn_task(self._run_procedure(definition.name))
         self._set_last_command_loop_state("procedure-started", f"Procedure queued: {definition.name}")
         self._set_help_text(f"Запустить процедуру: {definition.name}")
 
@@ -1961,7 +1964,7 @@ class OrionVApp(App[None]):
         elif args:
             self._set_help_text(f"Мир: {name} не принимает аргументов")
             return True
-        asyncio.create_task(self._publish_sim_command(name, parameters))
+        self._spawn_task(self._publish_sim_command(name, parameters))
         self._set_help_text(f"Мир: {name} отправлена — ждём ACK (ACK ≠ эффект)")
         return True
 
@@ -2393,7 +2396,7 @@ class OrionVApp(App[None]):
             return
         self._qiki_pending_action = None
         self._set_last_command_loop_state("cancelled", "Pending QIKI action cancelled by operator")
-        asyncio.create_task(
+        self._spawn_task(
             self._publish_observation_objective_update(
                 status="cancelled",
                 summary_en="The prepared observation objective was cancelled by the operator.",
@@ -3157,7 +3160,7 @@ class OrionVApp(App[None]):
             ConfirmDialog(confirm_prompt),
             lambda confirmed: self._run_after_confirm(
                 confirmed,
-                lambda: asyncio.create_task(self._execute_qiki_pending_action()),
+                lambda: self._spawn_task(self._execute_qiki_pending_action()),
             ),
         )
 
@@ -3328,6 +3331,25 @@ class OrionVApp(App[None]):
             },
         )
 
+    def _spawn_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+        """Фоновая задача с удержанием ссылки и логом исключений.
+
+        Голый create_task: GC может убить задачу, исключение теряется молча
+        (аудит 2026-07-09, блок 1). Все fire-and-forget корутины — только сюда.
+        """
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._reap_bg_task)
+        return task
+
+    def _reap_bg_task(self, task: asyncio.Task[Any]) -> None:
+        self._bg_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("orion_v_bg_task_failed task=%s error=%s", task.get_name(), exc, exc_info=exc)
+
     def _schedule_attach_stage_audit(self, *, stage: str, outcome: str, codes: tuple[str, ...] = ()) -> None:
         coro = self._publish_attach_stage_audit(stage=stage, outcome=outcome, codes=codes)
         try:
@@ -3335,7 +3357,7 @@ class OrionVApp(App[None]):
         except RuntimeError:
             asyncio.run(coro)
         else:
-            asyncio.create_task(coro)
+            self._spawn_task(coro)
 
     def _attach_procedure_on_snapshot(self) -> None:
         """Тик процедуры (ADR-0020 §4): принятый снапшот с paused=false."""
@@ -3411,7 +3433,7 @@ class OrionVApp(App[None]):
         except RuntimeError:
             asyncio.run(coro)
         else:
-            asyncio.create_task(coro)
+            self._spawn_task(coro)
 
     def _attach_procedure_stale_check(self) -> None:
         """TELEM_STALE: перенос не может идти по мёртвой телеметрии (ADR-0020 §3)."""
@@ -3555,6 +3577,8 @@ class OrionVApp(App[None]):
                     return
                 self._attach_stage_note(f"S1 осмотр: гнездо {mount} свободно")
                 await self._publish_attach_stage_audit(stage=STAGE_S1_INSPECT, outcome="ok")
+                if not proc.active:
+                    return  # q abort успел во время await — прерывание не перетираем
                 proc.stage = STAGE_S2_PREPARE
                 continue
 
@@ -3574,6 +3598,8 @@ class OrionVApp(App[None]):
                     return
                 self._attach_stage_note("S2 подготовка: паспорт собран из пломбы")
                 await self._publish_attach_stage_audit(stage=STAGE_S2_PREPARE, outcome="ok")
+                if not proc.active:
+                    return  # q abort успел во время await — прерывание не перетираем
                 proc.stage = STAGE_S3_TRANSFER
                 continue
 
@@ -3606,6 +3632,8 @@ class OrionVApp(App[None]):
                     return
                 self._attach_stage_note("S4 питание: предусловия чисты")
                 await self._publish_attach_stage_audit(stage=STAGE_S4_POWER, outcome="ok")
+                if not proc.active:
+                    return  # q abort успел во время await — прерывание не перетираем
                 proc.stage = STAGE_S5_DOCK
                 continue
 
@@ -3618,7 +3646,8 @@ class OrionVApp(App[None]):
     async def _attach_procedure_dock(self) -> None:
         """S5: единственная мутация — мост → конвейер; один момент чтения предусловий."""
         proc = self._attach_procedure
-        if proc is None:
+        if proc is None or not proc.active:
+            # abort мог прийти на await до входа в S5 — тело не трогаем
             return
         power_blocked, thermal_blocked, precond_detail = self._body_attach_preconditions()
         result = bridge_decision_to_body(
@@ -3658,7 +3687,7 @@ class OrionVApp(App[None]):
                 "precondition_detail": list(precond_detail),
             },
         )
-        asyncio.create_task(self._publish_audit_event(EVENTS_AUDIT, trace))
+        self._spawn_task(self._publish_audit_event(EVENTS_AUDIT, trace))
 
         if effect_ok:
             module_id = proc.module_id()
@@ -3995,7 +4024,7 @@ class OrionVApp(App[None]):
             return
 
         self._last_proc_start_mono = time.monotonic()
-        self._procedure_task = asyncio.create_task(self._run_procedure(definition.name))
+        self._procedure_task = self._spawn_task(self._run_procedure(definition.name))
         self._request_refresh_ui()
         ok = await self._wait_for_procedure_completion(definition.name, 6.0)
         if not ok:
@@ -4284,7 +4313,7 @@ class OrionVApp(App[None]):
             "ack_time_ms": ack_time_ms,
         }
         self._incident_first_seen.pop(incident_id, None)
-        asyncio.create_task(self._publish_audit_event(OPERATOR_INCIDENTS, payload))
+        self._spawn_task(self._publish_audit_event(OPERATOR_INCIDENTS, payload))
         self._set_help_text(f"Подтверждено: {incident_id}")
         self._refresh_ui()
 
@@ -4307,7 +4336,7 @@ class OrionVApp(App[None]):
         for incident_id in acked_ids:
             if incident_id:
                 self._incident_first_seen.pop(incident_id, None)
-        asyncio.create_task(self._publish_audit_event(OPERATOR_INCIDENTS, payload))
+        self._spawn_task(self._publish_audit_event(OPERATOR_INCIDENTS, payload))
         self._set_help_text(f"Снято подтвержденных инцидентов: {cleared}")
         self._refresh_ui()
 

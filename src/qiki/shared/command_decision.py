@@ -12,6 +12,7 @@ effect / audit. Идемпотентность по decision_id: одна пуб
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from dataclasses import dataclass, field, replace
@@ -89,7 +90,8 @@ class CommandDecision:
 
     @property
     def sealed_command(self) -> tuple[str, str, str, dict[str, Any]]:
-        return (self.intent.kind, self.intent.subject, self.intent.name, dict(self.intent.parameters))
+        # deepcopy: вложенные структуры пломбы нельзя мутировать через возврат (TOCTOU).
+        return (self.intent.kind, self.intent.subject, self.intent.name, copy.deepcopy(self.intent.parameters))
 
 
 def seal_decision(*, decision_id: str, intent: CommandIntent) -> CommandDecision:
@@ -98,6 +100,9 @@ def seal_decision(*, decision_id: str, intent: CommandIntent) -> CommandDecision
     subject обязателен только для NATS_COMMAND; у ORION_PROCEDURE он пуст
     легитимно (идентичность — по name). Пустой name — всегда невалидно.
     """
+    # Пломба владеет СВОЕЙ глубокой копией параметров: мутация исходного dict
+    # (в т.ч. вложенных списков/словарей) после seal не меняет одобренное (TOCTOU).
+    intent = replace(intent, parameters=copy.deepcopy(intent.parameters))
     digest = binding_digest(intent.kind, intent.subject, intent.name, intent.parameters)
     subject_required = intent.kind.strip().upper() == "NATS_COMMAND"
     invalid = not intent.name.strip() or (subject_required and not intent.subject.strip())

@@ -443,9 +443,18 @@ def test_f1_apply_requires_preview_first_no_stray_events(monkeypatch) -> None:
 
     published: list[tuple] = []
 
+    class _TaskStub:
+        def cancel(self) -> None:
+            return
+
+        def add_done_callback(self, callback) -> None:
+            # _spawn_task вешает reaper на каждую фоновую задачу
+            return
+
     def _drop_task(coro, *args, **kwargs):
         coro.close()
         published.append(("task",))
+        return _TaskStub()
 
     app = OrionVApp()
     monkeypatch.setattr(app, "_refresh_ui", lambda: None)

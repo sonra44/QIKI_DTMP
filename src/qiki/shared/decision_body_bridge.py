@@ -22,6 +22,7 @@ from qiki.shared.command_decision import (
     CommandDecision,
     DecisionStatus,
     StageState,
+    binding_digest,
     mark_stage,
 )
 
@@ -31,6 +32,8 @@ PRECOND_THERMAL_BLOCK = "BRIDGE_THERMAL_BLOCK"
 PRECOND_NOT_PUBLISHED = "BRIDGE_DECISION_NOT_PUBLISHED"
 # ADR-0020 P0: мост однократен — исполненное решение к телу не возвращается.
 DECISION_ALREADY_EXECUTED = "DECISION_ALREADY_EXECUTED"
+# Пломба дрейфанула между authorize и effect (TOCTOU) — тело не трогается.
+SEAL_DIGEST_DRIFT = "BRIDGE_SEAL_DIGEST_DRIFT"
 
 
 def preconditions_ok(*, power_blocked: bool, thermal_blocked: bool) -> tuple[bool, tuple[str, ...]]:
@@ -82,6 +85,14 @@ def bridge_decision_to_body(
         # Предусловие не выполнено — эффект не инициируется, тело не трогается.
         # ADR-0020 P0: ack НЕ ставится — deferred не является принятием конвейером.
         return BridgeResult(decision=decision, reached_body=False, reason_codes=codes)
+
+    # Последний рубеж TOCTOU: digest пересчитывается от ТЕКУЩИХ полей пломбы
+    # прямо перед эффектом; дрейф после authorize → тело не трогается.
+    if (
+        binding_digest(decision.intent.kind, decision.intent.subject, decision.intent.name, decision.intent.parameters)
+        != decision.digest
+    ):
+        return BridgeResult(decision=decision, reached_body=False, reason_codes=(SEAL_DIGEST_DRIFT,))
 
     attached, audit_event_id = attach_runner()
     updated = mark_stage(

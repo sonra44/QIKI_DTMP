@@ -38,6 +38,10 @@ class _TaskStub:
     def cancel(self) -> None:
         return
 
+    def add_done_callback(self, callback) -> None:
+        # _spawn_task вешает reaper на каждую фоновую задачу
+        return
+
 
 def _drop_task(coro):
     coro.close()
