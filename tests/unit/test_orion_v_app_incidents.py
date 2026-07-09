@@ -1031,9 +1031,12 @@ def test_wait_for_ack_ignores_stale_command_id() -> None:
     assert ok is False
 
 
-def test_publish_sim_command_clears_ack_queue_and_waits_for_matching_id(monkeypatch) -> None:
+def test_publish_sim_command_isolates_pending_by_command_id(monkeypatch) -> None:
+    """Аудит 0.15: очередь ACK общая и НЕ чистится публикацией (clear()
+    перетирал чужой pending) — изоляцию даёт матч по command_id + окно."""
     app = OrionVApp()
-    app._control_acks.append({"data": {"ok": True, "request_id": "stale"}})
+    stale = {"data": {"ok": True, "request_id": "stale"}}
+    app._control_acks.append(stale)
     published: list[dict] = []
 
     class _StubNats:
@@ -1045,7 +1048,7 @@ def test_publish_sim_command_clears_ack_queue_and_waits_for_matching_id(monkeypa
 
     async def run() -> bool:
         await app._publish_sim_command("sim.pause")
-        assert len(app._control_acks) == 0
+        assert stale in app._control_acks  # чужой pending не перетёрт
         assert app._pending_ack_command_id == str(UUID(int=1))
         app._control_acks.append(
             {

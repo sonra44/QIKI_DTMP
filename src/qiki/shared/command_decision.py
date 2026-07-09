@@ -182,13 +182,20 @@ def mark_stage(decision: CommandDecision, *, ack=None, effect=None, audit=None) 
 
 
 class DecisionStore:
-    """Реестр решений по decision_id. Идемпотентность и защита от повторов."""
+    """Реестр решений по decision_id. Идемпотентность и защита от повторов.
 
-    def __init__(self) -> None:
+    Кэп (аудит 2026-07-09, 0.16): без предела реестр рос на каждое одобрение;
+    выселяются старейшие решения — их жизненный цикл давно завершён.
+    """
+
+    def __init__(self, *, max_decisions: int = 500) -> None:
         self._by_id: dict[str, CommandDecision] = {}
+        self._max_decisions = max(1, int(max_decisions))
 
     def put(self, decision: CommandDecision) -> None:
         self._by_id[decision.decision_id] = decision
+        while len(self._by_id) > self._max_decisions:
+            self._by_id.pop(next(iter(self._by_id)))
 
     def get(self, decision_id: str) -> CommandDecision | None:
         return self._by_id.get(decision_id)

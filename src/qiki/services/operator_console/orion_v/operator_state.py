@@ -9,6 +9,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model.thresholds impor
     COMMS_AGE_WARN_S,
     POWER_SOC_CRIT_PCT,
     POWER_SOC_WARN_PCT,
+    PROPULSION_FUEL_WARN_PCT,
     THERMAL_CORE_CRIT_C,
     THERMAL_CORE_WARN_C,
 )
@@ -1412,8 +1413,10 @@ def _maneuver_feasibility(
         return None
     if subsystem.status is ViewStatus.CRIT:
         return "blocked"
+    # Аудит 0.17: топливо сравнивается с ТОПЛИВНЫМ порогом, а не с батарейным
+    # (значения сегодня совпадают, но владельцы разные — семантика важнее).
     if subsystem.status is ViewStatus.WARN or (
-        fuel_remaining_percent is not None and fuel_remaining_percent <= POWER_SOC_WARN_PCT
+        fuel_remaining_percent is not None and fuel_remaining_percent <= PROPULSION_FUEL_WARN_PCT
     ):
         return "constrained"
     return "available"

@@ -91,9 +91,30 @@ def merge_dialog_lines(
         )
         for entry in voice_entries
     )
-    # Стабильная сортировка по строковому HH:MM:SSZ (общий UTC-формат обоих источников).
-    merged.sort(key=lambda line: line.received_at)
-    return merged
+    # Аудит 0.14: строковый HH:MM:SSZ не монотонен через полночь («00:00:05»
+    # сортировался раньше «23:59:50»). Если разброс времён больше полусуток —
+    # лента пересекла полночь: ранние часы считаются «после полуночи» (+24ч).
+    # Лента короткая (deque ≤20 на источник), окно >12ч вне сценария.
+    def _seconds(ts: str) -> float | None:
+        try:
+            hours, minutes, seconds = ts.strip().rstrip("Zz").split(":")
+            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        except (ValueError, AttributeError):
+            return None
+
+    parsed = [(_seconds(line.received_at), index, line) for index, line in enumerate(merged)]
+    known = [sec for sec, _index, _line in parsed if sec is not None]
+    wrapped = bool(known) and (max(known) - min(known) > 43200.0)
+
+    def _sort_key(item: tuple[float | None, int, QikiDialogLine]) -> tuple[float, int]:
+        sec, index, _line = item
+        if sec is None:
+            return (float("inf"), index)  # нечитаемый ts — стабильно в конец
+        if wrapped and sec < 43200.0:
+            sec += 86400.0
+        return (sec, index)
+
+    return [line for _sec, _index, line in sorted(parsed, key=_sort_key)]
 
 
 class OrionVQikiDialogScreen(Static):

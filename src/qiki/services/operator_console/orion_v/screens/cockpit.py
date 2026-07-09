@@ -48,6 +48,10 @@ from qiki.services.operator_console.orion_v.qiki_voice import (
     format_qiki_voice_lines,
     format_qiki_voice_tooltip,
 )
+from qiki.services.operator_console.orion_v.hardware_view_model.thresholds import (
+    POWER_SOC_CRIT_PCT,
+    POWER_SOC_WARN_PCT,
+)
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
 if TYPE_CHECKING:
@@ -1891,9 +1895,10 @@ class OrionVCockpitScreen(Static):
         shed_reasons = _pick_str_list(tel, ["power", "shed_reasons"])
 
         severity = "ok"
-        if soc is not None and soc < 15.0:
+        # Аудит 0.17: пороги — shared-канон, не локальные копии.
+        if soc is not None and soc < POWER_SOC_CRIT_PCT:
             severity = "crit"
-        elif soc is not None and soc < 20.0:
+        elif soc is not None and soc < POWER_SOC_WARN_PCT:
             severity = "warn"
         if load_shedding is True:
             severity = _merge_severity(severity, "warn")

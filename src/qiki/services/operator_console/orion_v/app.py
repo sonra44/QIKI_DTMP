@@ -137,6 +137,10 @@ from qiki.shared.nats_subjects import (
 
 logger = logging.getLogger(__name__)
 
+# Аудит 2026-07-09 (0.16): кэпы на словари, растущие без внешнего предела.
+_MAX_LATEST_RADAR_TRACKS = 128
+_MAX_INCIDENT_FIRST_SEEN = 1024
+
 
 class OrionVApp(App[None]):
     """ORION V operator console running in parallel with legacy ORION."""
@@ -267,8 +271,15 @@ class OrionVApp(App[None]):
         ("slash", "open_command_mode", "Команда"),
         ("colon", "open_command_mode", "Команда"),
         ("escape", "close_command_mode", "Закрыть ввод"),
-        ("q", "quit", "Выход"),
+        # Аудит 0.12: горячая «q» мгновенно закрывала консоль — операторская
+        # опечатка не может стоить сессии. Выход — командой quit/exit.
+        ("q", "show_quit_hint", "Выход: quit"),
     ]
+
+    def action_show_quit_hint(self) -> None:
+        self._set_help_text(
+            "«q» — не команда: q: <текст> — вопрос QIKI | q confirm/abort — решения | quit/exit — выход"
+        )
 
     LEVEL_META = {
         "f1": {"label": "F1 Кокпит", "widget_id": "orionv-cockpit"},
@@ -447,7 +458,10 @@ class OrionVApp(App[None]):
                     ("telemetry", lambda: self._nats_client.subscribe_system_telemetry(self._on_telemetry)),
                     ("tracks", lambda: self._nats_client.subscribe_tracks(self._on_track)),
                     ("events", lambda: self._nats_client.subscribe_events(self._on_event)),
-                    ("control_responses", lambda: self._nats_client.subscribe_control_responses(self._on_control_response)),
+                    (
+                        "control_responses",
+                        lambda: self._nats_client.subscribe_control_responses(self._on_control_response),
+                    ),
                     ("qiki_responses", lambda: self._nats_client.subscribe_qiki_responses(self._on_qiki_response)),
                 )
                 for key, subscribe in subscription_plan:
@@ -542,6 +556,9 @@ class OrionVApp(App[None]):
             track_payload["_orion_source_timestamp_unix_s"] = source_timestamp
         track_payload["_orion_received_at_unix_s"] = time.time()
         self._latest_radar_tracks[track_id] = track_payload
+        # 0.16: без LOST-событий словарь рос бесконечно — выселяем старейшие.
+        while len(self._latest_radar_tracks) > _MAX_LATEST_RADAR_TRACKS:
+            self._latest_radar_tracks.pop(next(iter(self._latest_radar_tracks)))
 
     async def _on_event(self, envelope: dict[str, Any]) -> None:
         if isinstance(envelope, dict):
@@ -572,6 +589,9 @@ class OrionVApp(App[None]):
                     if incident_ts is None:
                         incident_ts = datetime.now(tz=timezone.utc).timestamp()
                     self._incident_first_seen[incident_id] = incident_ts
+                    # 0.16: инциденты без квитирования копились бесконечно.
+                    while len(self._incident_first_seen) > _MAX_INCIDENT_FIRST_SEEN:
+                        self._incident_first_seen.pop(next(iter(self._incident_first_seen)))
                 if first_seen:
                     incident_open_audit = _incident_open_audit_payload(
                         incident_id=incident_id,
@@ -1472,13 +1492,20 @@ class OrionVApp(App[None]):
             self.action_resume_observation_follow_up()
             return
 
-        if command in {"f1", "f2", "f3", "f4", "f6", "f7"}:
+        if command in {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"}:
             self.action_show_level(command)
             return
         if command in {"help", "h", "?"}:
             self._show_help()
             return
-        if command in {"q", "quit", "exit"}:
+        if command == "q":
+            # Аудит 0.12: голая «q» мгновенно закрывала консоль — операторская
+            # опечатка не может стоить сессии. Выход — только явным словом.
+            self._set_help_text(
+                "«q» — не команда: q: <текст> — вопрос QIKI | q confirm/abort — решения | quit/exit — выход"
+            )
+            return
+        if command in {"quit", "exit"}:
             self.action_quit()
             return
         if command in {"inc next", "incident next", "next"}:
@@ -1974,7 +2001,8 @@ class OrionVApp(App[None]):
             return
         request_id = uuid4()
         request_id_str = str(request_id)
-        self._control_acks.clear()
+        # Аудит 0.15: очередь ACK общая — clear() перетирал чужой pending;
+        # изоляцию даёт матч по command_id + временное окно в _wait_for_ack.
         self._pending_ack_command_id = request_id_str
         self._ack_wait_started_mono = time.monotonic()
         cmd = CommandMessage(
@@ -1995,6 +2023,29 @@ class OrionVApp(App[None]):
         expected = expected_ack.strip().lower()
         expected_command_id = self._pending_ack_command_id
         wait_started_mono = self._ack_wait_started_mono or time.monotonic()
+        try:
+            return await self._wait_for_ack_scan(
+                expected=expected,
+                expected_command_id=expected_command_id,
+                wait_started_mono=wait_started_mono,
+                deadline=deadline,
+            )
+        finally:
+            # Аудит 0.15: pending обязан сброситься по исходу (успех/таймаут),
+            # иначе счётчик P в ACTION RAIL завышен навсегда. Чужой новый
+            # pending (перезаписанный параллельной командой) не трогаем.
+            if self._pending_ack_command_id == expected_command_id:
+                self._pending_ack_command_id = None
+                self._ack_wait_started_mono = None
+
+    async def _wait_for_ack_scan(
+        self,
+        *,
+        expected: str,
+        expected_command_id: str | None,
+        wait_started_mono: float,
+        deadline: float,
+    ) -> bool:
         while time.monotonic() < deadline:
             for envelope in reversed(self._control_acks):
                 payload = envelope.get("data")

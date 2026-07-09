@@ -10,6 +10,12 @@ from qiki.services.operator_console.orion_v.modules.common import (
     telemetry_from_state,
 )
 from qiki.services.operator_console.orion_v.i18n_ru import tr
+from qiki.shared.body_status import (
+    POWER_BUS_CRIT_V,
+    POWER_BUS_WARN_V,
+    POWER_SOC_CRIT_PCT,
+    POWER_SOC_WARN_PCT,
+)
 
 
 NO_DATA_REASON = "degraded: нет данных"
@@ -67,10 +73,16 @@ class PowerSubsystemModule(SubsystemModule):
         limit_mode = pick_text(telemetry, ["power", "limit_mode"])
         warning = pick_text(telemetry, ["power", "warning"]).lower()
 
-        crit = (soc is not None and soc < 15.0) or (bus_v is not None and bus_v < 20.0) or "crit" in warning
+        # Аудит 0.17: пороги — ТОЛЬКО shared-канон (были локальные 30%/24В
+        # против канона 20%/22В — карточка F2 противоречила чипам F1).
+        crit = (
+            (soc is not None and soc < POWER_SOC_CRIT_PCT)
+            or (bus_v is not None and bus_v < POWER_BUS_CRIT_V)
+            or "crit" in warning
+        )
         warn = (
-            (soc is not None and soc < 30.0)
-            or (bus_v is not None and bus_v < 24.0)
+            (soc is not None and soc < POWER_SOC_WARN_PCT)
+            or (bus_v is not None and bus_v < POWER_BUS_WARN_V)
             or ("warn" in warning)
             or ("alarm" in warning)
         )
