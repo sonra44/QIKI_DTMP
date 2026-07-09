@@ -35,6 +35,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model.types import Har
 from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
 from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry, build_qiki_voice_entry
 from qiki.services.operator_console.orion_v.radar_page_view_model import is_lost_status
+from qiki.shared.radar_freshness import RADAR_TRACK_DEAD_S
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
     get_body_structure_interactive_controller,
     reset_body_structure_interactive_state,
@@ -2708,6 +2709,16 @@ class OrionVApp(App[None]):
             return ""
         return str(track.get("transponder_id") or track.get("id") or track.get("callsign") or "").strip()
 
+    @staticmethod
+    def _track_receipt_is_live(track: dict[str, Any]) -> bool:
+        """Аудит-фикс: «live» обязан значить свежий приём. Без фильтра
+        карточка наблюдения ставила track_visible=True по треку, который
+        страница РАДАР уже честно скрыла как умерший (>30с без данных)."""
+        received = track.get("_orion_received_at_unix_s")
+        if not isinstance(received, (int, float)):
+            return True  # боевой путь всегда штампует; без штампа не хороним
+        return (time.time() - float(received)) < RADAR_TRACK_DEAD_S
+
     def _find_live_public_track(
         self,
         *,
@@ -2719,13 +2730,13 @@ class OrionVApp(App[None]):
         qcore_id = str(qcore_track_id or "").strip()
         if qcore_id:
             qcore_track = self._latest_radar_tracks.get(qcore_id)
-            if isinstance(qcore_track, dict):
+            if isinstance(qcore_track, dict) and self._track_receipt_is_live(qcore_track):
                 return qcore_id, qcore_track
 
         preferred_id = str(public_track_id or "").strip()
         if preferred_id:
             preferred_track = self._latest_radar_tracks.get(preferred_id)
-            if isinstance(preferred_track, dict):
+            if isinstance(preferred_track, dict) and self._track_receipt_is_live(preferred_track):
                 return preferred_id, preferred_track
 
         needles = {
@@ -2738,6 +2749,8 @@ class OrionVApp(App[None]):
 
         for track_id, track in self._latest_radar_tracks.items():
             if not isinstance(track, dict):
+                continue
+            if not self._track_receipt_is_live(track):
                 continue
             if self._track_public_label(track).upper() in needles:
                 return str(track_id), track

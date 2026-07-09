@@ -20,16 +20,21 @@ _RAIL_CRIT = ORION_UI_COLORS["crit"]
 _RAIL_ACTIVE = ORION_UI_COLORS["active"]
 _RAIL_MUTED = ORION_UI_COLORS["muted"]
 
+# Ключи сверены с реальными сеттерами last_command_status (аудит 0047):
+# «acknowledged» — ack получен, эффект ожидается; «awaiting_confirm» — самое
+# частое ожидание подтверждения оператора (дефолт operator_state при
+# human_ack_required).
 _CMD_STATUS_STYLES: dict[str, str] = {
     "ok": _RAIL_OK,
     "confirmed": _RAIL_OK,
-    "ack": _RAIL_OK,
+    "acknowledged": _RAIL_OK,
     "applied": _RAIL_OK,
     "failed": _RAIL_CRIT,
     "blocked": _RAIL_CRIT,
     "denied": _RAIL_CRIT,
     "error": _RAIL_CRIT,
     "awaiting_ack": _RAIL_WARN,
+    "awaiting_confirm": _RAIL_WARN,
     "pending": _RAIL_WARN,
 }
 

@@ -38,12 +38,21 @@ class WorldModel:
 
     def _evict_dead_tracks(self, now_ts: float | None = None) -> None:
         """M5: смерть по возрасту — контакт без свежих данных дольше
-        RADAR_TRACK_DEAD_S выселяется, его гварды пересчитываются."""
+        RADAR_TRACK_DEAD_S выселяется, его гварды пересчитываются.
+
+        ВНИМАНИЕ (инвариант M7): из-за этой эвикции читающие методы
+        (snapshot/active_radar_tracks/guard_results/most_critical_guard)
+        МУТИРУЮТ состояние — звать их можно только под тем же lock'ом, что
+        и ingest (сегодня оба пути живут в одном тик-контуре agent/intents;
+        off-lock читатель словит гонку словарей)."""
         now = time.time() if now_ts is None else float(now_ts)
         dead_ids = [
             track_id
             for track_id in self._radar_tracks
-            if now - self._track_last_ingest_ts.get(track_id, now) > RADAR_TRACK_DEAD_S
+            # >= — зеркало classify_track_freshness: консоль и мозг хоронят
+            # трек на одной и той же секунде (аудит: было >, микроокно
+            # «консоль скрыла — гвард ещё жив»)
+            if now - self._track_last_ingest_ts.get(track_id, now) >= RADAR_TRACK_DEAD_S
         ]
         if not dead_ids:
             return

@@ -141,9 +141,11 @@ def test_sim_pause_start_stop_and_reset_control_commands() -> None:
 
     meta = MessageMetadata(message_type="control_command", source="test", destination="q_sim_service")
 
+    # Край M4 (срез 0043): пауза замораживает только РАБОТАВШИЙ мир — из
+    # STOPPED она честно отклоняется (не «оживляет» сим для ротации радара).
     pause = CommandMessage(command_name="sim.pause", parameters={}, metadata=meta)
-    assert qsim.apply_control_command(pause) is True
-    assert qsim.get_sim_state()["paused"] is True
+    assert qsim.apply_control_command(pause) is False
+    assert qsim.get_sim_state()["paused"] is False
 
     start = CommandMessage(command_name="sim.start", parameters={"speed": 2.0}, metadata=meta)
     assert qsim.apply_control_command(start) is True
@@ -151,6 +153,12 @@ def test_sim_pause_start_stop_and_reset_control_commands() -> None:
     assert st["running"] is True
     assert st["paused"] is False
     assert st["speed"] == 2.0
+
+    # Пауза РАБОТАЮЩЕГО мира — принимается и замораживает
+    assert qsim.apply_control_command(pause) is True
+    assert qsim.get_sim_state()["paused"] is True
+    assert qsim.apply_control_command(start) is True
+    assert qsim.get_sim_state()["paused"] is False
 
     qsim.world_model.position.x = 123.0
     reset = CommandMessage(command_name="sim.reset", parameters={}, metadata=meta)

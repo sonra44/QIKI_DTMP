@@ -23,6 +23,16 @@ from qiki.services.operator_console.orion_v.widgets.action_bar import (
 
 # ── P2: семантические спаны ACTION RAIL ──────────────────────────────────────
 
+def _span_styles_for(rail, token: str) -> set[str]:
+    """Стили спанов, покрывающих ровно подстроку token (позиционная привязка:
+    аудит 0047 — проверка «множеством стилей» пропускала инверсию семантики)."""
+    return {
+        str(span.style)
+        for span in rail.spans
+        if rail.plain[span.start:span.end] == token
+    }
+
+
 def test_action_rail_carries_semantic_spans() -> None:
     loop = OperatorLoopState(
         last_command_status="failed",
@@ -31,12 +41,21 @@ def test_action_rail_carries_semantic_spans() -> None:
         selected_incident_id="INC-1",
     )
     rail = build_action_rail_text(loop)
-    styles = {str(span.style) for span in rail.spans}
-    assert styles, "рейл без единого спана — вся строка одноцветная (P2)"
-    assert ORION_UI_COLORS["crit"] in styles  # CMD failed
-    assert ORION_UI_COLORS["warn"] in styles  # P 2 / ACT required / INC
-    assert ORION_UI_COLORS["ok"] in styles  # M LIVE
+    assert rail.spans, "рейл без единого спана — вся строка одноцветная (P2)"
+    assert ORION_UI_COLORS["crit"] in _span_styles_for(rail, "failed")
+    assert ORION_UI_COLORS["ok"] in _span_styles_for(rail, "LIVE")
+    assert ORION_UI_COLORS["warn"] in _span_styles_for(rail, "2")  # P 2
+    assert ORION_UI_COLORS["warn"] in _span_styles_for(rail, "required")
+    assert ORION_UI_COLORS["warn"] in _span_styles_for(rail, "INC-1")
     assert "M LIVE" in rail.plain and "CMD failed" in rail.plain
+
+
+def test_action_rail_awaiting_confirm_and_acknowledged_covered() -> None:
+    """Аудит 0047: самые частые реальные статусы не были в словаре."""
+    rail = build_action_rail_text(OperatorLoopState(last_command_status="awaiting_confirm"))
+    assert ORION_UI_COLORS["warn"] in _span_styles_for(rail, "awaiting_confirm")
+    rail = build_action_rail_text(OperatorLoopState(last_command_status="acknowledged"))
+    assert ORION_UI_COLORS["ok"] in _span_styles_for(rail, "acknowledged")
 
 
 def test_action_rail_unknown_status_stays_plain() -> None:

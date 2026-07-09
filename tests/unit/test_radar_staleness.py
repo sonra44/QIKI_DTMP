@@ -191,6 +191,70 @@ def test_brain_ghost_guard_dies_with_track() -> None:
     assert wm.snapshot(now_ts=1000.0 + RADAR_TRACK_DEAD_S + 2.0)["active_track_count"] == 0
 
 
+def test_brain_evicts_on_wall_clock_path(monkeypatch) -> None:
+    """Аудит 0047 (HIGH): боевой путь agent.py зовёт guard_results()/snapshot()
+    БЕЗ now_ts (wall-clock). Инжект-only тесты маскировали бы эвикцию,
+    работающую только при явном now_ts (мутация выживала)."""
+    import qiki.services.q_core_agent.core.world_model as wm_module
+
+    t0 = 1000.0
+    monkeypatch.setattr(wm_module.time, "time", lambda: t0)
+    wm = WorldModel(GuardTable(schema_version=1, rules=[]))
+    wm.ingest_sensor_data(_radar_reading("radar_a", [_detection()]))  # без now_ts
+    assert wm.snapshot()["active_track_count"] == 1
+
+    monkeypatch.setattr(wm_module.time, "time", lambda: t0 + RADAR_TRACK_DEAD_S + 1.0)
+    assert wm.guard_results() == []  # путь agent.py:183
+    assert wm.snapshot()["active_track_count"] == 0  # путь agent.py:184
+
+
+def test_console_systems_delegate_wires_wall_clock(monkeypatch) -> None:
+    """Аудит 0047 (MED): смок покрывает кокпит-путь, а systems/target/sensors
+    идут через mfd_page_content._radar_track_lines — мутация «убрать
+    now_unix_s из делегата» выживала. Пин на боевой провод time.time."""
+    import qiki.services.operator_console.orion_v.mfd_page_content as mfd_module
+
+    now = 9000.0
+    monkeypatch.setattr(mfd_module.time, "time", lambda: now)
+    lines = mfd_module._radar_track_lines(
+        {"t1": _console_track(now - (RADAR_TRACK_DEAD_S + 5.0))}
+    )
+    assert not any("ALLY-T1" in line for line in lines)
+    assert any("скрыто устаревших: 1" in line for line in lines), lines
+
+    lines_stale = mfd_module._radar_track_lines(
+        {"t1": _console_track(now - (RADAR_TRACK_STALE_S + 2.0))}
+    )
+    assert any("уст" in line and "ALLY-T1" in line for line in lines_stale), lines_stale
+
+
+def test_console_observation_live_track_respects_freshness(monkeypatch) -> None:
+    """Аудит 0047 (MED): _find_live_public_track возвращал мёртвый трек →
+    track_visible=True при «радар молчит» на странице РАДАР."""
+    import pytest as _pytest
+
+    _pytest.importorskip("textual")
+    import time as time_module
+
+    from qiki.services.operator_console.orion_v.app import OrionVApp
+
+    app = OrionVApp()
+    now = time_module.time()
+    dead = _console_track(now - (RADAR_TRACK_DEAD_S + 5.0), track_id="dead1")
+    fresh = _console_track(now - 1.0, track_id="fresh1")
+    fresh["transponder_id"] = "ALLY-FRESH"
+    app._latest_radar_tracks = {"dead1": dead, "fresh1": fresh}
+
+    # dead по прямому id — не «live»
+    track_id, track = app._find_live_public_track(qcore_track_id="dead1")
+    assert track is None and track_id == ""
+    # dead по метке — не матчится, fresh — матчится
+    track_id, track = app._find_live_public_track(target_designator="ALLY-DEAD1")
+    assert track is None
+    track_id, track = app._find_live_public_track(target_designator="ALLY-FRESH")
+    assert track_id == "fresh1" and track is not None
+
+
 def test_brain_refreshed_track_stays_alive() -> None:
     """Живой сенсор перематчивает контакт — эвикция его не трогает."""
     wm = WorldModel(GuardTable(schema_version=1, rules=[]))
