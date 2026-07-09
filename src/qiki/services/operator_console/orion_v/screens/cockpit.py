@@ -119,6 +119,11 @@ _NEXT_STEP_PREFIX = "Следующий шаг/Next:"
 # только левый MFD, «]» только правый; общая «[ / ]» учила неверной модели.
 MFD_PAGE_SWITCH_SUBTITLE_LEFT = "страницы: ["
 MFD_PAGE_SWITCH_SUBTITLE_RIGHT = "страницы: ]"
+# B1 (UI-ревью): один владелец лейблов focus-кнопок — compose и refresh
+# использовали разные литералы, и refresh деградировал пульт до английского
+# (латинские Panel-лейблы затирали русские).
+COCKPIT_FOCUS_PREV_LABEL = "Панель ▲"
+COCKPIT_FOCUS_NEXT_LABEL = "Панель ▼"
 
 
 class OrionVCockpitScreen(Static):
@@ -135,77 +140,10 @@ class OrionVCockpitScreen(Static):
         layout: vertical;
     }
 
-    #orionv-mfd-status {
-        height: auto;
-        max-height: 5;
-        border: round #4f747c;
-        border-title-color: #7de3f2;
-        background: #10181b;
-        color: #dce4dc;
-        padding: 0 1;
-        margin: 0 0 1 0;
-    }
-
+    /* MFD-шелл: общие правила F1/F2 живут в orion_v.tcss (UI P2 дедуп);
+       здесь — только экран-специфика. */
     #orionv-mfd-main {
-        height: 1fr;
         min-height: 12;
-        layout: horizontal;
-    }
-
-    #orionv-mfd-left-buttons,
-    #orionv-mfd-right-buttons {
-        width: 12;
-        height: 1fr;
-        layout: vertical;
-        background: #070d10;
-        padding: 0 1;
-    }
-
-    #orionv-mfd-left-buttons {
-        margin: 0 1 0 0;
-    }
-
-    #orionv-mfd-right-buttons {
-        margin: 0 0 0 1;
-    }
-
-    #orionv-mfd-left-buttons Button,
-    #orionv-mfd-right-buttons Button {
-        width: 10;
-        min-width: 10;
-        height: 1;
-        min-height: 1;
-        padding: 0;
-        margin: 0;
-        border: none;
-        background: #0d1518;
-        color: #aebabb;
-        text-style: bold;
-    }
-
-    #orionv-mfd-left-buttons Button.mfd-active,
-    #orionv-mfd-right-buttons Button.mfd-active {
-        text-style: bold;
-        border: none;
-        background: #16343a;
-        color: #f0f7f2;
-    }
-
-    #orionv-mfd-left-screen,
-    #orionv-mfd-right-screen {
-        width: 1fr;
-        height: 1fr;
-        border: round #3a8294;
-        border-title-color: #64c7d8;
-        background: #0d1417;
-        color: #d8ded8;
-        padding: 0 1;
-        margin: 0 1 0 0;
-    }
-
-    #orionv-mfd-right-screen {
-        border: round #5f8a4a;
-        border-title-color: #8fbf78;
     }
 
     #orionv-cockpit-actions {
@@ -304,9 +242,9 @@ class OrionVCockpitScreen(Static):
                     yield Button("", id="orionv-cockpit-loop-apply", variant="primary", compact=True)
                     yield Button("", id="orionv-cockpit-loop-next", compact=True)
                 with Container(classes="orionv-cockpit-action-row"):
-                    yield Button("Панель ▲", id="orionv-cockpit-focus-prev", compact=True)
+                    yield Button(COCKPIT_FOCUS_PREV_LABEL, id="orionv-cockpit-focus-prev", compact=True)
                     yield Button("Справка H", id="orionv-cockpit-help-toggle", compact=True)
-                    yield Button("Панель ▼", id="orionv-cockpit-focus-next", compact=True)
+                    yield Button(COCKPIT_FOCUS_NEXT_LABEL, id="orionv-cockpit-focus-next", compact=True)
             yield Static("", id="orionv-mfd-qiki")
             yield Static("", id="orionv-cockpit-body")
             yield Static("", id="orionv-cockpit-intervention")
@@ -1013,9 +951,9 @@ class OrionVCockpitScreen(Static):
             button.disabled = False
             button.variant = "primary" if highlighted else "default"
         focus_buttons = (
-            ("#orionv-cockpit-focus-prev", "Panel ▲"),
+            ("#orionv-cockpit-focus-prev", COCKPIT_FOCUS_PREV_LABEL),
             ("#orionv-cockpit-help-toggle", "Справка · ON" if playable_loop_vm.help_visible else "Справка · OFF"),
-            ("#orionv-cockpit-focus-next", "Panel ▼"),
+            ("#orionv-cockpit-focus-next", COCKPIT_FOCUS_NEXT_LABEL),
         )
         for selector, label in focus_buttons:
             try:

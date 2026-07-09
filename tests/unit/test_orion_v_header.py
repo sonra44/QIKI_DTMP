@@ -4,6 +4,13 @@ import time
 
 from qiki.services.operator_console.orion_v.widgets.header import OrionVHeader
 from qiki.services.operator_console.orion_v.operator_state import build_operator_shell_state
+from qiki.services.operator_console.orion_v.ui_rich import ORION_UI_COLORS
+
+# UI P3 (пост-ревью): стрип красит коды палитрой пульта, не ANSI-именами.
+_OK = ORION_UI_COLORS["ok"]
+_WARN = ORION_UI_COLORS["warn"]
+_CRIT = ORION_UI_COLORS["crit"]
+_ACTIVE = ORION_UI_COLORS["active"]
 
 
 class _CaptureHeader(OrionVHeader):
@@ -39,11 +46,11 @@ def test_header_renders_mission_strip_state() -> None:
     assert "ORION V" not in text
     assert "F1 Кокпит" not in text
     assert str(header.border_title) == "[F1] КОНТУР МИССИИ"
-    assert "РЕПЛИКА [green]RUN[/green]" in text
-    assert "СВЯЗЬ [green]OK[/green]" in text
-    assert "АКТУАЛ [green]OK[/green]" in text
-    assert "СЕНС [yellow]WARN[/yellow]" in text  # no SensorFrameSnapshot → degraded → WARN
-    assert "УПР [cyan]CONFIRM[/cyan]" in text  # pending action → operator-confirm gate
+    assert f"РЕПЛИКА [{_OK}]RUN[/{_OK}]" in text
+    assert f"СВЯЗЬ [{_OK}]OK[/{_OK}]" in text
+    assert f"АКТУАЛ [{_OK}]OK[/{_OK}]" in text
+    assert f"СЕНС [{_WARN}]WARN[/{_WARN}]" in text  # no SensorFrameSnapshot → degraded → WARN
+    assert f"УПР [{_ACTIVE}]CONFIRM[/{_ACTIVE}]" in text  # pending action → operator-confirm gate
     # absorbed/cut from primary: prose fields, events, raw freshness label
     assert "P: " not in text
     assert "M: " not in text
@@ -89,13 +96,13 @@ def test_header_link_ok_with_live_comms_link_state() -> None:
             last_telemetry_received_wall=time.time(),
         )
     )
-    assert "СВЯЗЬ [green]OK[/green]" in header.last_render
+    assert f"СВЯЗЬ [{_OK}]OK[/{_OK}]" in header.last_render
 
 
 def test_header_world_wait_and_link_lost_without_sources() -> None:
     header = _CaptureHeader()
     header.set_state(build_operator_shell_state(hardware_model=None, telemetry={}))
     text = header.last_render
-    assert "РЕПЛИКА [yellow]WAIT[/yellow]" in text  # canon: never «Нет данных»
-    assert "СВЯЗЬ [red]LOST[/red]" in text  # nats_state lost → no-data is LOST (red)
-    assert "АКТУАЛ [yellow]NODATA[/yellow]" in text
+    assert f"РЕПЛИКА [{_WARN}]WAIT[/{_WARN}]" in text  # canon: never «Нет данных»
+    assert f"СВЯЗЬ [{_CRIT}]LOST[/{_CRIT}]" in text  # nats_state lost → no-data is LOST (red)
+    assert f"АКТУАЛ [{_WARN}]NODATA[/{_WARN}]" in text

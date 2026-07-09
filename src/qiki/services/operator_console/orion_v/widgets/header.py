@@ -3,6 +3,14 @@ from __future__ import annotations
 from textual.widgets import Static
 
 from qiki.services.operator_console.orion_v.operator_state import OperatorShellState
+from qiki.services.operator_console.orion_v.ui_rich import ORION_UI_COLORS
+
+# UI P3 (пост-ревью): семантические цвета стрипа — из палитры пульта, а не
+# ANSI-имена терминала (green/yellow/red/cyan расходились с ui_rich).
+_OK = ORION_UI_COLORS["ok"]
+_WARN = ORION_UI_COLORS["warn"]
+_CRIT = ORION_UI_COLORS["crit"]
+_ACTIVE = ORION_UI_COLORS["active"]
 
 
 class OrionVHeader(Static):
@@ -26,12 +34,12 @@ class OrionVHeader(Static):
         # WORLD/МИР — truth-source #30 (always_on.world_run_state)
         world = always_on.world_run_state or "WAIT"
         world_color = {
-            "RUN": "green",
-            "PAUSE": "yellow",
-            "STOP": "red",
-            "REPLAY": "cyan",
-            "WAIT": "yellow",
-        }.get(world, "yellow")
+            "RUN": _OK,
+            "PAUSE": _WARN,
+            "STOP": _CRIT,
+            "REPLAY": _ACTIVE,
+            "WAIT": _WARN,
+        }.get(world, _WARN)
 
         # LINK/СВЯЗЬ — absorbs latency/loss (detail → tooltip); no-data → LOST (red)
         link_raw = str(always_on.link_status or "").strip().lower()
@@ -45,11 +53,11 @@ class OrionVHeader(Static):
             # unknown-but-present link state (comms.link_state passthrough) is not
             # evidence of a dead link — flag WARN, detail stays in the tooltip
             link = "WARN"
-        link_color = {"OK": "green", "REPLAY": "cyan", "WARN": "yellow", "LOST": "red"}[link]
+        link_color = {"OK": _OK, "REPLAY": _ACTIVE, "WARN": _WARN, "LOST": _CRIT}[link]
 
         # DATA/АКТУАЛ — freshness code (slice 3); exact age → tooltip
         data = derived.data_freshness_state or "NODATA"
-        data_color = {"OK": "green", "LAG": "yellow", "STALE": "red", "NODATA": "yellow"}.get(data, "yellow")
+        data_color = {"OK": _OK, "LAG": _WARN, "STALE": _CRIT, "NODATA": _WARN}.get(data, _WARN)
 
         # SENS/СЕНС — collapse of the sensor-trust model states (#30); the strip
         # follows the model severity, exact state → tooltip/F3
@@ -61,21 +69,21 @@ class OrionVHeader(Static):
             "blind": "WARN",
             "lottery": "FAIL",
         }.get(sens_raw, "WARN")
-        sens_color = {"OK": "green", "WARN": "yellow", "FAIL": "red"}[sens]
+        sens_color = {"OK": _OK, "WARN": _WARN, "FAIL": _CRIT}[sens]
 
         # CTRL/УПР — action gate; shown ONLY when authority != operator
         authority_raw = str(always_on.control_authority or "operator").strip().lower()
         ctrl: str | None = None
-        ctrl_color = "cyan"
+        ctrl_color = _ACTIVE
         if authority_raw != "operator":
             if authority_raw == "operator-confirm":
-                ctrl, ctrl_color = "CONFIRM", "cyan"
+                ctrl, ctrl_color = "CONFIRM", _ACTIVE
             elif authority_raw == "analysis":
-                ctrl, ctrl_color = "HOLD", "cyan"
+                ctrl, ctrl_color = "HOLD", _ACTIVE
             elif authority_raw.startswith("qiki"):
-                ctrl, ctrl_color = "QIKI", ("green" if authority_raw == "qiki-allowed" else "red")
+                ctrl, ctrl_color = "QIKI", (_OK if authority_raw == "qiki-allowed" else _CRIT)
             else:  # safe-mode / q-core authority strings
-                ctrl, ctrl_color = "SAFE", "red"
+                ctrl, ctrl_color = "SAFE", _CRIT
 
         # DISPLAY_CANON (решение строки №1): бренд ORION V живёт над рамками,
         # имя экрана — якорем в титуле зоны; строка стрипа = только коды.

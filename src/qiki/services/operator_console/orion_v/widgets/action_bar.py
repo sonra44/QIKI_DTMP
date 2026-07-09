@@ -10,6 +10,67 @@ from textual.message import Message
 from textual.widgets import Button, Input, Static
 
 from qiki.services.operator_console.orion_v.operator_state import OperatorShellState
+from qiki.services.operator_console.orion_v.ui_rich import ORION_UI_COLORS
+
+# UI P2 (пост-ревью): семантическая покраска сегментов рейла. Только
+# ИЗВЕСТНЫЕ состояния получают цвет; незнакомое остаётся plain (не гадаем).
+_RAIL_OK = ORION_UI_COLORS["ok"]
+_RAIL_WARN = ORION_UI_COLORS["warn"]
+_RAIL_CRIT = ORION_UI_COLORS["crit"]
+_RAIL_ACTIVE = ORION_UI_COLORS["active"]
+_RAIL_MUTED = ORION_UI_COLORS["muted"]
+
+_CMD_STATUS_STYLES: dict[str, str] = {
+    "ok": _RAIL_OK,
+    "confirmed": _RAIL_OK,
+    "ack": _RAIL_OK,
+    "applied": _RAIL_OK,
+    "failed": _RAIL_CRIT,
+    "blocked": _RAIL_CRIT,
+    "denied": _RAIL_CRIT,
+    "error": _RAIL_CRIT,
+    "awaiting_ack": _RAIL_WARN,
+    "pending": _RAIL_WARN,
+}
+
+
+def build_action_rail_text(loop) -> Text:
+    """Рейл фидбека как plain Text с семантическими спанами.
+
+    plain Text, НЕ markup-строка: LLM-текст со скобками ([OPERATOR_HOLD])
+    не должен парситься (rich.escape не спасает — Textual-парсер ест и
+    «не-rich» теги; урок a58fd97: правда живёт в plain). Семантика — только
+    через Text.append(style=...) (UI P2: рейл был весь одноцветный).
+    """
+    incident_text = loop.selected_incident_id or "none"
+    subsystem_text = loop.selected_subsystem or "none"
+    mode_text = "REPLAY" if loop.replay_mode else "LIVE"
+    required_text = "required" if loop.operator_action_required else "standby"
+    cmd_status = str(loop.last_command_status)
+    segments: tuple[tuple[str, str, str | None], ...] = (
+        # (префикс, значение, стиль значения | None=plain)
+        ("M ", mode_text, _RAIL_OK if mode_text == "LIVE" else _RAIL_ACTIVE),
+        ("L ", loop.current_level.upper(), None),
+        # CMD, not LOOP: this is the last-command status; "LOOP" collided
+        # with the F1 playable-loop phase and read as a contradiction
+        ("CMD ", cmd_status, _CMD_STATUS_STYLES.get(cmd_status.strip().lower())),
+        (
+            "P ",
+            str(loop.pending_command_count),
+            _RAIL_WARN if loop.pending_command_count else None,
+        ),
+        ("ACT ", required_text, _RAIL_WARN if loop.operator_action_required else None),
+        ("INC ", incident_text, _RAIL_WARN if incident_text != "none" else None),
+        ("MOD ", subsystem_text, None),
+        ("LAST ", str(loop.last_command_summary), None),
+    )
+    rail = Text()
+    for index, (prefix, value, style) in enumerate(segments):
+        if index:
+            rail.append(" | ", style=_RAIL_MUTED)
+        rail.append(prefix, style=_RAIL_MUTED)
+        rail.append(value, style=style or "")
+    return rail
 
 
 class OrionVActionBar(Static):
@@ -80,12 +141,14 @@ class OrionVActionBar(Static):
         ("f6", "F6 Журнал"),
         ("f7", "F7 Статус"),
         ("f8", "F8 Улики"),
-        ("incident_prev", "Инц <-"),
-        ("incident_next", "Инц ->"),
+        # Один вокабуляр стрелок на пульте (UI P3): ←/→ для навигации,
+        # ▲/▼ — за панелями кокпита; ASCII <- и -> читались слабее.
+        ("incident_prev", "Инц ←"),
+        ("incident_next", "Инц →"),
         ("ack", "Подтв."),
         ("clear", "Снять"),
-        ("page_prev", "< Стр"),
-        ("page_next", "Стр >"),
+        ("page_prev", "← Стр"),
+        ("page_next", "Стр →"),
         ("world_toggle", "⏸ Мир"),
         ("attach_toggle", "⏸ Установка"),
         ("qiki_confirm", "✓ Выполнить"),
@@ -126,29 +189,7 @@ class OrionVActionBar(Static):
     def _refresh_buttons(self) -> None:
         loop = self._state.operator_loop
         feedback = self.query_one("#orionv-help", Static)
-        incident_text = loop.selected_incident_id or "none"
-        subsystem_text = loop.selected_subsystem or "none"
-        mode_text = "REPLAY" if loop.replay_mode else "LIVE"
-        required_text = "required" if loop.operator_action_required else "standby"
-        # plain Text, НЕ markup-строка: LLM-текст со скобками ([OPERATOR_HOLD])
-        # не должен парситься (rich.escape не спасает — Textual-парсер ест и
-        # «не-rich» теги; урок a58fd97: правда живёт в plain).
-        feedback.update(Text(
-            " | ".join(
-                (
-                    f"M {mode_text}",
-                    f"L {loop.current_level.upper()}",
-                    # CMD, not LOOP: this is the last-command status; "LOOP" collided
-                    # with the F1 playable-loop phase and read as a contradiction
-                    f"CMD {loop.last_command_status}",
-                    f"P {loop.pending_command_count}",
-                    f"ACT {required_text}",
-                    f"INC {incident_text}",
-                    f"MOD {subsystem_text}",
-                    f"LAST {loop.last_command_summary}",
-                )
-            )
-        ))
+        feedback.update(build_action_rail_text(loop))
 
         console = self.query_one("#orionv-console-strip", Static)
         # На F5 лента диалога САМА показывает беседу/процедуру/реплики — стрип

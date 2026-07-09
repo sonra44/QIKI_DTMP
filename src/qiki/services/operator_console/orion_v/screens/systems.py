@@ -1180,73 +1180,7 @@ class OrionVSystemsScreen(Static):
         layout: vertical;
     }
 
-    #orionv-systems-mfd-status {
-        height: auto;
-        max-height: 5;
-        border: round #4f747c;
-        border-title-color: #7de3f2;
-        background: #10181b;
-        color: #dce4dc;
-        padding: 0 1;
-        margin: 0 0 1 0;
-    }
-
-    #orionv-systems-mfd-main {
-        height: 1fr;
-        layout: horizontal;
-    }
-
-    #orionv-systems-mfd-left-buttons,
-    #orionv-systems-mfd-right-buttons {
-        width: 12;
-        height: 1fr;
-        layout: vertical;
-        background: #070d10;
-        padding: 0 1;
-    }
-
-    #orionv-systems-mfd-left-buttons { margin: 0 1 0 0; }
-    #orionv-systems-mfd-right-buttons { margin: 0 0 0 1; }
-
-    #orionv-systems-mfd-left-buttons Button,
-    #orionv-systems-mfd-right-buttons Button {
-        width: 10;
-        min-width: 10;
-        height: 1;
-        min-height: 1;
-        padding: 0;
-        margin: 0;
-        border: none;
-        background: #0d1518;
-        color: #aebabb;
-        text-style: bold;
-    }
-
-    #orionv-systems-mfd-left-screen,
-    #orionv-systems-mfd-right-screen {
-        width: 1fr;
-        height: 1fr;
-        border: round #3a8294;
-        border-title-color: #64c7d8;
-        background: #0d1417;
-        color: #d8ded8;
-        padding: 0 1;
-        margin: 0 1 0 0;
-    }
-
-    #orionv-systems-mfd-right-screen {
-        border: round #5f8a4a;
-        border-title-color: #8fbf78;
-    }
-
-    #orionv-systems-mfd-left-buttons Button.mfd-active,
-    #orionv-systems-mfd-right-buttons Button.mfd-active {
-        /* UI-ревью P1: heavy-рамка съедала height:1 кнопки (border-box) и
-           расходилась со стилем F1 — активная страница выглядит одинаково */
-        background: #16343a;
-        color: #f0f7f2;
-        border: none;
-    }
+    /* MFD-шелл: общие правила F1/F2 живут в orion_v.tcss (UI P2 дедуп). */
 
     #orionv-systems-mfd-softkeys {
         height: auto;
@@ -1409,6 +1343,22 @@ class OrionVSystemsScreen(Static):
             ),
         )
         self._semantic_static_update("#orionv-systems-mfd-softkeys", softkey_bar(("F3 deep",)))
+        # UI P2 (пост-ревью): CSS красил border-title-color, но сам титул не
+        # ставился — крашеная кромка без якоря. Паттерн cockpit (№6: страница
+        # — динамический якорь в титуле рамки).
+        self.query_one("#orionv-systems-mfd-status", Static).border_title = (
+            "ORION MFD / СИСТЕМЫ"
+        )
+        left_screen = self.query_one("#orionv-systems-mfd-left-screen", Static)
+        left_screen.border_title = (
+            f"ЛЕВЫЙ MFD · {mfd_page_label('left', normalize_mfd_page('left', self._active_left_mfd_page))}"
+        )
+        left_screen.border_subtitle = "страницы: ["
+        right_screen = self.query_one("#orionv-systems-mfd-right-screen", Static)
+        right_screen.border_title = (
+            f"ПРАВЫЙ MFD · {mfd_page_label('right', normalize_mfd_page('right', self._active_right_mfd_page))}"
+        )
+        right_screen.border_subtitle = "страницы: ]"
         self._set_mfd_button_classes()
         stream = self.query_one("#orionv-system-card-stream", VerticalScroll)
         stream.remove_children()
