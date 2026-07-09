@@ -35,7 +35,7 @@ def test_initial_body_structure_interactive_state_is_waiting() -> None:
     f2 = format_body_structure_system_summary(vm)
     f8 = "\n".join(render_card_text(card) for card in build_body_structure_evidence_card_vms(vm))
 
-    assert "BODY STRUCTURE" in f1
+    assert "КОРПУС (посев)" in f1
     assert "modules=0" in f1
     assert "F06=free" in f1
     assert "press B" in f1

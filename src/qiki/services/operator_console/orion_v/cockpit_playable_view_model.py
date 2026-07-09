@@ -421,7 +421,8 @@ def build_cockpit_playable_state(
             focused_panel_id, selected_action_id=selected_action_id
         ),
         "focus_reason": str(focus_reason or "default").strip() or "default",
-        "help_visible": bool(help_visible) if help_visible is not None else True,
+        # Этап 5 (G-A, Z7): dark cockpit — обучалка по умолчанию СКРЫТА, H включает.
+        "help_visible": bool(help_visible) if help_visible is not None else False,
     }
 
 
@@ -485,7 +486,7 @@ def build_cockpit_playable_loop_vm(
     )
     focused_panel_title = _PANEL_TITLE_BY_ID.get(focused_panel_id, "COMMAND")
     focus_reason = _state_text(state, "focus_reason", "default") or "default"
-    help_visible = bool(state.get("help_visible", True))
+    help_visible = bool(state.get("help_visible", False))
     raw_history = state.get("action_history")
     if isinstance(raw_history, Sequence) and not isinstance(raw_history, (str, bytes)):
         action_history = _build_cockpit_event_ticker_vms(raw_history)

@@ -293,24 +293,24 @@ def format_body_structure_cockpit_line(vm: BodyStructureConsoleViewModel | None 
     ready = str(vm.runtime_ready).lower()
     if vm.last_decision == "already_attached" or vm.interaction_state == "already_attached":
         return (
-            f"BODY STRUCTURE | already attached | faces={vm.faces_total} | modules={vm.attached_modules_count} | "
+            f"КОРПУС (посев) | already attached | faces={vm.faces_total} | modules={vm.attached_modules_count} | "
             f"{BODY_STRUCTURE_TEST_MOUNT}={vm.after_mount_state} | selected={vm.selected_face_id} | "
             f"press R to reset | src={vm.source}"
         )
     if vm.last_decision == "attached":
         return (
-            f"BODY STRUCTURE | online | faces={vm.faces_total} | "
+            f"КОРПУС (посев) | online | faces={vm.faces_total} | "
             f"modules={vm.attached_modules_count} @ {vm.mount_point} | "
             f"ready={ready} | {vm.trust_status}"
         )
     if vm.last_decision == "waiting":
         return (
-            f"BODY STRUCTURE | online | faces={vm.faces_total} | modules={vm.attached_modules_count} | "
+            f"КОРПУС (посев) | online | faces={vm.faces_total} | modules={vm.attached_modules_count} | "
             f"selected={vm.selected_face_id} | {BODY_STRUCTURE_TEST_MOUNT}={vm.after_mount_state} | "
             f"action: press B | src={vm.source}"
         )
     reason = vm.last_reason_code or "no_reason"
-    return f"BODY STRUCTURE | online | last={vm.last_decision} | {reason} | {vm.trust_status}"
+    return f"КОРПУС (посев) | online | last={vm.last_decision} | {reason} | {vm.trust_status}"
 
 
 def format_body_structure_system_summary(vm: BodyStructureConsoleViewModel | None = None) -> str:

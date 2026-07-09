@@ -45,7 +45,7 @@ def test_body_structure_view_model_shows_attached_module() -> None:
 def test_f1_cockpit_body_status_line_is_visible() -> None:
     line = format_body_structure_cockpit_line(build_body_structure_self_check_view_model())
 
-    assert "BODY STRUCTURE | online" in line
+    assert "КОРПУС (посев) | online" in line
     assert "modules=1 @ F06" in line  # dedup: no more repeated "BODY online: 1 module" tail
     assert "ready=false" in line
     assert "audit_backed" in line

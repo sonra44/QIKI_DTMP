@@ -82,7 +82,7 @@ def test_f1_cockpit_includes_face_count_and_selected_face() -> None:
     reset_body_structure_interactive_state()
     line = format_body_structure_cockpit_line()
 
-    assert "BODY STRUCTURE" in line
+    assert "КОРПУС (посев)" in line
     assert "faces=12" in line
     assert "modules=0" in line
     assert "selected=F06" in line

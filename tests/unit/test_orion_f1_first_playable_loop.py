@@ -28,7 +28,8 @@ def test_cockpit_playable_view_model_exposes_complete_normal_cycle() -> None:
     body = get_body_structure_console_view_model()
     physics = get_body_physics_console_view_model(body)
     power = build_power_thermal_console_view_model_from_telemetry({})
-    state = build_cockpit_playable_state(selected_action_id="power_refresh", phase="preview")
+    # Этап 5 (G-A, Z7): dark cockpit — полный учебный цикл виден при Help·ON
+    state = build_cockpit_playable_state(selected_action_id="power_refresh", phase="preview", help_visible=True)
 
     vm = build_cockpit_playable_loop_vm(
         loop_state=state,
@@ -250,6 +251,7 @@ def test_cockpit_focus_hint_view_model_exposes_operator_affordances() -> None:
         phase="preview",
         focused_panel_id="sensors",
         focus_reason="panel_key",
+        help_visible=True,  # этап 5 (Z7): обучалка видна только при Help·ON
     )
 
     vm = build_cockpit_playable_loop_vm(
@@ -360,9 +362,23 @@ async def test_f1_cockpit_renders_first_playable_loop_panel() -> None:
         assert "Ф1 ЦИКЛ" in text
         assert "фаза: выбор" in text
         assert "ПРОВЕРКА КОРПУСА" in text
-        assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in text
+        # Этап 5 (G-A, Z7): dark cockpit — обучалка скрыта по умолчанию
+        assert "снимок → экран" not in text
+        assert "H — справка | Ctrl+P — палитра" in text
         assert "ПАНЕЛИ | готово" not in text  # №8а: acceptance убран с экрана
         assert "КОРПУС ✓" not in text  # №8а: галки-чеклист убраны с экрана
+
+        # Help·ON возвращает учебный цикл
+        cockpit.set_state(
+            telemetry={},
+            nats_connected=True,
+            active_incidents=0,
+            incidents=[],
+            playable_loop_state=build_cockpit_playable_state(help_visible=True),
+        )
+        await pilot.pause()
+        helped = app.query_one("#orionv-mfd-qiki", Static).render().plain
+        assert "снимок → экран → предпросмотр → запрос → применение → событие → улика" in helped
 
 
 @pytest.mark.asyncio
@@ -387,8 +403,9 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
         assert "Ф1 ЦИКЛ" in before
         assert "фаза: выбор" in before
         assert "панель:" in before  # №8б: фокус слит в строку Ф1 ЦИКЛ
-        assert "КЛАВИШИ |" in before
-        assert "ПАЛИТРА | Ctrl+P" in before
+        # Этап 5 (G-A, Z7): dark cockpit — при старте обучалки нет
+        assert "КЛАВИШИ |" not in before
+        assert "H — справка | Ctrl+P — палитра" in before
 
         await pilot.click("#orionv-cockpit-focus-next")
         await pilot.pause()
@@ -397,8 +414,9 @@ async def test_f1_playable_loop_buttons_preview_and_apply_visible_state(monkeypa
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()
-        hidden_help = app.query_one("#orionv-mfd-qiki", Static).render().plain
-        assert "H — справка | Ctrl+P — палитра" in hidden_help  # №8б: одна строка вместо блока
+        shown_help = app.query_one("#orionv-mfd-qiki", Static).render().plain
+        assert "КЛАВИШИ |" in shown_help  # Help·ON возвращает блок обучалки
+        assert "ПАЛИТРА | Ctrl+P" in shown_help
 
         await pilot.click("#orionv-cockpit-help-toggle")
         await pilot.pause()

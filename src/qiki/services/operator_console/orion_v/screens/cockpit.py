@@ -109,6 +109,9 @@ def _left_mfd_page_title(page: str) -> str:
 # picker silently miss the line and fall back to the default.
 _NEXT_STEP_PREFIX = "Следующий шаг/Next:"
 
+# Этап 5 (G-A, Z6-подпись): рамки MFD несут подсказку переключения страниц.
+MFD_PAGE_SWITCH_SUBTITLE = "перекл. страниц: [ / ]"
+
 
 class OrionVCockpitScreen(Static):
     """Operator cockpit (F1): status-first layout for 3-5s situation awareness."""
@@ -552,23 +555,33 @@ class OrionVCockpitScreen(Static):
                     [
                         *objective_lines[:2],
                         *objective_facts_lines[:1],
-                        self._quick_fact_row(
-                            "SAFETY",
-                            safety_sev,
-                            self._compact_fact_detail(safety_lines[0], "Статус: "),
-                            self._compact_fact_detail(safety_lines[1], "Причина: "),
-                        ),
-                        self._quick_fact_row(
-                            "ENERGY",
-                            energy_sev,
-                            self._compact_fact_detail(energy_lines[0], "Заряд/SOC: "),
-                            self._compact_fact_detail(energy_lines[1], "Шина/Bus: "),
-                        ),
-                        self._quick_fact_row(
-                            "THERMAL",
-                            thermal_sev,
-                            self._compact_fact_detail(thermal_lines[0], "Core: "),
-                            self._compact_fact_detail(thermal_lines[1], "Radiator/Sink: "),
+                        *self.build_quick_fact_rows(
+                            [
+                                (
+                                    "SAFETY",
+                                    safety_sev,
+                                    (
+                                        self._compact_fact_detail(safety_lines[0], "Статус: "),
+                                        self._compact_fact_detail(safety_lines[1], "Причина: "),
+                                    ),
+                                ),
+                                (
+                                    "ENERGY",
+                                    energy_sev,
+                                    (
+                                        self._compact_fact_detail(energy_lines[0], "Заряд/SOC: "),
+                                        self._compact_fact_detail(energy_lines[1], "Шина/Bus: "),
+                                    ),
+                                ),
+                                (
+                                    "THERMAL",
+                                    thermal_sev,
+                                    (
+                                        self._compact_fact_detail(thermal_lines[0], "Core: "),
+                                        self._compact_fact_detail(thermal_lines[1], "Radiator/Sink: "),
+                                    ),
+                                ),
+                            ]
                         ),
                         self._compact_fact_detail(
                             next((ln for ln in thermal_lines if ln.startswith("• Core:")), "")
@@ -721,9 +734,13 @@ class OrionVCockpitScreen(Static):
         # DISPLAY_CANON №6: страница — в титуле рамки (динамический якорь)
         try:
             left_label = mfd_page_label("left", normalize_mfd_page("left", self._active_left_mfd_page))
-            self.query_one("#orionv-mfd-left-screen", Static).border_title = f"ЛЕВЫЙ MFD · {left_label}"
+            left_screen = self.query_one("#orionv-mfd-left-screen", Static)
+            left_screen.border_title = f"ЛЕВЫЙ MFD · {left_label}"
+            left_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE
             right_label = mfd_page_label("right", normalize_mfd_page("right", self._active_right_mfd_page))
-            self.query_one("#orionv-mfd-right-screen", Static).border_title = f"ПРАВЫЙ MFD · {right_label}"
+            right_screen = self.query_one("#orionv-mfd-right-screen", Static)
+            right_screen.border_title = f"ПРАВЫЙ MFD · {right_label}"
+            right_screen.border_subtitle = MFD_PAGE_SWITCH_SUBTITLE
         except NoMatches:
             pass
         self._set_static_text("#orionv-mfd-left-screen", self._compose_left_mfd_text(body_text))
@@ -2389,6 +2406,21 @@ class OrionVCockpitScreen(Static):
     def _quick_fact_row(self, label: str, severity: str, *details: str) -> str:
         detail = " | ".join(part for part in details if part and part != "—") or "—"
         return self._panel_row(label, self._compact_severity(severity), detail)
+
+    def build_quick_fact_rows(self, entries: list[tuple[str, str, tuple[str, ...]]]) -> list[str]:
+        """Этап 5 (G-A, Z8): факты без данных не занимают ряды — пустые группы
+        схлопываются одной честной строкой «нет данных: …»."""
+        rows: list[str] = []
+        missing: list[str] = []
+        for label, severity, details in entries:
+            detail = " | ".join(part for part in details if part and part != "—")
+            if not detail:
+                missing.append(label)
+                continue
+            rows.append(self._panel_row(label, self._compact_severity(severity), detail))
+        if missing:
+            rows.append(f"нет данных: {', '.join(missing)}")
+        return rows
 
     @staticmethod
     def _dim_block(title: str, lines: list[str]) -> list[str]:
