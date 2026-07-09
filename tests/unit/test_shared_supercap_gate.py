@@ -34,6 +34,9 @@ def test_gate_boundaries() -> None:
 def test_gate_honest_none() -> None:
     assert classify_cap_gate(None) is None
     assert classify_cap_gate(float("nan")) is None
+    # Аудит 0052 (F3): физически невозможный SoC — не данные, не «stab»
+    assert classify_cap_gate(-5.0) is None
+    assert classify_cap_gate(150.0) is None
 
 
 def _model(snapshot: dict[str, object]):
@@ -56,8 +59,9 @@ def test_pwr_chip_carries_cap_gate() -> None:
     )
     pwr = next((chip for chip in state.chips if chip.label == "PWR"), None)
     assert pwr is not None, [chip.label for chip in state.chips]
-    assert "cap 70%" in pwr.anchor_text, pwr.anchor_text
-    assert "▸БУСТ" in pwr.anchor_text, pwr.anchor_text
+    # Аудит 0052 (F2): компакт-формат «cap70%▸БУСТ» ПЕРЕД таймером — на узком
+    # экране клипается хвост чипа, безопасность-гейт терять нельзя
+    assert "cap70%▸БУСТ" in pwr.anchor_text, pwr.anchor_text
 
 
 def test_pwr_chip_cap_gate_hold_and_stab() -> None:
@@ -72,6 +76,88 @@ def test_pwr_chip_cap_gate_hold_and_stab() -> None:
         )
         pwr = next(chip for chip in state.chips if chip.label == "PWR")
         assert code in pwr.anchor_text, (cap, pwr.anchor_text)
+        # Аудит 0052 (F): процент отслеживает ФАКТ (мутация «hardcode 70%»
+        # переживала тесты — carries совпадала с константой, тут код-only)
+        assert f"cap{cap:.0f}%" in pwr.anchor_text, (cap, pwr.anchor_text)
+
+
+def test_pwr_chip_cap_gate_precedes_runtime_timer() -> None:
+    """Аудит 0052 (F2): cap-гейт идёт ПЕРЕД «~мин» — клип узкого экрана
+    съедает таймер, а не безопасность-гейт."""
+    from qiki.services.operator_console.orion_v.operator_state import (
+        build_operator_shell_state,
+    )
+
+    state = build_operator_shell_state(
+        hardware_model=_model(
+            {
+                "power.soc_pct": 93.0,
+                "power.supercap_soc_pct": 70.0,
+                # runtime_min выводится коллектором из draw/capacity
+                "power.draw_w": 100.0,
+                "power.battery_wh": 500.0,
+            }
+        ),
+        nats_state="connected",
+    )
+    pwr = next(chip for chip in state.chips if chip.label == "PWR")
+    anchor = pwr.anchor_text
+    assert "cap70%" in anchor and "~" in anchor, anchor
+    assert anchor.index("cap70%") < anchor.index("~"), anchor
+
+
+def test_status_bar_rerenders_when_only_cap_changes() -> None:
+    """Аудит 0052 (HIGH): кэш-ключ ре-рендера чипа не включал anchor_text —
+    cap-гейт залипал на ▸БУСТ при просевшем суперкапе (battery SoC не
+    менялся). Регресс: смена ТОЛЬКО supercap обновляет лейбл."""
+    import asyncio
+
+    import pytest as _pytest
+
+    _pytest.importorskip("textual")
+    from textual.app import App, ComposeResult
+    from textual.widgets import Button
+
+    from qiki.services.operator_console.orion_v.operator_state import (
+        build_operator_shell_state,
+    )
+    from qiki.services.operator_console.orion_v.widgets.status_bars import (
+        OrionVStatusBars,
+    )
+
+    class _BarsApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield OrionVStatusBars(id="orionv-bars")
+
+    async def _run() -> tuple[str, str]:
+        app = _BarsApp()
+        async with app.run_test(size=(200, 30)) as pilot:
+            await pilot.pause()
+            bars = app.query_one("#orionv-bars", OrionVStatusBars)
+
+            def _label() -> str:
+                return str(app.query_one("#orionv-status-power-action", Button).label)
+
+            bars.set_state(
+                build_operator_shell_state(
+                    hardware_model=_model({"power.soc_pct": 80.0, "power.supercap_soc_pct": 80.0}),
+                    nats_state="connected",
+                )
+            )
+            await pilot.pause()
+            first = _label()
+            bars.set_state(
+                build_operator_shell_state(
+                    hardware_model=_model({"power.soc_pct": 80.0, "power.supercap_soc_pct": 10.0}),
+                    nats_state="connected",
+                )
+            )
+            await pilot.pause()
+            return first, _label()
+
+    first, second = asyncio.run(_run())
+    assert "▸БУСТ" in first, first
+    assert "▸СТАБ" in second, f"чип залип: {second!r} (был {first!r})"
 
 
 def test_pwr_chip_without_cap_data_has_no_segment() -> None:

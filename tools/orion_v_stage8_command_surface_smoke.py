@@ -76,7 +76,7 @@ async def main() -> int:
 
         await _wait(
             pilot,
-            lambda: "cap " in _pwr_chip_text() and "▸" in _pwr_chip_text().split("cap", 1)[-1],
+            lambda: "cap" in _pwr_chip_text() and "▸" in _pwr_chip_text().split("cap", 1)[-1],
             timeout_s=20.0,
             label="cap-гейт на чипе PWR (живая телеметрия supercap)",
         )

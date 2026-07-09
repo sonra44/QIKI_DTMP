@@ -35,6 +35,10 @@ def classify_cap_gate(supercap_soc_pct: float | None) -> str | None:
         return None
     if not math.isfinite(value):
         return None
+    # Аудит 0052 (F3): физически невозможный SoC (вне 0..100) — не данные;
+    # отрицательное значение клеймилось как «stab» вместо честного None.
+    if not (0.0 <= value <= 100.0):
+        return None
     if value >= SUPERCAP_T_BOOST * 100.0:
         return "boost"
     if value >= SUPERCAP_T_HOLD * 100.0:

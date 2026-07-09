@@ -784,7 +784,7 @@ class OrionVApp(App[None]):
                 yield SystemCommand(
                     title=title,
                     help=f"{spec.summary_ru} — исполняется тем же роутером, что и ввод команды.",
-                    callback=lambda name=spec.name: self._route_typed_command(name),
+                    callback=lambda name=spec.name: self._palette_run_typed(name),
                     discover=True,
                 )
 
@@ -1486,13 +1486,29 @@ class OrionVApp(App[None]):
         command.focus()
         self._set_help_text("Командный режим открыт: введите команду и нажмите Enter, Esc — закрыть.")
 
+    def _palette_run_typed(self, name: str) -> None:
+        """Аудит 0052 (F4): паритет с Input-путём — открытый командный режим
+        закрывается перед исполнением palette-команды (кроме F5, где поле
+        живёт постоянно, И1), иначе Input оставался открытым при команде,
+        исполнившейся мимо него."""
+        if self._command_mode_open and self._current_level != "f5":
+            self.action_close_command_mode()
+        self._route_typed_command(name)
+
     def _palette_prefill_command(self, hint: str) -> None:
         """Этап 8: аргументная запись палитры открывает ввод с префиллом
         («proc run ») — оператор дописывает аргумент; исполнение всё равно
-        пойдёт через _route_typed_command при Enter (single path)."""
+        пойдёт через _route_typed_command при Enter (single path).
+        Аудит 0052 (F5): непустой набранный текст (черновик вопроса на F5)
+        не затираем — префилл только в пустое поле."""
         try:
             self.action_open_command_mode()
             command = self.query_one("#orionv-command", Input)
+            if command.value.strip():
+                self._set_help_text(
+                    f"Поле ввода не пусто — префилл «{hint.strip()}» пропущен, допишите вручную"
+                )
+                return
             command.value = hint
             command.cursor_position = len(hint)
         except Exception:
@@ -1716,10 +1732,16 @@ class OrionVApp(App[None]):
             else:
                 self._set_help_text("Выход отменён — консоль на связи")
 
-        self.push_screen(
-            ConfirmDialog("Выйти из консоли ORION? (y/Enter — выйти, n/Esc — остаться)"),
-            _on_result,
-        )
+        try:
+            self.push_screen(
+                ConfirmDialog("Выйти из консоли ORION? (y/Enter — выйти, n/Esc — остаться)"),
+                _on_result,
+            )
+        except Exception:
+            # Аудит 0052 (F6): упавший push_screen не должен залипать guard —
+            # иначе все последующие quit молча игнорируются
+            self._quit_confirm_open = False
+            raise
 
     def action_ack_observation_review(self) -> None:
         if self._replay_mode:

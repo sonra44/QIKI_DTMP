@@ -98,7 +98,11 @@ class OrionVStatusBars(Static):
 
     def _refresh(self) -> None:
         rendered_states = tuple(
-            f"{chip.slug}:{chip.status}:{chip.short_summary}:{chip.hint}:{chip.numeric_anchor}:{chip.stale}"
+            # Аудит 0052 (HIGH): anchor_text ОБЯЗАН быть в кэш-ключе — cap-гейт
+            # суперкапа живёт только в нём и менялся без смены battery-якоря
+            # (чип залипал на ▸БУСТ при просевшем суперкапе)
+            f"{chip.slug}:{chip.status}:{chip.short_summary}:{chip.hint}:"
+            f"{chip.numeric_anchor}:{chip.anchor_text}:{chip.stale}"
             for chip in self._state.chips
         )
         if rendered_states == self._last_rendered_states:

@@ -58,10 +58,12 @@ def test_palette_entries_use_only_registry_names() -> None:
     app._route_typed_command = Mock()  # type: ignore[method-assign]
     for cmd in _system_commands(app):
         app._route_typed_command.reset_mock()
+        # Аудит 0052 (E): проверка ВНУТРИ try — callback, вызвавший роутер и
+        # затем бросивший, не должен проскочить мимо ассерта через continue
         try:
             cmd.callback()
         except Exception:
-            continue  # системные записи Textual (скриншот и т.п.) — не наши
+            pass  # системные записи Textual (скриншот и т.п.) — не наши
         if app._route_typed_command.called:
             (sent,), _ = app._route_typed_command.call_args
             assert sent in registry_names, f"палитра шлёт вне реестра: {sent!r}"

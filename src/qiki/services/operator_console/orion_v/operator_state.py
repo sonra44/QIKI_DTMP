@@ -756,16 +756,21 @@ def _build_subsystem_chips(
     telemetry_age_ms: float | None,
 ) -> tuple[SubsystemChip, ...]:
     stale = telemetry_age_ms is not None and telemetry_age_ms >= COMMS_AGE_CRIT_S * 1000.0
-    # DISPLAY_CANON строка №4: PWR несёт двойной якорь «SoC% ~мин» (таймер жизни)
-    runtime_min = _field_num(hardware_model, "power", "power.runtime_min")
-    power_anchor_extra = f" ~{runtime_min:.0f}м" if runtime_min is not None else ""
     # Этап 8 (Z2/G3): cap-гейт суперконденсатора — готовность к пиковому
     # действию; пороги — ТОЛЬКО shared-владелец (0.17: без локальных копий),
-    # RU-коды — слой отображения консоли. Нет данных → сегмента нет (честно).
+    # RU-коды — слой отображения. Нет данных → сегмента нет (честно).
+    # Аудит 0052 (F2): сегмент компактен и идёт ПЕРЕД таймером — на узком
+    # экране клипается хвост чипа, и терять безопасность-гейт нельзя
+    # (залипший «БУСТ» при севшем суперкапе — ложная готовность к пику).
+    power_anchor_extra = ""
     supercap_pct = _field_num(hardware_model, "power", "power.supercap_soc")
     cap_gate = classify_cap_gate(supercap_pct)
     if cap_gate is not None:
-        power_anchor_extra += f" · cap {supercap_pct:.0f}% ▸{_CAP_GATE_RU[cap_gate]}"
+        power_anchor_extra += f" cap{supercap_pct:.0f}%▸{_CAP_GATE_RU[cap_gate]}"
+    # DISPLAY_CANON строка №4: PWR несёт двойной якорь «SoC% ~мин» (таймер жизни)
+    runtime_min = _field_num(hardware_model, "power", "power.runtime_min")
+    if runtime_min is not None:
+        power_anchor_extra += f" ~{runtime_min:.0f}м"
     chips = [
         _subsystem_chip(
             hardware_model=hardware_model,

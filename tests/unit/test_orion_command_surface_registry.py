@@ -74,14 +74,29 @@ def _submit(app: OrionVApp, text: str) -> None:
 
 
 def test_every_registry_command_is_known_to_router() -> None:
+    from unittest.mock import Mock as _Mock
+
     for spec in COMMAND_REGISTRY:
         if not spec.probe:
             continue
         for form in (spec.name, *spec.aliases):
             app, helps = _probe_app()
+            history_before = len(app._console_history)
             _submit(app, form + spec.extra_probe_args)
             unknown = [line for line in helps if line.startswith("Неизвестная команда")]
             assert not unknown, f"реестр знает «{form}», роутер — нет: {unknown}"
+            # Аудит 0052 (D): «не unknown» мало — команда обязана оставить
+            # СЛЕД (вызванный синк / help-строка / запись истории), иначе
+            # новая корутинная ветка с незамоканным обработчиком зеленела бы
+            touched = (
+                bool(helps)
+                or len(app._console_history) > history_before
+                or any(
+                    isinstance(getattr(app, name), _Mock) and getattr(app, name).called
+                    for name in _MOCKED_SINKS
+                )
+            )
+            assert touched, f"«{form}» не оставила следа — мёртвая ветка?"
 
 
 def test_every_router_command_is_in_registry() -> None:
@@ -105,9 +120,11 @@ def test_every_router_command_is_in_registry() -> None:
         lit
         for lit in literals
         # интересуют только literals-команды: нижний регистр, латиница/
-        # кириллица + точки/дефисы/пробелы; фразы подсказок отсеиваются
+        # кириллица + точки/дефисы/пробелы; фразы подсказок отсеиваются.
+        # Аудит 0052 (B): лимит длины поднят 24→40 (длинная команда не
+        # должна выпадать из пина)
         if lit
-        and len(lit) <= 24
+        and len(lit) <= 40
         and lit == lit.lower()  # команды роутера — нижний регистр
         and not lit.startswith((" ", ".", "«"))
         and " — " not in lit
@@ -129,11 +146,9 @@ def test_every_router_command_is_in_registry() -> None:
         "none",
         "900",
     }
-    missing = {
-        lit
-        for lit in command_like
-        if lit not in known and not any(lit.startswith(k) or k.startswith(lit) for k in known)
-    }
+    # Аудит 0052 (A): точное членство — двунаправленный startswith освобождал
+    # любое РАСШИРЕНИЕ существующей команды («help detail» пряталось за «help»)
+    missing = {lit for lit in command_like if lit not in known}
     assert not missing, f"команды роутера отсутствуют в реестре: {sorted(missing)}"
 
 
@@ -144,8 +159,23 @@ def test_help_prints_all_groups_to_console_history() -> None:
     history_text = "\n".join(str(line) for line in app._console_history)
     for group in HELP_GROUPS_ORDER:
         assert f"{group}:" in history_text, f"группа {group} не выведена в консоль F4"
+    # Аудит 0052 (G): заголовков мало — оператор должен ВИДЕТЬ команды
+    # (критерий §F4); мутация «группы без тел» переживала тест
+    for cmd in ("sim.start", "q confirm", "quit", "proc run", "replay on", "help"):
+        assert cmd in history_text, f"команда {cmd} не видна в help"
     # сводка в help-строке говорит, куда смотреть
     assert helps and "F4" in helps[-1]
+
+
+def test_help_text_carries_every_registry_command() -> None:
+    """Аудит 0052: полнота текста help — КАЖДОЕ имя реестра присутствует."""
+    from qiki.services.operator_console.orion_v.command_registry import (
+        COMMAND_REGISTRY,
+    )
+
+    help_text = "\n".join(iter_help_lines())
+    for spec in COMMAND_REGISTRY:
+        assert spec.name in help_text, f"{spec.name} потерян в help"
 
 
 def test_help_lines_fit_console_width() -> None:
