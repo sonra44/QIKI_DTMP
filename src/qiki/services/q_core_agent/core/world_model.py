@@ -81,6 +81,11 @@ class WorldModel:
         for track_id in previous_owned - set(updated_tracks):
             self._radar_tracks.pop(track_id, None)
         self._radar_tracks.update(updated_tracks)
+        # M6+LOW (пост-фикс аудит): свой ключ снимается ЦЕЛИКОМ — кадр сенсора
+        # начисто определяет его владение. Перевставка ниже освежает позицию в
+        # словаре (LRU: живой сенсор не выселяется флудом «плавающих» id),
+        # пустой кадр освобождает слот, висячие id не переживают кадр.
+        self._frame_derived_track_ids.pop(sensor_key, None)
         # Перематченные треки меняют владельца на сенсор текущего кадра.
         for owned_ids in self._frame_derived_track_ids.values():
             owned_ids.difference_update(updated_tracks)

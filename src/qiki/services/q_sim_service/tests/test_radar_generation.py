@@ -90,6 +90,8 @@ def test_radar_sr_threshold_env_override(monkeypatch):
 def test_generate_sensor_data_produces_radar_when_enabled():
     cfg = QSimServiceConfig(sim_tick_interval=1, sim_sensor_type=1, log_level="INFO")
     sim = QSimService(cfg)
+    # M4 (пост-фикс аудит): ротация выдаёт радар только у RUNNING сима
+    sim._sim_running = True
     # Принудительно используем только радар в цикле
     sim._sensor_cycle = [int(ProtoSensorType.RADAR)]
 

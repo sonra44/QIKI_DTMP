@@ -327,6 +327,20 @@ class QSimService:
             await asyncio.sleep(0.1)
         return self.sensor_data_queue.popleft()
 
+    def _radar_rotation_allowed(self) -> bool:
+        """M4 (пост-фикс аудит): ротация сенсоров не выдаёт радар у
+        остановленного/обесточенного сима — tick() при STOPPED/PAUSED всё
+        равно гоняет step(0.0) «keep sensor data alive», и без гейта мозг
+        получал контакты, которых «нет и быть не может». Пауза радар не
+        глушит: мир заморожен, кадр детерминирован, timestamp стоит —
+        потребители честно видят несвежесть (согласовано с
+        radar_frame_for_external_read)."""
+        return (
+            self.radar_enabled
+            and self._sim_running
+            and getattr(self.world_model, "radar_allowed", True)
+        )
+
     def generate_sensor_data(self) -> SensorReading:
         world_state = self.world_model.get_state()
         sensor_type = self._sensor_cycle[self._sensor_index]
@@ -362,7 +376,7 @@ class QSimService:
                 unit=ProtoUnit.DEGREES,
                 is_valid=True,
             )
-        if sensor_type == int(ProtoSensorType.RADAR) and self.radar_enabled:
+        if sensor_type == int(ProtoSensorType.RADAR) and self._radar_rotation_allowed():
             frame = self.generate_radar_frame()
             proto_frame = model_frame_to_proto(frame)
             sr = SensorReading(
