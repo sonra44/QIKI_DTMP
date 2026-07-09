@@ -24,7 +24,7 @@ def _app() -> tuple[OrionVApp, dict]:
     async def _publish(command: str, parameters: dict | None = None) -> None:
         calls["published"].append(command)
 
-    async def _ack(command: str, timeout: float) -> bool:
+    async def _ack(command: str, timeout: float, command_id=None) -> bool:
         return True
 
     app._publish_sim_command = _publish  # type: ignore
@@ -56,7 +56,7 @@ def test_red_toggle_publishes_start_when_paused() -> None:
 def test_red_ack_timeout_is_not_silent() -> None:
     app, calls = _app()
 
-    async def _no_ack(command: str, timeout: float) -> bool:
+    async def _no_ack(command: str, timeout: float, command_id=None) -> bool:
         return False
 
     app._wait_for_ack = _no_ack  # type: ignore

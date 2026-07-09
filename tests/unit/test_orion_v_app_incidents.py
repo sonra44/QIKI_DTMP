@@ -1295,7 +1295,7 @@ async def test_telemetry_thermal_warn_trip_visible_in_f1_and_f2_runtime_path(mon
         assert not cockpit_widget.has_class("hidden")
 
     assert any("Безопасность / Целостность / Угрозы [unknown]" in text for text in systems_card_texts)
-    assert any("Core: 86.0 °C | limit 90°C | state=WARN" in text for text in cockpit_updates)
+    assert any("Core: 86.0 °C | limit 95°C | state=WARN" in text for text in cockpit_updates)
     assert any("TRIP nodes: pdu" in text for text in cockpit_updates)
 
 

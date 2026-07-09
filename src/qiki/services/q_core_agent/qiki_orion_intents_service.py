@@ -4460,7 +4460,13 @@ async def _refresh_agent_snapshot_until_target_track(
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             try:
-                await asyncio.to_thread(agent._ingest_sensor_data, data_provider)
+                # M7 (пост-фикс аудит): ingest мутирует context — только под lock,
+                # как и happy-path refresh этой же петли.
+                if lock is not None:
+                    async with lock:
+                        await asyncio.to_thread(agent._ingest_sensor_data, data_provider)
+                else:
+                    await asyncio.to_thread(agent._ingest_sensor_data, data_provider)
                 matched_track, selection_source = _select_target_track_for_resume(
                     agent.context.world_snapshot,
                     target_designator=target_designator,

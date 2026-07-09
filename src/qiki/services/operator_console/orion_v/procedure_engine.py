@@ -117,8 +117,8 @@ class ProcedureEngine:
         self,
         definition: ProcedureDefinition,
         *,
-        publish_command: Callable[[str, dict[str, Any] | None], Awaitable[None]],
-        wait_ack: Callable[[str, float], Awaitable[bool]],
+        publish_command: Callable[[str, dict[str, Any] | None], Awaitable[str | None]],
+        wait_ack: Callable[[str, float, str | None], Awaitable[bool]],
         publish_audit: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> bool:
         self.state = ProcedureRunState(
@@ -141,8 +141,10 @@ class ProcedureEngine:
         for idx, step in enumerate(definition.steps, start=1):
             self.state.step_index = idx
             self.state.progress_log.append(f"step {idx}: {step.command}")
-            await publish_command(step.command, dict(step.parameters or {}))
-            ack_ok = await wait_ack(step.expected_ack, step.timeout)
+            # M2 (пост-фикс аудит): шаг ждёт ACK СВОЕЙ публикации по её id,
+            # а не общего слота, который мог перезаписать конкурент.
+            command_id = await publish_command(step.command, dict(step.parameters or {}))
+            ack_ok = await wait_ack(step.expected_ack, step.timeout, command_id)
             if ack_ok:
                 self.state.progress_log.append(f"ack ok: {step.expected_ack}")
                 continue

@@ -64,7 +64,7 @@ def _app(*, ack=True, effect=True) -> OrionVApp:
     async def _publish(command, parameters=None):
         return None
 
-    async def _wait_ack(command, timeout):
+    async def _wait_ack(command, timeout, command_id=None):
         return ack
 
     async def _wait_effect(command, timeout):

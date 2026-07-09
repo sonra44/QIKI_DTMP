@@ -51,7 +51,7 @@ async def test_procedure_engine_success() -> None:
     async def publish_command(cmd: str, parameters: dict[str, object] | None) -> None:
         published.append((cmd, parameters))
 
-    async def wait_ack(expected: str, timeout: float) -> bool:
+    async def wait_ack(expected: str, timeout: float, command_id=None) -> bool:
         return expected in {"sim.pause", "sim.start"} and timeout > 0
 
     async def publish_audit(payload: dict[str, object]) -> None:
@@ -80,7 +80,7 @@ async def test_procedure_engine_abort_on_failed_ack() -> None:
     async def publish_command(_cmd: str, _parameters: dict[str, object] | None) -> None:
         return
 
-    async def wait_ack(_expected: str, _timeout: float) -> bool:
+    async def wait_ack(_expected: str, _timeout: float, _command_id=None) -> bool:
         return False
 
     async def publish_audit(_payload: dict[str, object]) -> None:

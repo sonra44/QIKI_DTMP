@@ -51,6 +51,7 @@ from qiki.services.operator_console.orion_v.qiki_voice import (
 from qiki.services.operator_console.orion_v.hardware_view_model.thresholds import (
     POWER_SOC_CRIT_PCT,
     POWER_SOC_WARN_PCT,
+    THERMAL_CORE_CRIT_C,
 )
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
@@ -561,24 +562,24 @@ class OrionVCockpitScreen(Static):
                                     "SAFETY",
                                     safety_sev,
                                     (
-                                        self._compact_fact_detail(safety_lines[0], "Статус: "),
-                                        self._compact_fact_detail(safety_lines[1], "Причина: "),
+                                        self._fact_value_detail(safety_lines[0], "Статус: "),
+                                        self._fact_value_detail(safety_lines[1], "Причина: "),
                                     ),
                                 ),
                                 (
                                     "ENERGY",
                                     energy_sev,
                                     (
-                                        self._compact_fact_detail(energy_lines[0], "Заряд/SOC: "),
-                                        self._compact_fact_detail(energy_lines[1], "Шина/Bus: "),
+                                        self._fact_value_detail(energy_lines[0], "Заряд/SOC: "),
+                                        self._fact_value_detail(energy_lines[1], "Шина/Bus: "),
                                     ),
                                 ),
                                 (
                                     "THERMAL",
                                     thermal_sev,
                                     (
-                                        self._compact_fact_detail(thermal_lines[0], "Core: "),
-                                        self._compact_fact_detail(thermal_lines[1], "Radiator/Sink: "),
+                                        self._fact_value_detail(thermal_lines[0], "Core: "),
+                                        self._fact_value_detail(thermal_lines[1], "Radiator/Sink: "),
                                     ),
                                 ),
                             ]
@@ -1945,7 +1946,8 @@ class OrionVCockpitScreen(Static):
                 eta = (soc / 100.0) * capacity_wh / discharge_w * 3600.0
 
         lines = [
-            f"• Заряд/SOC: {_fmt_pct(soc)} | crit < 15%",
+            # подпись порога — из shared-канона, не литерал (пост-фикс аудит M3/LOW)
+            f"• Заряд/SOC: {_fmt_pct(soc)} | crit < {POWER_SOC_CRIT_PCT:g}%",
             f"• Шина/Bus: {_fmt_unit(bus_v, 'В', '.2f')} | {_fmt_unit(bus_a, 'А', '.2f')}",
             f"• Лимит/Limit: {limit_mode or 'Нет данных'}",
             f"• Аварийное отключение нагрузки: {_bool_on_off_text(load_shedding)}",
@@ -2187,7 +2189,8 @@ class OrionVCockpitScreen(Static):
             trip_nodes_text = "Нет данных"
 
         lines = [
-            f"• Core: {_fmt_unit(core, '°C', '.1f')} | limit 90°C | state={core_state}",
+            # литерал «90°C» врал обеим shared-константам (warn 80 / crit 95)
+            f"• Core: {_fmt_unit(core, '°C', '.1f')} | limit {THERMAL_CORE_CRIT_C:g}°C | state={core_state}",
             f"• Radiator/Sink: {_fmt_unit(radiator, '°C', '.1f')} | {_fmt_unit(sink, '°C', '.1f')}",
             f"• WARN nodes: {warn_nodes_text}",
             f"• TRIP nodes: {trip_nodes_text}",
@@ -2407,15 +2410,34 @@ class OrionVCockpitScreen(Static):
         detail = " | ".join(part for part in details if part and part != "—") or "—"
         return self._panel_row(label, self._compact_severity(severity), detail)
 
+    @staticmethod
+    def _fact_value_detail(line: str, prefix: str = "") -> str:
+        """M3 (пост-фикс аудит): деталь пуста, если ЗНАЧЕНИЯ нет — статические
+        хвосты-подписи («… | crit < 15%») данными не считаются."""
+        text = line.strip()
+        if text.startswith("• "):
+            text = text[2:]
+        if prefix and text.startswith(prefix):
+            text = text[len(prefix) :]
+        text = text.strip()
+        if not text or text.startswith("Нет данных") or text.startswith("—"):
+            return ""
+        return text
+
     def build_quick_fact_rows(self, entries: list[tuple[str, str, tuple[str, ...]]]) -> list[str]:
-        """Этап 5 (G-A, Z8): факты без данных не занимают ряды — пустые группы
-        схлопываются одной честной строкой «нет данных: …»."""
+        """Этап 5 (G-A, Z8) + M3 пост-фикс аудита: пустые ok-группы схлопываются
+        одной строкой «нет данных: …»; группы warn/crit НЕ прячутся (§19.6:
+        тревога без источника — значимый факт), но показывают чистое
+        «Нет данных» без хвостов-подписей."""
         rows: list[str] = []
         missing: list[str] = []
         for label, severity, details in entries:
             detail = " | ".join(part for part in details if part and part != "—")
             if not detail:
-                missing.append(label)
+                if severity in {"warn", "crit"}:
+                    rows.append(self._panel_row(label, self._compact_severity(severity), "Нет данных"))
+                else:
+                    missing.append(label)
                 continue
             rows.append(self._panel_row(label, self._compact_severity(severity), detail))
         if missing:

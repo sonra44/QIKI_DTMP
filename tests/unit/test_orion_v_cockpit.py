@@ -303,7 +303,7 @@ def test_cockpit_thermal_block_renders_warn_trip_from_nodes() -> None:
     )
     text = _render_text(screen)
 
-    assert "Core: 86.0 °C | limit 90°C | state=WARN" in text
+    assert "Core: 86.0 °C | limit 95°C | state=WARN" in text
     assert "WARN nodes: core" in text
     assert "TRIP nodes: pdu" in text
     assert "Core limits: warn 80.0 °C | trip 90.0 °C | hys 5.0 °C" in text

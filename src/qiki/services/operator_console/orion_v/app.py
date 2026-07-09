@@ -1991,14 +1991,15 @@ class OrionVApp(App[None]):
         elif args:
             self._set_help_text(f"Мир: {name} не принимает аргументов")
             return True
-        self._spawn_task(self._publish_sim_command(name, parameters))
+        self._spawn_task(self._publish_sim_command_tracked(name, parameters))
         self._set_help_text(f"Мир: {name} отправлена — ждём ACK (ACK ≠ эффект)")
         return True
 
-    async def _publish_sim_command(self, command_name: str, parameters: dict[str, Any] | None = None) -> None:
+    async def _publish_sim_command(self, command_name: str, parameters: dict[str, Any] | None = None) -> str | None:
+        """→ command_id публикации (M2: ждущий обязан держать СВОЙ id, не слот)."""
         if self._replay_mode:
             self._set_help_text("РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО")
-            return
+            return None
         request_id = uuid4()
         request_id_str = str(request_id)
         # Аудит 0.15: очередь ACK общая — clear() перетирал чужой pending;
@@ -2017,12 +2018,42 @@ class OrionVApp(App[None]):
         )
         self._set_last_command_loop_state("awaiting_ack", f"Command sent: {command_name}")
         await self._nats_client.publish_command(COMMANDS_CONTROL, cmd.model_dump(mode="json"))
+        return request_id_str
 
-    async def _wait_for_ack(self, expected_ack: str, timeout_s: float) -> bool:
+    async def _publish_sim_command_tracked(
+        self,
+        command_name: str,
+        parameters: dict[str, Any] | None = None,
+        *,
+        ack_timeout_s: float = 2.0,
+    ) -> None:
+        """M1 (пост-фикс аудит): fire-and-forget честно доводит цикл — publish →
+        ожидание ACK → исход в ленту; pending снимается finally-веткой ожидания,
+        счётчик P не залипает."""
+        request_id = await self._publish_sim_command(command_name, parameters)
+        if request_id is None:
+            return
+        if await self._wait_for_ack(command_name, ack_timeout_s, command_id=request_id):
+            self._set_last_command_loop_state("ok", f"ACK получен: {command_name}")
+        else:
+            self._set_last_command_loop_state("failed", f"Ack timeout for {command_name}")
+        self._request_refresh_ui()
+
+    async def _wait_for_ack(
+        self, expected_ack: str, timeout_s: float, command_id: str | None = None
+    ) -> bool:
         deadline = time.monotonic() + timeout_s
         expected = expected_ack.strip().lower()
-        expected_command_id = self._pending_ack_command_id
-        wait_started_mono = self._ack_wait_started_mono or time.monotonic()
+        if command_id is not None:
+            # M2: явный id от СВОЕЙ публикации — общий слот мог перезаписать
+            # конкурент за время await publish. id уникален (uuid4), поэтому
+            # временное окно не нужно.
+            expected_command_id = command_id
+            wait_started_mono = 0.0
+        else:
+            # Совместимость (внешние смоки/пробы): захват общего слота.
+            expected_command_id = self._pending_ack_command_id
+            wait_started_mono = self._ack_wait_started_mono or time.monotonic()
         try:
             return await self._wait_for_ack_scan(
                 expected=expected,
@@ -3513,8 +3544,8 @@ class OrionVApp(App[None]):
         if self._replay_mode:
             self._set_help_text("РЕЖИМ АНАЛИЗА ИСТОРИИ — УПРАВЛЕНИЕ ОТКЛЮЧЕНО")
             return
-        await self._publish_sim_command(command, {})
-        ack_ok = await self._wait_for_ack(command, 2.0)
+        command_id = await self._publish_sim_command(command, {})
+        ack_ok = await self._wait_for_ack(command, 2.0, command_id=command_id)
         if not ack_ok:
             self._set_last_command_loop_state("failed", f"Ack timeout for {command}")
             self._set_help_text(f"РЕПЛИКА: нет ack для {command} — состояние не заявляется")
@@ -3965,8 +3996,8 @@ class OrionVApp(App[None]):
             self._set_help_text("QIKI: неподдерживаемый тип исполняемого действия")
             return
 
-        await self._publish_sim_command(command_name, parameters if isinstance(parameters, dict) else {})
-        ack_ok = await self._wait_for_ack(command_name, 2.0)
+        command_id = await self._publish_sim_command(command_name, parameters if isinstance(parameters, dict) else {})
+        ack_ok = await self._wait_for_ack(command_name, 2.0, command_id=command_id)
         if not ack_ok:
             if self._qiki_last_response is not None:
                 self._qiki_last_response = self._qiki_last_response.model_copy(

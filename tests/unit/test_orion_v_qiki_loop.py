@@ -643,7 +643,7 @@ def test_execute_qiki_pending_action_updates_consequence_after_ack_and_telemetry
     async def _publish(command_name: str, parameters: dict | None = None) -> None:
         published.append((command_name, parameters))
 
-    async def _wait_ack(_expected: str, _timeout: float) -> bool:
+    async def _wait_ack(_expected: str, _timeout: float, command_id=None) -> bool:
         return True
 
     async def _wait_effect(_command: str, _timeout: float) -> BilingualText | None:
