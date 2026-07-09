@@ -9,7 +9,7 @@ from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -91,6 +91,10 @@ class QSimService:
         self.actuator_command_queue: list[ActuatorCommand] = []
         env_flag = os.getenv("RADAR_ENABLED", "0").strip().lower()
         self.radar_enabled = env_flag not in ("0", "false", "")
+        # Аудит 2026-07-09 (0.2): sensor_id радара стабилен между кадрами и
+        # рестартами — мозг ключует владение треков по сенсору, uuid4-на-кадр
+        # превращал каждый кадр в «новый радар».
+        self._radar_sensor_id = uuid5(NAMESPACE_URL, "qiki:q_sim_service:radar:main")
         self.radar_frames: deque[RadarFrameModel] = deque(maxlen=self._radar_frames_max)
         nats_flag = os.getenv("RADAR_NATS_ENABLED", "0").strip().lower()
         self.radar_nats_enabled = nats_flag not in ("0", "false", "")
@@ -445,11 +449,26 @@ class QSimService:
         )
 
         frame = RadarFrameModel(
-            sensor_id=uuid4(),
+            sensor_id=self._radar_sensor_id,
             timestamp=frame_ts,
             detections=[lr_detection, sr_detection],
         )
         return frame
+
+    def radar_frame_for_external_read(self) -> RadarFrameModel | None:
+        """Гейт 0.9: внешнее чтение радара честно к состоянию сима.
+
+        STOPPED / радар выключен / обесточен → None (контактов нет и быть не
+        может); пауза → последний опубликованный кадр (мир заморожен), а не
+        свежая генерация.
+        """
+        if not self.radar_enabled or not getattr(self.world_model, "radar_allowed", True):
+            return None
+        if not self._sim_running:
+            return None
+        if self._sim_paused:
+            return self.radar_frames[-1] if self.radar_frames else None
+        return self.generate_radar_frame()
 
     def _read_sr_threshold_m(self) -> float:
         raw = os.getenv("RADAR_SR_THRESHOLD_M", "").strip()

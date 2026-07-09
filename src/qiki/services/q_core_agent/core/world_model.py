@@ -12,13 +12,20 @@ from qiki.services.q_core_agent.core.guard_table import GuardEvaluationResult, G
 from qiki.services.q_core_agent.core.metrics import publish_world_model_metrics
 
 
+# Аудит 2026-07-09 (0.2): предохранитель от producer'а с «плавающим» sensor_id
+# (uuid4 на кадр) — без перематча его наборы копились бы вечно.
+_MAX_FRAME_SENSORS = 16
+
+
 class WorldModel:
     """Maintains the agent-centric view of the environment."""
 
     def __init__(self, guard_table: GuardTable):
         self._guard_table = guard_table
         self._radar_tracks: Dict[str, RadarTrackModel] = {}
-        self._frame_derived_track_ids: Set[str] = set()
+        # Аудит 2026-07-09 (0.2): владение frame-derived треками ключуется по
+        # сенсору — кадр одного радара не сносит треки другого.
+        self._frame_derived_track_ids: Dict[str, Set[str]] = {}
         self._guard_results: List[GuardEvaluationResult] = []
         self._active_guard_keys: Set[Tuple[str, str]] = set()
         self._active_warning_keys: Set[Tuple[str, str]] = set()
@@ -35,7 +42,8 @@ class WorldModel:
 
             if track.status == RadarTrackStatusEnum.LOST:
                 self._radar_tracks.pop(track_id, None)
-                self._frame_derived_track_ids.discard(track_id)
+                for owned_ids in self._frame_derived_track_ids.values():
+                    owned_ids.discard(track_id)
             else:
                 self._radar_tracks[track_id] = track
 
@@ -46,10 +54,15 @@ class WorldModel:
         if frame is None:
             return
 
+        sensor_key = str(sensor_data.sensor_id)
         updated_tracks: Dict[str, RadarTrackModel] = {}
+        # Матчинг глобальный: тот же объект, увиденный другим радаром, сохраняет
+        # идентичность трека (спуф-контракт test_radar_guards). Снос — только
+        # треков СВОЕГО сенсора (0.2: пустой кадр чужого радара сносил всё).
         remaining_candidates: Dict[str, RadarTrackModel] = {
             track_id: self._radar_tracks[track_id]
-            for track_id in self._frame_derived_track_ids
+            for owned_ids in self._frame_derived_track_ids.values()
+            for track_id in owned_ids
             if track_id in self._radar_tracks
         }
         for index, detection in enumerate(frame.detections):
@@ -64,14 +77,28 @@ class WorldModel:
             )
             updated_tracks[str(track.track_id)] = track
 
-        previous_derived_track_ids = set(self._frame_derived_track_ids)
-        for track_id in previous_derived_track_ids:
+        previous_owned = set(self._frame_derived_track_ids.get(sensor_key, set()))
+        for track_id in previous_owned - set(updated_tracks):
             self._radar_tracks.pop(track_id, None)
         self._radar_tracks.update(updated_tracks)
-        self._frame_derived_track_ids = set(updated_tracks.keys())
+        # Перематченные треки меняют владельца на сенсор текущего кадра.
+        for owned_ids in self._frame_derived_track_ids.values():
+            owned_ids.difference_update(updated_tracks)
+        self._frame_derived_track_ids = {
+            key: ids for key, ids in self._frame_derived_track_ids.items() if ids
+        }
+        if updated_tracks:
+            self._frame_derived_track_ids[sensor_key] = set(updated_tracks)
+            self._evict_stale_frame_sensors(active_key=sensor_key)
 
-        if updated_tracks or previous_derived_track_ids:
+        if updated_tracks or previous_owned:
             self._recalculate_guards()
+
+    def _evict_stale_frame_sensors(self, *, active_key: str) -> None:
+        while len(self._frame_derived_track_ids) > _MAX_FRAME_SENSORS:
+            oldest_key = next(key for key in self._frame_derived_track_ids if key != active_key)
+            for track_id in self._frame_derived_track_ids.pop(oldest_key):
+                self._radar_tracks.pop(track_id, None)
 
     def _recalculate_guards(self) -> None:
         evaluations = self._guard_table.evaluate_tracks(self._radar_tracks.values())

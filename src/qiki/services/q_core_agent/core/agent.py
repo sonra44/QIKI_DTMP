@@ -18,6 +18,7 @@ from qiki.shared.models.core import (
     FsmStateSnapshot as PydanticFsmStateSnapshot,
     Proposal,
     SensorData,
+    SensorTypeEnum,
 )
 
 import os
@@ -139,28 +140,46 @@ class QCoreAgent:
         self._set_fsm_context_flag(_SAFE_MODE_PROVIDER_OK_KEY, True)
         self._ingest_sensor_data(data_provider)
 
+    # Аудит 2026-07-09 (0.1): ротация сенсоров сима [LIDAR→RADAR→IMU] с
+    # очередью=1 — одно чтение на refresh теряет радар в ~2/3 случаев.
+    _SENSOR_ROTATION_READS = 3
+
     def _ingest_sensor_data(self, data_provider: IDataProvider) -> None:
-        try:
-            sensor_data = data_provider.get_sensor_data()
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Failed to fetch sensor data: {exc}")
-            self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
-            self._switch_to_safe_mode(reason="SENSORS_UNAVAILABLE")
+        ingested_any = False
+        for attempt in range(self._SENSOR_ROTATION_READS):
+            try:
+                sensor_data = data_provider.get_sensor_data()
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 0:
+                    logger.error(f"Failed to fetch sensor data: {exc}")
+                    self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
+                    self._switch_to_safe_mode(reason="SENSORS_UNAVAILABLE")
+                    return
+                # Свежие данные уже в мире — дочитывание ротации не роняет цикл.
+                logger.warning(f"Sensor rotation read {attempt + 1} failed: {exc}")
+                break
+
+            if sensor_data is None:
+                if attempt == 0:
+                    self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
+                    return
+                break
+
+            ingested_any = True
+            self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, True)
+            self.context.latest_sensor_data = sensor_data
+            try:
+                self.bot_core.ingest_sensor_data(sensor_data)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"BotCore sensor ingest failed: {exc}")
+
+            self.context.sensor_snapshot = update_sensor_snapshot(self.context.sensor_snapshot, sensor_data)
+            self.world_model.ingest_sensor_data(sensor_data)
+            if sensor_data.sensor_type == SensorTypeEnum.RADAR:
+                break  # радар получен — ротацию дальше не тянем
+
+        if not ingested_any:
             return
-
-        if sensor_data is None:
-            self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, False)
-            return
-
-        self._set_fsm_context_flag(_SAFE_MODE_SENSORS_OK_KEY, True)
-        self.context.latest_sensor_data = sensor_data
-        try:
-            self.bot_core.ingest_sensor_data(sensor_data)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f"BotCore sensor ingest failed: {exc}")
-
-        self.context.sensor_snapshot = update_sensor_snapshot(self.context.sensor_snapshot, sensor_data)
-        self.world_model.ingest_sensor_data(sensor_data)
         self.context.guard_events = self.world_model.guard_results()
         self.context.world_snapshot = self.world_model.snapshot()
 

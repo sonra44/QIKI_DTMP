@@ -110,7 +110,16 @@ class QSimAPIService(QSimAPIServiceServicer):
         self, request: GetRadarFrameRequest, context: grpc.aio.ServicerContext
     ) -> GetRadarFrameResponse:
         try:
-            frame = self.sim_service.generate_radar_frame()
+            # Аудит 2026-07-09 (0.9): кадр гейтится состоянием сима — никаких
+            # контактов от остановленного/выключенного/обесточенного радара.
+            frame = self.sim_service.radar_frame_for_external_read()
+            if frame is None:
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details(
+                    "radar frame unavailable: sim stopped, radar disabled/unpowered, "
+                    "or no frozen frame while paused"
+                )
+                return GetRadarFrameResponse()
             proto_frame = model_frame_to_proto(frame)
             return GetRadarFrameResponse(frame=proto_frame)
         except Exception as exc:

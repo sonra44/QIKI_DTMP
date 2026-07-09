@@ -93,7 +93,9 @@ def test_qcoreagent_run_tick_updates_context(mock_data_provider):
     mock_data_provider.get_bios_status.assert_called_once()
     mock_data_provider.get_fsm_state.assert_called_once()
     mock_data_provider.get_proposals.assert_called_once()
-    mock_data_provider.get_sensor_data.assert_called_once()
+    # Аудит 0.1: refresh дочитывает ротацию сенсоров (до 3 чтений), пока не
+    # придёт радар; фикстура отдаёт только LIDAR → ровно 3 чтения.
+    assert mock_data_provider.get_sensor_data.call_count == 3
 
 
 def test_qcoreagent_handle_bios_error_safe_mode(mock_data_provider):
