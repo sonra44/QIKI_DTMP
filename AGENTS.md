@@ -2,6 +2,27 @@
 
 Этот файл предназначен для агентных coding assistants. Инструкции должны оставаться практичными, воспроизводимыми и ориентированными на реальный код репозитория.
 
+## 0. Стартовый корень и cwd
+
+Оба агента должны стартовать с обзорной позиции `/home/sonra44`, чтобы видеть весь рабочий контур пользователя: проекты, host/ops, инструменты, память, MCP, артефакты.
+
+Это не означает, что все команды выполняются из `/home/sonra44`.
+
+- Для QIKI repo-relative команд использовать `cd /home/sonra44/QIKI_DTMP && <command>` или `workdir=/home/sonra44/QIKI_DTMP`.
+- Для host/ops/tooling задач выбирать фактический каталог задачи: `/home/sonra44`, `~/ragflow-work`, `~/.codex`, `~/.claude`, `/tmp` и т.д.
+- В отчёте явно говорить, где выполнялась команда, если cwd влияет на результат.
+
+## 0.1. HERDR-first координация
+
+Координация Claude/Codex идёт через HERDR, не через tmux по умолчанию.
+
+- HERDR panes не обязаны быть видны через локальный `tmux`.
+- Сначала обнаруживать панели через HERDR: `herdr_list_panes` / `herdr_get_cockpit_digest`.
+- Читать панели через HERDR: `herdr_read_pane_recent`.
+- Отправлять агентам через HERDR: `herdr pane run <pane_id> "<message>"`.
+- Не считать приказ доставленным, пока HERDR read/status не покажет явный ACK или новый ответ агента.
+- `tmux` использовать только для реальных tmux sessions/panes, а не для HERDR terminal panes, если HERDR явно не связал их с tmux.
+
 ## 1. Что такое QIKI_DTMP
 
 QIKI_DTMP — это хардкорная космическая игра-симулятор, сосредоточенная на управлении беспилотным космическим летательным аппаратом, представленным как управляемая платформа взаимодействующих подсистем.
@@ -34,6 +55,28 @@ QIKI_DTMP — это хардкорная космическая игра-сим
 -> faststream_bridge  
 -> ORION V  
 -> registrar**
+
+## 2.1. Tool Doctrine / RAG Gate
+
+Единая методичка для Claude и Codex: `docs/dev/TOOL_DISCIPLINE.md`. Этот раздел — короткий must-follow указатель; если детали расходятся, актуализируй методичку и этот блок вместе.
+
+Глобальная рабочая задача QIKI_DTMP: строить runtime QIKI machine-body, грунтуя канонные выводы в QIKI Body v0.2.2 и связанных актуальных canon docs. RAGFlow не является владельцем истины сам по себе; он является retrieval/index слоем для canon-корпуса. Итоговая проверка канона всё равно делается по repo-docs, а реализация проверяется runtime/Docker/tests.
+
+Инструменты и зоны истины:
+
+- `sovereign-memory` — состояние работы, `STATUS` / `TODO_NEXT` / `DECISIONS`, recall-proof.
+- `Serena` — навигация по коду и символам; не использовать как state-memory.
+- `RAGFlow` / `qiki-rag` — retrieval по канон-корпусу QIKI, особенно QIKI Body v0.2.2.
+- `repo docs` — финальная file-level верификация канона; если RAG и repo расходятся, repo сильнее, а RAG считается stale/needs-refresh.
+- `Docker` / runtime / tests — истина реализации.
+- `herdr` — координация живых окон и операторских панелей.
+- `coderabbit` / субагенты — review aids; не источники истины.
+
+Обязательный gate для любого канонного вывода:
+
+**`qiki-rag` / RAGFlow query -> returned doc/chunk -> repo-file check -> implementation verdict**
+
+Нельзя фиксировать сильный canon/spec вывод только из памяти, пересказа, handoff или вывода субагента. Для runtime-дефектов код и тесты могут быть первичным evidence, но если вывод касается IF-ORION, IF-AUDIT, vocabulary, QIKI Body v0.2.2 или статуса `Canon != implemented`, RAG-gate обязателен.
 
 ## 3. Владельцы истины
 
