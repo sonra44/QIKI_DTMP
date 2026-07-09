@@ -21,5 +21,9 @@ def test_handle_chat_request_returns_ok_response() -> None:
     assert resp.reply is not None
     assert resp.reply.title.en
     assert resp.reply.title.ru
-    assert resp.proposals
-    assert resp.proposals[0].proposed_actions == []
+    # Санация 0050: proposals=[] by design для неисполнимого текста —
+    # proposal создаётся только при наличии proposed_actions (dock-команды);
+    # пустой случай — явный «No proposals». Старое ожидание «proposal без
+    # действий» не имеет пути в коде.
+    assert resp.proposals == []
+    assert resp.reply.title.en == "No proposals"

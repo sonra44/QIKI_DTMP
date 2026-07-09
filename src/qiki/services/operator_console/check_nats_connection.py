@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Test NATS connection."""
+"""Ручной скрипт проверки NATS-соединения (НЕ pytest-тест).
+
+Санация 0050: раньше жил как test_nats_connection.py — pytest собирал его,
+top-level импорт несуществующего пакета `clients` валил коллекцию всего
+src-дерева. Переименован + импорт починен на канонный путь клиента.
+"""
 
 import asyncio
-from clients.nats_client import NATSClient
+
+from qiki.services.operator_console.clients.nats_client import NATSClient
 
 
-async def test_connection():
-    """Test NATS connection and JetStream."""
+async def check_connection():
+    """Проверить NATS-соединение и JetStream."""
     client = NATSClient()
 
     try:
@@ -31,4 +37,4 @@ async def test_connection():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_connection())
+    asyncio.run(check_connection())

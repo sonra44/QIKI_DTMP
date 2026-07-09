@@ -37,6 +37,16 @@ def _make_terminal(*, fps_max: int = 10) -> MissionControlTerminal:
     terminal.radar_pipeline_error = ""
     terminal.radar_input = RadarInputController()
     terminal.view_state = terminal.radar_pipeline.view_state
+    # Санация 0050: хелпер строит объект мимо __init__ (object.__new__), а
+    # live_radar_loop теперь зовёт _ensure_session_server — session-атрибуты
+    # обязаны существовать (standalone = сервер/клиент не поднимаются).
+    terminal.session_mode = "standalone"
+    terminal.session_host = "127.0.0.1"
+    terminal.session_port = 8765
+    terminal.session_client_id = "test-client"
+    terminal.session_client_role = "controller"
+    terminal.session_server = None
+    terminal.session_client = None
     return terminal
 
 

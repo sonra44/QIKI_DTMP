@@ -91,7 +91,9 @@ def test_qcoreagent_run_tick_updates_context(mock_data_provider):
     assert isinstance(agent.context.proposals, list)
 
     mock_data_provider.get_bios_status.assert_called_once()
-    mock_data_provider.get_fsm_state.assert_called_once()
+    # Санация 0050: агент читает FSM через result-обёртку (agent.py:74,
+    # get_fsm_state_result) — старое имя get_fsm_state больше не зовётся.
+    mock_data_provider.get_fsm_state_result.assert_called_once()
     mock_data_provider.get_proposals.assert_called_once()
     # Аудит 0.1: refresh дочитывает ротацию сенсоров (до 3 чтений), пока не
     # придёт радар; фикстура отдаёт только LIDAR → ровно 3 чтения.
@@ -391,13 +393,23 @@ def test_neural_engine_generates_mock_proposal_when_enabled():
     assert proposals[0].confidence == pytest.approx(0.7)
 
 
-def test_neural_engine_generates_no_proposal_when_disabled():
+def test_neural_engine_honest_diagnostics_without_api_key(monkeypatch):
+    """Санация 0050: mock_neural_proposals_enabled=False значит «не мокать»,
+    а не «выключить движок» — без OPENAI_API_KEY движок ЧЕСТНО отдаёт один
+    DIAGNOSTICS-proposal «LLM unavailable» (no actions, priority 0), не тишину
+    (neural_engine.py:106-118). Старое ожидание 0 — прежняя семантика флага."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     context = AgentContext()
     config = create_test_config(mock_neural_proposals_enabled=False)
     neural_engine = NeuralEngine(context, config)
     proposals = neural_engine.generate_proposals(context)
 
-    assert len(proposals) == 0
+    assert len(proposals) == 1
+    diag = proposals[0]
+    assert diag.source_module_id == "neural_engine_openai"
+    assert diag.proposed_actions == []
+    assert diag.priority == 0.0 and diag.confidence == 0.0
+    assert "LLM unavailable" in diag.justification
 
 
 # Tests for TickOrchestrator

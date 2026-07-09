@@ -11,6 +11,7 @@ from qiki.shared.models.radar import (
     RadarFrameModel,
     RadarTrackModel,
     RadarTrackStatusEnum,
+    RangeBand,
     TransponderModeEnum,
 )
 
@@ -26,6 +27,10 @@ def _make_detection(**overrides):
         transponder_on=True,
         transponder_mode=TransponderModeEnum.ON,
         transponder_id="ALLY-001",
+        # Санация 0050: track store принимает транспондер-поля только из
+        # SR-band (канон: LR транспондер не несёт, radar_track_store.py:254);
+        # тесты писались до введения range_band-гейта и слали RR_UNSPECIFIED.
+        range_band=RangeBand.RR_SR,
     )
     defaults.update(overrides)
     return RadarDetectionModel(**defaults)

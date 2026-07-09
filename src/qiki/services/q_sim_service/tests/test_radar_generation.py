@@ -84,7 +84,11 @@ def test_radar_sr_threshold_env_override(monkeypatch):
 
     frame = sim.generate_radar_frame()
     sr_det = frame.detections[1]
-    assert sr_det.range_m == pytest.approx(50.0)
+    # Санация 0050: env-override исправен (порог читается в __init__).
+    # Формула SR-дальности при покое: цель на y=sr*0.7=70, z=50 →
+    # rng=√(70²+50²)≈86.0; дальность = max(sr*0.5, min(rng, sr*0.8)) = 80.0.
+    # Старое ожидание 50.0 (=sr*0.5) — от прежней геометрии, не от дефекта.
+    assert sr_det.range_m == pytest.approx(80.0)
 
 
 def test_generate_sensor_data_produces_radar_when_enabled():

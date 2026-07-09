@@ -60,8 +60,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def run_harness(args: argparse.Namespace) -> LoadSummary:
-    os.environ["RADAR_FUSION_ENABLED"] = "1" if args.fusion == "on" else "0"
-    os.environ["RADAR_EMIT_OBSERVATION_RX"] = "0"
+    # Санация 0050: env-override живёт только на время прогона — сырая запись
+    # утекала на всю pytest-сессию и включала fusion соседним radar-тестам
+    # (multisensor/replay падали только в общем прогоне src-дерева).
+    _env_overrides = {
+        "RADAR_FUSION_ENABLED": "1" if args.fusion == "on" else "0",
+        "RADAR_EMIT_OBSERVATION_RX": "0",
+    }
+    _saved_env = {key: os.environ.get(key) for key in _env_overrides}
+    os.environ.update(_env_overrides)
 
     strict_load = _is_on(os.getenv("QIKI_LOAD_STRICT", "0"))
     backend = "sqlite" if args.sqlite == "on" else "memory"
@@ -133,6 +140,11 @@ def run_harness(args: argparse.Namespace) -> LoadSummary:
         return summary
     finally:
         pipeline.close()
+        for _key, _value in _saved_env.items():
+            if _value is None:
+                os.environ.pop(_key, None)
+            else:
+                os.environ[_key] = _value
 
 
 def main(argv: list[str] | None = None) -> int:

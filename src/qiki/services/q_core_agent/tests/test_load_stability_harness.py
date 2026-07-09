@@ -62,7 +62,12 @@ def test_load_perf_multi_target_300_thresholds() -> None:
 
 
 @pytest.mark.load
-def test_load_fusion_stress_no_fused_id_flapping() -> None:
+def test_load_fusion_stress_no_fused_id_flapping(monkeypatch) -> None:
+    # Санация 0050: тест неявно полагался на утечку RADAR_FUSION_ENABLED из
+    # соседних run_harness-вызовов (та самая утечка ломала radar-тесты всего
+    # дерева). Теперь run_harness восстанавливает env — fusion включаем ЯВНО.
+    monkeypatch.setenv("RADAR_FUSION_ENABLED", "1")
+    monkeypatch.setenv("RADAR_EMIT_OBSERVATION_RX", "0")
     store = EventStore(maxlen=200_000, enabled=True, backend="memory")
     clock = ReplayClock(0.0)
     pipeline = RadarPipeline(event_store=store, clock=clock)
