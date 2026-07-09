@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -47,6 +48,10 @@ from qiki.services.operator_console.orion_v.qiki_voice import (
     QikiVoiceEntry,
     format_qiki_voice_lines,
     format_qiki_voice_tooltip,
+)
+from qiki.services.operator_console.orion_v.radar_page_view_model import (
+    build_radar_page_vm,
+    format_radar_page_lines,
 )
 from qiki.services.operator_console.orion_v.hardware_view_model.thresholds import (
     POWER_SOC_CRIT_PCT,
@@ -265,6 +270,7 @@ class OrionVCockpitScreen(Static):
         self._active_left_mfd_page = MFD_DEFAULT_LEFT_PAGE
         self._active_right_mfd_page = MFD_DEFAULT_RIGHT_PAGE
         self._playable_loop_state: dict[str, Any] = {}
+        self._radar_tracks: dict[str, dict[str, Any]] = {}
         self._last_playable_loop_vm = None
 
     def compose(self) -> ComposeResult:
@@ -356,6 +362,7 @@ class OrionVCockpitScreen(Static):
         active_left_mfd_page: str | None = None,
         active_right_mfd_page: str | None = None,
         playable_loop_state: dict[str, Any] | None = None,
+        radar_tracks: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._prev_core_temp_c = self._pick_core_temp_c(self._telemetry)
         self._telemetry = telemetry
@@ -374,6 +381,8 @@ class OrionVCockpitScreen(Static):
         self._active_left_mfd_page = normalize_mfd_page("left", active_left_mfd_page or self._active_left_mfd_page)
         self._active_right_mfd_page = normalize_mfd_page("right", active_right_mfd_page or self._active_right_mfd_page)
         self._playable_loop_state = dict(playable_loop_state or self._playable_loop_state or {})
+        if radar_tracks is not None:
+            self._radar_tracks = dict(radar_tracks)
         self._refresh_text()
 
     def _refresh_text(self) -> None:
@@ -804,9 +813,13 @@ class OrionVCockpitScreen(Static):
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)
+        if page == "radar":
+            # Этап 6 (Z4): страница РАДАР — живые треки через единый view-model,
+            # а не вырезка чужих секций из body_text.
+            vm = build_radar_page_vm(getattr(self, "_radar_tracks", None) or {}, now_unix_s=time.time())
+            return "\n".join(format_radar_page_lines(vm))
         lines = body_text.splitlines()
         marker_map: dict[str, tuple[str, ...]] = {
-            "radar": ("Общий статус", "Сенсоры", "Инциденты"),
             "nav": ("Наведение", "Маршрут и цель", "Текущий процесс"),
             "target": ("Маршрут и цель", "Контекст миссии", "Цель"),
             "sector": ("Контекст миссии", "Поддержка миссии", "Инциденты"),

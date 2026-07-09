@@ -34,6 +34,7 @@ from qiki.services.operator_console.orion_v.hardware_view_model import HardwareC
 from qiki.services.operator_console.orion_v.hardware_view_model.types import HardwareViewModel
 from qiki.services.operator_console.orion_v.i18n_ru import state_ru, tr
 from qiki.services.operator_console.orion_v.qiki_voice import QikiVoiceEntry, build_qiki_voice_entry
+from qiki.services.operator_console.orion_v.radar_page_view_model import is_lost_status
 from qiki.services.operator_console.orion_v.body_structure_interactive_controller import (
     get_body_structure_interactive_controller,
     reset_body_structure_interactive_state,
@@ -547,7 +548,9 @@ class OrionVApp(App[None]):
         track_id = str(payload.get("track_id") or "").strip()
         if not track_id:
             return
-        if str(payload.get("status") or "").strip().upper() == "LOST":
+        # Этап 6: на проводе status — int (model_dump(mode="json") сериализует
+        # IntEnum числом); строковое сравнение «LOST» никогда не выселяло.
+        if is_lost_status(payload.get("status")):
             self._latest_radar_tracks.pop(track_id, None)
             return
         track_payload = dict(payload)
@@ -4639,6 +4642,7 @@ class OrionVApp(App[None]):
             active_left_mfd_page=self._active_mfd_left_page,
             active_right_mfd_page=self._active_mfd_right_page,
             playable_loop_state=self._f1_playable_loop_state,
+            radar_tracks=self._latest_radar_tracks,
         )
 
         self.query_one("#orionv-qiki-dialog", OrionVQikiDialogScreen).set_state(

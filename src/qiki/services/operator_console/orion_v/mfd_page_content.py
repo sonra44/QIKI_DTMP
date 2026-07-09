@@ -16,6 +16,10 @@ from qiki.services.operator_console.orion_v.power_thermal_view_model import (
     format_soc_bat,
     format_soc_cap,
 )
+from qiki.services.operator_console.orion_v.radar_page_view_model import (
+    build_radar_page_vm,
+    format_radar_track_row_lines,
+)
 from qiki.services.operator_console.orion_v.mfd_layout import (
     clipped_lines,
     mfd_page_label,
@@ -93,20 +97,9 @@ def _radar_track_lines(
     *,
     limit: int = 6,
 ) -> list[str]:
-    if not radar_tracks:
-        return ["живых радар-треков нет"]
-    rows: list[str] = []
-    for index, (track_id, track) in enumerate(radar_tracks.items(), start=1):
-        if index > limit:
-            rows.append(f"+ {len(radar_tracks) - limit} more track(s): open detail")
-            break
-        label = _text(track.get("track_label") or track.get("label") or track_id, track_id)
-        range_m = _text(track.get("range_m") or track.get("range") or track.get("distance_m"), _UNKNOWN)
-        bearing = _text(track.get("bearing_deg") or track.get("bearing"), _UNKNOWN)
-        quality = _text(track.get("quality") or track.get("confidence"), _UNKNOWN)
-        age = _text(track.get("age_s") or track.get("age"), _UNKNOWN)
-        rows.append(f"#{index} {label} | range={range_m} | bearing={bearing} | q={quality} | age={age}")
-    return rows
+    # Этап 6 (Z4): один владелец радар-строк — radar_page_view_model
+    # (пеленг|дальность|скорость|IFF|качество|риск derived; пусто → «эфир чист»).
+    return format_radar_track_row_lines(build_radar_page_vm(radar_tracks or {}, limit=limit))
 
 
 def _objective_lines(objective: Mapping[str, Any] | None) -> list[str]:
