@@ -22,6 +22,8 @@ from qiki.services.operator_console.orion_v.body_physics_view_model import (
 )
 from qiki.services.operator_console.orion_v.body_structure_view_model import (
     format_body_structure_cockpit_line,
+    format_qiki_identity_line,
+    format_qiki_identity_tooltip,
     get_body_structure_console_view_model,
 )
 from qiki.services.operator_console.orion_v.power_thermal_view_model import (
@@ -681,6 +683,14 @@ class OrionVCockpitScreen(Static):
         except NoMatches:
             pass
         self._set_static_text("#orionv-mfd-status", mfd_status_text)
+        try:
+            # Этап 7 (Z3): evidence-мета идентичности — tooltip рамки, не строка
+            self.query_one("#orionv-mfd-status", Static).tooltip = format_qiki_identity_tooltip(
+                get_body_structure_console_view_model(),
+                hardware_profile_hash=self._hardware_profile_hash(),
+            )
+        except NoMatches:
+            pass
         # DISPLAY_CANON №6: страница — в титуле рамки (динамический якорь)
         try:
             left_label = mfd_page_label("left", normalize_mfd_page("left", self._active_left_mfd_page))
@@ -732,24 +742,33 @@ class OrionVCockpitScreen(Static):
         self._set_static_text("#orionv-cockpit-body", text)
 
     def _compose_mfd_status_text(self, body_text: str) -> str:
-        # DISPLAY_CANON строка №5 (T0-значимость, оператор 2026-07-04): постоянная
-        # статус-строка убрана целиком — РЕЖИМ был тройным дублем, УЛИКИ/ИСТОЧНИК —
-        # приёмочный heartbeat разработчика (ИСТОЧНИК-константа дезинформировала при
-        # живой телеметрии), корпус/модули — справочные и живут в правом MFD.
-        # Блок показывается ТОЛЬКО когда правый MFD не на «systems» — тогда он несёт
-        # body/physics/power сводки (иначе пустой и виджет схлопывается).
-        if normalize_mfd_page("right", self._active_right_mfd_page) == "systems":
-            return ""
+        # DISPLAY_CANON строка №5 (T0-значимость, оператор 2026-07-04): старый
+        # статус-ряд (РЕЖИМ/УЛИКИ/ИСТОЧНИК) убран как кухня пайплайна; сводки
+        # body/physics/power — только когда правый MFD не «systems» (иначе дубль).
+        # Этап 7 (G-F, Z3): первой строкой — идентичность «QIKI-<серийник> |
+        # додекаэдр · 12 граней | модулей N/12»; она systems-страницу не
+        # дублирует и видна ПОСТОЯННО.
         body_vm = get_body_structure_console_view_model()
+        identity = format_qiki_identity_line(
+            body_vm, hardware_profile_hash=self._hardware_profile_hash()
+        )
+        if normalize_mfd_page("right", self._active_right_mfd_page) == "systems":
+            return identity
         physics_vm = get_body_physics_console_view_model(body_vm)
         power_vm = build_power_thermal_console_view_model_from_telemetry(self._telemetry)
         return "\n".join(
             (
+                identity,
                 format_body_structure_cockpit_line(body_vm),
                 format_body_physics_cockpit_line(physics_vm),
                 format_power_thermal_cockpit_line(power_vm),
             )
         )
+
+    def _hardware_profile_hash(self) -> str | None:
+        telemetry = self._telemetry if isinstance(self._telemetry, dict) else {}
+        value = str(telemetry.get("hardware_profile_hash") or "").strip()
+        return value or None
 
     def _compose_left_mfd_text(self, body_text: str) -> str:
         page = normalize_mfd_page("left", self._active_left_mfd_page)

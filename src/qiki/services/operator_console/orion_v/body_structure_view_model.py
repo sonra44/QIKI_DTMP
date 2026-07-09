@@ -288,6 +288,55 @@ def _build_view_model(
 # Screen formatting helpers.
 
 
+def format_qiki_identity_line(
+    vm: BodyStructureConsoleViewModel | None = None,
+    *,
+    hardware_profile_hash: str | None = None,
+) -> str:
+    """Этап 7 (G-F, Z3): строка идентичности «кто я» для статус-блока F1.
+
+    Канон (bot_source_of_truth / READER_MANUAL §6): идентичность QIKI —
+    додекаэдрический корпус, 12 функциональных граней; модульность не
+    создаёт нового робота. Серийник — суррогат из hardware_profile_hash
+    (отдельного id пока нет, спека Z3); нет телеметрии → честное «—».
+    """
+    vm = vm or get_body_structure_console_view_model()
+    serial = "—"
+    hash_text = str(hardware_profile_hash or "").strip()
+    if hash_text:
+        # Формат producer'а: "sha256:<64 hex>" — серийник берём из digest,
+        # не из имени алгоритма (живой смок поймал «QIKI-SHA256»)
+        digest = hash_text.rsplit(":", 1)[-1]
+        serial = digest[:6].upper() if digest else "—"
+    return (
+        f"QIKI-{serial} | додекаэдр · {vm.faces_total} граней"
+        f" | модулей {vm.attached_modules_count}/{vm.faces_total}"
+    )
+
+
+def format_qiki_identity_tooltip(
+    vm: BodyStructureConsoleViewModel | None = None,
+    *,
+    hardware_profile_hash: str | None = None,
+) -> str:
+    """Evidence-мета идентичности — в tooltip рамки (Z3), не на строку."""
+    vm = vm or get_body_structure_console_view_model()
+    hash_text = str(hardware_profile_hash or "").strip()
+    serial_source = (
+        f"серийник: hardware_profile_hash {hash_text} (суррогат, отдельного id нет)"
+        if hash_text
+        else "серийник: нет данных (телеметрия без hardware_profile_hash; суррогат, отдельного id нет)"
+    )
+    return " | ".join(
+        (
+            "идентичность: додекаэдр — канон корпуса (12 унифицированных граней)",
+            serial_source,
+            f"корпус: {vm.seed_status}",
+            f"источник: {vm.source}",
+        )
+    )
+
+
 def format_body_structure_cockpit_line(vm: BodyStructureConsoleViewModel | None = None) -> str:
     vm = vm or get_body_structure_console_view_model()
     ready = str(vm.runtime_ready).lower()

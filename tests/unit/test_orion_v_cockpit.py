@@ -496,8 +496,13 @@ def test_cockpit_body_seed_not_claimed_operational_without_runtime() -> None:
     right = screen._compose_right_mfd_text("")
     assert "Корпус: каркас (посев)" in right
     assert "Корпус: в строю" not in right
-    # и статус-блок при правом MFD «systems» пуст (виджет схлопывается)
-    assert screen._compose_mfd_status_text("") == ""
+    # этап 7 (Z3): при правом MFD «systems» блок несёт ТОЛЬКО идентичность
+    # (сводки не дублируются), старый статус-ряд не возвращается
+    status = screen._compose_mfd_status_text("")
+    assert status.startswith("QIKI-")
+    assert "додекаэдр" in status
+    assert "РЕЖИМ:" not in status and "УЛИКИ:" not in status
+    assert "Power(" not in status
 
 
 def test_cockpit_guidance_compact_marks_partial_without_source() -> None:
