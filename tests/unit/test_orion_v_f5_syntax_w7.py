@@ -39,7 +39,9 @@ def _screen() -> OrionVQikiDialogScreen:
 
 
 def _render_ansi(s: OrionVQikiDialogScreen) -> str:
-    console = Console(width=90, force_terminal=True)
+    # color_system пинован: без TERM (docker exec) Rich деградирует до 8 цветов
+    # и фоновые эскейпы подсветки исчезают — тест должен быть детерминирован.
+    console = Console(width=90, force_terminal=True, color_system="truecolor")
     with console.capture() as cap:
         console.print(s._blocks_to_rich(s._render_blocks()))
     return cap.get()
