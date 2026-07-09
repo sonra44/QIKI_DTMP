@@ -28,6 +28,11 @@ from qiki.services.operator_console.orion_v.cockpit_playable_view_model import (
     normalize_cockpit_playable_action_id,
     normalize_cockpit_playable_phase,
 )
+from qiki.services.operator_console.orion_v.command_registry import (
+    HELP_GROUPS_ORDER,
+    iter_help_lines,
+    iter_palette_specs,
+)
 from qiki.services.operator_console.orion_v.dialogs import ConfirmDialog
 from qiki.services.operator_console.orion_v.events_store import BoundedEventsStore, now_epoch_s
 from qiki.services.operator_console.orion_v.hardware_view_model import HardwareCollector
@@ -364,6 +369,8 @@ class OrionVApp(App[None]):
         self._incident_first_seen: dict[str, float] = {}
         self._console_history: deque[str] = deque(maxlen=max(50, int(os.getenv("ORIONV_CONSOLE_HISTORY", "200"))))
         self._command_mode_open = False
+        # Этап 8: guard от наслоения quit-модалок (повторный quit до ответа)
+        self._quit_confirm_open = False
         self._help_text = "Команды: help"
         self._last_command_status = "idle"
         self._last_command_summary = "Команда ещё не подавалась"
@@ -728,17 +735,58 @@ class OrionVApp(App[None]):
         self._refresh_ui()
 
     def get_system_commands(self, screen: Any) -> Iterable[Any]:
-        """Expose the F1 local cockpit loop through Textual's command palette.
+        """Палитра Ctrl+P (этап 8, §F4-4): два класса записей.
 
-        These palette entries are discoverability affordances only. Selecting one
-        moves ORION to F1 and arms the local action; it does not publish a runtime
-        command, claim ACK, or claim physical effect confirmation.
+        1) «Ф1 …» — discoverability-аффордансы локального цикла кокпита:
+           двигают ORION на F1 и выбирают действие; runtime-команда НЕ
+           публикуется, ACK/эффект не заявляются.
+        2) typed-записи из command_registry — исполняются ЧЕРЕЗ
+           `_route_typed_command` (single path: те же гейты replay/ACK/deny,
+           что у поля ввода). Аргументные — префилл поля ввода.
+        Системная запись Textual «Quit the application» подменяется на
+        confirm-путь (§F4-3: выход только с подтверждением).
         """
-        yield from super().get_system_commands(screen)
+        for system_command in super().get_system_commands(screen):
+            title = str(getattr(system_command, "title", ""))
+            if title.strip().lower().startswith("quit"):
+                # выход — только через подтверждение (единый путь с quit/exit)
+                try:
+                    system_command = type(system_command)(
+                        title=system_command.title,
+                        help=getattr(system_command, "help", ""),
+                        callback=self._request_quit_confirm,
+                        discover=getattr(system_command, "discover", True),
+                    )
+                except Exception:
+                    pass
+            yield system_command
         try:
-            from textual.command import SystemCommand
-        except Exception:
-            return
+            # textual ≥ 8: SystemCommand живёт в textual.app; старый путь
+            # textual.command тихо ронял ВЕСЬ кастомный блок в return —
+            # «Ф1»-записи палитры были мертвы в проде (находка этапа 8)
+            from textual.app import SystemCommand
+        except ImportError:
+            try:
+                from textual.command import SystemCommand  # textual < 8
+            except ImportError:
+                return
+
+        for spec in iter_palette_specs():
+            title = spec.palette_title_ru or spec.name
+            if spec.arg_hint is not None:
+                yield SystemCommand(
+                    title=f"{title}",
+                    help=f"{spec.summary_ru} — откроет ввод с «{spec.arg_hint}», допишите аргумент.",
+                    callback=lambda hint=spec.arg_hint: self._palette_prefill_command(hint),
+                    discover=True,
+                )
+            else:
+                yield SystemCommand(
+                    title=title,
+                    help=f"{spec.summary_ru} — исполняется тем же роутером, что и ввод команды.",
+                    callback=lambda name=spec.name: self._route_typed_command(name),
+                    discover=True,
+                )
 
         f1_commands = (
             (
@@ -1438,6 +1486,18 @@ class OrionVApp(App[None]):
         command.focus()
         self._set_help_text("Командный режим открыт: введите команду и нажмите Enter, Esc — закрыть.")
 
+    def _palette_prefill_command(self, hint: str) -> None:
+        """Этап 8: аргументная запись палитры открывает ввод с префиллом
+        («proc run ») — оператор дописывает аргумент; исполнение всё равно
+        пойдёт через _route_typed_command при Enter (single path)."""
+        try:
+            self.action_open_command_mode()
+            command = self.query_one("#orionv-command", Input)
+            command.value = hint
+            command.cursor_position = len(hint)
+        except Exception:
+            logger.debug("orion_v_palette_prefill_failed", exc_info=True)
+
     def action_close_command_mode(self) -> None:
         if not self._command_mode_open:
             return
@@ -1453,16 +1513,24 @@ class OrionVApp(App[None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw_command = event.value.strip()
-        command = raw_command.lower()
         event.input.value = ""
         # W1 (И1): на F5 поле ввода не закрываем — беседа продолжается
         on_f5 = self._current_level == "f5"
         if not on_f5:
             self.action_close_command_mode()
-        if not command:
+        if not raw_command:
             if on_f5:
                 self._reopen_f5_input()
             return
+        self._route_typed_command(raw_command)
+
+    def _route_typed_command(self, raw_command: str) -> None:
+        """Единственный роутер typed-команд (этап 8, §F4): Input и палитра
+        Ctrl+P идут ЧЕРЕЗ ЭТОТ путь — все гейты (replay, ACK, deny) общие.
+        Перечень команд зеркалится в command_registry (пин полноты)."""
+        raw_command = raw_command.strip()
+        command = raw_command.lower()
+        on_f5 = self._current_level == "f5"
 
         is_qiki, qiki_text = self._parse_qiki_intent(raw_command)
         if is_qiki:
@@ -1514,7 +1582,8 @@ class OrionVApp(App[None]):
             )
             return
         if command in {"quit", "exit"}:
-            self.action_quit()
+            # Этап 8 (§F4-3, карточка D): выход — только с подтверждением
+            self._request_quit_confirm()
             return
         if command in {"inc next", "incident next", "next"}:
             self.action_incident_next()
@@ -1620,16 +1689,36 @@ class OrionVApp(App[None]):
         return False, None
 
     def _show_help(self) -> None:
+        # Этап 8 (§F4-1): полный сгруппированный help из command_registry
+        # (единый владелец с палитрой и пином полноты). Групповые строки
+        # идут в консоль F4 (история), НЕ в help-строку — та режет 1×160.
+        count = 0
+        for line in iter_help_lines():
+            self._console_history.append(line)
+            count += 1
         self._set_help_text(
-            "Уровни f1/f2/f3/f4/f6/f7 | Инциденты up/down ack clear select <id> | "
-            "Фильтры sev <...> subsys <...> range <sec|all> | "
-            "Страницы pgup/pgdn page next/prev | Подсистемы module <slug> | "
-            "Процедуры proc list|proc run <name>|proc status | "
-            "Мир sim.start [скорость]|sim.pause|sim.stop | "
-            "Анализ replay on [sec]|replay off|replay status | "
-            "Журнал audit <all|actions|procedures|incidents|level|replay> | "
-            "QIKI q: <запрос> q confirm q cancel | Review review confirm | Follow-up follow-up hold | "
-            "Resume resume observation | q"
+            f"Справка выведена в консоль F4: {count} строк, "
+            f"{len(HELP_GROUPS_ORDER)} групп | Ctrl+P — палитра команд"
+        )
+        self._request_refresh_ui()
+
+    def _request_quit_confirm(self) -> None:
+        """Этап 8: quit/exit — через ConfirmDialog; guard от наслоения
+        модалок (повторный quit до ответа не открывает второй экран)."""
+        if self._quit_confirm_open:
+            return
+        self._quit_confirm_open = True
+
+        def _on_result(confirmed: bool) -> None:
+            self._quit_confirm_open = False
+            if confirmed:
+                self.action_quit()
+            else:
+                self._set_help_text("Выход отменён — консоль на связи")
+
+        self.push_screen(
+            ConfirmDialog("Выйти из консоли ORION? (y/Enter — выйти, n/Esc — остаться)"),
+            _on_result,
         )
 
     def action_ack_observation_review(self) -> None:

@@ -29,6 +29,10 @@ from qiki.services.operator_console.orion_v.sensor_trust_model import (
     assess_sensor_trust,
 )
 from qiki.shared.models.qiki_chat import BilingualText, QikiChatResponseV1
+from qiki.shared.supercap_gate import classify_cap_gate
+
+# RU-отображение cap-гейта (семантика/пороги — qiki/shared/supercap_gate)
+_CAP_GATE_RU = {"boost": "БУСТ", "hold": "ДЕРЖ", "stab": "СТАБ"}
 
 _SEVERITY_RANK = {"attention": 1, "warning": 2, "critical": 3}
 _SEVERITY_LABEL = {"attention": "ATTENTION", "warning": "WARNING", "critical": "CRITICAL"}
@@ -755,6 +759,13 @@ def _build_subsystem_chips(
     # DISPLAY_CANON строка №4: PWR несёт двойной якорь «SoC% ~мин» (таймер жизни)
     runtime_min = _field_num(hardware_model, "power", "power.runtime_min")
     power_anchor_extra = f" ~{runtime_min:.0f}м" if runtime_min is not None else ""
+    # Этап 8 (Z2/G3): cap-гейт суперконденсатора — готовность к пиковому
+    # действию; пороги — ТОЛЬКО shared-владелец (0.17: без локальных копий),
+    # RU-коды — слой отображения консоли. Нет данных → сегмента нет (честно).
+    supercap_pct = _field_num(hardware_model, "power", "power.supercap_soc")
+    cap_gate = classify_cap_gate(supercap_pct)
+    if cap_gate is not None:
+        power_anchor_extra += f" · cap {supercap_pct:.0f}% ▸{_CAP_GATE_RU[cap_gate]}"
     chips = [
         _subsystem_chip(
             hardware_model=hardware_model,

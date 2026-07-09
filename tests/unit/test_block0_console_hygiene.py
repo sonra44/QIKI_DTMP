@@ -39,10 +39,37 @@ def test_bare_q_does_not_quit() -> None:
     assert helps and "quit" in helps[-1].lower()  # подсказка вместо выхода
 
 
-def test_explicit_quit_still_works() -> None:
+def test_explicit_quit_asks_confirmation() -> None:
+    """Этап 8 (§F4-3, карточка D): выход — только с подтверждением.
+    quit открывает ConfirmDialog; action_quit — только по callback(True)."""
+    from qiki.services.operator_console.orion_v.dialogs import ConfirmDialog
+
     app, _ = _app_for_commands()
+    pushed: list[tuple[object, object]] = []
+    app.push_screen = lambda screen, callback=None: pushed.append((screen, callback))  # type: ignore[method-assign]
+
     _submit(app, "quit")
+    app.action_quit.assert_not_called()  # без подтверждения выхода нет
+    assert len(pushed) == 1 and isinstance(pushed[0][0], ConfirmDialog)
+
+    pushed[0][1](True)  # оператор подтвердил
     app.action_quit.assert_called_once()
+
+
+def test_quit_confirm_guard_prevents_stacked_modals() -> None:
+    """Повторный quit до ответа не наслаивает второй модал (guard)."""
+    app, _ = _app_for_commands()
+    pushed: list[tuple[object, object]] = []
+    app.push_screen = lambda screen, callback=None: pushed.append((screen, callback))  # type: ignore[method-assign]
+
+    _submit(app, "quit")
+    _submit(app, "exit")
+    assert len(pushed) == 1, "второй quit наслоил модал"
+
+    pushed[0][1](False)  # оператор остался
+    app.action_quit.assert_not_called()
+    _submit(app, "quit")  # после ответа guard снят
+    assert len(pushed) == 2
 
 
 def test_hotkey_q_shows_hint_not_quit() -> None:
