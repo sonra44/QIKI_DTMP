@@ -102,9 +102,16 @@ def main() -> int:
     else:
         print("[smoke] сим уже RUNNING (живой мир оператора) — стоп-сторону гейта не трогаем")
 
-    # 0.2: стабильный sensor_id между кадрами
-    _, frame_a = _radar_frame_status(stub)
-    _, frame_b = _radar_frame_status(stub)
+    # 0.2: стабильный sensor_id между кадрами.
+    # LOW-guard: FAILED_PRECONDITION здесь означает «гейт закрыт» (STOPPED
+    # ИЛИ обесточка/выключенный радар) — если мир изменился между чтениями,
+    # падаем с честным сообщением, а не AttributeError на None-кадре.
+    status_a, frame_a = _radar_frame_status(stub)
+    status_b, frame_b = _radar_frame_status(stub)
+    assert status_a == status_b == "frame" and frame_a is not None and frame_b is not None, (
+        "радарный гейт закрылся между кадрами (STOPPED/обесточка?) — "
+        f"статусы: {status_a}/{status_b}"
+    )
     sid_a, sid_b = frame_a.sensor_id.value, frame_b.sensor_id.value
     assert sid_a and sid_a == sid_b, f"sensor_id нестабилен: {sid_a} != {sid_b}"
     print(f"[smoke] sensor_id стабилен между кадрами: {sid_a} ✓")

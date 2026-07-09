@@ -558,6 +558,10 @@ class OrionVApp(App[None]):
         if source_timestamp is not None:
             track_payload["_orion_source_timestamp_unix_s"] = source_timestamp
         track_payload["_orion_received_at_unix_s"] = time.time()
+        # LRU (урок M6): dict держит позицию ключа при обновлении — без pop
+        # непрерывно обновляемый трек сидел в голове и выселялся кэпом
+        # раньше редких новых (FIFO по первой вставке).
+        self._latest_radar_tracks.pop(track_id, None)
         self._latest_radar_tracks[track_id] = track_payload
         # 0.16: без LOST-событий словарь рос бесконечно — выселяем старейшие.
         while len(self._latest_radar_tracks) > _MAX_LATEST_RADAR_TRACKS:
