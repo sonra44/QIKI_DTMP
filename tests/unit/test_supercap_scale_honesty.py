@@ -79,3 +79,30 @@ def test_unknown_cap_stays_unknown() -> None:
     assert vm.peak_ready is False
     assert vm.peak_readiness == "unknown"
     assert "POWER_TELEM_MISSING" in vm.reason_codes
+
+
+def test_fractional_boundary_matches_chip_scale() -> None:
+    """59.6% (float): чип классифицирует hold — карточка обязана limited.
+    Усечение к int (59) даёт то же — но классификация идёт по сырому float."""
+    assert classify_cap_gate(59.6) == "hold"
+    vm = build_power_thermal_console_view_model(supercap_soc_pct=59.6)
+    assert vm.peak_readiness == "limited"
+
+
+def test_out_of_range_fractional_is_unknown_like_owner() -> None:
+    """C5-аудит: 100.4 усекался в 100 → ready, а чип честно unknown;
+    −0.5 усекался в 0 → blocked. Guard владельца обязан наследоваться."""
+    for bogus in (100.4, 100.6, -0.5, -0.9, 150.0):
+        assert classify_cap_gate(bogus) is None, bogus
+        vm = build_power_thermal_console_view_model(supercap_soc_pct=bogus)
+        assert vm.peak_readiness == "unknown", (
+            f"SoC_cap={bogus}: карточка {vm.peak_readiness!r}, чип unknown (guard)"
+        )
+
+
+def test_non_finite_cap_does_not_crash_adapter() -> None:
+    """inf в телеметрии: владелец возвращает None; адаптер не имеет права
+    падать OverflowError на int(float('inf'))."""
+    for bogus in (float("inf"), float("-inf"), float("nan")):
+        vm = build_power_thermal_console_view_model(supercap_soc_pct=bogus)
+        assert vm.peak_readiness == "unknown"

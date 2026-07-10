@@ -183,7 +183,9 @@ def build_power_thermal_console_view_model(
     battery_soc = _soc_int_or_none(battery_soc_pct)
     supercap_soc = _soc_int_or_none(supercap_soc_pct)
     nodes = tuple(thermal_nodes or default_thermal_nodes())
-    peak_ready, peak_readiness, blocked_commands, reason_codes = _peak_state(supercap_soc)
+    # C5-аудит: классифицируем СЫРОЕ значение — усечение до int съедало guard
+    # владельца (100.4 → int 100 → ready против честного unknown у чипа).
+    peak_ready, peak_readiness, blocked_commands, reason_codes = _peak_state(supercap_soc_pct)
     thermal_status, thermal_blocked, thermal_reasons = _thermal_state(nodes)
     if thermal_reasons and peak_ready:
         peak_ready = False
@@ -390,7 +392,7 @@ def build_power_thermal_evidence_card_vms(
     ]
 
 
-def _peak_state(supercap_soc_pct: int | None) -> tuple[bool, str, tuple[str, ...], tuple[str, ...]]:
+def _peak_state(supercap_soc_pct: Any) -> tuple[bool, str, tuple[str, ...], tuple[str, ...]]:
     # C5: шкала готовности выводится из владельца (shared/supercap_gate,
     # T_boost/T_hold) — были локальные 20/70, и при SoC_cap 61-69% чип PWR
     # говорил ▸БУСТ, а карточка F2 — limited.
@@ -467,8 +469,10 @@ def _soc_int_or_none(value: Any) -> int | None:
     }:
         return None
     try:
+        # OverflowError: int(float('inf')) — телеметрия с inf не должна
+        # ронять адаптер (владелец шкалы возвращает None через isfinite).
         return int(float(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 

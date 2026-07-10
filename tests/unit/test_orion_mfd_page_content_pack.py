@@ -59,7 +59,9 @@ def _physics_vm() -> SimpleNamespace:
     )
 
 
-def _power_vm(*, battery_soc_pct: int | None = 84, supercap_soc_pct: int | None = 61) -> SimpleNamespace:
+def _power_vm(*, battery_soc_pct: int | None = 84, supercap_soc_pct: int | None = 45) -> SimpleNamespace:
+    # C5: 45% = hold-зона владельца → limited (фикстура 61%+limited стала
+    # невозможной комбинацией после унификации шкал — 61% = boost/ready).
     node = SimpleNamespace(
         node_id="T_supercap",
         thermal_class="yellow",
@@ -216,7 +218,7 @@ def test_power_and_thermal_pages_preserve_seed_boundary() -> None:
     assert "Power / Accumulator" in power_page
     assert "canonical_chain: source -> battery -> bus -> supercap -> peak consumers" in power_page
     assert "SoC_bat: 84%" in power_page
-    assert "SoC_cap: 61%" in power_page
+    assert "SoC_cap: 45%" in power_page
     assert "PDU_boundary: target-only; no full PDU runtime in this patch" in power_page
     assert "runtime_conformance: not claimed" in power_page
     assert "T_supercap" in thermal_page
