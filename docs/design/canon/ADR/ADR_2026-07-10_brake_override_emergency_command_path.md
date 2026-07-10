@@ -6,26 +6,45 @@
 
 ## Context
 
-- Канон пакета playable фиксирует гэп G4: «BRAKE OVERRIDE („большой
-  красный") — потенциально единственный кандидат на прямой аварийный путь
-  мимо диалога. В v1 не делается; требует отдельного ADR»
-  (`docs/design/operator_console/orion_playable_f1_f5_v1/06_COMMAND_SURFACE_CONTROL_PATH.md`, «Исключения»).
-- Авторский замысел уже записан в лоре: Safety Plane содержит «FDIR:
+- Канон пакета playable фиксирует гэп G4 (HEAD-редакция после решения Q8,
+  коммит 3b5eb7f): «BRAKE OVERRIDE (гэп G4, „большой красный") —
+  единственный кандидат на прямой аварийный путь мимо **диалога**, но НЕ
+  мимо пломбы CommandDecision / legality / аудита… В v1 не делается;
+  отдельный ADR, design-only, после Блока 0 и до этапа 9»
+  (`docs/design/operator_console/orion_playable_f1_f5_v1/06_COMMAND_SURFACE_CONTROL_PATH.md:33-38`).
+  Этот ADR формализует уже записанную там позицию как канон-решение.
+- Авторский замысел записан в лоре: Safety Plane содержит «FDIR:
   обнаружение/изоляция отказов, **Brake override при угрозе**» и режим
-  `Brake` в Mode Manager (`bot_gdd.md`, Safety Plane) — аварийное
-  торможение задумано как штатная способность тела, не как хак пульта.
+  `Brake` в Mode Manager (`docs/design/game/bot_gdd.md:157-159`).
+  Статус bot_gdd — GDD/reference, уступает QIKI Body v0.2.2 «unless
+  explicitly re-accepted by a later ADR»; этот ADR и есть такой
+  re-accept замысла. Расхождение с лором проговорено явно: лор говорит
+  «Brake override всегда разрешён / наивысший приоритет» — здесь это
+  ПОДЧИНЕНО телу (§12): gating может отказать, форс-пути нет.
 - QIKI Body canon: safe-brake — штатная функция RCS; «Manual override
-  отдельных RCS-сопел может существовать только как debug-only…
-  не обычная игровая кнопка»; «RCS-команды должны проходить через command
-  gating» (`01_BODY_CANON.md` §12, REQ `02_REQUIREMENTS.md`).
+  отдельных RCS-сопел может существовать только как debug-only **или
+  аварийный инженерный режим**. Он не должен быть обычной игровой
+  кнопкой»; «RCS-команды должны проходить через command gating»
+  (`01_BODY_CANON.md` §12; REQ-RCS-005/006 `02_REQUIREMENTS.md`).
+  Запрет «не игровая кнопка» относится к ручному управлению ОТДЕЛЬНЫМИ
+  соплами (REQ-RCS-005) — BRAKE OVERRIDE соплами не управляет: он
+  порождает штатный intent класса BRAKE, исполняемый телом через
+  gating, поэтому под этот запрет не подпадает.
 - Инварианты контура: исполнение достигает тела только через пломбу
   `CommandDecision` (P3, `01_PLAYABLE_CANON.md`); lifecycle команды —
   request → validation → allowed/rejected → publish → ACK → effect →
   audit (IF-CMD, `06_INTERFACE_CONTROL.md` §18); Safe Mode authority =
-  Q-Core Agent, dual-source запрещён (`CONTEXT_LOCK_QIKI_DTMP.md` п.5).
-- Рамки оператора (REPLY_002 A8): design-only, строго после Блока 0,
-  в v1 не реализуется; триггер написания кода — до старта этапа 9
-  (контекстные действия Burn/Brake обострят ожидание этого пути).
+  Q-Core Agent, dual-source запрещён без явного ADR
+  (`docs/design/canon/CONTEXT_LOCK_QIKI_DTMP.md` п.5, синхронизировано
+  2026-07-10 с операторским локом `~/MEMORI/CONTEXT_LOCK_QIKI_DTMP.md`).
+- Рамки оператора (REPLY_002 A8): design-only, в v1 не реализуется;
+  триггер написания кода — до старта этапа 9 (контекстные действия
+  Burn/Brake обострят ожидание этого пути). Оговорка о происхождении:
+  REPLY_002 назначал триггером написания САМОГО ADR закрытие Блока 0;
+  на момент написания этап 3 Блока 0 — in_progress. Ранний ход
+  санкционирован новым решением оператора («бумажный» срез,
+  sovereign id=5161/5163; `TASKS/TASK_20260710_paper_adr_slice.md`) —
+  дизайн-фаза сдвинута раньше сознательно, реализация осталась gated.
 
 ## Decision
 
@@ -35,8 +54,11 @@
    legality-гейт и аудит.
 2. Один жест оператора (выделенная кнопка/команда) порождает готовый
    intent класса `BRAKE` с preset-параметрами и сразу проводит его через
-   пломбу: ступени propose/commit сливаются в один шаг **только для
-   этого класса**; сам жест удовлетворяет `CMD_CONFIRMATION_REQUIRED`.
+   пломбу: ступени propose/commit (F5-дизайн §3,
+   `F5_QIKI_DIALOG_SYSTEM_DESIGN.md`) сливаются в один шаг **только для
+   этого класса**; сам жест удовлетворяет `CMD_CONFIRMATION_REQUIRED`
+   (§18.6): канон требует подтверждения, но не требует, чтобы оно было
+   ВТОРЫМ действием — все 7 ступеней lifecycle §18.4 сохраняются.
 3. Исполнение — штатный RCS safe-brake через command gating (SoC_cap,
    PDU, thermal, SAFE и пр., §12). Если gating отклоняет — оператор
    видит честный `rejected + reason_code`; форс-пути мимо тела нет.

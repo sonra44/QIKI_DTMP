@@ -27,6 +27,9 @@ Lock critical product and architecture decisions to prevent context drift and re
 
 5. Safety authority:
 - `safe_mode` authoritative source is Q-Core Agent.
+- Dual-source decision authorities are forbidden without an explicit ADR
+  (sync 2026-07-10 with the operator lock `~/MEMORI/CONTEXT_LOCK_QIKI_DTMP.md`
+  p.5, fixed there since 2026-03-01; the repo copy had drifted).
 
 6. G1 mandatory telemetry additions (implementation lock):
 - velocity vector + scalar;
