@@ -56,9 +56,11 @@ from qiki.services.operator_console.orion_v.radar_page_view_model import (
     format_radar_page_lines,
 )
 from qiki.services.operator_console.orion_v.hardware_view_model.thresholds import (
+    COMMS_AGE_CRIT_S,
     POWER_SOC_CRIT_PCT,
     POWER_SOC_WARN_PCT,
     THERMAL_CORE_CRIT_C,
+    THERMAL_CORE_WARN_C,
 )
 from qiki.shared.models.qiki_chat import QikiChatResponseV1
 
@@ -1887,9 +1889,9 @@ class OrionVCockpitScreen(Static):
 
         severity = "ok"
         # Аудит 0.17: пороги — shared-канон, не локальные копии.
-        if soc is not None and soc < POWER_SOC_CRIT_PCT:
+        if soc is not None and soc <= POWER_SOC_CRIT_PCT:
             severity = "crit"
-        elif soc is not None and soc < POWER_SOC_WARN_PCT:
+        elif soc is not None and soc <= POWER_SOC_WARN_PCT:
             severity = "warn"
         if load_shedding is True:
             severity = _merge_severity(severity, "warn")
@@ -2112,7 +2114,7 @@ class OrionVCockpitScreen(Static):
         if (
             core_tripped is True
             or bool(trip_nodes)
-            or (core is not None and core >= 90.0)
+            or (core is not None and core >= THERMAL_CORE_CRIT_C)
             or ("crit" in thermal_warning)
             or ("trip" in thermal_warning)
         ):
@@ -2120,7 +2122,7 @@ class OrionVCockpitScreen(Static):
         elif (
             core_warned is True
             or bool(warn_nodes)
-            or (core is not None and core >= 80.0)
+            or (core is not None and core >= THERMAL_CORE_WARN_C)
             or ("warn" in thermal_warning)
             or ("alarm" in thermal_warning)
         ):
@@ -2212,7 +2214,7 @@ class OrionVCockpitScreen(Static):
         records = thermal_records_from_snapshot(thermal if isinstance(thermal, dict) else {})
         evidence = thermal_to_evidence(records)
         age_s = _pick_num(tel, ["thermal", "age_s"])
-        stale = age_s is not None and age_s > 30.0
+        stale = age_s is not None and age_s > COMMS_AGE_CRIT_S
         trusts = [node.trust_status for node in evidence.nodes]
         if "missing" in trusts:
             trust = "missing"

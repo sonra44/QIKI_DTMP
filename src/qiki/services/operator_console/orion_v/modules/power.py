@@ -76,12 +76,12 @@ class PowerSubsystemModule(SubsystemModule):
         # Аудит 0.17: пороги — ТОЛЬКО shared-канон (были локальные 30%/24В
         # против канона 20%/22В — карточка F2 противоречила чипам F1).
         crit = (
-            (soc is not None and soc < POWER_SOC_CRIT_PCT)
+            (soc is not None and soc <= POWER_SOC_CRIT_PCT)
             or (bus_v is not None and bus_v < POWER_BUS_CRIT_V)
             or "crit" in warning
         )
         warn = (
-            (soc is not None and soc < POWER_SOC_WARN_PCT)
+            (soc is not None and soc <= POWER_SOC_WARN_PCT)
             or (bus_v is not None and bus_v < POWER_BUS_WARN_V)
             or ("warn" in warning)
             or ("alarm" in warning)

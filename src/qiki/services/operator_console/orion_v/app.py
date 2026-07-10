@@ -4938,10 +4938,7 @@ class OrionVApp(App[None]):
         anchor = self._nats_url.removeprefix("nats://")
         return anchor.split("/", 1)[0] or "nats"
 
-    def _telemetry_freshness_seconds(self) -> float | None:
-        if self._last_telemetry_received_wall is None:
-            return None
-        return max(0.0, time.time() - self._last_telemetry_received_wall)
+    
 
     def _time_anchor_label(self) -> str | None:
         if self._last_telemetry_received_wall is None:
