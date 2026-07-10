@@ -6,9 +6,10 @@
 Анти-образец 0.17: локальные копии порогов запрещены — потребители (чип PWR
 консоли) читают ТОЛЬКО отсюда.
 
-Смежный владелец `power_thermal_view_model._peak_state` (20/70,
-blocked/limited/ready) — ДРУГАЯ семантика (контур блокировок команд);
-унификация — отдельный срез.
+Контур блокировок команд (`power_thermal_view_model._peak_state`,
+blocked/limited/ready) с среза C5 (task-0055) выводится ИЗ этой шкалы:
+boost→ready, hold→limited, stab→blocked, None→unknown. Локальных копий
+порогов не осталось.
 """
 
 from __future__ import annotations

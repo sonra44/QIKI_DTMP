@@ -44,13 +44,18 @@ def test_power_thermal_seed_surfaces_battery_supercap_and_thermal_nodes() -> Non
 
 
 def test_explicit_power_thermal_seed_values_still_drive_readiness() -> None:
+    # C5: шкала — владелец shared/supercap_gate (60/30): 61% = boost = ready
+    # (старый локальный пин 20/70 требовал здесь limited — две шкалы).
     vm = build_power_thermal_console_view_model(battery_soc_pct=84, supercap_soc_pct=61)
 
     assert vm.battery_soc_pct == 84
     assert vm.supercap_soc_pct == 61
     assert vm.battery_soc_pct != vm.supercap_soc_pct
-    assert vm.peak_readiness == "limited"
-    assert "PEAK_LIMITED" in vm.reason_codes
+    assert vm.peak_readiness == "ready"
+
+    limited = build_power_thermal_console_view_model(battery_soc_pct=84, supercap_soc_pct=45)
+    assert limited.peak_readiness == "limited"
+    assert "PEAK_LIMITED" in limited.reason_codes
 
 
 def test_low_supercap_blocks_peak_and_shows_cap_low() -> None:

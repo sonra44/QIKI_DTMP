@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Iterable, Mapping
 
 from qiki.services.operator_console.orion_v.evidence_card_vm import EvidenceCardVM
+from qiki.shared.supercap_gate import classify_cap_gate
 
 POWER_THERMAL_MODE = "console-visible power/thermal seed"
 POWER_THERMAL_SOURCE = "local_power_thermal_seed_fixture"
@@ -390,13 +391,17 @@ def build_power_thermal_evidence_card_vms(
 
 
 def _peak_state(supercap_soc_pct: int | None) -> tuple[bool, str, tuple[str, ...], tuple[str, ...]]:
-    if supercap_soc_pct is None:
-        return False, "unknown", _DEFAULT_BLOCKED_COMMANDS_FOR_UNKNOWN_CAP, ("POWER_TELEM_MISSING",)
-    if supercap_soc_pct < 20:
-        return False, "blocked", _DEFAULT_BLOCKED_COMMANDS_FOR_LOW_CAP, ("CAP_LOW",)
-    if supercap_soc_pct < 70:
+    # C5: шкала готовности выводится из владельца (shared/supercap_gate,
+    # T_boost/T_hold) — были локальные 20/70, и при SoC_cap 61-69% чип PWR
+    # говорил ▸БУСТ, а карточка F2 — limited.
+    gate = classify_cap_gate(supercap_soc_pct)
+    if gate == "boost":
+        return True, "ready", (), ()
+    if gate == "hold":
         return False, "limited", _DEFAULT_BLOCKED_COMMANDS_FOR_LIMITED_PEAK, ("PEAK_LIMITED",)
-    return True, "ready", (), ()
+    if gate == "stab":
+        return False, "blocked", _DEFAULT_BLOCKED_COMMANDS_FOR_LOW_CAP, ("CAP_LOW",)
+    return False, "unknown", _DEFAULT_BLOCKED_COMMANDS_FOR_UNKNOWN_CAP, ("POWER_TELEM_MISSING",)
 
 
 def _thermal_state(nodes: tuple[ThermalNodeView, ...]) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
