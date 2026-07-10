@@ -30,6 +30,10 @@ Runtime conformance is not claimed by this documentation package.
 ## Canon decisions (ADR)
 
 - ADR directory: `docs/design/canon/ADR/`
+- Execution-critical (2026-07-10, «бумажный» срез):
+  - `ADR/ADR_2026-07-10_brake_override_emergency_command_path.md` — аварийный короткий путь одобрения (гейт этапа 9)
+  - `ADR/ADR_2026-07-10_target_identity_layer07_ownership.md` — владелец Layer-07 fusion = мозг; S1-мини = гейт этапа 9b
+  - `ADR/ADR_2026-07-10_tick_owner_single_brain.md` — владелец тика = qiki-dev; intents = проекция
 - Context lock (cross-session anti-drift): `docs/design/canon/CONTEXT_LOCK_QIKI_DTMP.md`
 - Telemetry G1 implementation lock: `docs/design/canon/TELEMETRY_G1_IMPLEMENTATION_LOCK.md`
 - Current product-critical execution canons:
